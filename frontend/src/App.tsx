@@ -239,6 +239,7 @@ export const App: React.FC = () => {
             selectedLocality={activeCity}
             onOpenDropWish={() => setIsDropWishOpen(true)}
             onClaimRequest={handleClaimRequest}
+            onOpenAuth={() => setIsAuthOpen(true)}
           />
         )}
 
@@ -255,6 +256,7 @@ export const App: React.FC = () => {
             onOpenDropGear={() => setIsDropGearOpen(true)}
             onOpenDropWish={() => setIsDropWishOpen(true)}
             onOpenChatWithBooking={handleOpenChatWithBooking}
+            onOpenAuth={() => setIsAuthOpen(true)}
           />
         )}
 
@@ -308,6 +310,7 @@ export const App: React.FC = () => {
         onClose={() => setIsHowItWorksOpen(false)}
         onOpenDropGear={() => setIsDropGearOpen(true)}
         onOpenDropWish={() => setIsDropWishOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
 
       {/* Auth Modal */}
@@ -324,6 +327,8 @@ export const App: React.FC = () => {
         onOpenDropGear={() => setIsDropGearOpen(true)}
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
       />
 
     </div>

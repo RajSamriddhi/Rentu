@@ -1,11 +1,13 @@
 import React from 'react';
-import { X, Search, Sparkles, ShieldCheck, HeartHandshake, ArrowRight } from 'lucide-react';
+import { X, Search, Sparkles, ShieldCheck, HeartHandshake, ArrowRight, LogIn } from 'lucide-react';
+import { useAuth } from '../lib/authContext';
 
 interface HowItWorksModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
+  onOpenAuth?: () => void;
 }
 
 export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({
@@ -13,7 +15,9 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({
   onClose,
   onOpenDropGear,
   onOpenDropWish,
+  onOpenAuth,
 }) => {
+  const { isAuthenticated } = useAuth();
   if (!isOpen) return null;
 
   return (
@@ -87,18 +91,38 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({
 
           {/* Action CTAs */}
           <div className="pt-4 border-t border-divider flex flex-wrap items-center justify-end gap-3">
-            <button
-              onClick={() => { onClose(); onOpenDropGear(); }}
-              className="btn-secondary text-xs"
-            >
-              List an Item
-            </button>
-            <button
-              onClick={() => { onClose(); onOpenDropWish(); }}
-              className="btn-primary text-xs shadow-pink"
-            >
-              Post a Request 🎯
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => { onClose(); onOpenDropGear(); }}
+                  className="btn-secondary text-xs cursor-pointer"
+                >
+                  List an Item
+                </button>
+                <button
+                  onClick={() => { onClose(); onOpenDropWish(); }}
+                  className="btn-primary text-xs shadow-pink cursor-pointer"
+                >
+                  Post a Request 🎯
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={onClose}
+                  className="btn-secondary text-xs cursor-pointer"
+                >
+                  Explore Rentals
+                </button>
+                <button
+                  onClick={() => { onClose(); onOpenAuth?.(); }}
+                  className="btn-primary text-xs shadow-pink cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Join Rentu⁺ to Post</span>
+                </button>
+              </>
+            )}
           </div>
 
         </div>

@@ -27,12 +27,14 @@ interface ProfileViewProps {
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChatWithBooking: (bookingId: string) => void;
+  onOpenAuth?: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenDropGear,
   onOpenDropWish,
   onOpenChatWithBooking,
+  onOpenAuth,
 }) => {
   const { user, refreshUser } = useAuth();
 
@@ -114,6 +116,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const bannerSrc = user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80';
   const avatarSrc = user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu');
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-20 text-center animate-in fade-in">
+        <div className="bg-surface border border-divider rounded-3xl p-8 shadow-sm space-y-4">
+          <div className="w-16 h-16 rounded-full bg-brand-soft text-brand flex items-center justify-center mx-auto text-2xl font-black">
+            👤
+          </div>
+          <h2 className="text-xl font-black text-ink font-display">Sign in to view your Profile</h2>
+          <p className="text-xs text-ink-secondary">Manage your gear listings, track rental requests, and view community earnings.</p>
+          {onOpenAuth && (
+            <button
+              onClick={onOpenAuth}
+              className="btn-primary text-xs px-6 py-2.5 shadow-pink cursor-pointer mt-2"
+            >
+              Sign In to Continue
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-150">
@@ -230,30 +254,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <button 
             id="edit-profile-btn"
             onClick={() => setIsEditModalOpen(true)}
-            className="btn-secondary text-xs px-4 py-2 shrink-0 cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+            className="btn-secondary text-xs px-4 py-2 shrink-0 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs w-full sm:w-auto"
           >
             <Edit3 className="w-3.5 h-3.5" />
             <span>Edit Profile</span>
           </button>
         </div>
 
-        {/* Real Dynamic Stats Row (Zero Fake Data) */}
-        <div className="grid grid-cols-4 border-t border-divider divide-x divide-divider text-center py-4 bg-canvas/40">
-          <div>
-            <div className="text-xl font-black text-ink font-display">{myItems.length}</div>
-            <div className="text-[11px] font-bold text-ink-secondary">Listings</div>
+        {/* Real Dynamic Stats Row (Zero Fake Data) - Mobile Responsive */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 sm:gap-y-0 border-t border-divider divide-y sm:divide-y-0 sm:divide-x divide-divider text-center py-3 sm:py-4 bg-canvas/40">
+          <div className="py-1 sm:py-0">
+            <div className="text-lg sm:text-xl font-black text-ink font-display">{myItems.length}</div>
+            <div className="text-[10px] sm:text-[11px] font-bold text-ink-secondary">Listings</div>
           </div>
-          <div>
-            <div className="text-xl font-black text-ink font-display">{myBookings.length}</div>
-            <div className="text-[11px] font-bold text-ink-secondary">Total Rents</div>
+          <div className="py-1 sm:py-0">
+            <div className="text-lg sm:text-xl font-black text-ink font-display">{myBookings.length}</div>
+            <div className="text-[10px] sm:text-[11px] font-bold text-ink-secondary">Total Rents</div>
           </div>
-          <div>
-            <div className="text-xl font-black text-ink font-display">{completedCount}</div>
-            <div className="text-[11px] font-bold text-ink-secondary">Completed</div>
+          <div className="py-1 sm:py-0">
+            <div className="text-lg sm:text-xl font-black text-ink font-display">{completedCount}</div>
+            <div className="text-[10px] sm:text-[11px] font-bold text-ink-secondary">Completed</div>
           </div>
-          <div>
-            <div className="text-xl font-black text-ink font-display">{ratingDisplay}</div>
-            <div className="text-[11px] font-bold text-ink-secondary">Community Rating</div>
+          <div className="py-1 sm:py-0">
+            <div className="text-lg sm:text-xl font-black text-ink font-display">{ratingDisplay}</div>
+            <div className="text-[10px] sm:text-[11px] font-bold text-ink-secondary">Community Rating</div>
           </div>
         </div>
 
@@ -269,8 +293,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }}
       />
 
-      {/* Profile Tabs */}
-      <div className="flex items-center gap-2 pt-8 pb-4">
+      {/* Profile Tabs - Swipeable on mobile */}
+      <div className="flex items-center gap-2 pt-6 sm:pt-8 pb-3 sm:pb-4 overflow-x-auto scrollbar-none whitespace-nowrap">
         {[
           { key: 'listings', label: `My Listings (${myItems.length})` },
           { key: 'requests', label: `My Requests (${myRequests.length})` },

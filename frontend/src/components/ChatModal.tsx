@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Search } from 'lucide-react';
+import { X, Send, Search, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { Conversation, Message } from '../lib/types';
@@ -19,6 +19,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(initialBookingId || null);
+  const [showMobileThread, setShowMobileThread] = useState<boolean>(!!initialBookingId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -215,7 +216,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 flex-1 overflow-hidden">
           
           {/* Left Column: Conversation List matching Screen 8 (4 cols) */}
-          <div className="md:col-span-4 border-r border-divider flex flex-col bg-canvas/40">
+          <div className={`md:col-span-4 border-r border-divider flex-col bg-canvas/40 ${showMobileThread ? 'hidden md:flex' : 'flex'}`}>
             {/* Search messages */}
             <div className="p-3 border-b border-divider">
               <div className="flex items-center gap-2 bg-surface border border-divider rounded-full px-3 py-1.5 text-xs">
@@ -235,7 +236,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               {DEMO_CHATS.map((chat) => (
                 <div
                   key={chat.id}
-                  onClick={() => setSelectedBookingId(chat.booking_id)}
+                  onClick={() => {
+                    setSelectedBookingId(chat.booking_id);
+                    setShowMobileThread(true);
+                  }}
                   className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors ${
                     chat.id === 'demo-1' ? 'bg-surface font-bold' : 'hover:bg-surface'
                   }`}
@@ -263,10 +267,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </div>
 
           {/* Right Column: Active Conversation matching Screen 8 (8 cols) */}
-          <div className="md:col-span-8 flex flex-col justify-between bg-surface">
+          <div className={`md:col-span-8 flex-col justify-between bg-surface ${showMobileThread ? 'flex' : 'hidden md:flex'}`}>
             
             {/* Active Header */}
-            <div className="px-6 py-3 border-b border-divider flex items-center gap-3">
+            <div className="px-4 sm:px-6 py-3 border-b border-divider flex items-center gap-3">
+              <button
+                onClick={() => setShowMobileThread(false)}
+                className="md:hidden p-1.5 -ml-1 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink cursor-pointer"
+                title="Back to conversation list"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
               <img
                 src={activeContact.other_user_avatar}
                 alt={activeContact.other_user_name}

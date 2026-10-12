@@ -28,6 +28,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [selectedType, setSelectedType] = useState<'Rent' | 'Borrow' | 'Both'>('Both');
   const [selectedCondition, setSelectedCondition] = useState<string>('Any');
   const [sortBy, setSortBy] = useState<'relevance' | 'price_low' | 'price_high'>('relevance');
+  const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
 
   const categories = [
     'All',
@@ -111,11 +112,27 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         })}
       </div>
 
+      {/* Mobile Filter Toggle Button */}
+      <div className="lg:hidden mt-2 mb-4">
+        <button
+          onClick={() => setShowMobileFilters(!showMobileFilters)}
+          className="w-full flex items-center justify-between bg-surface border border-divider rounded-2xl px-4 py-2.5 text-xs font-bold text-ink cursor-pointer hover:bg-canvas transition-colors shadow-xs"
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-brand" />
+            <span>Filters & Distance</span>
+          </span>
+          <span className="text-xs font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full">
+            {showMobileFilters ? 'Hide ▲' : 'Show Filters ▼'}
+          </span>
+        </button>
+      </div>
+
       {/* 2-Column Main Layout: Left Sidebar Filters + Right Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-2">
         
         {/* Left Filter Sidebar matching Screen 2 */}
-        <aside className="lg:col-span-3 space-y-6">
+        <aside className={`lg:col-span-3 space-y-6 ${showMobileFilters ? 'block' : 'hidden lg:block'}`}>
           <div className="bg-surface border border-divider rounded-2xl p-5 shadow-xs space-y-5">
             
             {/* Location matching Screen 2 (City dropdown + Distance dropdown) */}

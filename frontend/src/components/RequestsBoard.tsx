@@ -22,6 +22,7 @@ interface RequestsBoardProps {
   selectedLocality: string;
   onOpenDropWish: () => void;
   onClaimRequest: (request: CommunityRequest) => void;
+  onOpenAuth?: () => void;
 }
 
 export const RequestsBoard: React.FC<RequestsBoardProps> = ({
@@ -32,8 +33,9 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
   selectedLocality,
   onOpenDropWish,
   onClaimRequest,
+  onOpenAuth,
 }) => {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'my' | 'offers'>('all');
 
   const categories = [
@@ -83,14 +85,16 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
           </p>
         </div>
 
-        {/* Right CTA matching Screen 6 */}
-        <button
-          onClick={onOpenDropWish}
-          className="btn-primary text-xs px-5 py-2.5 shadow-pink cursor-pointer self-start sm:self-auto inline-flex items-center gap-1.5"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Post a Request</span>
-        </button>
+        {/* Right CTA matching Screen 6 - ONLY VISIBLE AFTER LOGIN */}
+        {isAuthenticated && (
+          <button
+            onClick={onOpenDropWish}
+            className="btn-primary text-xs px-5 py-2.5 shadow-pink cursor-pointer self-start sm:self-auto inline-flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Post a Request</span>
+          </button>
+        )}
       </div>
 
       {/* Sub Tabs: All Requests | My Requests | Offers Received */}
@@ -148,12 +152,21 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
             <div className="py-20 text-center bg-surface border border-divider rounded-2xl p-8">
               <p className="text-base font-bold text-ink">No requests right now in {selectedLocality}.</p>
               <p className="text-xs text-ink-secondary mt-1">Be the first to ask the community for gear you need!</p>
-              <button
-                onClick={onOpenDropWish}
-                className="mt-4 btn-primary text-xs cursor-pointer"
-              >
-                Post a Request 🎯
-              </button>
+              {isAuthenticated ? (
+                <button
+                  onClick={onOpenDropWish}
+                  className="mt-4 btn-primary text-xs cursor-pointer"
+                >
+                  Post a Request 🎯
+                </button>
+              ) : (
+                <button
+                  onClick={onOpenAuth}
+                  className="mt-4 btn-primary text-xs cursor-pointer"
+                >
+                  Sign in to Post a Request
+                </button>
+              )}
             </div>
           ) : (
             filteredRequests.map((req) => {
@@ -245,44 +258,55 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
               Post a request and let verified owners in {selectedLocality} find it for you.
             </p>
 
-            <button
-              onClick={onOpenDropWish}
-              className="btn-primary text-xs w-full py-2.5 cursor-pointer shadow-pink"
-            >
-              Post a Request
-            </button>
-          </div>
-
-          {/* Your Recent Requests matching Screen 6 */}
-          <div className="bg-surface border border-divider rounded-2xl p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between text-xs font-extrabold text-ink">
-              <span>Your recent requests</span>
-              <button 
-                onClick={() => setActiveTab('my')}
-                className="text-brand hover:underline font-bold cursor-pointer"
+            {isAuthenticated ? (
+              <button
+                onClick={onOpenDropWish}
+                className="btn-primary text-xs w-full py-2.5 cursor-pointer shadow-pink"
               >
-                View all
+                Post a Request
               </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {[
-                { title: 'Projector', dates: '12-14 Oct', status: 'Open • 3 offers', color: 'bg-emerald-100 text-emerald-800' },
-                { title: 'Camping Tent', dates: '20-22 Oct', status: 'Open • 1 offer', color: 'bg-emerald-100 text-emerald-800' },
-                { title: 'Lehenga', dates: '23 Oct', status: 'Open • 4 offers', color: 'bg-emerald-100 text-emerald-800' },
-              ].map((rec) => (
-                <div key={rec.title} className="p-2.5 rounded-xl bg-canvas border border-divider flex items-center justify-between text-xs">
-                  <div>
-                    <div className="font-bold text-ink">{rec.title}</div>
-                    <div className="text-[11px] text-ink-secondary">{rec.dates}</div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rec.color}`}>
-                    {rec.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+            ) : (
+              <button
+                onClick={onOpenAuth}
+                className="btn-primary text-xs w-full py-2.5 cursor-pointer shadow-pink"
+              >
+                Sign In to Post
+              </button>
+            )}
           </div>
+
+          {/* Your Recent Requests matching Screen 6 - ONLY VISIBLE AFTER LOGIN */}
+          {isAuthenticated && (
+            <div className="bg-surface border border-divider rounded-2xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between text-xs font-extrabold text-ink">
+                <span>Your recent requests</span>
+                <button 
+                  onClick={() => setActiveTab('my')}
+                  className="text-brand hover:underline font-bold cursor-pointer"
+                >
+                  View all
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                {[
+                  { title: 'Projector', dates: '12-14 Oct', status: 'Open • 3 offers', color: 'bg-emerald-100 text-emerald-800' },
+                  { title: 'Camping Tent', dates: '20-22 Oct', status: 'Open • 1 offer', color: 'bg-emerald-100 text-emerald-800' },
+                  { title: 'Lehenga', dates: '23 Oct', status: 'Open • 4 offers', color: 'bg-emerald-100 text-emerald-800' },
+                ].map((rec) => (
+                  <div key={rec.title} className="p-2.5 rounded-xl bg-canvas border border-divider flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold text-ink">{rec.title}</div>
+                      <div className="text-[11px] text-ink-secondary">{rec.dates}</div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${rec.color}`}>
+                      {rec.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
         </aside>
 

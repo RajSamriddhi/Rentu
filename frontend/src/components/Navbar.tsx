@@ -54,6 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showPostMenu, setShowPostMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLocalityMenu, setShowLocalityMenu] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   const postMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -212,63 +213,79 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
 
-            {/* Notification Bell matching mockup */}
+            {/* Mobile Search Toggle Button */}
             <button
-              onClick={() => setActiveTab('bookings')}
-              className="relative p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
-              title="Notifications & Bookings"
+              onClick={() => setShowMobileSearch(!showMobileSearch)}
+              className="sm:hidden p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
+              title="Search"
+              aria-label="Toggle mobile search"
             >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand" />
+              <Search className="w-4 h-4" />
             </button>
 
-            {/* Messages Icon matching mockup */}
-            <button
-              onClick={onOpenChat}
-              className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
-              title="Messages"
-            >
-              <MessageSquare className="w-4 h-4" />
-            </button>
-
-            {/* Post Menu Button (+ List Item / + Post Request) */}
-            <div className="relative" ref={postMenuRef}>
+            {/* Notification Bell - ONLY VISIBLE AFTER LOGIN */}
+            {isAuthenticated && (
               <button
-                id="post-menu-btn"
-                onClick={() => setShowPostMenu(!showPostMenu)}
-                className="btn-primary text-xs px-3.5 py-2 cursor-pointer shadow-pink hidden sm:inline-flex"
+                onClick={() => setActiveTab('bookings')}
+                className="relative p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer hidden sm:flex"
+                title="Notifications & Bookings"
               >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Post</span>
-                <ChevronDown className="w-3 h-3 ml-0.5" />
+                <Bell className="w-4 h-4" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand" />
               </button>
+            )}
 
-              {showPostMenu && (
-                <div className="absolute right-0 mt-2 w-60 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 text-xs text-ink">
-                  <button
-                    onClick={() => { setShowPostMenu(false); onOpenDropGear(); }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer"
-                  >
-                    <span className="text-base">💸</span>
-                    <div>
-                      <div>List Gear for Rent</div>
-                      <div className="text-[10px] text-ink-secondary font-medium">Turn unused items into income</div>
-                    </div>
-                  </button>
+            {/* Messages Icon - ONLY VISIBLE AFTER LOGIN */}
+            {isAuthenticated && (
+              <button
+                onClick={onOpenChat}
+                className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer hidden sm:flex"
+                title="Messages"
+              >
+                <MessageSquare className="w-4 h-4" />
+              </button>
+            )}
 
-                  <button
-                    onClick={() => { setShowPostMenu(false); onOpenDropWish(); }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer mt-1"
-                  >
-                    <span className="text-base">🎯</span>
-                    <div>
-                      <div>Post a Request</div>
-                      <div className="text-[10px] text-ink-secondary font-medium">Ask community for items you need</div>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Post Menu Button (+ List Item / + Post Request) - ONLY VISIBLE AFTER LOGIN */}
+            {isAuthenticated && (
+              <div className="relative" ref={postMenuRef}>
+                <button
+                  id="post-menu-btn"
+                  onClick={() => setShowPostMenu(!showPostMenu)}
+                  className="btn-primary text-xs px-3 sm:px-3.5 py-1.5 sm:py-2 cursor-pointer shadow-pink inline-flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>Post</span>
+                  <ChevronDown className="w-3 h-3 ml-0.5" />
+                </button>
+
+                {showPostMenu && (
+                  <div className="absolute right-0 mt-2 w-60 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100 text-xs text-ink">
+                    <button
+                      onClick={() => { setShowPostMenu(false); onOpenDropGear(); }}
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                    >
+                      <span className="text-base">💸</span>
+                      <div>
+                        <div>List Gear for Rent</div>
+                        <div className="text-[10px] text-ink-secondary font-medium">Turn unused items into income</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => { setShowPostMenu(false); onOpenDropWish(); }}
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer mt-1"
+                    >
+                      <span className="text-base">🎯</span>
+                      <div>
+                        <div>Post a Request</div>
+                        <div className="text-[10px] text-ink-secondary font-medium">Ask community for items you need</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* User Profile Menu OR Sign In / Sign Up */}
             <div className="relative" ref={userMenuRef}>
@@ -354,7 +371,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {/* Sign Out */}
                   <div className="pt-1.5 border-t border-divider">
                     <button
-                      onClick={() => { logout(); setShowUserMenu(false); }}
+                      onClick={() => { logout(); setShowUserMenu(false); setActiveTab('explore'); }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-pink-50 text-brand flex items-center gap-2 font-bold cursor-pointer"
                     >
                       <LogOut className="w-3.5 h-3.5" />
@@ -364,10 +381,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
-
           </div>
-
         </div>
+
+        {/* Mobile Search Input Dropdown */}
+        {showMobileSearch && (
+          <div className="sm:hidden pb-3 pt-1 animate-in slide-in-from-top-2 duration-150 border-t border-divider/40 mt-1">
+            <form 
+              onSubmit={(e) => { 
+                e.preventDefault(); 
+                onSearch(); 
+                setShowMobileSearch(false);
+              }}
+              className="relative flex items-center bg-canvas border border-divider rounded-full px-3.5 py-1.5 focus-within:border-brand shadow-xs"
+            >
+              <Search className="w-4 h-4 text-ink-muted mr-2 shrink-0" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search rentals, cameras, tents..."
+                className="bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted w-full"
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="ml-2 bg-brand text-white px-3 py-1 rounded-full text-[11px] font-bold shrink-0 shadow-xs cursor-pointer"
+              >
+                Go
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </header>
   );

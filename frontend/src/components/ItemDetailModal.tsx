@@ -137,15 +137,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             {/* Left 7 Columns: Gallery + Item Details */}
             <div className="lg:col-span-7 space-y-6">
               
-              {/* Vertical Gallery Layout from Screen 3 */}
-              <div className="flex gap-4">
-                {/* Vertical Thumbnails */}
-                <div className="flex flex-col gap-2 shrink-0">
+              {/* Gallery Layout from Screen 3 */}
+              <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
+                {/* Thumbnails */}
+                <div className="flex sm:flex-col gap-2 overflow-x-auto sm:overflow-visible shrink-0 pb-1 sm:pb-0 scrollbar-none">
                   {images.slice(0, 4).map((img, idx) => (
                     <button
                       key={idx}
                       onClick={() => setActiveImageIndex(idx)}
-                      className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
                         activeImageIndex === idx ? 'border-brand ring-2 ring-brand/30' : 'border-zinc-200 hover:border-zinc-400'
                       }`}
                     >

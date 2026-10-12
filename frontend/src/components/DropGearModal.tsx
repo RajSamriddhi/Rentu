@@ -141,12 +141,12 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 min-h-[520px]">
           
           {/* Left Stepper Column matching Screen 5 */}
-          <div className="md:col-span-4 bg-canvas/60 p-6 border-r border-divider space-y-6">
-            <h3 className="text-xs font-black uppercase text-ink-secondary tracking-wider">
+          <div className="md:col-span-4 bg-canvas/60 p-4 md:p-6 border-b md:border-b-0 md:border-r border-divider space-y-3 md:space-y-6">
+            <h3 className="text-[11px] font-black uppercase text-ink-secondary tracking-wider hidden md:block">
               Steps
             </h3>
 
-            <div className="space-y-4 text-xs font-bold">
+            <div className="flex md:flex-col gap-3 md:gap-4 overflow-x-auto text-xs font-bold scrollbar-none pb-1 md:pb-0">
               {[
                 { num: 1, label: 'Item details' },
                 { num: 2, label: 'Pricing & Availability' },
@@ -156,9 +156,9 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 const isActive = step === s.num;
                 const isPassed = step > s.num;
                 return (
-                  <div key={s.num} className="flex items-center gap-3">
+                  <div key={s.num} className="flex items-center gap-2 md:gap-3 shrink-0">
                     <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold transition-all ${
+                      className={`w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-xs font-extrabold transition-all shrink-0 ${
                         isActive
                           ? 'bg-brand text-white shadow-xs'
                           : isPassed
@@ -168,7 +168,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                     >
                       {isPassed ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : s.num}
                     </div>
-                    <span className={isActive ? 'text-ink font-extrabold' : 'text-ink-secondary'}>
+                    <span className={`text-[11px] md:text-xs whitespace-nowrap ${isActive ? 'text-ink font-extrabold' : 'text-ink-secondary'}`}>
                       {s.label}
                     </span>
                   </div>

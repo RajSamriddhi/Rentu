@@ -231,7 +231,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 alt="Banner Preview"
                 className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300"
               />
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <button
                   type="button"
                   onClick={() => bannerInputRef.current?.click()}
