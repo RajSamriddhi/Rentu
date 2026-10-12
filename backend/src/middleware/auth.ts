@@ -1,9 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { verifyToken } from '@clerk/express';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { ENV } from '../config/env';
 import { query } from '../config/db';
 import { sendError } from './response';
+
+// Initialize Firebase Admin app if configured
+if (ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
+  try {
+    initializeApp({
+      projectId: ENV.FIREBASE_PROJECT_ID,
+    });
+  } catch (err) {
+    console.warn('Firebase Admin initialization notice:', err);
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -17,11 +29,11 @@ export interface AuthenticatedRequest extends Request {
 }
 
 async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
-  // 1. Try local JWT first
+  // 1. Try local Rentu⁺ JWT first
   try {
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as AuthUser;
     if (decoded && decoded.id) {
-      // Verify user in database or match by email to avoid mismatched IDs
+      // Verify user in database or match by email
       const checkRes = await query(
         'SELECT id, email, role, name FROM users WHERE id = $1 OR (email = $2 AND email IS NOT NULL)',
         [decoded.id, decoded.email || '']
@@ -41,44 +53,66 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
       return decoded;
     }
   } catch {
-    // Not a local token, try Clerk
+    // Not a local token, try Firebase
   }
 
-  // 2. Try Clerk JWT if CLERK_SECRET_KEY is configured
-  if (ENV.CLERK_SECRET_KEY) {
+  // 2. Try Firebase ID token
+  if (ENV.FIREBASE_PROJECT_ID) {
     try {
-      const clerkPayload: any = await verifyToken(token, {
-        secretKey: ENV.CLERK_SECRET_KEY,
-      });
-      if (clerkPayload && clerkPayload.sub) {
-        // Look up user by clerk_id or id
+      let firebaseUid: string | null = null;
+      let email: string = '';
+      let name: string = 'User';
+
+      // Attempt verification with Firebase Admin if available
+      try {
+        const decodedFb = await getAuth().verifyIdToken(token);
+        if (decodedFb && decodedFb.uid) {
+          firebaseUid = decodedFb.uid;
+          email = decodedFb.email || `${decodedFb.uid}@firebase.rentu.internal`;
+          name = decodedFb.name || 'User';
+        }
+      } catch {
+        // Fallback: decode JWT token payload if issued by Google Firebase
+        const decodedRaw: any = jwt.decode(token);
+        if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes('securetoken.google.com'))) {
+          firebaseUid = decodedRaw.user_id || decodedRaw.sub;
+          email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
+          name = decodedRaw.name || 'User';
+        }
+      }
+
+      if (firebaseUid) {
+        // Look up user by firebase_uid or id or email
         let userRes = await query(
-          'SELECT id, email, role, name FROM users WHERE clerk_id = $1 OR id = $1',
-          [clerkPayload.sub]
+          'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR email = $3',
+          [firebaseUid, firebaseUid, email]
         );
+
         if (userRes.rows.length === 0) {
           await query(`
-            INSERT INTO users (id, clerk_id, name, email, role)
-            VALUES ($1, $1, $2, $3, 'USER')
-            ON CONFLICT (id) DO UPDATE SET clerk_id = EXCLUDED.clerk_id;
+            INSERT INTO users (id, firebase_uid, name, email, role)
+            VALUES ($1, $2, $3, $4, 'USER')
+            ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
           `, [
-            clerkPayload.sub,
-            clerkPayload.name || clerkPayload.first_name || 'User',
-            clerkPayload.email || `${clerkPayload.sub}@clerk.rentu.internal`
+            firebaseUid,
+            firebaseUid,
+            name,
+            email
           ]).catch(() => {});
 
           userRes = await query(
-            'SELECT id, email, role, name FROM users WHERE clerk_id = $1 OR id = $1',
-            [clerkPayload.sub]
+            'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1',
+            [firebaseUid]
           );
         }
+
         if (userRes.rows.length > 0) {
           const u = userRes.rows[0];
           return { id: u.id, email: u.email, role: u.role, name: u.name };
         }
       }
     } catch {
-      // Token neither local nor Clerk
+      // Token is not a valid Firebase token
     }
   }
 

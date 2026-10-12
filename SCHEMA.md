@@ -1,7 +1,7 @@
 # 🗄️ SCHEMA.md: Database Tables, Supabase Storage & SQL DDL
 
 **Database Engine:** PostgreSQL 14+ (Hosted on Supabase)  
-**Auth Provider:** Clerk (User ID format: `user_2b...`, zero passwords stored in DB)  
+**Auth Provider:** Firebase Authentication (Google 1-click & Email/Password, UID format: `fb_...` / Firebase UID)  
 **Storage Engine:** Supabase Storage (S3-compatible bucket for item photos)  
 **Location Engine:** 100-Meter Proximity Radar (Haversine & PostGIS)
 
@@ -18,7 +18,8 @@ erDiagram
     ITEMS ||--o{ BOOKINGS : "rented_in"
     
     USERS {
-        text id PK "Clerk User ID (e.g. user_2bXYZ)"
+        text id PK "User ID (e.g. fb_... or Firebase UID)"
+        string firebase_uid "Firebase UID"
         string name "Full Name"
         string phone "Phone number for handoff"
         text bio "Short bio / student / tag"
@@ -99,14 +100,15 @@ CREATE TYPE item_status AS ENUM ('AVAILABLE', 'RENTED', 'UNAVAILABLE');
 CREATE TYPE request_status AS ENUM ('OPEN', 'FULFILLED', 'CANCELLED');
 CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED');
 
--- 3. USERS TABLE (Linked with Clerk via Clerk User ID)
--- Note: Email and password are kept securely inside Clerk.
+-- 3. USERS TABLE (Linked with Firebase via Firebase UID)
+-- Note: Email and password are kept securely inside Firebase Authentication.
 CREATE TABLE users (
-    id TEXT PRIMARY KEY,                 -- Clerk User ID (e.g. 'user_2bXYZ...')
-    name VARCHAR(120) NOT NULL,          -- Synced from Clerk on signup
+    id TEXT PRIMARY KEY,                 -- User ID / Firebase UID
+    firebase_uid VARCHAR(255),           -- Firebase UID index
+    name VARCHAR(120) NOT NULL,          -- Synced from Firebase on signup
     phone VARCHAR(20),                   -- Contact number for pickup coordination
     bio TEXT,                            -- e.g. "Student • Photographer • Cat person"
-    avatar_url TEXT,                     -- Synced from Clerk profile or uploaded
+    avatar_url TEXT,                     -- Synced from Firebase profile or uploaded
     address_text TEXT,                   -- Friendly address (e.g. "Tower 4, Green Valley Society")
     locality VARCHAR(120),               -- Locality (e.g. "Saket, South Delhi")
     pincode VARCHAR(10),                 -- Pincode
@@ -265,7 +267,7 @@ ORDER BY distance_meters ASC;
 ```sql
 -- 1. All gear listed by this user (My Listings)
 SELECT * FROM items 
-WHERE owner_id = :clerk_user_id 
+WHERE owner_id = :user_id 
 ORDER BY created_at DESC;
 
 -- 2. Items this user has borrowed / taken as rent (My Borrows)
@@ -274,7 +276,7 @@ SELECT b.id AS booking_id, b.start_date, b.duration_days, b.total_price, b.statu
 FROM bookings b
 JOIN items i ON b.item_id = i.id
 JOIN users u ON b.lender_id = u.id
-WHERE b.borrower_id = :clerk_user_id
+WHERE b.borrower_id = :user_id
 ORDER BY b.created_at DESC;
 
 -- 3. Rental requests sent to this user for their gear (Incoming Proposals)
@@ -283,7 +285,7 @@ SELECT b.id AS booking_id, b.start_date, b.duration_days, b.total_price, b.statu
 FROM bookings b
 JOIN items i ON b.item_id = i.id
 JOIN users u ON b.borrower_id = u.id
-WHERE b.lender_id = :clerk_user_id
+WHERE b.lender_id = :user_id
 ORDER BY b.created_at DESC;
 ```
 
@@ -306,7 +308,7 @@ SELECT
 
 ```typescript
 export interface UserProfile {
-  id: string; // Clerk User ID
+  id: string; // User ID / Firebase UID
   name: string;
   phone?: string | null;
   bio?: string | null;

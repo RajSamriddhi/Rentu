@@ -134,8 +134,9 @@ router.post('/demo-login', async (req: Request, res: Response, next) => {
   }
 });
 
-const clerkSyncSchema = z.object({
-  clerkId: z.string().min(1),
+const firebaseSyncSchema = z.object({
+  firebaseUid: z.string().optional(),
+  clerkId: z.string().optional(),
   email: z.string().email(),
   name: z.string().min(1),
   avatarUrl: z.string().optional(),
@@ -143,43 +144,45 @@ const clerkSyncSchema = z.object({
   phone: z.string().optional(),
 });
 
-// Sync Clerk user with Rentu⁺ database
-router.post('/clerk-sync', async (req: Request, res: Response, next) => {
+// Sync Firebase / SSO user with Rentu⁺ database
+const handleSyncUser = async (req: Request, res: Response, next: any) => {
   try {
-    const validated = clerkSyncSchema.parse(req.body);
+    const validated = firebaseSyncSchema.parse(req.body);
+    const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
     const locality = validated.locality || 'Saket, New Delhi';
 
-    // 1. Look for existing user by clerk_id or email
+    // 1. Look for existing user by firebase_uid, clerk_id or email
     const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, clerk_id, created_at
-       FROM users WHERE clerk_id = $1 OR email = $2`,
-      [validated.clerkId, email]
+      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
+       FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
+      [uid, uid, email]
     );
 
     let user;
     if (existing.rows.length > 0) {
-      // Update existing user with clerk_id and keep custom avatar if set
+      // Update existing user with firebase_uid and keep custom avatar if set
       const updated = await query(
         `UPDATE users
-         SET clerk_id = $1,
+         SET firebase_uid = $1,
              name = COALESCE(NULLIF($2, ''), name),
              avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
          RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
-        [validated.clerkId, validated.name, avatar, existing.rows[0].id]
+        [uid, validated.name, avatar, existing.rows[0].id]
       );
       user = updated.rows[0];
     } else {
-      // Create new user for this Clerk account
+      // Create new user for this Firebase account
       const created = await query(
-        `INSERT INTO users (clerk_id, email, name, phone, locality, avatar_url, bio, trust_score, role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 85, 'USER')
+        `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
          RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
         [
-          validated.clerkId,
+          uid,
+          uid,
           email,
           validated.name,
           validated.phone || null,
@@ -192,11 +195,14 @@ router.post('/clerk-sync', async (req: Request, res: Response, next) => {
     }
 
     const token = generateToken(user);
-    return sendSuccess(res, { user, token }, 'Clerk session synchronized with Rentu⁺! 🚀');
+    return sendSuccess(res, { user, token }, 'Firebase session synchronized with Rentu⁺! 🚀');
   } catch (error) {
     next(error);
   }
-});
+};
+
+router.post('/firebase-sync', handleSyncUser);
+router.post('/clerk-sync', handleSyncUser);
 
 
 // Get Current Profile

@@ -74,12 +74,14 @@ export const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_locality ON users(locality);
       CREATE INDEX IF NOT EXISTS idx_users_coords ON users(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
     `);
 
     await client.query(`

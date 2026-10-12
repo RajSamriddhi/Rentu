@@ -1,20 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useUser, useClerk } from '@clerk/react';
 import { User } from './types';
 import { api } from './api';
+import { 
+  auth, 
+  googleProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  fbSignOut, 
+  updateProfile, 
+  onAuthStateChanged,
+  FirebaseUser
+} from './firebase';
 
 interface AuthContextType {
   user: (User & { stats?: any }) | null;
   token: string | null;
+  firebaseUser: FirebaseUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  signupWithEmail: (email: string, password: string, name: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  register: (data: { email: string; password: string; name: string }) => Promise<void>;
   demoLogin: (role: 'lender' | 'borrower' | 'admin' | 'creator') => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  clerkUser: any;
-  isClerkSignedIn: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,10 +34,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<(User & { stats?: any }) | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('borrowflex_token'));
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  const { user: clerkUser, isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn } = useUser();
-  const { signOut: clerkSignOut } = useClerk();
 
   const fetchProfile = async () => {
     if (!localStorage.getItem('borrowflex_token')) {
@@ -37,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await api.getMe();
       setUser(profile);
     } catch (err) {
-      console.warn('Failed to fetch user profile, clearing session:', err);
+      console.warn('Failed to fetch user profile, clearing local session:', err);
       localStorage.removeItem('borrowflex_token');
       setToken(null);
       setUser(null);
@@ -46,77 +56,108 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Sync with Clerk whenever Clerk authentication status changes
-  useEffect(() => {
-    if (!isClerkLoaded) return;
-
-    if (isClerkSignedIn && clerkUser) {
-      const syncClerkUser = async () => {
-        setIsLoading(true);
-        try {
-          const email = clerkUser.primaryEmailAddress?.emailAddress || `${clerkUser.id}@clerk.rentu.internal`;
-          const name = clerkUser.fullName || clerkUser.firstName || clerkUser.username || 'Rentu Member';
-          const avatarUrl = clerkUser.imageUrl;
-          const phone = clerkUser.primaryPhoneNumber?.phoneNumber;
-
-          const res = await api.clerkSync({
-            clerkId: clerkUser.id,
-            email,
-            name,
-            avatarUrl,
-            phone,
-          });
-
-          localStorage.setItem('borrowflex_token', res.token);
-          setToken(res.token);
-          setUser(res.user);
-        } catch (err) {
-          console.error('Failed to sync Clerk account:', err);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      syncClerkUser();
-    } else {
-      // Not signed in with Clerk; load local token profile if present
-      if (token) {
-        fetchProfile();
-      } else {
-        setIsLoading(false);
-      }
-    }
-  }, [isClerkLoaded, isClerkSignedIn, clerkUser?.id]);
-
-  // If local token changes (e.g. from demo login)
-  useEffect(() => {
-    if (token && !isClerkSignedIn) {
-      fetchProfile();
-    }
-  }, [token]);
-
-  const login = async (email: string, password: string) => {
+  // Sync Firebase authenticated user with the Rentu⁺ database
+  const syncFirebaseUser = async (fbUser: FirebaseUser) => {
     setIsLoading(true);
     try {
-      const res = await api.login(email, password);
+      const email = fbUser.email || `${fbUser.uid}@firebase.rentu.internal`;
+      const name = fbUser.displayName || email.split('@')[0] || 'Rentu Member';
+      const avatarUrl = fbUser.photoURL || undefined;
+      const phone = fbUser.phoneNumber || undefined;
+
+      const res = await api.firebaseSync({
+        firebaseUid: fbUser.uid,
+        email,
+        name,
+        avatarUrl,
+        phone,
+      });
+
       localStorage.setItem('borrowflex_token', res.token);
       setToken(res.token);
       setUser(res.user);
+    } catch (err) {
+      console.error('Failed to sync Firebase account with database:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (data: any) => {
+  // Listen to Firebase Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      setFirebaseUser(fbUser);
+      if (fbUser) {
+        await syncFirebaseUser(fbUser);
+      } else {
+        // If not logged into Firebase, check if local demo token is active
+        const localToken = localStorage.getItem('borrowflex_token');
+        if (localToken) {
+          fetchProfile();
+        } else {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Google Sign-In with popup
+  const loginWithGoogle = async () => {
     setIsLoading(true);
     try {
-      const res = await api.register(data);
-      localStorage.setItem('borrowflex_token', res.token);
-      setToken(res.token);
-      setUser(res.user);
-    } finally {
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        await syncFirebaseUser(result.user);
+      }
+    } catch (err: any) {
       setIsLoading(false);
+      console.error('Firebase Google Sign-In error:', err);
+      throw err;
     }
+  };
+
+  // Email & Password login
+  const loginWithEmail = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (result.user) {
+        await syncFirebaseUser(result.user);
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('Firebase Email Login error:', err);
+      throw err;
+    }
+  };
+
+  // Email & Password signup
+  const signupWithEmail = async (email: string, password: string, name: string) => {
+    setIsLoading(true);
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (result.user) {
+        await updateProfile(result.user, {
+          displayName: name.trim(),
+        });
+        await syncFirebaseUser(result.user);
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('Firebase Signup error:', err);
+      throw err;
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    await loginWithEmail(email, password);
+  };
+
+  const register = async (data: { email: string; password: string; name: string }) => {
+    await signupWithEmail(data.email, data.password, data.name);
   };
 
   const demoLogin = async (role: 'lender' | 'borrower' | 'admin' | 'creator') => {
@@ -135,12 +176,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('borrowflex_token');
     setToken(null);
     setUser(null);
-    if (isClerkSignedIn) {
-      try {
-        await clerkSignOut();
-      } catch (err) {
-        console.error('Clerk signOut error:', err);
-      }
+    setFirebaseUser(null);
+    try {
+      await fbSignOut(auth);
+    } catch (err) {
+      console.error('Firebase signOut error:', err);
     }
   };
 
@@ -153,15 +193,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         token,
+        firebaseUser,
         isLoading,
         isAuthenticated: !!user,
+        loginWithGoogle,
+        loginWithEmail,
+        signupWithEmail,
         login,
         register,
         demoLogin,
         logout,
         refreshUser,
-        clerkUser,
-        isClerkSignedIn: !!isClerkSignedIn,
       }}
     >
       {children}
@@ -176,4 +218,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

@@ -39,8 +39,9 @@ export const createApp = () => {
         configured: Boolean(ENV.SUPABASE_URL && ENV.SUPABASE_ANON_KEY),
         url: ENV.SUPABASE_URL || 'not_configured',
       },
-      clerk: {
-        configured: Boolean(ENV.CLERK_PUBLISHABLE_KEY && ENV.CLERK_SECRET_KEY),
+      firebase: {
+        configured: Boolean(ENV.FIREBASE_PROJECT_ID),
+        projectId: ENV.FIREBASE_PROJECT_ID,
       },
       timestamp: new Date().toISOString(),
     });
