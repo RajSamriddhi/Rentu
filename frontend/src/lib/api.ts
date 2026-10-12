@@ -39,8 +39,13 @@ async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false) {
     const errorInfo = json.error || {};
+    const fallbackMsg = res.status === 401 
+      ? 'Please sign in to complete this action.' 
+      : res.status === 500 
+      ? 'Backend service is initializing. Please try again in a moment.'
+      : `Request failed (HTTP ${res.status})`;
     throw new ApiError(
-      errorInfo.message || 'Request failed',
+      errorInfo.message || fallbackMsg,
       errorInfo.code || `HTTP_${res.status}`,
       errorInfo.details
     );

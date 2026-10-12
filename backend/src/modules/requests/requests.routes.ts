@@ -118,6 +118,18 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   try {
     const validated = createRequestSchema.parse(req.body);
 
+    // Ensure seeker exists in users table to prevent FK constraint errors
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user!.id,
+      req.user!.name || 'Rentu Member',
+      req.user!.email || `${req.user!.id}@firebase.rentu.internal`,
+      validated.locality || 'Delhi'
+    ]).catch(() => {});
+
     // Ensure locality includes seeker's city
     const userRes = await query('SELECT locality FROM users WHERE id = $1', [req.user!.id]);
     const userLocality = userRes.rows[0]?.locality || 'Delhi';

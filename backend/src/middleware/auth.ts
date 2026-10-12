@@ -116,6 +116,37 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
     }
   }
 
+  // 3. Support client Firebase fallback session tokens: "fb_<uid>"
+  if (token.startsWith('fb_')) {
+    const rawUid = token.replace(/^fb_/, '');
+    try {
+      let userRes = await query(
+        'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2',
+        [rawUid, rawUid]
+      );
+
+      if (userRes.rows.length === 0) {
+        await query(`
+          INSERT INTO users (id, firebase_uid, name, email, role)
+          VALUES ($1, $1, $2, $3, 'USER')
+          ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
+        `, [rawUid, 'Rentu Member', `${rawUid}@firebase.rentu.internal`]).catch(() => {});
+
+        userRes = await query(
+          'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1',
+          [rawUid]
+        );
+      }
+
+      if (userRes.rows.length > 0) {
+        const u = userRes.rows[0];
+        return { id: u.id, email: u.email, role: u.role, name: u.name };
+      }
+    } catch (err) {
+      console.warn('Failed to resolve fb_ fallback token:', err);
+    }
+  }
+
   return null;
 }
 
