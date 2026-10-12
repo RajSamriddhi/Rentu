@@ -2,7 +2,7 @@
   "name": "borrowflex-backend",
   "version": "1.0.0",
   "description": "Headless REST API for BorrowFlex Gen Z Peer-to-Peer Rental Platform",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
