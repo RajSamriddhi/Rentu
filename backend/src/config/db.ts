@@ -1,8 +1,11 @@
 import { Pool, QueryResult, QueryResultRow } from 'pg';
 import { ENV } from './env';
 
+const isRemote = ENV.DATABASE_URL.includes('supabase.co') || ENV.DATABASE_URL.includes('pooler') || ENV.NODE_ENV === 'production';
+
 export const pool = new Pool({
   connectionString: ENV.DATABASE_URL,
+  ssl: isRemote ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on('error', (err) => {

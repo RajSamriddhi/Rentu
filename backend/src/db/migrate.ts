@@ -48,7 +48,7 @@ export const runMigrations = async () => {
     // 3. Tables (Supporting Clerk IDs and Supabase GPS Radar)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
         name VARCHAR(120) NOT NULL,
         email VARCHAR(255) UNIQUE,
         password_hash VARCHAR(255),
