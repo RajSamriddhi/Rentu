@@ -13,7 +13,6 @@ import { DropWishModal } from './components/DropWishModal';
 import { ChatModal } from './components/ChatModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { AuthModal } from './components/AuthModal';
-import { MobileBottomNav } from './components/MobileBottomNav';
 import { ItemCard } from './components/ItemCard';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
@@ -139,7 +138,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-canvas pb-20 lg:pb-0 font-sans">
+    <div className="min-h-screen flex flex-col bg-canvas font-sans">
       
       {/* Top Navbar matching Mockup Header */}
       <Navbar
@@ -318,17 +317,6 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
-      />
-
-      {/* Mobile Bottom Navigation */}
-      <MobileBottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenDropGear={() => setIsDropGearOpen(true)}
-        onOpenDropWish={() => setIsDropWishOpen(true)}
-        onOpenChat={() => setIsChatOpen(true)}
-        onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
       />
 
     </div>

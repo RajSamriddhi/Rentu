@@ -97,7 +97,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </div>
 
               {/* Inset Photo 1: Canon DSLR Camera */}
-              <div className="absolute -top-4 -left-6 w-32 sm:w-36 bg-white dark:bg-[#181922] p-2 rounded-2xl shadow-lg border border-divider -rotate-6 hover:rotate-0 transition-transform">
+              <div className="absolute -top-3 -left-2 sm:-top-4 sm:-left-6 w-28 sm:w-36 bg-white dark:bg-[#181922] p-1.5 sm:p-2 rounded-2xl shadow-lg border border-divider -rotate-6 hover:rotate-0 transition-transform">
                 <img
                   src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80"
                   alt="Canon DSLR camera"
@@ -106,7 +106,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </div>
 
               {/* Inset Photo 2: Cute Puppy / Lifestyle */}
-              <div className="absolute -bottom-4 -left-4 w-28 sm:w-32 bg-white dark:bg-[#181922] p-2 rounded-2xl shadow-lg border border-divider rotate-6 hover:rotate-0 transition-transform">
+              <div className="absolute -bottom-3 -left-2 sm:-bottom-4 sm:-left-4 w-24 sm:w-32 bg-white dark:bg-[#181922] p-1.5 sm:p-2 rounded-2xl shadow-lg border border-divider rotate-6 hover:rotate-0 transition-transform">
                 <img
                   src="https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=400&q=80"
                   alt="Puppy friendly community"

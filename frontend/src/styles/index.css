@@ -37,6 +37,11 @@ body.dark,
     color: #F9FAFB;
   }
 
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
