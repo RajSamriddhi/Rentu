@@ -354,20 +354,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </>
             ) : (
-              /* UNAUTHENTICATED: Clean Log In & Sign Up buttons */
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* On tablets & desktop, show both 'Log in' text button and 'Sign up' pill */}
+              /* UNAUTHENTICATED: Single clean Sign In button */
+              <div className="flex items-center">
                 <button
+                  id="navbar-signin-btn"
                   onClick={onOpenAuth}
-                  className="hidden sm:inline-block text-xs font-bold text-ink hover:text-brand px-2.5 py-1.5 cursor-pointer transition-colors"
+                  className="btn-primary text-xs px-3.5 sm:px-4 py-1.5 sm:py-2 cursor-pointer shadow-pink font-bold"
                 >
-                  Log in
-                </button>
-                <button
-                  onClick={onOpenAuth}
-                  className="btn-primary text-xs px-3 sm:px-4 py-1.5 sm:py-2 cursor-pointer shadow-pink"
-                >
-                  <span>Sign up</span>
+                  <span>Sign In</span>
                 </button>
               </div>
             )}
@@ -514,18 +508,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="pt-2 border-t border-divider space-y-2">
+              <div className="pt-2 border-t border-divider">
                 <button
+                  id="mobile-signin-btn"
                   onClick={() => { onOpenAuth(); setShowMobileMenu(false); }}
                   className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
                 >
-                  Create an Account
-                </button>
-                <button
-                  onClick={() => { onOpenAuth(); setShowMobileMenu(false); }}
-                  className="w-full py-2 text-xs text-center font-bold text-ink hover:text-brand border border-divider rounded-full bg-canvas cursor-pointer"
-                >
-                  Log in
+                  Sign In
                 </button>
               </div>
             )}

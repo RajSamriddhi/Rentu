@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  firebase_uid?: string;
   email: string;
   name: string;
   phone?: string;
@@ -10,7 +11,7 @@ export interface User {
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
-  trust_score: number;
+  trust_score?: number;
   role: 'USER' | 'ADMIN';
   created_at: string;
 }

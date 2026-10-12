@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Sparkles, Mail, Lock, User as UserIcon, Loader2, ArrowRight } from 'lucide-react';
+import { X, ShieldCheck, Sparkles, Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 interface AuthModalProps {
@@ -9,12 +9,10 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { loginWithGoogle, loginWithEmail, signupWithEmail, demoLogin } = useAuth();
+  const { loginWithGoogle, continueWithEmail, demoLogin } = useAuth();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -29,11 +27,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       if (onSuccess) onSuccess();
     } catch (err: any) {
       console.error('Google sign-in error:', err);
-      // Format friendly error message
       if (err.code === 'auth/popup-closed-by-user') {
         setErrorMsg('Sign-in cancelled. Please try again.');
       } else if (err.code === 'auth/popup-blocked') {
         setErrorMsg('Pop-up was blocked by browser. Please allow popups for this site.');
+      } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setErrorMsg(`Domain not authorized. Please add "${window.location.hostname}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
       } else {
         setErrorMsg(err.message || 'Google sign-in failed. Please try again.');
       }
@@ -47,34 +46,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setErrorMsg('');
 
     if (!email.trim() || !password.trim()) {
-      setErrorMsg('Please enter email and password.');
+      setErrorMsg('Please enter your email and password.');
       return;
     }
 
-    if (mode === 'signup' && !name.trim()) {
-      setErrorMsg('Please enter your full name.');
+    if (password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
       return;
     }
 
     setIsLoading(true);
     try {
-      if (mode === 'signin') {
-        await loginWithEmail(email, password);
-      } else {
-        await signupWithEmail(email, password, name);
-      }
+      await continueWithEmail(email, password);
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {
       console.error('Email auth error:', err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setErrorMsg('Invalid email or password.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setErrorMsg('An account with this email already exists.');
+      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setErrorMsg(`Domain not authorized. Please add "${window.location.hostname}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
       } else if (err.code === 'auth/weak-password') {
         setErrorMsg('Password should be at least 6 characters.');
       } else {
-        setErrorMsg(err.message || 'Authentication failed.');
+        setErrorMsg(err.message || 'Authentication failed. Please check your credentials.');
       }
     } finally {
       setIsLoading(false);
@@ -121,20 +114,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <div className="text-center space-y-1">
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-brand/10 text-brand text-[10px] font-black uppercase tracking-wider">
               <Sparkles className="w-3 h-3" />
-              <span>Firebase Verified Access</span>
+              <span>Verified Access</span>
             </div>
             <h3 className="text-lg sm:text-xl font-extrabold text-ink font-display">
-              {mode === 'signin' ? 'Welcome Back to Rentu⁺' : 'Join the Community'}
+              Welcome to Rentu⁺
             </h3>
             <p className="text-xs text-ink-secondary">
-              {mode === 'signin' 
-                ? 'Sign in to borrow, rent, or manage your gear.' 
-                : 'Create your verified account in seconds.'}
+              Sign in to rent, borrow, or list your gear in your neighborhood.
             </p>
           </div>
 
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-300 text-xs font-semibold text-center animate-in fade-in">
+            <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-300 text-xs font-semibold text-center animate-in fade-in leading-relaxed">
               {errorMsg}
             </div>
           )}
@@ -178,23 +169,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
           {/* Email / Password Form */}
           <form onSubmit={handleEmailSubmit} className="space-y-2.5">
-            {mode === 'signup' && (
-              <div>
-                <label className="block text-[11px] font-bold text-ink mb-1">Full Name</label>
-                <div className="relative flex items-center bg-canvas border border-divider rounded-xl px-3 py-2 focus-within:border-brand">
-                  <UserIcon className="w-3.5 h-3.5 text-ink-muted mr-2 shrink-0" />
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Aditi Sharma"
-                    className="bg-transparent border-none outline-none text-xs font-semibold text-ink w-full"
-                    required={mode === 'signup'}
-                  />
-                </div>
-              </div>
-            )}
-
             <div>
               <label className="block text-[11px] font-bold text-ink mb-1">Email Address</label>
               <div className="relative flex items-center bg-canvas border border-divider rounded-xl px-3 py-2 focus-within:border-brand">
@@ -228,45 +202,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full btn-primary text-xs py-2.5 shadow-pink cursor-pointer mt-1 flex items-center justify-center gap-1.5 disabled:opacity-60"
+              className="w-full btn-primary text-xs py-2.5 shadow-pink cursor-pointer mt-1 flex items-center justify-center gap-1.5 disabled:opacity-60 font-bold"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  <span>{mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>
           </form>
-
-          {/* Toggle between Sign In / Sign Up */}
-          <div className="text-center pt-1 text-xs">
-            {mode === 'signin' ? (
-              <p className="text-ink-secondary">
-                Don't have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => { setMode('signup'); setErrorMsg(''); }}
-                  className="text-brand font-bold hover:underline cursor-pointer"
-                >
-                  Sign Up
-                </button>
-              </p>
-            ) : (
-              <p className="text-ink-secondary">
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => { setMode('signin'); setErrorMsg(''); }}
-                  className="text-brand font-bold hover:underline cursor-pointer"
-                >
-                  Log In
-                </button>
-              </p>
-            )}
-          </div>
 
           {/* Fast Demo Account Option */}
           <div className="pt-2 border-t border-divider text-center">
@@ -295,7 +242,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
           <div className="flex items-center gap-1.5 text-[10px] text-ink-secondary justify-center pt-1">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />
-            <span>Secure Firebase Authentication & Identity Protection</span>
+            <span>Secure Authentication & Identity Protection</span>
           </div>
         </div>
       </div>
