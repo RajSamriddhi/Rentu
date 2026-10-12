@@ -12,9 +12,9 @@ const router = Router();
 const registerSchema = z.object({
   email: z.string().email('Invalid email address format'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  name: z.string().optional(),
   phone: z.string().optional(),
-  locality: z.string().min(2, 'Locality is required (e.g. Saket, Powai)'),
+  locality: z.string().optional(),
   avatar_url: z.string().url().optional(),
   bio: z.string().optional(),
 });
@@ -41,25 +41,28 @@ const generateToken = (user: { id: string; email: string; role: 'USER' | 'ADMIN'
 router.post('/register', async (req: Request, res: Response, next) => {
   try {
     const validated = registerSchema.parse(req.body);
+    const email = validated.email.toLowerCase();
+    const displayName = validated.name || email.split('@')[0];
+    const locality = validated.locality || 'Saket, New Delhi';
 
-    const existing = await query('SELECT id FROM users WHERE email = $1', [validated.email.toLowerCase()]);
+    const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return sendError(res, 'USER_EXISTS', 'An account with this email already exists', 409);
     }
 
     const passwordHash = await bcrypt.hash(validated.password, 10);
-    const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
+    const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
 
     const result = await query(
       `INSERT INTO users (email, password_hash, name, phone, locality, avatar_url, bio, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'USER')
        RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
       [
-        validated.email.toLowerCase(),
+        email,
         passwordHash,
-        validated.name,
+        displayName,
         validated.phone || null,
-        validated.locality,
+        locality,
         defaultAvatar,
         validated.bio || 'New member of the Rentu⁺ gear rental network ⚡',
       ]

@@ -16,9 +16,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [locality, setLocality] = useState('Saket, New Delhi');
-  const [phone, setPhone] = useState('+91 98');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,13 +43,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         await register({
           email,
           password,
-          name,
-          locality,
-          phone,
         });
       }
       if (onSuccess) onSuccess();
       onClose();
+
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication failed');
     } finally {
@@ -180,37 +175,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {mode === 'signup' && (
-              <>
-                <div>
-                  <label className="block text-xs font-bold text-ink mb-1">Your Name</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Maya Sharma"
-                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-medium text-ink outline-none focus:border-brand"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-ink mb-1">Locality</label>
-                  <input
-                    type="text"
-                    value={locality}
-                    onChange={(e) => setLocality(e.target.value)}
-                    placeholder="e.g. Saket, New Delhi"
-                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-medium text-ink outline-none focus:border-brand"
-                    required
-                  />
-                </div>
-              </>
-            )}
-
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Email Address</label>
+
               <input
                 type="email"
                 value={email}
