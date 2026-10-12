@@ -1,7 +1,7 @@
 {
   "name": "borrowflex-root",
   "version": "1.0.0",
-  "description": "BorrowFlex (Rento⁺) - Gen Z Peer-to-Peer Gear Sharing & Rental Platform",
+  "description": "Rentu⁺ - Gen Z Peer-to-Peer Gear Sharing & Rental Platform",
   "scripts": {
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
