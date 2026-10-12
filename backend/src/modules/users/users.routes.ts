@@ -10,7 +10,8 @@ const updateProfileSchema = z.object({
   name: z.string().min(2).optional(),
   phone: z.string().optional(),
   locality: z.string().min(2).optional(),
-  avatar_url: z.string().url().optional(),
+  avatar_url: z.string().url().or(z.literal('')).optional(),
+  banner_url: z.string().url().or(z.literal('')).optional(),
   bio: z.string().max(300).optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
@@ -25,7 +26,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
     const { id } = req.params;
 
     const userRes = await query(
-      `SELECT id, name, locality, avatar_url, bio, trust_score, created_at
+      `SELECT id, name, locality, avatar_url, banner_url, bio, trust_score, created_at
        FROM users WHERE id = $1`,
       [id]
     );
@@ -89,6 +90,10 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       values.push(validated.avatar_url);
       fields.push(`avatar_url = $${values.length}`);
     }
+    if (validated.banner_url !== undefined) {
+      values.push(validated.banner_url);
+      fields.push(`banner_url = $${values.length}`);
+    }
     if (validated.bio !== undefined) {
       values.push(validated.bio);
       fields.push(`bio = $${values.length}`);
@@ -119,7 +124,7 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role
+      RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
     `;
 
     const result = await query(updateSql, values);

@@ -103,7 +103,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
-        COALESCE(u.avatar_url, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80') AS owner_avatar,
+        u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
         COALESCE(u.trust_score, 98) AS owner_trust_score,
         COALESCE(u.rating, 5.00) AS owner_rating

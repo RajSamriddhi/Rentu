@@ -219,13 +219,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="bg-canvas border border-divider rounded-2xl p-4 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <img
-                    src={item.owner_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                    alt={item.owner_name}
+                    src={item.owner_avatar || (item.owner_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(item.owner_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                    alt={item.owner_name || 'Owner'}
                     className="w-12 h-12 rounded-full object-cover border border-zinc-200"
                   />
                   <div>
-                    <h4 className="text-sm font-extrabold text-ink">{item.owner_name || 'Aditi Sharma'}</h4>
-                    <p className="text-xs text-ink-secondary font-medium">Member since Jan 2024</p>
+                    <h4 className="text-sm font-extrabold text-ink">{item.owner_name || 'Verified Owner'}</h4>
+                    <p className="text-xs text-ink-secondary font-medium">Verified Lender</p>
                   </div>
                 </div>
 

@@ -279,8 +279,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="flex items-center gap-2 p-1 pl-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-divider rounded-full transition-all cursor-pointer"
                 >
                   <img
-                    src={user?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
-                    alt={user?.name}
+                    src={user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                    alt={user?.name || 'User'}
                     className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700"
                   />
                   <span className="text-xs font-bold text-ink max-w-[80px] truncate hidden md:inline">

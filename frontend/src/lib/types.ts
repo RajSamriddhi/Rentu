@@ -4,7 +4,11 @@ export interface User {
   name: string;
   phone?: string;
   locality: string;
+  address_text?: string;
+  pincode?: string;
+  rating?: number;
   avatar_url?: string;
+  banner_url?: string;
   bio?: string;
   trust_score: number;
   role: 'USER' | 'ADMIN';

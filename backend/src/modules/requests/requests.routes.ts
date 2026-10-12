@@ -35,7 +35,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         r.offered_amount, r.locality, r.status, r.created_at,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
-        COALESCE(u.avatar_url, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80') AS seeker_avatar,
+        u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
         COALESCE(u.trust_score, 98) AS seeker_trust_score,
         u.phone AS seeker_phone, 

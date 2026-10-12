@@ -189,7 +189,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
 
                       <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
                         <img
-                          src={req.seeker_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                          src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                           alt={req.seeker_name}
                           className="w-4 h-4 rounded-full object-cover"
                         />

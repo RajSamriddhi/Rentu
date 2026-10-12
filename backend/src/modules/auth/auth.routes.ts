@@ -153,22 +153,22 @@ router.post('/clerk-sync', async (req: Request, res: Response, next) => {
 
     // 1. Look for existing user by clerk_id or email
     const existing = await query(
-      `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, clerk_id, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, clerk_id, created_at
        FROM users WHERE clerk_id = $1 OR email = $2`,
       [validated.clerkId, email]
     );
 
     let user;
     if (existing.rows.length > 0) {
-      // Update existing user with clerk_id and latest avatar/name
+      // Update existing user with clerk_id and keep custom avatar if set
       const updated = await query(
         `UPDATE users
          SET clerk_id = $1,
              name = COALESCE(NULLIF($2, ''), name),
-             avatar_url = COALESCE(NULLIF($3, ''), avatar_url),
+             avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
         [validated.clerkId, validated.name, avatar, existing.rows[0].id]
       );
       user = updated.rows[0];
@@ -177,7 +177,7 @@ router.post('/clerk-sync', async (req: Request, res: Response, next) => {
       const created = await query(
         `INSERT INTO users (clerk_id, email, name, phone, locality, avatar_url, bio, trust_score, role)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 85, 'USER')
-         RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
         [
           validated.clerkId,
           email,
@@ -203,7 +203,7 @@ router.post('/clerk-sync', async (req: Request, res: Response, next) => {
 router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const result = await query(
-      `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`,
       [req.user!.id]
     );
