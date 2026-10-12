@@ -1,0 +1,396 @@
+import React, { useState } from 'react';
+import { X, Check, Upload, ArrowRight, ArrowLeft } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { useAuth } from '../lib/authContext';
+import { api } from '../lib/api';
+
+interface DropGearModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  onOpenAuth: () => void;
+}
+
+export const DropGearModal: React.FC<DropGearModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  onOpenAuth,
+}) => {
+  const { user, isAuthenticated } = useAuth();
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Electronics & Tech');
+  const [listingType, setListingType] = useState<'Rent' | 'Borrow'>('Rent');
+  const [pricePerDay, setPricePerDay] = useState(300);
+  const [maxDurationDays, setMaxDurationDays] = useState(5);
+  const [condition, setCondition] = useState('Like new');
+  const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const [imageUrl, setImageUrl] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const PHOTO_PRESETS = [
+    { label: 'Headphones', url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Camera', url: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Projector', url: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Tent', url: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Drill', url: 'https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Guitar', url: 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?auto=format&fit=crop&w=800&q=80' },
+  ];
+
+  if (!isOpen) return null;
+
+  const handleNext = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (step < 4) setStep((s) => (s + 1) as any);
+    else handleSubmit();
+  };
+
+  const handleSubmit = async () => {
+    if (!isAuthenticated) {
+      onOpenAuth();
+      return;
+    }
+
+    const finalImage = imageUrl || PHOTO_PRESETS[0].url;
+
+    setIsSubmitting(true);
+    setErrorMsg('');
+
+    try {
+      await api.createItem({
+        title,
+        description: description || `Great condition ${title} ready to rent or share locally.`,
+        category,
+        price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay),
+        max_duration_days: Number(maxDurationDays),
+        image_urls: [finalImage],
+        sticker_badge: '✨ Available',
+        locality: locality || user?.locality || 'Saket, New Delhi',
+      });
+
+      confetti({
+        particleCount: 90,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to list item.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="relative bg-surface rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden my-4 border border-divider">
+        
+        {/* Top Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-divider">
+          <div className="text-xs font-bold text-ink-secondary">
+            Screen: List an Item
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full hover:bg-surface-hover text-ink transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 2-Column Body matching Screen 5 */}
+        <div className="grid grid-cols-1 md:grid-cols-12 min-h-[520px]">
+          
+          {/* Left Stepper Column matching Screen 5 */}
+          <div className="md:col-span-4 bg-canvas/60 p-6 border-r border-divider space-y-6">
+            <h3 className="text-xs font-black uppercase text-ink-secondary tracking-wider">
+              Steps
+            </h3>
+
+            <div className="space-y-4 text-xs font-bold">
+              {[
+                { num: 1, label: 'Item details' },
+                { num: 2, label: 'Pricing & Availability' },
+                { num: 3, label: 'Photos' },
+                { num: 4, label: 'Review' },
+              ].map((s) => {
+                const isActive = step === s.num;
+                const isPassed = step > s.num;
+                return (
+                  <div key={s.num} className="flex items-center gap-3">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold transition-all ${
+                        isActive
+                          ? 'bg-brand text-white shadow-xs'
+                          : isPassed
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-divider text-ink-secondary'
+                      }`}
+                    >
+                      {isPassed ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : s.num}
+                    </div>
+                    <span className={isActive ? 'text-ink font-extrabold' : 'text-ink-secondary'}>
+                      {s.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Form Area matching Screen 5 */}
+          <div className="md:col-span-8 p-6 sm:p-8 flex flex-col justify-between">
+            <form onSubmit={handleNext}>
+              
+              {/* Header Title + Sticker Doodle from Screen 5 */}
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-2xl font-black text-ink tracking-tight font-display">
+                    List an Item
+                  </h2>
+                  <p className="text-xs text-ink-secondary font-medium mt-1">
+                    Turn your unused items into income (or help someone for free)
+                  </p>
+                </div>
+
+                <div className="bg-brand-soft border border-brand/20 text-brand px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-xs rotate-3 shrink-0">
+                  GOOD THINGS CIRCULATE
+                </div>
+              </div>
+
+              {errorMsg && (
+                <div className="mb-4 p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs font-bold">
+                  {errorMsg}
+                </div>
+              )}
+
+              {/* STEP 1: ITEM DETAILS */}
+              {step === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Item title *</label>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="e.g. Sony Headphones WH-1000XM4"
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Category *</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none cursor-pointer"
+                    >
+                      <option value="Electronics & Tech">Electronics & Tech</option>
+                      <option value="Camping & Outdoor">Camping & Outdoor</option>
+                      <option value="Tools & DIY">Tools & DIY</option>
+                      <option value="Clothing & Fits">Clothing & Fits</option>
+                      <option value="Home & Appliances">Home & Appliances</option>
+                      <option value="Sports & Fitness">Sports & Fitness</option>
+                      <option value="Books & Media">Books & Media</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Description *</label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Be specific about your item, condition, and included accessories..."
+                      rows={3}
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-medium text-ink outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Condition *</label>
+                    <select
+                      value={condition}
+                      onChange={(e) => setCondition(e.target.value)}
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-bold text-ink outline-none cursor-pointer"
+                    >
+                      <option value="Like new">Like new</option>
+                      <option value="Good">Good</option>
+                      <option value="Fair">Fair</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: PRICING & AVAILABILITY */}
+              {step === 2 && (
+                <div className="space-y-4 max-w-md">
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-2">Listing type</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-medium text-ink cursor-pointer">
+                        <input
+                          type="radio"
+                          name="listType"
+                          checked={listingType === 'Rent'}
+                          onChange={() => setListingType('Rent')}
+                          className="text-brand accent-brand cursor-pointer"
+                        />
+                        <span className="font-bold">Rent (Set a price)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-medium text-ink cursor-pointer">
+                        <input
+                          type="radio"
+                          name="listType"
+                          checked={listingType === 'Borrow'}
+                          onChange={() => setListingType('Borrow')}
+                          className="text-brand accent-brand cursor-pointer"
+                        />
+                        <span>Borrow for free</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {listingType === 'Rent' && (
+                    <div>
+                      <label className="block text-xs font-bold text-ink mb-1">Price per day * (₹)</label>
+                      <input
+                        type="number"
+                        min="10"
+                        value={pricePerDay}
+                        onChange={(e) => setPricePerDay(Number(e.target.value))}
+                        className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Maximum lending duration</label>
+                    <select
+                      value={maxDurationDays}
+                      onChange={(e) => setMaxDurationDays(Number(e.target.value))}
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none cursor-pointer"
+                    >
+                      <option value={3}>Up to 3 days</option>
+                      <option value={5}>Up to 5 days</option>
+                      <option value={7}>Up to 7 days (1 week)</option>
+                      <option value={14}>Up to 14 days (2 weeks)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">Pickup Locality</label>
+                    <input
+                      type="text"
+                      value={locality}
+                      onChange={(e) => setLocality(e.target.value)}
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: PHOTOS */}
+              {step === 3 && (
+                <div className="space-y-4">
+                  <label className="block text-xs font-bold text-ink">Photos (up to 8 photos)</label>
+                  
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {PHOTO_PRESETS.map((p) => (
+                      <button
+                        type="button"
+                        key={p.label}
+                        onClick={() => setImageUrl(p.url)}
+                        className={`aspect-square rounded-xl overflow-hidden border-2 relative cursor-pointer ${
+                          imageUrl === p.url ? 'border-brand ring-2 ring-brand' : 'border-zinc-200 hover:border-zinc-400'
+                        }`}
+                      >
+                        <img src={p.url} alt={p.label} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1 rounded font-bold">
+                          {p.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-ink-secondary mb-1">Or paste custom image URL:</label>
+                    <input
+                      type="url"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-medium text-ink outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: REVIEW */}
+              {step === 4 && (
+                <div className="bg-canvas border border-divider rounded-2xl p-5 space-y-3 max-w-md">
+                  <h4 className="text-sm font-extrabold text-ink">Listing Review</h4>
+                  <div className="text-xs space-y-1.5 text-ink-secondary">
+                    <div><span className="font-bold text-ink">Title:</span> {title}</div>
+                    <div><span className="font-bold text-ink">Category:</span> {category}</div>
+                    <div><span className="font-bold text-ink">Type:</span> {listingType}</div>
+                    <div><span className="font-bold text-ink">Rate:</span> ₹{listingType === 'Borrow' ? '0 (Free)' : `${pricePerDay} / day`}</div>
+                    <div><span className="font-bold text-ink">Max Duration:</span> {maxDurationDays} days</div>
+                    <div><span className="font-bold text-ink">Condition:</span> {condition}</div>
+                    <div><span className="font-bold text-ink">Locality:</span> {locality}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stepper Navigation */}
+              <div className="mt-8 pt-4 border-t border-divider flex items-center justify-between">
+                {step > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep((s) => (s - 1) as any)}
+                    className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back
+                  </button>
+                ) : <div />}
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-primary text-xs cursor-pointer shadow-pink inline-flex items-center gap-1.5"
+                >
+                  <span>
+                    {isSubmitting
+                      ? 'Publishing...'
+                      : step === 1
+                      ? 'Next: Pricing & Availability'
+                      : step === 2
+                      ? 'Next: Photos'
+                      : step === 3
+                      ? 'Next: Review'
+                      : 'Publish Listing ✨'}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+};

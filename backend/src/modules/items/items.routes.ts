@@ -1,0 +1,273 @@
+import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+import { query } from '../../config/db';
+import { sendError, sendSuccess } from '../../middleware/response';
+import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { extractCity } from '../../utils/city';
+
+const router = Router();
+
+const createItemSchema = z.object({
+  title: z.string().min(3, 'Title must be at least 3 characters'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  category: z.string().min(2, 'Category is required'),
+  price_per_day: z.number().positive('Price per day must be greater than 0'),
+  max_duration_days: z.number().int().positive().default(3),
+  image_urls: z.array(z.string().url()).min(1, 'At least one photo is required'),
+  sticker_badge: z.string().default('✨ Weekend Flex'),
+  locality: z.string().min(2, 'Locality is required'),
+});
+
+const updateItemSchema = z.object({
+  title: z.string().min(3).optional(),
+  description: z.string().min(10).optional(),
+  category: z.string().optional(),
+  price_per_day: z.number().positive().optional(),
+  max_duration_days: z.number().int().positive().optional(),
+  image_urls: z.array(z.string().url()).optional(),
+  sticker_badge: z.string().optional(),
+  locality: z.string().optional(),
+  status: z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
+});
+
+// Browse Items
+router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
+  try {
+    const { category, search, locality, status = 'AVAILABLE', ownerId } = req.query;
+
+    let sql = `
+      SELECT 
+        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
+        i.status, i.created_at,
+        u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+        u.locality AS owner_locality, u.trust_score AS owner_trust_score
+      FROM items i
+      JOIN users u ON i.owner_id = u.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (status && status !== 'ALL') {
+      params.push(status);
+      sql += ` AND i.status = $${params.length}`;
+    }
+
+    if (category && category !== 'All') {
+      params.push(category);
+      sql += ` AND i.category = $${params.length}`;
+    }
+
+    if (ownerId) {
+      params.push(ownerId);
+      sql += ` AND i.owner_id = $${params.length}`;
+    } else {
+      // A user can ONLY see rentals from its own city
+      let userCity: string | null = null;
+      const authUser = (req as AuthenticatedRequest).user;
+      if (authUser?.id) {
+        const userRes = await query('SELECT locality FROM users WHERE id = $1', [authUser.id]);
+        if (userRes.rows.length > 0) {
+          userCity = extractCity(userRes.rows[0].locality);
+        }
+      }
+
+      const activeCity = userCity || (locality ? extractCity(String(locality)) : 'Delhi');
+      params.push(`%${activeCity}%`);
+      sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
+    }
+
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
+    }
+
+    sql += ` ORDER BY i.created_at DESC`;
+
+    const result = await query(sql, params);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get Single Item Detail
+router.get('/:id', async (req: Request, res: Response, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT 
+        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
+        i.status, i.created_at,
+        u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
+        u.email AS owner_email, u.phone AS owner_phone
+      FROM items i
+      JOIN users u ON i.owner_id = u.id
+      WHERE i.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Item not found', 404);
+    }
+
+    const item = result.rows[0];
+
+    // Fetch related items in same category and city
+    const itemCity = extractCity(item.locality);
+    const relatedResult = await query(
+      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status
+       FROM items
+       WHERE category = $1 AND id != $2 AND status = 'AVAILABLE' AND locality ILIKE $3
+       LIMIT 4`,
+      [item.category, item.id, `%${itemCity}%`]
+    );
+
+    return sendSuccess(res, {
+      ...item,
+      related_items: relatedResult.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// List New Gear (Lender Flow)
+router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const validated = createItemSchema.parse(req.body);
+
+    // Ensure locality includes owner's city
+    const userRes = await query('SELECT locality FROM users WHERE id = $1', [req.user!.id]);
+    const userLocality = userRes.rows[0]?.locality || 'Delhi';
+    const userCity = extractCity(userLocality);
+    let finalLocality = validated.locality.trim();
+    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
+      finalLocality = `${finalLocality}, ${userCity}`;
+    }
+
+    const result = await query(
+      `INSERT INTO items 
+        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, status)
+       VALUES 
+        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, 'AVAILABLE')
+       RETURNING *`,
+      [
+        req.user!.id,
+        validated.title,
+        validated.description,
+        validated.category,
+        validated.price_per_day,
+        validated.max_duration_days,
+        JSON.stringify(validated.image_urls),
+        validated.sticker_badge,
+        finalLocality,
+      ]
+    );
+
+    return sendSuccess(res, result.rows[0], 'Gear listed successfully! ✨ It is now live on the feed.', 201);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update Item
+router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const validated = updateItemSchema.parse(req.body);
+
+    // Verify ownership
+    const check = await query('SELECT owner_id FROM items WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Item not found', 404);
+    }
+
+    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'You do not have permission to edit this listing', 403);
+    }
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (validated.title !== undefined) {
+      values.push(validated.title);
+      fields.push(`title = $${values.length}`);
+    }
+    if (validated.description !== undefined) {
+      values.push(validated.description);
+      fields.push(`description = $${values.length}`);
+    }
+    if (validated.category !== undefined) {
+      values.push(validated.category);
+      fields.push(`category = $${values.length}`);
+    }
+    if (validated.price_per_day !== undefined) {
+      values.push(validated.price_per_day);
+      fields.push(`price_per_day = $${values.length}`);
+    }
+    if (validated.max_duration_days !== undefined) {
+      values.push(validated.max_duration_days);
+      fields.push(`max_duration_days = $${values.length}`);
+    }
+    if (validated.image_urls !== undefined) {
+      values.push(JSON.stringify(validated.image_urls));
+      fields.push(`image_urls = $${values.length}::jsonb`);
+    }
+    if (validated.sticker_badge !== undefined) {
+      values.push(validated.sticker_badge);
+      fields.push(`sticker_badge = $${values.length}`);
+    }
+    if (validated.locality !== undefined) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.status !== undefined) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+    }
+
+    if (fields.length === 0) {
+      return sendError(res, 'BAD_REQUEST', 'No fields provided for update', 400);
+    }
+
+    values.push(id);
+    const updateSql = `
+      UPDATE items 
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+
+    const result = await query(updateSql, values);
+    return sendSuccess(res, result.rows[0], 'Listing updated successfully');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete Item
+router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+
+    const check = await query('SELECT owner_id FROM items WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Item not found', 404);
+    }
+
+    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
+    }
+
+    await query('DELETE FROM items WHERE id = $1', [id]);
+    return sendSuccess(res, { id }, 'Listing deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
