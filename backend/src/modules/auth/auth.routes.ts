@@ -131,6 +131,71 @@ router.post('/demo-login', async (req: Request, res: Response, next) => {
   }
 });
 
+const clerkSyncSchema = z.object({
+  clerkId: z.string().min(1),
+  email: z.string().email(),
+  name: z.string().min(1),
+  avatarUrl: z.string().optional(),
+  locality: z.string().optional(),
+  phone: z.string().optional(),
+});
+
+// Sync Clerk user with Rentu⁺ database
+router.post('/clerk-sync', async (req: Request, res: Response, next) => {
+  try {
+    const validated = clerkSyncSchema.parse(req.body);
+    const email = validated.email.toLowerCase();
+    const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
+    const locality = validated.locality || 'Saket, New Delhi';
+
+    // 1. Look for existing user by clerk_id or email
+    const existing = await query(
+      `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, clerk_id, created_at
+       FROM users WHERE clerk_id = $1 OR email = $2`,
+      [validated.clerkId, email]
+    );
+
+    let user;
+    if (existing.rows.length > 0) {
+      // Update existing user with clerk_id and latest avatar/name
+      const updated = await query(
+        `UPDATE users
+         SET clerk_id = $1,
+             name = COALESCE(NULLIF($2, ''), name),
+             avatar_url = COALESCE(NULLIF($3, ''), avatar_url),
+             updated_at = NOW()
+         WHERE id = $4
+         RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
+        [validated.clerkId, validated.name, avatar, existing.rows[0].id]
+      );
+      user = updated.rows[0];
+    } else {
+      // Create new user for this Clerk account
+      const created = await query(
+        `INSERT INTO users (clerk_id, email, name, phone, locality, avatar_url, bio, trust_score, role)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 85, 'USER')
+         RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
+        [
+          validated.clerkId,
+          email,
+          validated.name,
+          validated.phone || null,
+          locality,
+          avatar,
+          'Member of the Rentu⁺ gear rental community ⚡',
+        ]
+      );
+      user = created.rows[0];
+    }
+
+    const token = generateToken(user);
+    return sendSuccess(res, { user, token }, 'Clerk session synchronized with Rentu⁺! 🚀');
+  } catch (error) {
+    next(error);
+  }
+});
+
+
 // Get Current Profile
 router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {

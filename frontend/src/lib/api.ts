@@ -83,6 +83,23 @@ export const api = {
     return handleResponse(res);
   },
 
+  async clerkSync(data: {
+    clerkId: string;
+    email: string;
+    name: string;
+    avatarUrl?: string;
+    locality?: string;
+    phone?: string;
+  }): Promise<{ user: User; token: string }> {
+    const res = await fetch(`${API_BASE}/auth/clerk-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+
   async getMe(): Promise<User & { stats: any }> {
     const res = await fetch(`${API_BASE}/auth/me`, {
       headers: getHeaders(),

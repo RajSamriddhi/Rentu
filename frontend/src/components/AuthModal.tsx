@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Sparkles, ShieldCheck } from 'lucide-react';
+import { useClerk } from '@clerk/react';
 import { useAuth } from '../lib/authContext';
 
 interface AuthModalProps {
@@ -10,6 +11,7 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { login, register, demoLogin } = useAuth();
+  const { openSignIn, openSignUp } = useClerk();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -21,6 +23,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleClerkAuth = (action: 'signin' | 'signup') => {
+    onClose();
+    if (action === 'signup') {
+      openSignUp();
+    } else {
+      openSignIn();
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,11 +97,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
         <div className="p-6 sm:p-8 space-y-6">
           
+          {/* Clerk Instant Auth */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              id="clerk-auth-btn"
+              onClick={() => handleClerkAuth(mode)}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-black text-xs sm:text-sm tracking-wide transition-all shadow-md hover:shadow-lg cursor-pointer border border-zinc-800 dark:border-zinc-200"
+            >
+              <div className="w-5 h-5 rounded-full bg-brand flex items-center justify-center text-white text-[10px] font-black">
+                ⚡
+              </div>
+              <span>Continue with Clerk (Google & Email)</span>
+              <Sparkles className="w-4 h-4 text-brand animate-pulse" />
+            </button>
+            <div className="flex items-center gap-1.5 text-[10px] text-ink-secondary justify-center">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Secured by Clerk Identity · Fast & Passwordless</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-divider"></div>
+            <span className="text-[10px] font-bold uppercase text-ink-secondary tracking-widest">or preview instantly</span>
+            <div className="flex-1 h-px bg-divider"></div>
+          </div>
+
           {/* Quick Demo Switcher */}
           <div className="p-3.5 rounded-2xl bg-canvas border border-divider">
             <span className="block text-[10px] font-black uppercase text-ink-secondary tracking-wider mb-2 text-center">
               ⚡ Instant 1-Click Demo Login
             </span>
+
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
