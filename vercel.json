@@ -7,22 +7,15 @@
     },
     "frontend": {
       "root": "frontend",
-      "framework": "vite",
-      "bindings": [
-        {
-          "type": "service",
-          "service": "backend",
-          "format": "url",
-          "env": "BACKEND_URL"
-        }
-      ]
+      "framework": "vite"
     }
   },
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": {
-        "service": "backend"
+        "service": "backend",
+        "path": "/api/:path*"
       }
     },
     {

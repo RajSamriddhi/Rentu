@@ -20,8 +20,8 @@ export const createApp = () => {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  // Health Check
-  app.get('/api/health', async (req, res) => {
+  // Health Check (Matches both /api/health and /health)
+  app.get(['/api/health', '/health'], async (req, res) => {
     let dbStatus = 'disconnected';
     try {
       await query('SELECT 1');
@@ -47,14 +47,14 @@ export const createApp = () => {
     });
   });
 
-  // Mount API modules
-  app.use('/api/auth', authRoutes);
-  app.use('/api/items', itemsRoutes);
-  app.use('/api/requests', requestsRoutes);
-  app.use('/api/bookings', bookingsRoutes);
-  app.use('/api/analytics', analyticsRoutes);
-  app.use('/api/users', usersRoutes);
-  app.use('/api/messages', messagesRoutes);
+  // Mount API modules (supporting both with and without /api prefix)
+  app.use(['/api/auth', '/auth'], authRoutes);
+  app.use(['/api/items', '/items'], itemsRoutes);
+  app.use(['/api/requests', '/requests'], requestsRoutes);
+  app.use(['/api/bookings', '/bookings'], bookingsRoutes);
+  app.use(['/api/analytics', '/analytics'], analyticsRoutes);
+  app.use(['/api/users', '/users'], usersRoutes);
+  app.use(['/api/messages', '/messages'], messagesRoutes);
 
   // 404 handler
   app.use((req, res) => {
