@@ -199,85 +199,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* User Identity Block */}
         <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-0 relative">
           
-          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4">
+          {/* Top Bar: Overlapping Avatar on Left, Action Buttons on Right */}
+          <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-4">
             
-            {/* Avatar & Personal Details */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left -mt-16 sm:-mt-20">
-              
-              {/* Avatar with Camera Button */}
-              <div className="relative group shrink-0">
-                <img
-                  src={avatarSrc}
-                  alt={user?.name || 'User'}
-                  className="w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-surface shadow-xl bg-surface shrink-0 ring-2 ring-divider/50"
-                />
-                <button
-                  onClick={() => avatarFileInputRef.current?.click()}
-                  disabled={isUploadingAvatar}
-                  className="absolute bottom-1 right-1 bg-brand hover:bg-brand-hover text-white p-2 sm:p-2.5 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-transform cursor-pointer border-2 border-surface"
-                  title="Change Profile Picture"
-                >
-                  {isUploadingAvatar ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Camera className="w-3.5 h-3.5" />
-                  )}
-                </button>
-                <input
-                  ref={avatarFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleDirectAvatarUpload}
-                  className="hidden"
-                />
-              </div>
-
-              {/* Name, Verified Badge, Bio & Meta */}
-              <div className="space-y-2 pt-2 sm:pt-4">
-                
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
-                  <h1 className="text-2xl sm:text-3xl font-black text-ink tracking-tight font-display select-text">
-                    {user?.name || user?.email?.split('@')[0] || 'Rentu Member'}
-                  </h1>
-                  
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-extrabold border border-emerald-500/20">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Verified Peer</span>
-                  </span>
-                </div>
-                
-                {user?.bio ? (
-                  <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-xl leading-relaxed">
-                    {user.bio}
-                  </p>
+            {/* Avatar (ONLY the avatar has negative margin to overlap cover) */}
+            <div className="relative group shrink-0 -mt-14 sm:-mt-20">
+              <img
+                src={avatarSrc}
+                alt={user?.name || 'User'}
+                className="w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-surface shadow-2xl bg-surface shrink-0 ring-4 ring-black/5 dark:ring-white/5"
+              />
+              <button
+                onClick={() => avatarFileInputRef.current?.click()}
+                disabled={isUploadingAvatar}
+                className="absolute bottom-1 right-1 bg-brand hover:bg-brand-hover text-white p-2 sm:p-2.5 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-transform cursor-pointer border-2 border-surface"
+                title="Change Profile Picture"
+              >
+                {isUploadingAvatar ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <p className="text-xs text-ink-secondary/70 italic max-w-xl">
-                    No bio added yet. Click <span className="font-semibold text-brand not-italic">Edit Profile</span> to introduce yourself to neighbors!
-                  </p>
+                  <Camera className="w-3.5 h-3.5" />
                 )}
-
-                {/* Metadata Badges */}
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs font-semibold text-ink-secondary pt-1">
-                  <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-2.5 py-1 rounded-full border border-divider">
-                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    <span>{ratingDisplay} Rating</span>
-                  </span>
-                  
-                  <span className="inline-flex items-center gap-1 bg-canvas px-2.5 py-1 rounded-full border border-divider">
-                    <Calendar className="w-3.5 h-3.5 text-ink-muted" />
-                    <span>Member since {memberSince}</span>
-                  </span>
-
-                  <span className="inline-flex items-center gap-1 bg-canvas px-2.5 py-1 rounded-full border border-divider text-brand">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>{user?.locality || 'Delhi'}</span>
-                  </span>
-                </div>
-              </div>
-
+              </button>
+              <input
+                ref={avatarFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleDirectAvatarUpload}
+                className="hidden"
+              />
             </div>
 
-            {/* Action Buttons (Right Aligned) */}
+            {/* Action Buttons (Cleanly positioned on card surface) */}
             <div className="flex items-center gap-2.5 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end">
               <button 
                 id="edit-profile-btn"
@@ -295,6 +248,50 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
                 <span>List Gear</span>
               </button>
+            </div>
+
+          </div>
+
+          {/* User Name, Verified Badge, Bio & Meta (Completely on card surface with crystal clear contrast) */}
+          <div className="mt-3 sm:mt-4 space-y-2 text-center sm:text-left">
+            
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-black text-ink tracking-tight font-display select-text">
+                {user?.name || user?.email?.split('@')[0] || 'Rentu Member'}
+              </h1>
+              
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-extrabold border border-emerald-500/20">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Verified Peer</span>
+              </span>
+            </div>
+            
+            {user?.bio ? (
+              <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed">
+                {user.bio}
+              </p>
+            ) : (
+              <p className="text-xs text-ink-secondary/70 italic max-w-2xl">
+                No bio added yet. Click <button onClick={() => setIsEditModalOpen(true)} className="font-semibold text-brand hover:underline not-italic cursor-pointer">Edit Profile</button> to introduce yourself to neighbors!
+              </p>
+            )}
+
+            {/* Metadata Badges */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs font-semibold text-ink-secondary pt-1">
+              <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-3 py-1 rounded-full border border-divider">
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                <span>{ratingDisplay} Rating</span>
+              </span>
+              
+              <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider">
+                <Calendar className="w-3.5 h-3.5 text-ink-muted" />
+                <span>Member since {memberSince}</span>
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider text-brand font-bold">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{user?.locality || 'Delhi'}</span>
+              </span>
             </div>
 
           </div>
