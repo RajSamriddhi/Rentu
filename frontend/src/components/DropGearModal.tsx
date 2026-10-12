@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { X, Check, Upload, ArrowRight, ArrowLeft } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Check, Upload, ArrowRight, ArrowLeft, Loader2, Image as ImageIcon } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
+import { uploadItemPhoto, supabase } from '../lib/supabase';
 
 interface DropGearModalProps {
   isOpen: boolean;
@@ -31,7 +32,38 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadStatus('Uploading photo to Supabase Storage...');
+    setErrorMsg('');
+
+    try {
+      if (supabase) {
+        const publicUrl = await uploadItemPhoto(file);
+        setImageUrl(publicUrl);
+        setUploadStatus('Uploaded to Supabase Storage (item-photos)!');
+      } else {
+        const previewUrl = URL.createObjectURL(file);
+        setImageUrl(previewUrl);
+        setUploadStatus('Photo preview active. Add VITE_SUPABASE_URL to persist to cloud storage.');
+      }
+    } catch (err: any) {
+      console.error('Upload failed:', err);
+      const previewUrl = URL.createObjectURL(file);
+      setImageUrl(previewUrl);
+      setUploadStatus(`Notice: ${err.message || 'Using local photo preview'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const PHOTO_PRESETS = [
     { label: 'Headphones', url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80' },
@@ -301,36 +333,117 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 </div>
               )}
 
-              {/* STEP 3: PHOTOS */}
+              {/* STEP 3: PHOTOS (Powered by Supabase Storage) */}
               {step === 3 && (
                 <div className="space-y-4">
-                  <label className="block text-xs font-bold text-ink">Photos (up to 8 photos)</label>
-                  
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {PHOTO_PRESETS.map((p) => (
-                      <button
-                        type="button"
-                        key={p.label}
-                        onClick={() => setImageUrl(p.url)}
-                        className={`aspect-square rounded-xl overflow-hidden border-2 relative cursor-pointer ${
-                          imageUrl === p.url ? 'border-brand ring-2 ring-brand' : 'border-zinc-200 hover:border-zinc-400'
-                        }`}
-                      >
-                        <img src={p.url} alt={p.label} className="w-full h-full object-cover" />
-                        <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1 rounded font-bold">
-                          {p.label}
-                        </span>
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-ink">Item Photos</label>
+                    <span className="text-[10px] font-semibold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                      Supabase Storage: item-photos
+                    </span>
+                  </div>
+
+                  {/* Supabase Storage Upload Box */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
+                      isUploading
+                        ? 'border-brand bg-brand-soft/40'
+                        : imageUrl
+                        ? 'border-emerald-400 bg-emerald-500/5 hover:border-emerald-500'
+                        : 'border-divider hover:border-brand hover:bg-surface-hover'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+
+                    {isUploading ? (
+                      <div className="flex flex-col items-center justify-center py-3 gap-2">
+                        <Loader2 className="w-8 h-8 text-brand animate-spin" />
+                        <span className="text-xs font-bold text-ink">Uploading photo to Supabase...</span>
+                      </div>
+                    ) : imageUrl ? (
+                      <div className="flex items-center justify-center gap-4">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden border border-divider shadow-sm shrink-0">
+                          <img src={imageUrl} alt="Uploaded item" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <Check className="w-4 h-4 stroke-[3]" /> Photo ready
+                          </div>
+                          <p className="text-[11px] text-ink-secondary truncate max-w-xs mt-0.5">
+                            {imageUrl}
+                          </p>
+                          <span className="text-[10px] font-bold text-brand hover:underline mt-1 inline-block">
+                            Click to replace photo
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-2 gap-1.5">
+                        <div className="w-10 h-10 rounded-full bg-brand-soft text-brand flex items-center justify-center">
+                          <Upload className="w-5 h-5" />
+                        </div>
+                        <div className="text-xs font-bold text-ink">
+                          Upload photo to Supabase
+                        </div>
+                        <div className="text-[11px] text-ink-secondary">
+                          PNG, JPG, WebP up to 5MB (stored in bucket: item-photos)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {uploadStatus && (
+                    <div className="text-[11px] font-medium text-ink-secondary bg-canvas px-3 py-1.5 rounded-lg border border-divider">
+                      {uploadStatus}
+                    </div>
+                  )}
+
+                  {/* Preset Quick-Picks */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-ink-secondary mb-2">
+                      Or select a quick stock photo preset:
+                    </label>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {PHOTO_PRESETS.map((p) => (
+                        <button
+                          type="button"
+                          key={p.label}
+                          onClick={() => {
+                            setImageUrl(p.url);
+                            setUploadStatus(`Selected preset: ${p.label}`);
+                          }}
+                          className={`aspect-square rounded-xl overflow-hidden border-2 relative cursor-pointer transition-all ${
+                            imageUrl === p.url ? 'border-brand ring-2 ring-brand' : 'border-divider hover:border-ink-secondary'
+                          }`}
+                        >
+                          <img src={p.url} alt={p.label} className="w-full h-full object-cover" />
+                          <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] px-1 rounded font-bold">
+                            {p.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-ink-secondary mb-1">Or paste custom image URL:</label>
+                    <label className="block text-[11px] font-bold text-ink-secondary mb-1">
+                      Or paste an existing image URL:
+                    </label>
                     <input
                       type="url"
                       value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      placeholder="https://images.unsplash.com/..."
+                      onChange={(e) => {
+                        setImageUrl(e.target.value);
+                        setUploadStatus('');
+                      }}
+                      placeholder="https://...supabase.co/storage/v1/object/public/item-photos/..."
                       className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-medium text-ink outline-none"
                     />
                   </div>

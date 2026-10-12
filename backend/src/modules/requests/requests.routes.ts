@@ -16,7 +16,12 @@ const createRequestSchema = z.object({
   duration_days: z.number().int().positive().default(1),
   offered_amount: z.number().positive('Offered budget must be greater than 0'),
   locality: z.string().min(2, 'Locality is required'),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 });
+
 
 // Browse Community Wishes / Bounties
 router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
@@ -120,9 +125,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, status)
+        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'OPEN')
        RETURNING *`,
       [
         req.user!.id,
@@ -134,8 +139,13 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.duration_days,
         validated.offered_amount,
         finalLocality,
+        validated.address_text || finalLocality,
+        validated.pincode || null,
+        validated.latitude || 28.5355,
+        validated.longitude || 77.2167,
       ]
     );
+
 
     return sendSuccess(res, result.rows[0], 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
   } catch (error) {

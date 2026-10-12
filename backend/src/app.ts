@@ -9,6 +9,8 @@ import usersRoutes from './modules/users/users.routes';
 import messagesRoutes from './modules/messages/messages.routes';
 import { errorHandler } from './middleware/error';
 import { sendError, sendSuccess } from './middleware/response';
+import { query } from './config/db';
+import { ENV } from './config/env';
 
 export const createApp = () => {
   const app = express();
@@ -19,11 +21,27 @@ export const createApp = () => {
   app.use(express.urlencoded({ extended: true }));
 
   // Health Check
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', async (req, res) => {
+    let dbStatus = 'disconnected';
+    try {
+      await query('SELECT 1');
+      dbStatus = 'connected';
+    } catch (err: any) {
+      dbStatus = `error: ${err.message}`;
+    }
+
     return sendSuccess(res, {
       status: 'healthy',
       app: 'Rentu⁺ Headless REST API',
       version: '1.0.0',
+      database: dbStatus,
+      supabase: {
+        configured: Boolean(ENV.SUPABASE_URL && ENV.SUPABASE_ANON_KEY),
+        url: ENV.SUPABASE_URL || 'not_configured',
+      },
+      clerk: {
+        configured: Boolean(ENV.CLERK_PUBLISHABLE_KEY && ENV.CLERK_SECRET_KEY),
+      },
       timestamp: new Date().toISOString(),
     });
   });

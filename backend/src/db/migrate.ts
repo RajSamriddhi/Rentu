@@ -1,15 +1,18 @@
 import { pool } from '../config/db';
 
 export const runMigrations = async () => {
-  console.log('Running database migrations...');
+  console.log('Running database migrations (Supabase Compatible)...');
   const client = await pool.connect();
   try {
+    // 1. Extensions (executed outside transaction block)
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`).catch(() => {});
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis";`).catch(() => {
+      console.log('PostGIS extension not available locally; using Haversine proximity formulas.');
+    });
+
     await client.query('BEGIN');
 
-    // Extension
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
-
-    // Types
+    // 2. Types
     await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
@@ -42,32 +45,46 @@ export const runMigrations = async () => {
       END $$;
     `);
 
-    // Tables
+    // 3. Tables (Supporting Clerk IDs and Supabase GPS Radar)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        name VARCHAR(100) NOT NULL,
+        id TEXT PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        email VARCHAR(255) UNIQUE,
+        password_hash VARCHAR(255),
         phone VARCHAR(20),
-        locality VARCHAR(120),
-        avatar_url TEXT,
         bio TEXT DEFAULT 'Creator & Gear Sharer',
+        avatar_url TEXT,
+        address_text TEXT,
+        locality VARCHAR(120),
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        rating NUMERIC(3, 2) DEFAULT 5.00,
         trust_score INT DEFAULT 98,
         role user_role DEFAULT 'USER',
+        clerk_id VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address_text TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_locality ON users(locality);
-      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+      CREATE INDEX IF NOT EXISTS idx_users_coords ON users(latitude, longitude);
     `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS items (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        owner_id TEXT NOT NULL,
         title VARCHAR(150) NOT NULL,
         description TEXT,
         category VARCHAR(60) NOT NULL,
@@ -76,20 +93,30 @@ export const runMigrations = async () => {
         image_urls JSONB DEFAULT '[]'::JSONB,
         sticker_badge VARCHAR(50) DEFAULT '✨ Weekend Flex',
         locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
         status item_status DEFAULT 'AVAILABLE',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
       CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+      CREATE INDEX IF NOT EXISTS idx_items_coords ON items(latitude, longitude);
     `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS requests (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        seeker_id TEXT NOT NULL,
         item_name VARCHAR(150) NOT NULL,
         description TEXT,
         category VARCHAR(60),
@@ -98,22 +125,31 @@ export const runMigrations = async () => {
         duration_days INTEGER NOT NULL DEFAULT 1 CHECK (duration_days > 0),
         offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount >= 0),
         locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
         status request_status DEFAULT 'OPEN',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+
       CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
       CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
-      CREATE INDEX IF NOT EXISTS idx_requests_start_date ON requests(start_date);
+      CREATE INDEX IF NOT EXISTS idx_requests_coords ON requests(latitude, longitude);
     `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS bookings (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         item_id UUID NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
-        borrower_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-        lender_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        borrower_id TEXT NOT NULL,
+        lender_id TEXT NOT NULL,
         start_date DATE NOT NULL,
         start_time TIME,
         duration_days INTEGER NOT NULL CHECK (duration_days > 0),
@@ -134,8 +170,8 @@ export const runMigrations = async () => {
       CREATE TABLE IF NOT EXISTS messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
-        sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        sender_id TEXT NOT NULL,
+        receiver_id TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );

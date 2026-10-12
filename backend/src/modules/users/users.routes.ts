@@ -12,7 +12,12 @@ const updateProfileSchema = z.object({
   locality: z.string().min(2).optional(),
   avatar_url: z.string().url().optional(),
   bio: z.string().max(300).optional(),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 });
+
 
 // Public User Profile & Gear Closet
 router.get('/:id', async (req: Request, res: Response, next) => {
@@ -87,6 +92,22 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
     if (validated.bio !== undefined) {
       values.push(validated.bio);
       fields.push(`bio = $${values.length}`);
+    }
+    if (validated.address_text !== undefined) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== undefined) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.latitude !== undefined) {
+      values.push(validated.latitude);
+      fields.push(`latitude = $${values.length}`);
+    }
+    if (validated.longitude !== undefined) {
+      values.push(validated.longitude);
+      fields.push(`longitude = $${values.length}`);
     }
 
     if (fields.length === 0) {

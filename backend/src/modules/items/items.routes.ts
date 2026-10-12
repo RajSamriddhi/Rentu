@@ -16,6 +16,10 @@ const createItemSchema = z.object({
   image_urls: z.array(z.string().url()).min(1, 'At least one photo is required'),
   sticker_badge: z.string().default('✨ Weekend Flex'),
   locality: z.string().min(2, 'Locality is required'),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 });
 
 const updateItemSchema = z.object({
@@ -27,26 +31,83 @@ const updateItemSchema = z.object({
   image_urls: z.array(z.string().url()).optional(),
   sticker_badge: z.string().optional(),
   locality: z.string().optional(),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   status: z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
 });
 
-// Browse Items
+// Browse Items (Includes 100-Meter Proximity Radar)
 router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
-    const { category, search, locality, status = 'AVAILABLE', ownerId } = req.query;
+    const { 
+      category, 
+      search, 
+      locality, 
+      status = 'AVAILABLE', 
+      ownerId, 
+      latitude, 
+      longitude, 
+      radar, 
+      max_distance 
+    } = req.query;
+
+    const params: any[] = [];
+    let distanceField = 'NULL AS distance_meters';
+    let distanceFilter = '';
+
+    if (latitude && longitude) {
+      const latNum = parseFloat(String(latitude));
+      const lonNum = parseFloat(String(longitude));
+      if (!isNaN(latNum) && !isNaN(lonNum)) {
+        params.push(latNum);
+        const latIdx = params.length;
+        params.push(lonNum);
+        const lonIdx = params.length;
+
+        // Exact Haversine formula from SCHEMA.md
+        distanceField = `
+          ROUND(
+            6371000 * acos(
+              LEAST(1.0, GREATEST(-1.0, 
+                cos(radians($${latIdx})) * cos(radians(i.latitude)) *
+                cos(radians(i.longitude) - radians($${lonIdx})) +
+                sin(radians($${latIdx})) * sin(radians(i.latitude))
+              ))
+            )
+          ) AS distance_meters
+        `;
+
+        if (radar === 'true' || radar === '100m' || max_distance) {
+          const limitMeters = max_distance ? parseFloat(String(max_distance)) : 100;
+          params.push(limitMeters);
+          distanceFilter = ` AND (
+            6371000 * acos(
+              LEAST(1.0, GREATEST(-1.0, 
+                cos(radians($${latIdx})) * cos(radians(i.latitude)) *
+                cos(radians(i.longitude) - radians($${lonIdx})) +
+                sin(radians($${latIdx})) * sin(radians(i.latitude))
+              ))
+            )
+          ) <= $${params.length}`;
+        }
+      }
+    }
 
     let sql = `
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.created_at,
+        i.address_text, i.latitude, i.longitude, i.status, i.created_at,
+        ${distanceField},
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.locality AS owner_locality, u.trust_score AS owner_trust_score
+        u.locality AS owner_locality, u.trust_score AS owner_trust_score,
+        u.rating AS owner_rating
       FROM items i
       JOIN users u ON i.owner_id = u.id
-      WHERE 1=1
+      WHERE 1=1 ${distanceFilter}
     `;
-    const params: any[] = [];
 
     if (status && status !== 'ALL') {
       params.push(status);
@@ -61,8 +122,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     if (ownerId) {
       params.push(ownerId);
       sql += ` AND i.owner_id = $${params.length}`;
-    } else {
-      // A user can ONLY see rentals from its own city
+    } else if (!radar || radar === 'false') {
+      // City isolation when not on hyper-local 100m radar mode
       let userCity: string | null = null;
       const authUser = (req as AuthenticatedRequest).user;
       if (authUser?.id) {
@@ -82,7 +143,11 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
     }
 
-    sql += ` ORDER BY i.created_at DESC`;
+    if (radar === 'true' || radar === '100m') {
+      sql += ` ORDER BY distance_meters ASC, i.created_at DESC`;
+    } else {
+      sql += ` ORDER BY i.created_at DESC`;
+    }
 
     const result = await query(sql, params);
     return sendSuccess(res, result.rows);
@@ -90,6 +155,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     next(error);
   }
 });
+
 
 // Get Single Item Detail
 router.get('/:id', async (req: Request, res: Response, next) => {
@@ -151,9 +217,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, status)
+        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, 'AVAILABLE')
+        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE')
        RETURNING *`,
       [
         req.user!.id,
@@ -165,8 +231,13 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         JSON.stringify(validated.image_urls),
         validated.sticker_badge,
         finalLocality,
+        validated.address_text || finalLocality,
+        validated.pincode || null,
+        validated.latitude || 28.5355,
+        validated.longitude || 77.2167,
       ]
     );
+
 
     return sendSuccess(res, result.rows[0], 'Gear listed successfully! ✨ It is now live on the feed.', 201);
   } catch (error) {
