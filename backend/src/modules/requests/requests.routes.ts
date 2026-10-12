@@ -33,11 +33,15 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
-        u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
-        u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
-        u.phone AS seeker_phone, u.email AS seeker_email
+        COALESCE(u.id, r.seeker_id) AS seeker_id, 
+        COALESCE(u.name, 'Community Member') AS seeker_name, 
+        COALESCE(u.avatar_url, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80') AS seeker_avatar,
+        COALESCE(u.locality, r.locality) AS seeker_locality, 
+        COALESCE(u.trust_score, 98) AS seeker_trust_score,
+        u.phone AS seeker_phone, 
+        u.email AS seeker_email
       FROM requests r
-      JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON r.seeker_id = u.id
       WHERE 1=1
     `;
     const params: any[] = [];

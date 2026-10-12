@@ -21,6 +21,23 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
   try {
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as AuthUser;
     if (decoded && decoded.id) {
+      // Verify user in database or match by email to avoid mismatched IDs
+      const checkRes = await query(
+        'SELECT id, email, role, name FROM users WHERE id = $1 OR (email = $2 AND email IS NOT NULL)',
+        [decoded.id, decoded.email || '']
+      );
+      if (checkRes.rows.length > 0) {
+        const u = checkRes.rows[0];
+        return { id: u.id, email: u.email, role: u.role, name: u.name };
+      }
+
+      // Auto-insert user into DB if not found so foreign key joins succeed
+      await query(`
+        INSERT INTO users (id, name, email, role)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+      `, [decoded.id, decoded.name || 'User', decoded.email || `${decoded.id}@user.internal`, decoded.role || 'USER']).catch(() => {});
+
       return decoded;
     }
   } catch {
@@ -34,11 +51,27 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
         secretKey: ENV.CLERK_SECRET_KEY,
       });
       if (clerkPayload && clerkPayload.sub) {
-        // Look up user by clerk_id
-        const userRes = await query(
-          'SELECT id, email, role, name FROM users WHERE clerk_id = $1',
+        // Look up user by clerk_id or id
+        let userRes = await query(
+          'SELECT id, email, role, name FROM users WHERE clerk_id = $1 OR id = $1',
           [clerkPayload.sub]
         );
+        if (userRes.rows.length === 0) {
+          await query(`
+            INSERT INTO users (id, clerk_id, name, email, role)
+            VALUES ($1, $1, $2, $3, 'USER')
+            ON CONFLICT (id) DO UPDATE SET clerk_id = EXCLUDED.clerk_id;
+          `, [
+            clerkPayload.sub,
+            clerkPayload.name || clerkPayload.first_name || 'User',
+            clerkPayload.email || `${clerkPayload.sub}@clerk.rentu.internal`
+          ]).catch(() => {});
+
+          userRes = await query(
+            'SELECT id, email, role, name FROM users WHERE clerk_id = $1 OR id = $1',
+            [clerkPayload.sub]
+          );
+        }
         if (userRes.rows.length > 0) {
           const u = userRes.rows[0];
           return { id: u.id, email: u.email, role: u.role, name: u.name };

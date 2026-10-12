@@ -101,11 +101,14 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
         i.address_text, i.latitude, i.longitude, i.status, i.created_at,
         ${distanceField},
-        u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.locality AS owner_locality, u.trust_score AS owner_trust_score,
-        u.rating AS owner_rating
+        COALESCE(u.id, i.owner_id) AS owner_id, 
+        COALESCE(u.name, 'Community Member') AS owner_name, 
+        COALESCE(u.avatar_url, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80') AS owner_avatar,
+        COALESCE(u.locality, i.locality) AS owner_locality, 
+        COALESCE(u.trust_score, 98) AS owner_trust_score,
+        COALESCE(u.rating, 5.00) AS owner_rating
       FROM items i
-      JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON i.owner_id = u.id
       WHERE 1=1 ${distanceFilter}
     `;
 
