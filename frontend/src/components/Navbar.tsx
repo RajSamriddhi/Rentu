@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenChat,
   onOpenHowItWorks,
 }) => {
-  const { user, isAuthenticated, logout, demoLogin } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   
   const [showPostMenu, setShowPostMenu] = useState(false);
@@ -350,36 +350,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {isDark ? 'Dark' : 'Light'}
                     </span>
                   </button>
-
-                  {/* Demo account switcher */}
-                  <div className="mt-2 pt-2 border-t border-divider">
-                    <div className="px-3 py-1 text-[10px] font-black uppercase text-ink-secondary tracking-wider">
-                      Switch Demo User
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 px-1 mt-1 mb-2">
-                      <button
-                        onClick={() => { demoLogin('lender'); setShowUserMenu(false); }}
-                        className="p-1.5 rounded-lg border border-divider hover:border-ink bg-canvas text-center text-[10px] font-black cursor-pointer"
-                        title="Rohit Verma (Delhi)"
-                      >
-                        📸 Rohit
-                      </button>
-                      <button
-                        onClick={() => { demoLogin('borrower'); setShowUserMenu(false); }}
-                        className="p-1.5 rounded-lg border border-divider hover:border-ink bg-canvas text-center text-[10px] font-black cursor-pointer"
-                        title="Ananya Roy (Bangalore)"
-                      >
-                        🎨 Ananya
-                      </button>
-                      <button
-                        onClick={() => { demoLogin('admin'); setShowUserMenu(false); }}
-                        className="p-1.5 rounded-lg border border-divider hover:border-ink bg-canvas text-center text-[10px] font-black cursor-pointer"
-                        title="Aarav Mehta (Mumbai)"
-                      >
-                        👑 Aarav
-                      </button>
-                    </div>
-                  </div>
 
                   {/* Sign Out */}
                   <div className="pt-1.5 border-t border-divider">

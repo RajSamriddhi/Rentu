@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { X, Sparkles, ShieldCheck } from 'lucide-react';
+import React from 'react';
+import { X, ShieldCheck, Sparkles } from 'lucide-react';
 import { useClerk } from '@clerk/react';
-import { useAuth } from '../lib/authContext';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -10,69 +9,20 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { login, register, demoLogin } = useAuth();
-  const { openSignIn, openSignUp } = useClerk();
-
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { openSignIn } = useClerk();
 
   if (!isOpen) return null;
 
-  const handleClerkAuth = (action: 'signin' | 'signup') => {
+  const handleGoogleSignIn = () => {
     onClose();
-    if (action === 'signup') {
-      openSignUp();
-    } else {
-      openSignIn();
-    }
-  };
-
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setErrorMsg('');
-
-    try {
-      if (mode === 'signin') {
-        await login(email, password);
-      } else {
-        await register({
-          email,
-          password,
-        });
-      }
-      if (onSuccess) onSuccess();
-      onClose();
-
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication failed');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleQuickDemo = async (role: 'lender' | 'borrower' | 'admin') => {
-    setIsSubmitting(true);
-    setErrorMsg('');
-    try {
-      await demoLogin(role);
-      if (onSuccess) onSuccess();
-      onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Demo login failed');
-    } finally {
-      setIsSubmitting(false);
-    }
+    if (onSuccess) onSuccess();
+    openSignIn();
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150">
       <div 
-        className="relative bg-surface w-full max-w-md rounded-3xl border border-divider shadow-xl overflow-hidden my-auto"
+        className="relative bg-surface w-full max-w-sm rounded-3xl border border-divider shadow-2xl overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -85,130 +35,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <button
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-surface-hover text-ink transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 sm:p-8 space-y-6">
-          
-          {/* Clerk Instant Auth */}
+        {/* Content */}
+        <div className="p-6 sm:p-8 space-y-6 text-center">
           <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand/10 text-brand text-[11px] font-black uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Peer-to-Peer Gear Network</span>
+            </div>
+            <h3 className="text-xl font-extrabold text-ink font-display">
+              Welcome to Rentu⁺
+            </h3>
+            <p className="text-xs text-ink-secondary leading-relaxed">
+              Borrow, rent, and list premium gear in your city with seamless verified access.
+            </p>
+          </div>
+
+          {/* Google Sign In Button */}
+          <div className="space-y-3 pt-1">
             <button
               type="button"
-              id="clerk-auth-btn"
-              onClick={() => handleClerkAuth(mode)}
-              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-black text-xs sm:text-sm tracking-wide transition-all shadow-md hover:shadow-lg cursor-pointer border border-zinc-800 dark:border-zinc-200"
+              id="google-signin-btn"
+              onClick={handleGoogleSignIn}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-2xl bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 border-2 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-extrabold text-sm tracking-wide transition-all shadow-sm hover:shadow-md cursor-pointer group active:scale-[0.99]"
             >
-              <div className="w-5 h-5 rounded-full bg-brand flex items-center justify-center text-white text-[10px] font-black">
-                ⚡
-              </div>
-              <span>Continue with Clerk (Google & Email)</span>
-              <Sparkles className="w-4 h-4 text-brand animate-pulse" />
+              {/* Official Google 4-Color Icon */}
+              <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Sign in with Google</span>
             </button>
-            <div className="flex items-center gap-1.5 text-[10px] text-ink-secondary justify-center">
+
+            <div className="flex items-center gap-1.5 text-[11px] text-ink-secondary justify-center pt-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Secured by Clerk Identity · Fast & Passwordless</span>
+              <span>Fast 1-click verification · Verified trust identity</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-divider"></div>
-            <span className="text-[10px] font-bold uppercase text-ink-secondary tracking-widest">or preview instantly</span>
-            <div className="flex-1 h-px bg-divider"></div>
+          <div className="text-[10px] text-ink-secondary/70 border-t border-divider pt-4">
+            By signing in, you agree to Rentu⁺ Community Guidelines, Trust Deposit terms & Privacy Policy.
           </div>
-
-          {/* Quick Demo Switcher */}
-          <div className="p-3.5 rounded-2xl bg-canvas border border-divider">
-            <span className="block text-[10px] font-black uppercase text-ink-secondary tracking-wider mb-2 text-center">
-              ⚡ Instant 1-Click Demo Login
-            </span>
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('lender')}
-                className="bg-surface hover:bg-surface-hover border border-divider rounded-xl p-2 text-center text-xs font-bold text-ink shadow-xs cursor-pointer hover:border-brand transition-all"
-              >
-                📸 Rohit <span className="block text-[9px] text-ink-secondary font-medium">Delhi</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('borrower')}
-                className="bg-surface hover:bg-surface-hover border border-divider rounded-xl p-2 text-center text-xs font-bold text-ink shadow-xs cursor-pointer hover:border-brand transition-all"
-              >
-                🎨 Ananya <span className="block text-[9px] text-ink-secondary font-medium">Bangalore</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin')}
-                className="bg-surface hover:bg-surface-hover border border-divider rounded-xl p-2 text-center text-xs font-bold text-ink shadow-xs cursor-pointer hover:border-brand transition-all"
-              >
-                👑 Aarav <span className="block text-[9px] text-ink-secondary font-medium">Mumbai</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6 text-xs font-bold uppercase tracking-wider justify-center border-b border-divider pb-3">
-            <button
-              onClick={() => { setMode('signin'); setErrorMsg(''); }}
-              className={`pb-1 transition-colors cursor-pointer ${
-                mode === 'signin' ? 'text-brand border-b-2 border-brand font-extrabold' : 'text-ink-secondary hover:text-ink'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setMode('signup'); setErrorMsg(''); }}
-              className={`pb-1 transition-colors cursor-pointer ${
-                mode === 'signup' ? 'text-brand border-b-2 border-brand font-extrabold' : 'text-ink-secondary hover:text-ink'
-              }`}
-            >
-              Create Account
-            </button>
-          </div>
-
-          {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 text-red-700 text-xs font-bold">
-              {errorMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">Email Address</label>
-
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@email.com"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-medium text-ink outline-none focus:border-brand"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-medium text-ink outline-none focus:border-brand"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
-            >
-              <span>{isSubmitting ? 'Please wait...' : mode === 'signin' ? 'Sign In 🚀' : 'Join Rentu⁺ ✨'}</span>
-            </button>
-          </form>
-
         </div>
       </div>
     </div>
