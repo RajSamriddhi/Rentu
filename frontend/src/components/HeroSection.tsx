@@ -1,10 +1,9 @@
 import React from 'react';
-import { Search, MapPin, ArrowRight, Heart } from 'lucide-react';
+import { Search, ArrowRight, Heart } from 'lucide-react';
 
 interface HeroSectionProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  selectedLocality: string;
   onSearch: () => void;
   onGetStarted: () => void;
   onOpenDropGear: () => void;
@@ -13,7 +12,6 @@ interface HeroSectionProps {
 export const HeroSection: React.FC<HeroSectionProps> = ({
   searchQuery,
   setSearchQuery,
-  selectedLocality,
   onSearch,
   onGetStarted,
   onOpenDropGear,
@@ -62,14 +60,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   placeholder="What are you looking for?"
                   className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-ink placeholder:text-ink-muted placeholder:font-normal px-2"
                 />
-
-                <div className="h-6 w-[1px] bg-divider hidden sm:block" />
-
-                {/* City indicator */}
-                <div className="hidden sm:flex items-center gap-1.5 px-3 text-xs font-bold text-ink shrink-0">
-                  <MapPin className="w-3.5 h-3.5 text-brand" />
-                  <span>{selectedLocality}</span>
-                </div>
 
                 {/* Circular Pink Search Button */}
                 <button

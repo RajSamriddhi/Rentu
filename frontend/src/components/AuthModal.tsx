@@ -6,14 +6,12 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  onOpenLocationSetup?: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ 
   isOpen, 
   onClose, 
-  onSuccess,
-  onOpenLocationSetup 
+  onSuccess 
 }) => {
   const { loginWithGoogle, continueWithEmail, demoLogin } = useAuth();
 
@@ -27,9 +25,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handlePostAuthSuccess = () => {
     onClose();
     if (onSuccess) onSuccess();
-    if (onOpenLocationSetup) {
-      setTimeout(() => onOpenLocationSetup(), 200);
-    }
   };
 
   const handleGoogleSignIn = async () => {

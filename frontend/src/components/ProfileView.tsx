@@ -288,10 +288,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Member since {memberSince}</span>
               </span>
 
-              <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider text-brand font-bold">
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer"
+                title="Click to update your location"
+              >
                 <MapPin className="w-3.5 h-3.5" />
-                <span>{user?.locality || 'Delhi'}</span>
-              </span>
+                <span>{user?.locality || user?.address_text || 'Set Your Location'}</span>
+              </button>
             </div>
 
           </div>

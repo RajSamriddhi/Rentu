@@ -125,20 +125,12 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     if (ownerId) {
       params.push(ownerId);
       sql += ` AND i.owner_id = $${params.length}`;
-    } else if (!radar || radar === 'false') {
-      // City isolation when not on hyper-local 100m radar mode
-      let userCity: string | null = null;
-      const authUser = (req as AuthenticatedRequest).user;
-      if (authUser?.id) {
-        const userRes = await query('SELECT locality FROM users WHERE id = $1', [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : 'Delhi');
-      params.push(`%${activeCity}%`);
-      sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
 
     if (search) {
@@ -209,14 +201,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   try {
     const validated = createItemSchema.parse(req.body);
 
-    // Ensure locality includes owner's city
     const userRes = await query('SELECT locality FROM users WHERE id = $1', [req.user!.id]);
-    const userLocality = userRes.rows[0]?.locality || 'Delhi';
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
-    }
+    const userLocality = userRes.rows[0]?.locality || '';
+    let finalLocality = validated.locality?.trim() || userLocality;
 
     const result = await query(
       `INSERT INTO items 

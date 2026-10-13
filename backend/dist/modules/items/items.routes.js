@@ -106,19 +106,12 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             params.push(ownerId);
             sql += ` AND i.owner_id = $${params.length}`;
         }
-        else if (!radar || radar === 'false') {
-            // City isolation when not on hyper-local 100m radar mode
-            let userCity = null;
-            const authUser = req.user;
-            if (authUser?.id) {
-                const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [authUser.id]);
-                if (userRes.rows.length > 0) {
-                    userCity = (0, city_1.extractCity)(userRes.rows[0].locality);
-                }
+        else if (locality) {
+            const city = (0, city_1.extractCity)(String(locality));
+            if (city) {
+                params.push(`%${city}%`);
+                sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
             }
-            const activeCity = userCity || (locality ? (0, city_1.extractCity)(String(locality)) : 'Delhi');
-            params.push(`%${activeCity}%`);
-            sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
         }
         if (search) {
             params.push(`%${search}%`);
@@ -174,14 +167,9 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const validated = createItemSchema.parse(req.body);
-        // Ensure locality includes owner's city
         const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [req.user.id]);
-        const userLocality = userRes.rows[0]?.locality || 'Delhi';
-        const userCity = (0, city_1.extractCity)(userLocality);
-        let finalLocality = validated.locality.trim();
-        if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-            finalLocality = `${finalLocality}, ${userCity}`;
-        }
+        const userLocality = userRes.rows[0]?.locality || '';
+        let finalLocality = validated.locality?.trim() || userLocality;
         const result = await (0, db_1.query)(`INSERT INTO items 
         (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
        VALUES 

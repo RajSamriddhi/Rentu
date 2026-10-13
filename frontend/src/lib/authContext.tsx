@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name,
       avatar_url: avatarUrl,
       phone,
-      locality: 'Delhi',
+      locality: '',
       role: 'USER',
       rating: 5.0,
       created_at: new Date().toISOString(),

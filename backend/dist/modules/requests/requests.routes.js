@@ -54,19 +54,12 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             params.push(seekerId);
             sql += ` AND r.seeker_id = $${params.length}`;
         }
-        else {
-            // A user can ONLY see wishes/bounties from its own city
-            let userCity = null;
-            const authUser = req.user;
-            if (authUser?.id) {
-                const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [authUser.id]);
-                if (userRes.rows.length > 0) {
-                    userCity = (0, city_1.extractCity)(userRes.rows[0].locality);
-                }
+        else if (locality) {
+            const city = (0, city_1.extractCity)(String(locality));
+            if (city) {
+                params.push(`%${city}%`);
+                sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
             }
-            const activeCity = userCity || (locality ? (0, city_1.extractCity)(String(locality)) : 'Delhi');
-            params.push(`%${activeCity}%`);
-            sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
         }
         sql += ` ORDER BY r.created_at DESC`;
         const result = await (0, db_1.query)(sql, params);
@@ -112,16 +105,9 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             req.user.id,
             req.user.name || 'Rentu Member',
             req.user.email || `${req.user.id}@firebase.rentu.internal`,
-            validated.locality || 'Delhi'
+            validated.locality || ''
         ]).catch(() => { });
-        // Ensure locality includes seeker's city
-        const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [req.user.id]);
-        const userLocality = userRes.rows[0]?.locality || 'Delhi';
-        const userCity = (0, city_1.extractCity)(userLocality);
-        let finalLocality = validated.locality.trim();
-        if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-            finalLocality = `${finalLocality}, ${userCity}`;
-        }
+        let finalLocality = validated.locality?.trim() || '';
         const result = await (0, db_1.query)(`INSERT INTO requests
         (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
        VALUES

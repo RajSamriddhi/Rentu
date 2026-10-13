@@ -30,7 +30,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [pricePerDay, setPricePerDay] = useState(300);
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [condition, setCondition] = useState('Like new');
-  const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const [locality, setLocality] = useState(user?.locality || '');
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,7 +117,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         max_duration_days: Number(maxDurationDays),
         image_urls: [finalImage],
         sticker_badge: '✨ Available',
-        locality: locality || user?.locality || 'Saket, New Delhi',
+        locality: locality || user?.locality || '',
       });
 
       confetti({
@@ -302,7 +302,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                       type="text"
                       value={locality}
                       onChange={(e) => setLocality(e.target.value)}
-                      placeholder="e.g. Saket, South Delhi"
+                      placeholder="e.g. Indiranagar / Your Area"
                       className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-bold text-ink outline-none"
                       required
                     />

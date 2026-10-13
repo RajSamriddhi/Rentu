@@ -43,7 +43,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
     const validated = registerSchema.parse(req.body);
     const email = validated.email.toLowerCase();
     const displayName = validated.name || email.split('@')[0];
-    const locality = validated.locality || 'Saket, New Delhi';
+    const locality = validated.locality || '';
 
     const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
@@ -151,7 +151,7 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
     const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
-    const locality = validated.locality || 'Saket, New Delhi';
+    const locality = validated.locality || '';
 
     // 1. Look for existing user by firebase_uid, clerk_id or email
     const existing = await query(

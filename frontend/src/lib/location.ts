@@ -6,6 +6,7 @@
 export interface ResolvedLocation {
   locality: string;
   city: string;
+  building_no?: string;
   address_text: string;
   pincode: string;
   latitude: number;
@@ -78,20 +79,22 @@ export const reverseGeocode = async (
       const data = await res.json();
       if (data && data.address) {
         const addr = data.address;
+        const building_no = addr.house_number || addr.building || addr.flat || '';
         const road = addr.road || addr.pedestrian || addr.suburb || '';
         const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
-        const city = addr.city || addr.town || addr.village || addr.city_district || addr.state_district || 'Delhi';
+        const city = addr.city || addr.town || addr.village || addr.city_district || addr.state_district || addr.state || '';
         const state = addr.state || '';
         const pincode = addr.postcode || '';
 
         // Build human-friendly locality
         const primaryLocality = neighbourhood || road || city;
-        const locality = primaryLocality && !primaryLocality.toLowerCase().includes(city.toLowerCase())
+        const locality = primaryLocality && city && !primaryLocality.toLowerCase().includes(city.toLowerCase())
           ? `${primaryLocality}, ${city}`
           : primaryLocality || city;
 
         // Build address text
         const addressParts = [
+          building_no ? `No. ${building_no}` : '',
           road,
           neighbourhood,
           addr.suburb && addr.suburb !== neighbourhood ? addr.suburb : '',
@@ -105,6 +108,7 @@ export const reverseGeocode = async (
         return {
           locality,
           city,
+          building_no,
           address_text,
           pincode,
           latitude,
@@ -125,9 +129,9 @@ export const reverseGeocode = async (
     );
     if (res.ok) {
       const data = await res.json();
-      const city = data.city || data.principalSubdivision || 'Delhi';
+      const city = data.city || data.locality || data.principalSubdivision || '';
       const rawLocality = data.locality || city;
-      const locality = rawLocality && !rawLocality.toLowerCase().includes(city.toLowerCase())
+      const locality = rawLocality && city && !rawLocality.toLowerCase().includes(city.toLowerCase())
         ? `${rawLocality}, ${city}`
         : rawLocality;
       const pincode = data.postcode || '';
@@ -137,6 +141,7 @@ export const reverseGeocode = async (
       return {
         locality,
         city,
+        building_no: '',
         address_text,
         pincode,
         latitude,
@@ -151,8 +156,9 @@ export const reverseGeocode = async (
 
   // Fallback with coordinates
   return {
-    locality: `Near (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`,
-    city: 'Delhi',
+    locality: `(${latitude.toFixed(3)}, ${longitude.toFixed(3)})`,
+    city: '',
+    building_no: '',
     address_text: `GPS: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
     pincode: '',
     latitude,

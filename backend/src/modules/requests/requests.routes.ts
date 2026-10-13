@@ -59,20 +59,12 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     if (seekerId) {
       params.push(seekerId);
       sql += ` AND r.seeker_id = $${params.length}`;
-    } else {
-      // A user can ONLY see wishes/bounties from its own city
-      let userCity: string | null = null;
-      const authUser = (req as AuthenticatedRequest).user;
-      if (authUser?.id) {
-        const userRes = await query('SELECT locality FROM users WHERE id = $1', [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : 'Delhi');
-      params.push(`%${activeCity}%`);
-      sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
 
     sql += ` ORDER BY r.created_at DESC`;
@@ -127,17 +119,10 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       req.user!.id,
       req.user!.name || 'Rentu Member',
       req.user!.email || `${req.user!.id}@firebase.rentu.internal`,
-      validated.locality || 'Delhi'
+      validated.locality || ''
     ]).catch(() => {});
 
-    // Ensure locality includes seeker's city
-    const userRes = await query('SELECT locality FROM users WHERE id = $1', [req.user!.id]);
-    const userLocality = userRes.rows[0]?.locality || 'Delhi';
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
-    }
+    let finalLocality = validated.locality?.trim() || '';
 
     const result = await query(
       `INSERT INTO requests

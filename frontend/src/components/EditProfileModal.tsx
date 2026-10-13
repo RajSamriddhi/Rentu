@@ -59,15 +59,27 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 }) => {
   const { user, refreshUser } = useAuth();
 
+  const parseAddress = (text?: string) => {
+    if (!text) return { building: '', street: '' };
+    const parts = text.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return { building: parts[0], street: parts.slice(1).join(', ') };
+    }
+    return { building: '', street: text };
+  };
+
+  const initialAddr = parseAddress(user?.address_text);
   const [name, setName] = useState(user?.name || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
-  const [addressText, setAddressText] = useState(user?.address_text || '');
+  const [buildingHouseNo, setBuildingHouseNo] = useState(initialAddr.building);
+  const [streetArea, setStreetArea] = useState(initialAddr.street);
+  const [locality, setLocality] = useState(user?.locality || '');
   const [pincode, setPincode] = useState(user?.pincode || '');
   const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
   const [longitude, setLongitude] = useState<number | undefined>(user?.longitude);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [bannerUrl, setBannerUrl] = useState(
     user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
@@ -90,9 +102,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setName(user.name || '');
       setBio(user.bio || '');
       setPhone(user.phone || '');
-      setLocality(user.locality || 'Saket, New Delhi');
-      setAddressText(user.address_text || '');
+      const addr = parseAddress(user.address_text);
+      setBuildingHouseNo(addr.building);
+      setStreetArea(addr.street);
+      setLocality(user.locality || '');
       setPincode(user.pincode || '');
+      setLatitude(user.latitude);
+      setLongitude(user.longitude);
       setAvatarUrl(user.avatar_url || '');
       setBannerUrl(
         user.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
@@ -161,15 +177,26 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
+    setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      setLocality(loc.locality);
-      setAddressText(loc.address_text);
-      setPincode(loc.pincode);
+      if (loc.building_no) {
+        setBuildingHouseNo(loc.building_no);
+      }
+      if (loc.address_text) {
+        setStreetArea(loc.address_text);
+      }
+      if (loc.locality) {
+        setLocality(loc.locality);
+      }
+      if (loc.pincode) {
+        setPincode(loc.pincode);
+      }
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
+      setLocationSuccessMsg(`Current location detected (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
       try {
-        confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
+        confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
       } catch {}
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect current location.');
@@ -184,12 +211,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setErrorMsg('');
 
     try {
+      const fullAddress = [buildingHouseNo.trim(), streetArea.trim()].filter(Boolean).join(', ');
+
       await api.updateProfile({
         name: name.trim(),
         bio: bio.trim(),
         phone: phone.trim() || undefined,
-        locality: locality.trim(),
-        address_text: addressText.trim() || undefined,
+        locality: locality.trim() || undefined,
+        address_text: fullAddress || undefined,
         pincode: pincode.trim() || undefined,
         latitude,
         longitude,
@@ -412,79 +441,125 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               />
             </div>
 
-            {/* Section Header with GPS 1-Click Detect Button */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs font-black uppercase text-ink-secondary tracking-wider">
-                Location & Pickup Address
-              </span>
-              <button
-                type="button"
-                onClick={handleDetectLocation}
-                disabled={isDetectingLocation}
-                className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2.5 py-1 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isDetectingLocation ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Detecting GPS...</span>
-                  </>
-                ) : (
-                  <>
-                    <Navigation className="w-3 h-3 text-brand" />
-                    <span>Find Current Location (GPS)</span>
-                  </>
+            {/* Phone Number */}
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">Phone Number</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+              />
+            </div>
+
+            {/* Location & Address Section */}
+            <div className="pt-3 border-t border-divider space-y-3">
+              {/* GPS "Use My Current Location" Card */}
+              <div className="bg-canvas border border-divider rounded-2xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-brand" />
+                      <span className="text-xs font-black text-ink uppercase tracking-wider">
+                        Set Your Location
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-ink-secondary mt-0.5">
+                      Coordinates are stored securely to calculate distance with nearby lenders & borrowers.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="use-my-current-location-btn"
+                    onClick={handleDetectLocation}
+                    disabled={isDetectingLocation}
+                    className="btn-primary text-xs px-3.5 py-2 inline-flex items-center gap-2 shadow-sm cursor-pointer whitespace-nowrap active:scale-95 transition-all self-start sm:self-auto shrink-0"
+                  >
+                    {isDetectingLocation ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Detecting GPS...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>Use my current location</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {(locationSuccessMsg || (latitude && longitude)) && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in">
+                    <Check className="w-3.5 h-3.5 stroke-[3] shrink-0" />
+                    <span>
+                      {locationSuccessMsg || `Coordinates active (${latitude?.toFixed(4)}, ${longitude?.toFixed(4)})`}
+                    </span>
+                  </div>
                 )}
-              </button>
-            </div>
-
-            {/* Grid: Phone & Locality */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1">Phone Number</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
-                />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1">Locality / City *</label>
-                <input
-                  type="text"
-                  value={locality}
-                  onChange={(e) => setLocality(e.target.value)}
-                  placeholder="e.g. Kengeri, Bangalore"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
-                  required
-                />
-              </div>
-            </div>
+              {/* Explicit Address Form Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Building / House / Flat No. */}
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    Building / Flat / House No.
+                  </label>
+                  <input
+                    type="text"
+                    value={buildingHouseNo}
+                    onChange={(e) => setBuildingHouseNo(e.target.value)}
+                    placeholder="e.g. Flat 304, Sunshine Apts / House #12"
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  />
+                </div>
 
-            {/* Grid: Address & Pincode */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-ink mb-1">Pickup Address (Friendly)</label>
-                <input
-                  type="text"
-                  value={addressText}
-                  onChange={(e) => setAddressText(e.target.value)}
-                  placeholder="e.g. 5th Cross, Near Metro Station"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
-                />
+                {/* Street / Road / Landmark */}
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    Street / Road / Landmark
+                  </label>
+                  <input
+                    type="text"
+                    value={streetArea}
+                    onChange={(e) => setStreetArea(e.target.value)}
+                    placeholder="e.g. 5th Main, Near Metro Station"
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1">Pincode</label>
-                <input
-                  type="text"
-                  value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
-                  placeholder="e.g. 560060"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Locality / Neighborhood */}
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    Locality / Neighborhood
+                  </label>
+                  <input
+                    type="text"
+                    value={locality}
+                    onChange={(e) => setLocality(e.target.value)}
+                    placeholder="e.g. Indiranagar / Koramangala"
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  />
+                </div>
+
+                {/* PIN / Postal Code */}
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    PIN / Postal Code
+                  </label>
+                  <input
+                    type="text"
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
+                    placeholder="e.g. 560038"
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  />
+                </div>
               </div>
             </div>
           </div>

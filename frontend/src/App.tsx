@@ -13,12 +13,10 @@ import { DropWishModal } from './components/DropWishModal';
 import { ChatModal } from './components/ChatModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { AuthModal } from './components/AuthModal';
-import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest } from './lib/types';
-import { extractCity } from './lib/city';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile';
 
@@ -39,7 +37,6 @@ export const App: React.FC = () => {
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
-  const [selectedLocality, setSelectedLocality] = useState<string>('Delhi');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -61,16 +58,6 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Strict user city isolation: A user can only see rentals from their own city
-  const activeCity = (isAuthenticated && user?.locality) ? extractCity(user.locality) : selectedLocality;
-
-  // Auto-sync city to logged in user's city
-  useEffect(() => {
-    if (isAuthenticated && user?.locality) {
-      setSelectedLocality(extractCity(user.locality));
-    }
-  }, [user, isAuthenticated]);
-
   // Data State
   const [items, setItems] = useState<Item[]>([]);
   const [requests, setRequests] = useState<CommunityRequest[]>([]);
@@ -84,25 +71,10 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
-  const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
-
-  // If user logs in and doesn't have an address set yet, smoothly prompt them to set their location
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      const hasPrompted = sessionStorage.getItem(`rentu_loc_prompt_${user.id}`);
-      if (!hasPrompted && (!user.address_text || user.locality === 'Delhi')) {
-        sessionStorage.setItem(`rentu_loc_prompt_${user.id}`, 'true');
-        const timer = setTimeout(() => {
-          setIsSetLocationOpen(true);
-        }, 600);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     loadFeed();
-  }, [selectedCategory, activeCity]);
+  }, [selectedCategory]);
 
   const loadFeed = async () => {
     setIsLoading(true);
@@ -110,12 +82,10 @@ export const App: React.FC = () => {
       const [itemsData, requestsData] = await Promise.all([
         api.getItems({
           category: selectedCategory,
-          locality: activeCity,
           search: searchQuery,
         }),
         api.getRequests({
           category: selectedCategory,
-          locality: activeCity,
         }),
       ]);
       setItems(itemsData);
@@ -160,8 +130,6 @@ export const App: React.FC = () => {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        selectedLocality={activeCity}
-        setSelectedLocality={setSelectedLocality}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onSearch={handleSearch}
@@ -170,7 +138,6 @@ export const App: React.FC = () => {
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
-        onOpenSetLocation={() => setIsSetLocationOpen(true)}
       />
 
       {/* Main View Router */}
@@ -183,7 +150,6 @@ export const App: React.FC = () => {
             <HeroSection
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
-              selectedLocality={activeCity}
               onSearch={handleSearch}
               onGetStarted={() => setActiveTab('explore')}
               onOpenDropGear={() => setIsDropGearOpen(true)}
@@ -200,12 +166,12 @@ export const App: React.FC = () => {
               />
             </div>
 
-            {/* Popular / Trending Gear in Active City */}
+            {/* Popular / Trending Gear */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-ink font-display">
-                    Popular Gear in {activeCity}
+                    Popular Gear Near You
                   </h2>
                   <p className="text-xs sm:text-sm text-ink-secondary">
                     Available for rent from verified community lenders
@@ -239,7 +205,6 @@ export const App: React.FC = () => {
             isLoading={isLoading}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
-            selectedLocality={activeCity}
             onSelectItem={(item) => setSelectedItem(item)}
             onToggleToRequests={() => setActiveTab('requests')}
           />
@@ -252,7 +217,6 @@ export const App: React.FC = () => {
             isLoading={isLoading}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
-            selectedLocality={activeCity}
             onOpenDropWish={() => setIsDropWishOpen(true)}
             onClaimRequest={handleClaimRequest}
             onOpenAuth={() => setIsAuthOpen(true)}
@@ -334,17 +298,6 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
-        onOpenLocationSetup={() => setIsSetLocationOpen(true)}
-      />
-
-      {/* Set Location Modal with 1-Click GPS Detection */}
-      <SetLocationModal
-        isOpen={isSetLocationOpen}
-        onClose={() => setIsSetLocationOpen(false)}
-        onSuccess={(loc) => {
-          setSelectedLocality(extractCity(loc.locality));
-          loadFeed();
-        }}
       />
 
     </div>

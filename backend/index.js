@@ -281,7 +281,7 @@ router.post("/register", async (req, res, next) => {
     const validated = registerSchema.parse(req.body);
     const email = validated.email.toLowerCase();
     const displayName = validated.name || email.split("@")[0];
-    const locality = validated.locality || "Saket, New Delhi";
+    const locality = validated.locality || "";
     const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
     if (existing.rows.length > 0) {
       return sendError(res, "USER_EXISTS", "An account with this email already exists", 409);
@@ -369,7 +369,7 @@ var handleSyncUser = async (req, res, next) => {
     const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
-    const locality = validated.locality || "Saket, New Delhi";
+    const locality = validated.locality || "";
     const existing = await query(
       `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
@@ -569,18 +569,12 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     if (ownerId) {
       params.push(ownerId);
       sql += ` AND i.owner_id = $${params.length}`;
-    } else if (!radar || radar === "false") {
-      let userCity = null;
-      const authUser = req.user;
-      if (authUser?.id) {
-        const userRes = await query("SELECT locality FROM users WHERE id = $1", [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : "Delhi");
-      params.push(`%${activeCity}%`);
-      sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
     if (search) {
       params.push(`%${search}%`);
@@ -637,12 +631,8 @@ router2.post("/", authMiddleware, async (req, res, next) => {
   try {
     const validated = createItemSchema.parse(req.body);
     const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
-    const userLocality = userRes.rows[0]?.locality || "Delhi";
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
-    }
+    const userLocality = userRes.rows[0]?.locality || "";
+    let finalLocality = validated.locality?.trim() || userLocality;
     const result = await query(
       `INSERT INTO items 
         (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
@@ -802,18 +792,12 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
     if (seekerId) {
       params.push(seekerId);
       sql += ` AND r.seeker_id = $${params.length}`;
-    } else {
-      let userCity = null;
-      const authUser = req.user;
-      if (authUser?.id) {
-        const userRes = await query("SELECT locality FROM users WHERE id = $1", [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : "Delhi");
-      params.push(`%${activeCity}%`);
-      sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
     sql += ` ORDER BY r.created_at DESC`;
     const result = await query(sql, params);
@@ -857,16 +841,10 @@ router3.post("/", authMiddleware, async (req, res, next) => {
       req.user.id,
       req.user.name || "Rentu Member",
       req.user.email || `${req.user.id}@firebase.rentu.internal`,
-      validated.locality || "Delhi"
+      validated.locality || ""
     ]).catch(() => {
     });
-    const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
-    const userLocality = userRes.rows[0]?.locality || "Delhi";
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
-    }
+    let finalLocality = validated.locality?.trim() || "";
     const result = await query(
       `INSERT INTO requests
         (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)

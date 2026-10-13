@@ -29,6 +29,11 @@ export interface Item {
   image_urls: string[];
   sticker_badge: string;
   locality: string;
+  address_text?: string;
+  pincode?: string;
+  latitude?: number;
+  longitude?: number;
+  distance_meters?: number | null;
   status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE';
   created_at: string;
   owner_name?: string;

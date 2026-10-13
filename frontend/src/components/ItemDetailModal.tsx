@@ -189,7 +189,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     <span>•</span>
                     <div className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-brand" />
-                      <span>{item.locality || 'Delhi (0.8 km)'}</span>
+                      <span>{item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby'}</span>
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -426,7 +426,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-brand shrink-0" />
-                        <span>Self pickup ({item.locality || 'Saket'})</span>
+                        <span>Self pickup ({item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby'})</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Lock className="w-4 h-4 text-emerald-600 shrink-0" />

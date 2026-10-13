@@ -19,7 +19,6 @@ interface RequestsBoardProps {
   isLoading: boolean;
   selectedCategory: string;
   setSelectedCategory: (cat: string) => void;
-  selectedLocality: string;
   onOpenDropWish: () => void;
   onClaimRequest: (request: CommunityRequest) => void;
   onOpenAuth?: () => void;
@@ -30,7 +29,6 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
   isLoading,
   selectedCategory,
   setSelectedCategory,
-  selectedLocality,
   onOpenDropWish,
   onClaimRequest,
   onOpenAuth,
@@ -81,7 +79,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
             Requests
           </h1>
           <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-0.5">
-            Community Wanted Board in <span className="font-bold text-ink">{selectedLocality}</span>
+            Community Wanted Board
           </p>
         </div>
 
@@ -150,7 +148,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
             </div>
           ) : filteredRequests.length === 0 ? (
             <div className="py-20 text-center bg-surface border border-divider rounded-2xl p-8">
-              <p className="text-base font-bold text-ink">No requests right now in {selectedLocality}.</p>
+              <p className="text-base font-bold text-ink">No requests right now.</p>
               <p className="text-xs text-ink-secondary mt-1">Be the first to ask the community for gear you need!</p>
               {isAuthenticated ? (
                 <button
@@ -210,7 +208,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                         <span>•</span>
                         <span className="flex items-center gap-0.5">
                           <MapPin className="w-3 h-3 text-brand" />
-                          {req.locality ? req.locality.split(',')[0] : 'Nearby'}
+                          <span>Nearby</span>
                         </span>
                       </div>
                     </div>
@@ -255,7 +253,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
             </h3>
             
             <p className="text-xs text-ink-secondary font-medium leading-relaxed">
-              Post a request and let verified owners in {selectedLocality} find it for you.
+              Post a request and let verified owners find it for you.
             </p>
 
             {isAuthenticated ? (

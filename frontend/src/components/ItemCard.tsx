@@ -80,7 +80,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
             </div>
             <span className="text-zinc-300 dark:text-zinc-700">•</span>
             <span className="text-ink-secondary truncate">
-              {item.locality ? item.locality.split(',')[0] : '0.8 km'}
+              {item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km` : 'Nearby'}
             </span>
           </div>
 

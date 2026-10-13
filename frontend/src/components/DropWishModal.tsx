@@ -33,7 +33,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   const [startTime, setStartTime] = useState('10:00 AM');
   const [durationDays, setDurationDays] = useState(2);
   const [offeredAmount, setOfferedAmount] = useState(300);
-  const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const [locality, setLocality] = useState(user?.locality || '');
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -77,7 +77,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         start_time: startTime,
         duration_days: Number(durationDays),
         offered_amount: Number(offeredAmount),
-        locality: locality || user?.locality || 'Saket, New Delhi',
+        locality: locality || user?.locality || '',
       });
 
       confetti({
@@ -346,7 +346,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                       type="text"
                       value={locality}
                       onChange={(e) => setLocality(e.target.value)}
-                      placeholder="e.g. Saket, New Delhi"
+                      placeholder="e.g. Indiranagar / Your Area"
                       className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
                       required
                     />
