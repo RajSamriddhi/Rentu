@@ -6,9 +6,15 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  onOpenLocationSetup?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onSuccess,
+  onOpenLocationSetup 
+}) => {
   const { loginWithGoogle, continueWithEmail, demoLogin } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -18,13 +24,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   if (!isOpen) return null;
 
+  const handlePostAuthSuccess = () => {
+    onClose();
+    if (onSuccess) onSuccess();
+    if (onOpenLocationSetup) {
+      setTimeout(() => onOpenLocationSetup(), 200);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setIsLoading(true);
     try {
       await loginWithGoogle();
-      onClose();
-      if (onSuccess) onSuccess();
+      handlePostAuthSuccess();
     } catch (err: any) {
       console.error('Google sign-in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
@@ -58,8 +71,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setIsLoading(true);
     try {
       await continueWithEmail(email, password);
-      onClose();
-      if (onSuccess) onSuccess();
+      handlePostAuthSuccess();
     } catch (err: any) {
       console.error('Email auth error:', err);
       if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
@@ -78,8 +90,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setIsLoading(true);
     try {
       await demoLogin(role);
-      onClose();
-      if (onSuccess) onSuccess();
+      handlePostAuthSuccess();
     } catch (err: any) {
       setErrorMsg(err.message || 'Demo login failed');
     } finally {

@@ -7,6 +7,8 @@ export interface User {
   locality: string;
   address_text?: string;
   pincode?: string;
+  latitude?: number;
+  longitude?: number;
   rating?: number;
   avatar_url?: string;
   banner_url?: string;

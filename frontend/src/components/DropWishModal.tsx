@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Check, Upload, Megaphone, ArrowRight, ArrowLeft } from 'lucide-react';
+import { X, Check, Upload, Megaphone, ArrowRight, ArrowLeft, Navigation, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
+import { detectCurrentLocation } from '../lib/location';
 
 interface DropWishModalProps {
   isOpen: boolean;
@@ -33,10 +34,24 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   const [durationDays, setDurationDays] = useState(2);
   const [offeredAmount, setOfferedAmount] = useState(300);
   const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
+
+  const handleDetectLocation = async () => {
+    setIsDetectingLocation(true);
+    setErrorMsg('');
+    try {
+      const loc = await detectCurrentLocation();
+      setLocality(loc.locality);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not detect current location.');
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
@@ -306,7 +321,27 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
               {step === 3 && (
                 <div className="space-y-4 max-w-md">
                   <div>
-                    <label className="block text-xs font-bold text-ink mb-1">Your Locality / Campus</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-ink">Your Locality / Campus *</label>
+                      <button
+                        type="button"
+                        onClick={handleDetectLocation}
+                        disabled={isDetectingLocation}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2.5 py-1 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isDetectingLocation ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Detecting GPS...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="w-3 h-3 text-brand" />
+                            <span>Use Current GPS 📍</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                     <input
                       type="text"
                       value={locality}

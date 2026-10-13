@@ -124,7 +124,7 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
     `;
 
     const result = await query(updateSql, values);

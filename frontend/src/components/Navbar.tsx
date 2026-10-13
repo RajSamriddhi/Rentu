@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   Compass,
-  Target
+  Target,
+  Navigation
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -35,6 +36,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenChat: () => void;
   onOpenHowItWorks: () => void;
+  onOpenSetLocation?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -50,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenChat,
   onOpenHowItWorks,
+  onOpenSetLocation,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -175,7 +178,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
 
                   {showLocalityMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-surface border border-divider rounded-2xl shadow-xl p-1.5 z-50 text-xs font-semibold animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute right-0 mt-2 w-52 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 text-xs font-semibold animate-in fade-in zoom-in-95 duration-100">
+                      {onOpenSetLocation && (
+                        <button
+                          onClick={() => {
+                            setShowLocalityMenu(false);
+                            onOpenSetLocation();
+                          }}
+                          className="w-full text-left px-2.5 py-2 mb-1.5 rounded-xl bg-brand-soft hover:bg-brand/20 text-brand font-extrabold flex items-center gap-2 cursor-pointer transition-colors"
+                        >
+                          <Navigation className="w-3.5 h-3.5 shrink-0" />
+                          <span>Set Exact Location 📍</span>
+                        </button>
+                      )}
                       <div className="px-2.5 py-1 text-[10px] font-black uppercase text-ink-secondary">
                         Select Your City
                       </div>
@@ -470,6 +485,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <Sparkles className="w-4 h-4 text-brand" />
                 <span>How It Works</span>
               </button>
+
+              {onOpenSetLocation && (
+                <button
+                  onClick={() => { onOpenSetLocation(); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-brand bg-brand-soft/70 hover:bg-brand/20 transition-colors cursor-pointer"
+                >
+                  <Navigation className="w-4 h-4 text-brand" />
+                  <span>Set My Exact Location 📍</span>
+                </button>
+              )}
             </div>
 
             {/* Authenticated or Unauthenticated actions in Mobile Menu */}

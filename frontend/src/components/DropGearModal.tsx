@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { X, Check, Upload, ArrowRight, ArrowLeft, Loader2, Image as ImageIcon } from 'lucide-react';
+import { X, Check, Upload, ArrowRight, ArrowLeft, Loader2, Image as ImageIcon, Navigation } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
+import { detectCurrentLocation } from '../lib/location';
 
 interface DropGearModalProps {
   isOpen: boolean;
@@ -30,12 +31,26 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDetectLocation = async () => {
+    setIsDetectingLocation(true);
+    setErrorMsg('');
+    try {
+      const loc = await detectCurrentLocation();
+      setLocality(loc.locality);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not detect GPS location.');
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -259,6 +274,38 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                       <option value="Good">Good</option>
                       <option value="Fair">Fair</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-ink">Gear Location / Area *</label>
+                      <button
+                        type="button"
+                        onClick={handleDetectLocation}
+                        disabled={isDetectingLocation}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2 py-0.5 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isDetectingLocation ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Detecting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="w-3 h-3 text-brand" />
+                            <span>Use Current GPS 📍</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={locality}
+                      onChange={(e) => setLocality(e.target.value)}
+                      placeholder="e.g. Saket, South Delhi"
+                      className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-bold text-ink outline-none"
+                      required
+                    />
                   </div>
                 </div>
               )}

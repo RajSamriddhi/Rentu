@@ -10,12 +10,14 @@ import {
   FileText, 
   Camera, 
   ImageIcon,
-  Sparkles
+  Sparkles,
+  Navigation
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
+import { detectCurrentLocation } from '../lib/location';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -63,6 +65,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
   const [addressText, setAddressText] = useState(user?.address_text || '');
   const [pincode, setPincode] = useState(user?.pincode || '');
+  const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
+  const [longitude, setLongitude] = useState<number | undefined>(user?.longitude);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [bannerUrl, setBannerUrl] = useState(
     user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
@@ -153,6 +158,26 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     }
   };
 
+  const handleDetectLocation = async () => {
+    setIsDetectingLocation(true);
+    setErrorMsg('');
+    try {
+      const loc = await detectCurrentLocation();
+      setLocality(loc.locality);
+      setAddressText(loc.address_text);
+      setPincode(loc.pincode);
+      setLatitude(loc.latitude);
+      setLongitude(loc.longitude);
+      try {
+        confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
+      } catch {}
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not detect current location.');
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -166,6 +191,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         locality: locality.trim(),
         address_text: addressText.trim() || undefined,
         pincode: pincode.trim() || undefined,
+        latitude,
+        longitude,
         avatar_url: avatarUrl || undefined,
         banner_url: bannerUrl || undefined,
       });
@@ -383,6 +410,31 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 rows={2}
                 className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-medium text-ink outline-none focus:border-brand"
               />
+            </div>
+
+            {/* Section Header with GPS 1-Click Detect Button */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs font-black uppercase text-ink-secondary tracking-wider">
+                Location & Pickup Address
+              </span>
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={isDetectingLocation}
+                className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2.5 py-1 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isDetectingLocation ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Detecting GPS...</span>
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="w-3 h-3 text-brand" />
+                    <span>Find Current Location (GPS)</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Grid: Phone & Locality */}

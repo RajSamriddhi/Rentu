@@ -13,6 +13,7 @@ import { DropWishModal } from './components/DropWishModal';
 import { ChatModal } from './components/ChatModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { AuthModal } from './components/AuthModal';
+import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
@@ -83,6 +84,21 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
+
+  // If user logs in and doesn't have an address set yet, smoothly prompt them to set their location
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const hasPrompted = sessionStorage.getItem(`rentu_loc_prompt_${user.id}`);
+      if (!hasPrompted && (!user.address_text || user.locality === 'Delhi')) {
+        sessionStorage.setItem(`rentu_loc_prompt_${user.id}`, 'true');
+        const timer = setTimeout(() => {
+          setIsSetLocationOpen(true);
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     loadFeed();
@@ -154,6 +170,7 @@ export const App: React.FC = () => {
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
+        onOpenSetLocation={() => setIsSetLocationOpen(true)}
       />
 
       {/* Main View Router */}
@@ -317,6 +334,17 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
+        onOpenLocationSetup={() => setIsSetLocationOpen(true)}
+      />
+
+      {/* Set Location Modal with 1-Click GPS Detection */}
+      <SetLocationModal
+        isOpen={isSetLocationOpen}
+        onClose={() => setIsSetLocationOpen(false)}
+        onSuccess={(loc) => {
+          setSelectedLocality(extractCity(loc.locality));
+          loadFeed();
+        }}
       />
 
     </div>
