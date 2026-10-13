@@ -6,6 +6,9 @@ const isRemote = ENV.DATABASE_URL.includes('supabase.co') || ENV.DATABASE_URL.in
 export const pool = new Pool({
   connectionString: ENV.DATABASE_URL,
   ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 pool.on('error', (err) => {

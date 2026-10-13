@@ -3,7 +3,9 @@
   "services": {
     "backend": {
       "root": "backend",
-      "framework": "express"
+      "framework": "express",
+      "entrypoint": "index.js",
+      "buildCommand": "npm run build"
     },
     "frontend": {
       "root": "frontend",
@@ -12,10 +14,9 @@
   },
   "rewrites": [
     {
-      "source": "/api/:path*",
+      "source": "/api/(.*)",
       "destination": {
-        "service": "backend",
-        "path": "/api/:path*"
+        "service": "backend"
       }
     },
     {

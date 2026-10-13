@@ -37,4 +37,15 @@ if (require.main === module && !process.env.VERCEL) {
   startServer();
 }
 
+// Export for both ESM and CJS compatibility in serverless environments
+// @ts-ignore
+if (typeof module !== 'undefined' && module.exports) {
+  // @ts-ignore
+  module.exports = app;
+  // @ts-ignore
+  module.exports.default = app;
+  // @ts-ignore
+  module.exports.app = app;
+}
+
 export default app;
