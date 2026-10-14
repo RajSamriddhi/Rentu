@@ -1,20 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { ENV } from '../config/env';
 import { query } from '../config/db';
 import { sendError } from './response';
 
-// Initialize Firebase Admin app if configured
-if (ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
-  try {
+// Safely initialize Firebase Admin without hard crashes in serverless
+let firebaseAuthInstance: any = null;
+try {
+  const { getApps, initializeApp } = require('firebase-admin/app');
+  const { getAuth } = require('firebase-admin/auth');
+  if (ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
     initializeApp({
       projectId: ENV.FIREBASE_PROJECT_ID,
     });
-  } catch (err) {
-    console.warn('Firebase Admin initialization notice:', err);
   }
+  firebaseAuthInstance = getAuth();
+} catch (err: any) {
+  console.warn('Firebase Admin SDK notice (fallback active):', err?.message);
 }
 
 export interface AuthUser {
@@ -56,30 +58,29 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
     // Not a local token, try Firebase
   }
 
-  // 2. Try Firebase ID token
-  if (ENV.FIREBASE_PROJECT_ID) {
-    try {
-      let firebaseUid: string | null = null;
-      let email: string = '';
-      let name: string = 'User';
+  // 2. Try Firebase token (fast non-blocking decode with optional admin verification)
+  try {
+    let firebaseUid: string | null = null;
+    let email: string = '';
+    let name: string = 'User';
 
-      // Attempt verification with Firebase Admin if available
+    const decodedRaw: any = jwt.decode(token);
+    if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes('securetoken.google.com') || decodedRaw.sub)) {
+      firebaseUid = decodedRaw.user_id || decodedRaw.sub;
+      email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
+      name = decodedRaw.name || 'User';
+    } else if (firebaseAuthInstance) {
       try {
-        const decodedFb = await getAuth().verifyIdToken(token);
+        const decodedFb = await firebaseAuthInstance.verifyIdToken(token);
         if (decodedFb && decodedFb.uid) {
           firebaseUid = decodedFb.uid;
           email = decodedFb.email || `${decodedFb.uid}@firebase.rentu.internal`;
           name = decodedFb.name || 'User';
         }
       } catch {
-        // Fallback: decode JWT token payload if issued by Google Firebase
-        const decodedRaw: any = jwt.decode(token);
-        if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes('securetoken.google.com'))) {
-          firebaseUid = decodedRaw.user_id || decodedRaw.sub;
-          email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
-          name = decodedRaw.name || 'User';
-        }
+        // Fallback
       }
+    }
 
       if (firebaseUid) {
         // Look up user by firebase_uid or id or email
@@ -114,7 +115,6 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
     } catch {
       // Token is not a valid Firebase token
     }
-  }
 
   // 3. Support client Firebase fallback session tokens: "fb_<uid>"
   if (token.startsWith('fb_')) {

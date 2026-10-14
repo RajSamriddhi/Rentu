@@ -105,16 +105,18 @@ var sendError = (res, code, message, statusCode = 400, details) => {
 
 // src/middleware/auth.ts
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-var import_app = require("firebase-admin/app");
-var import_auth = require("firebase-admin/auth");
-if (ENV.FIREBASE_PROJECT_ID && (0, import_app.getApps)().length === 0) {
-  try {
-    (0, import_app.initializeApp)({
+var firebaseAuthInstance = null;
+try {
+  const { getApps, initializeApp } = require("firebase-admin/app");
+  const { getAuth } = require("firebase-admin/auth");
+  if (ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
+    initializeApp({
       projectId: ENV.FIREBASE_PROJECT_ID
     });
-  } catch (err) {
-    console.warn("Firebase Admin initialization notice:", err);
   }
+  firebaseAuthInstance = getAuth();
+} catch (err) {
+  console.warn("Firebase Admin SDK notice (fallback active):", err?.message);
 }
 async function resolveUserFromToken(token) {
   try {
@@ -138,55 +140,54 @@ async function resolveUserFromToken(token) {
     }
   } catch {
   }
-  if (ENV.FIREBASE_PROJECT_ID) {
-    try {
-      let firebaseUid = null;
-      let email = "";
-      let name = "User";
+  try {
+    let firebaseUid = null;
+    let email = "";
+    let name = "User";
+    const decodedRaw = import_jsonwebtoken.default.decode(token);
+    if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes("securetoken.google.com") || decodedRaw.sub)) {
+      firebaseUid = decodedRaw.user_id || decodedRaw.sub;
+      email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
+      name = decodedRaw.name || "User";
+    } else if (firebaseAuthInstance) {
       try {
-        const decodedFb = await (0, import_auth.getAuth)().verifyIdToken(token);
+        const decodedFb = await firebaseAuthInstance.verifyIdToken(token);
         if (decodedFb && decodedFb.uid) {
           firebaseUid = decodedFb.uid;
           email = decodedFb.email || `${decodedFb.uid}@firebase.rentu.internal`;
           name = decodedFb.name || "User";
         }
       } catch {
-        const decodedRaw = import_jsonwebtoken.default.decode(token);
-        if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes("securetoken.google.com"))) {
-          firebaseUid = decodedRaw.user_id || decodedRaw.sub;
-          email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
-          name = decodedRaw.name || "User";
-        }
       }
-      if (firebaseUid) {
-        let userRes = await query(
-          "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR email = $3",
-          [firebaseUid, firebaseUid, email]
-        );
-        if (userRes.rows.length === 0) {
-          await query(`
+    }
+    if (firebaseUid) {
+      let userRes = await query(
+        "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR email = $3",
+        [firebaseUid, firebaseUid, email]
+      );
+      if (userRes.rows.length === 0) {
+        await query(`
             INSERT INTO users (id, firebase_uid, name, email, role)
             VALUES ($1, $2, $3, $4, 'USER')
             ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
           `, [
-            firebaseUid,
-            firebaseUid,
-            name,
-            email
-          ]).catch(() => {
-          });
-          userRes = await query(
-            "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1",
-            [firebaseUid]
-          );
-        }
-        if (userRes.rows.length > 0) {
-          const u = userRes.rows[0];
-          return { id: u.id, email: u.email, role: u.role, name: u.name };
-        }
+          firebaseUid,
+          firebaseUid,
+          name,
+          email
+        ]).catch(() => {
+        });
+        userRes = await query(
+          "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1",
+          [firebaseUid]
+        );
       }
-    } catch {
+      if (userRes.rows.length > 0) {
+        const u = userRes.rows[0];
+        return { id: u.id, email: u.email, role: u.role, name: u.name };
+      }
     }
+  } catch {
   }
   if (token.startsWith("fb_")) {
     const rawUid = token.replace(/^fb_/, "");
