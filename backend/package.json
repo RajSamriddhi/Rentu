@@ -4,7 +4,7 @@
   "description": "Headless REST API for BorrowFlex Gen Z Peer-to-Peer Rental Platform",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && npx esbuild src/server.ts --bundle --platform=node --target=node18 --packages=external --outfile=index.js && cp index.js app.js && cp index.js api/index.js",
+    "build": "tsc && npx esbuild src/server.ts --bundle --platform=node --target=node18 --external:pg-native --outfile=index.js && cp index.js app.js && cp index.js api/index.js",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "ts-node-dev --transpile-only src/db/migrate.ts",

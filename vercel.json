@@ -16,15 +16,13 @@
     {
       "source": "/api",
       "destination": {
-        "service": "backend",
-        "path": "/api"
+        "service": "backend"
       }
     },
     {
       "source": "/api/(.*)",
       "destination": {
-        "service": "backend",
-        "path": "/api/$1"
+        "service": "backend"
       }
     },
     {
