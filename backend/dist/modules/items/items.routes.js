@@ -167,9 +167,25 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const validated = createItemSchema.parse(req.body);
+        // Ensure owner exists in database so foreign keys and joins always succeed
+        await (0, db_1.query)(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+            req.user.id,
+            req.user.name || 'Rentu Member',
+            req.user.email || `${req.user.id}@firebase.rentu.internal`,
+            validated.locality || ''
+        ]).catch(() => { });
         const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [req.user.id]);
         const userLocality = userRes.rows[0]?.locality || '';
         let finalLocality = validated.locality?.trim() || userLocality;
+        const cleanPincode = validated.pincode?.trim() || null;
+        // 3NF: Upsert into postal_codes table before referencing it
+        if (cleanPincode && finalLocality) {
+            await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, finalLocality]).catch(() => { });
+        }
         const result = await (0, db_1.query)(`INSERT INTO items 
         (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
        VALUES 
@@ -185,7 +201,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             validated.sticker_badge,
             finalLocality,
             validated.address_text || finalLocality,
-            validated.pincode || null,
+            cleanPincode,
             validated.latitude || 28.5355,
             validated.longitude || 77.2167,
         ]);
@@ -195,10 +211,6 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             for (let i = 0; i < validated.image_urls.length; i++) {
                 await (0, db_1.query)(`INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`, [createdItem.id, validated.image_urls[i], i]).catch(() => { });
             }
-        }
-        // 3NF: Upsert into postal_codes table
-        if (validated.pincode && finalLocality) {
-            await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [validated.pincode, finalLocality]).catch(() => { });
         }
         return (0, response_1.sendSuccess)(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
     }

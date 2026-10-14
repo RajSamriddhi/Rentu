@@ -281,7 +281,7 @@ router.post("/register", async (req, res, next) => {
     const validated = registerSchema.parse(req.body);
     const email = validated.email.toLowerCase();
     const displayName = validated.name || email.split("@")[0];
-    const locality = validated.locality || "Saket, New Delhi";
+    const locality = validated.locality || "";
     const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
     if (existing.rows.length > 0) {
       return sendError(res, "USER_EXISTS", "An account with this email already exists", 409);
@@ -369,7 +369,7 @@ var handleSyncUser = async (req, res, next) => {
     const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
-    const locality = validated.locality || "Saket, New Delhi";
+    const locality = validated.locality || "";
     const existing = await query(
       `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
@@ -569,18 +569,12 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     if (ownerId) {
       params.push(ownerId);
       sql += ` AND i.owner_id = $${params.length}`;
-    } else if (!radar || radar === "false") {
-      let userCity = null;
-      const authUser = req.user;
-      if (authUser?.id) {
-        const userRes = await query("SELECT locality FROM users WHERE id = $1", [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : "Delhi");
-      params.push(`%${activeCity}%`);
-      sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
     if (search) {
       params.push(`%${search}%`);
@@ -636,12 +630,27 @@ router2.get("/:id", async (req, res, next) => {
 router2.post("/", authMiddleware, async (req, res, next) => {
   try {
     const validated = createItemSchema.parse(req.body);
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user.id,
+      req.user.name || "Rentu Member",
+      req.user.email || `${req.user.id}@firebase.rentu.internal`,
+      validated.locality || ""
+    ]).catch(() => {
+    });
     const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
-    const userLocality = userRes.rows[0]?.locality || "Delhi";
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
+    const userLocality = userRes.rows[0]?.locality || "";
+    let finalLocality = validated.locality?.trim() || userLocality;
+    const cleanPincode = validated.pincode?.trim() || null;
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
     }
     const result = await query(
       `INSERT INTO items 
@@ -660,12 +669,22 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         validated.sticker_badge,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167
       ]
     );
-    return sendSuccess(res, result.rows[0], "Gear listed successfully! \u2728 It is now live on the feed.", 201);
+    const createdItem = result.rows[0];
+    if (Array.isArray(validated.image_urls) && validated.image_urls.length > 0) {
+      for (let i = 0; i < validated.image_urls.length; i++) {
+        await query(
+          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
+          [createdItem.id, validated.image_urls[i], i]
+        ).catch(() => {
+        });
+      }
+    }
+    return sendSuccess(res, createdItem, "Gear listed successfully! \u2728 It is now live on the feed.", 201);
   } catch (error) {
     next(error);
   }
@@ -802,18 +821,12 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
     if (seekerId) {
       params.push(seekerId);
       sql += ` AND r.seeker_id = $${params.length}`;
-    } else {
-      let userCity = null;
-      const authUser = req.user;
-      if (authUser?.id) {
-        const userRes = await query("SELECT locality FROM users WHERE id = $1", [authUser.id]);
-        if (userRes.rows.length > 0) {
-          userCity = extractCity(userRes.rows[0].locality);
-        }
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
-      const activeCity = userCity || (locality ? extractCity(String(locality)) : "Delhi");
-      params.push(`%${activeCity}%`);
-      sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
     }
     sql += ` ORDER BY r.created_at DESC`;
     const result = await query(sql, params);
@@ -857,15 +870,17 @@ router3.post("/", authMiddleware, async (req, res, next) => {
       req.user.id,
       req.user.name || "Rentu Member",
       req.user.email || `${req.user.id}@firebase.rentu.internal`,
-      validated.locality || "Delhi"
+      validated.locality || ""
     ]).catch(() => {
     });
-    const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
-    const userLocality = userRes.rows[0]?.locality || "Delhi";
-    const userCity = extractCity(userLocality);
-    let finalLocality = validated.locality.trim();
-    if (!finalLocality.toLowerCase().includes(userCity.toLowerCase())) {
-      finalLocality = `${finalLocality}, ${userCity}`;
+    let finalLocality = validated.locality?.trim() || "";
+    const cleanPincode = validated.pincode?.trim() || null;
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
     }
     const result = await query(
       `INSERT INTO requests
@@ -884,12 +899,13 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.offered_amount,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167
       ]
     );
-    return sendSuccess(res, result.rows[0], "Wish dropped to community feed! \u{1F3AF} Nearby owners will see your bounty.", 201);
+    const createdRequest = result.rows[0];
+    return sendSuccess(res, createdRequest, "Wish dropped to community feed! \u{1F3AF} Nearby owners will see your bounty.", 201);
   } catch (error) {
     next(error);
   }
@@ -995,8 +1011,9 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     const { role } = req.query;
     let sql = `
       SELECT 
-        b.id, b.item_id, b.borrower_id, b.lender_id, 
-        b.start_date, b.start_time, b.duration_days, b.total_price, 
+        b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
+        b.start_date, b.start_time, b.duration_days, 
+        COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
         b.status, b.message, b.created_at,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
@@ -1007,14 +1024,14 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       FROM bookings b
       JOIN items i ON b.item_id = i.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON b.lender_id = lender.id
-      WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+      JOIN users lender ON i.owner_id = lender.id
+      WHERE (b.borrower_id = $1 OR i.owner_id = $1)
     `;
     const params = [userId];
     if (role === "borrower") {
       sql += ` AND b.borrower_id = $1`;
     } else if (role === "lender") {
-      sql += ` AND b.lender_id = $1`;
+      sql += ` AND i.owner_id = $1`;
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
@@ -1029,10 +1046,10 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const { status } = updateStatusSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, lender.name AS lender_name, borrower.name AS borrower_name
+      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users lender ON b.lender_id = lender.id
+       JOIN users lender ON i.owner_id = lender.id
        JOIN users borrower ON b.borrower_id = borrower.id
        WHERE b.id = $1`,
       [id]
@@ -1228,9 +1245,18 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       values.push(validated.address_text);
       fields.push(`address_text = $${values.length}`);
     }
+    let cleanPincode = void 0;
     if (validated.pincode !== void 0) {
-      values.push(validated.pincode);
+      cleanPincode = validated.pincode?.trim() || null;
+      values.push(cleanPincode);
       fields.push(`pincode = $${values.length}`);
+      if (cleanPincode && validated.locality) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => {
+        });
+      }
     }
     if (validated.latitude !== void 0) {
       values.push(validated.latitude);
@@ -1251,7 +1277,8 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
     `;
     const result = await query(updateSql, values);
-    return sendSuccess(res, result.rows[0], "Profile updated successfully \u2728");
+    const updatedUser = result.rows[0];
+    return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
   } catch (error) {
     next(error);
   }
@@ -1264,7 +1291,7 @@ var import_zod6 = require("zod");
 var router7 = (0, import_express7.Router)();
 var sendMessageSchema = import_zod6.z.object({
   booking_id: import_zod6.z.string().uuid(),
-  receiver_id: import_zod6.z.string().uuid(),
+  receiver_id: import_zod6.z.string().optional(),
   content: import_zod6.z.string().min(1, "Message cannot be empty")
 });
 router7.get("/conversations", authMiddleware, async (req, res, next) => {
@@ -1289,7 +1316,7 @@ router7.get("/conversations", authMiddleware, async (req, res, next) => {
       FROM bookings b
       JOIN items i ON b.item_id = i.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON b.lender_id = lender.id
+      JOIN users lender ON i.owner_id = lender.id
       LEFT JOIN LATERAL (
         SELECT content, created_at FROM messages 
         WHERE booking_id = b.id 
@@ -1341,7 +1368,10 @@ router7.post("/", authMiddleware, async (req, res, next) => {
     const validated = sendMessageSchema.parse(req.body);
     const senderId = req.user.id;
     const bookingRes = await query(
-      `SELECT id, borrower_id, lender_id FROM bookings WHERE id = $1`,
+      `SELECT b.id, b.borrower_id, i.owner_id AS lender_id 
+       FROM bookings b 
+       JOIN items i ON b.item_id = i.id 
+       WHERE b.id = $1`,
       [validated.booking_id]
     );
     if (bookingRes.rows.length === 0) {
@@ -1351,11 +1381,12 @@ router7.post("/", authMiddleware, async (req, res, next) => {
     if (booking.borrower_id !== senderId && booking.lender_id !== senderId) {
       return sendError(res, "FORBIDDEN", "Cannot send message to this booking", 403);
     }
+    const targetReceiver = validated.receiver_id || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
     const result = await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [validated.booking_id, senderId, validated.receiver_id, validated.content]
+      [validated.booking_id, senderId, targetReceiver, validated.content]
     );
     return sendSuccess(res, result.rows[0], "Message sent");
   } catch (error) {
@@ -1598,6 +1629,169 @@ var runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_booking ON messages(booking_id);
       CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
+      ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS postal_codes (
+        pincode VARCHAR(10) PRIMARY KEY,
+        locality VARCHAR(120) NOT NULL,
+        city VARCHAR(120),
+        state VARCHAR(120),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_postal_codes_locality ON postal_codes(locality);
+
+      -- Backfill postal_codes from existing distinct pincodes and localities
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM users 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM items 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM requests 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality, city, state)
+      VALUES 
+        ('560001', 'MG Road / Central', 'Bangalore', 'Karnataka'),
+        ('560038', 'Indiranagar', 'Bangalore', 'Karnataka'),
+        ('560034', 'Koramangala', 'Bangalore', 'Karnataka'),
+        ('560059', 'Mylasandra / Global Village', 'Bangalore', 'Karnataka'),
+        ('560060', 'Kengeri Satellite Town', 'Bangalore', 'Karnataka'),
+        ('110017', 'Saket', 'New Delhi', 'Delhi'),
+        ('110016', 'Hauz Khas', 'New Delhi', 'Delhi'),
+        ('400050', 'Bandra West', 'Mumbai', 'Maharashtra'),
+        ('400076', 'Powai', 'Mumbai', 'Maharashtra')
+      ON CONFLICT (pincode) DO NOTHING;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS item_images (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        image_url TEXT NOT NULL,
+        display_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_item_images_item_id ON item_images(item_id);
+
+      -- Backfill item_images from existing items.image_urls JSON array
+      INSERT INTO item_images (item_id, image_url, display_order)
+      SELECT i.id, img.val, img.ord - 1
+      FROM items i,
+      LATERAL jsonb_array_elements_text(COALESCE(NULLIF(i.image_urls, 'null'::jsonb), '[]'::jsonb)) WITH ORDINALITY AS img(val, ord)
+      WHERE NOT EXISTS (SELECT 1 FROM item_images WHERE item_id = i.id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE,
+        reviewer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reviewee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating NUMERIC(3, 2) NOT NULL CHECK (rating >= 1.00 AND rating <= 5.00),
+        comment TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
+      CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        body TEXT NOT NULL,
+        sender_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+        message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+        reference_id TEXT,
+        reference_type VARCHAR(50),
+        data JSONB,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
+
+      -- Backfill notifications atomic columns from data JSON
+      UPDATE notifications
+      SET sender_id = COALESCE(sender_id, data->>'sender_id'),
+          booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
+          message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
+      WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+    `);
+    await client.query(`
+      -- 3NF Bookings View: lender_id derived via items.owner_id; total_price computed dynamically
+      CREATE OR REPLACE VIEW bookings_3nf_v AS
+      SELECT 
+        b.id,
+        b.item_id,
+        b.borrower_id,
+        i.owner_id AS lender_id,
+        b.start_date,
+        b.start_time,
+        b.duration_days,
+        (b.duration_days * i.price_per_day) AS total_price,
+        b.status,
+        b.message,
+        b.created_at,
+        b.updated_at
+      FROM bookings b
+      JOIN items i ON b.item_id = i.id;
+
+      -- 3NF User Scores View: rating & trust_score computed on-the-fly from reviews & completed transactions
+      CREATE OR REPLACE VIEW user_scores_3nf_v AS
+      SELECT 
+        u.id AS user_id,
+        ROUND(COALESCE(AVG(r.rating), 5.00), 2) AS rating,
+        COUNT(r.id) AS review_count,
+        LEAST(100, GREATEST(50, 70 + (COUNT(r.id) * 5) + (
+          SELECT COUNT(*) FROM bookings b 
+          JOIN items i ON b.item_id = i.id
+          WHERE (b.borrower_id = u.id OR i.owner_id = u.id) AND b.status = 'COMPLETED'
+        ) * 3)) AS trust_score
+      FROM users u
+      LEFT JOIN reviews r ON u.id = r.reviewee_id
+      GROUP BY u.id;
+
+      -- 3NF Messages View: receiver_id derived dynamically from booking participants
+      CREATE OR REPLACE VIEW messages_3nf_v AS
+      SELECT 
+        m.id,
+        m.booking_id,
+        m.sender_id,
+        COALESCE(m.receiver_id, CASE WHEN b.borrower_id = m.sender_id THEN i.owner_id ELSE b.borrower_id END) AS receiver_id,
+        m.content,
+        m.created_at
+      FROM messages m
+      LEFT JOIN bookings b ON m.booking_id = b.id
+      LEFT JOIN items i ON b.item_id = i.id;
     `);
     await client.query("COMMIT");
     console.log("Database migrations completed successfully!");
@@ -1638,7 +1832,7 @@ var startServer = async () => {
     console.error("Failed to start server:", error);
   }
 };
-if (require.main === module && !process.env.VERCEL) {
+if (require.main === module) {
   startServer();
 }
 if (typeof module !== "undefined" && module.exports) {

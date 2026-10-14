@@ -123,6 +123,15 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     ]).catch(() => {});
 
     let finalLocality = validated.locality?.trim() || '';
+    const cleanPincode = validated.pincode?.trim() || null;
+
+    // 3NF: Upsert into postal_codes table before referencing it
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {});
+    }
 
     const result = await query(
       `INSERT INTO requests
@@ -141,19 +150,11 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.offered_amount,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167,
       ]);
     const createdRequest = result.rows[0];
-
-    // 3NF: Upsert into postal_codes table
-    if (validated.pincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, finalLocality]
-      ).catch(() => {});
-    }
 
     return sendSuccess(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
   } catch (error) {

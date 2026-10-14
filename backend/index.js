@@ -630,9 +630,28 @@ router2.get("/:id", async (req, res, next) => {
 router2.post("/", authMiddleware, async (req, res, next) => {
   try {
     const validated = createItemSchema.parse(req.body);
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user.id,
+      req.user.name || "Rentu Member",
+      req.user.email || `${req.user.id}@firebase.rentu.internal`,
+      validated.locality || ""
+    ]).catch(() => {
+    });
     const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
     const userLocality = userRes.rows[0]?.locality || "";
     let finalLocality = validated.locality?.trim() || userLocality;
+    const cleanPincode = validated.pincode?.trim() || null;
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
+    }
     const result = await query(
       `INSERT INTO items 
         (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
@@ -650,7 +669,7 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         validated.sticker_badge,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167
       ]
@@ -664,13 +683,6 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         ).catch(() => {
         });
       }
-    }
-    if (validated.pincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, finalLocality]
-      ).catch(() => {
-      });
     }
     return sendSuccess(res, createdItem, "Gear listed successfully! \u2728 It is now live on the feed.", 201);
   } catch (error) {
@@ -862,6 +874,14 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     ]).catch(() => {
     });
     let finalLocality = validated.locality?.trim() || "";
+    const cleanPincode = validated.pincode?.trim() || null;
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
+    }
     const result = await query(
       `INSERT INTO requests
         (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
@@ -879,19 +899,12 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.offered_amount,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167
       ]
     );
     const createdRequest = result.rows[0];
-    if (validated.pincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, finalLocality]
-      ).catch(() => {
-      });
-    }
     return sendSuccess(res, createdRequest, "Wish dropped to community feed! \u{1F3AF} Nearby owners will see your bounty.", 201);
   } catch (error) {
     next(error);
@@ -1232,9 +1245,18 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       values.push(validated.address_text);
       fields.push(`address_text = $${values.length}`);
     }
+    let cleanPincode = void 0;
     if (validated.pincode !== void 0) {
-      values.push(validated.pincode);
+      cleanPincode = validated.pincode?.trim() || null;
+      values.push(cleanPincode);
       fields.push(`pincode = $${values.length}`);
+      if (cleanPincode && validated.locality) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => {
+        });
+      }
     }
     if (validated.latitude !== void 0) {
       values.push(validated.latitude);
@@ -1256,13 +1278,6 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
-    if (validated.pincode && validated.locality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, validated.locality]
-      ).catch(() => {
-      });
-    }
     return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
   } catch (error) {
     next(error);
@@ -1817,7 +1832,7 @@ var startServer = async () => {
     console.error("Failed to start server:", error);
   }
 };
-if (require.main === module && !process.env.VERCEL) {
+if (require.main === module) {
   startServer();
 }
 if (typeof module !== "undefined" && module.exports) {

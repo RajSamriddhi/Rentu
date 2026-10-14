@@ -32,8 +32,8 @@ const startServer = async () => {
   }
 };
 
-// Only listen on port when executed directly as standalone process
-if (require.main === module && !process.env.VERCEL) {
+// Listen on port when executed directly as standalone process (local, container, or Vercel Service)
+if (require.main === module) {
   startServer();
 }
 

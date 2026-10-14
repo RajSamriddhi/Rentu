@@ -102,9 +102,19 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       values.push(validated.address_text);
       fields.push(`address_text = $${values.length}`);
     }
+    let cleanPincode: string | null | undefined = undefined;
     if (validated.pincode !== undefined) {
-      values.push(validated.pincode);
+      cleanPincode = validated.pincode?.trim() || null;
+      values.push(cleanPincode);
       fields.push(`pincode = $${values.length}`);
+
+      // 3NF: Upsert into postal_codes table before referencing it in users
+      if (cleanPincode && validated.locality) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => {});
+      }
     }
     if (validated.latitude !== undefined) {
       values.push(validated.latitude);
@@ -129,14 +139,6 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
 
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
-
-    // 3NF: Upsert into postal_codes table
-    if (validated.pincode && validated.locality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, validated.locality]
-      ).catch(() => {});
-    }
 
     return sendSuccess(res, updatedUser, 'Profile updated successfully ✨');
   } catch (error) {

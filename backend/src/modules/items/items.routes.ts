@@ -201,9 +201,30 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   try {
     const validated = createItemSchema.parse(req.body);
 
+    // Ensure owner exists in database so foreign keys and joins always succeed
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user!.id,
+      req.user!.name || 'Rentu Member',
+      req.user!.email || `${req.user!.id}@firebase.rentu.internal`,
+      validated.locality || ''
+    ]).catch(() => {});
+
     const userRes = await query('SELECT locality FROM users WHERE id = $1', [req.user!.id]);
     const userLocality = userRes.rows[0]?.locality || '';
     let finalLocality = validated.locality?.trim() || userLocality;
+    const cleanPincode = validated.pincode?.trim() || null;
+
+    // 3NF: Upsert into postal_codes table before referencing it
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {});
+    }
 
     const result = await query(
       `INSERT INTO items 
@@ -222,7 +243,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.sticker_badge,
         finalLocality,
         validated.address_text || finalLocality,
-        validated.pincode || null,
+        cleanPincode,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167,
       ]);
@@ -236,14 +257,6 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           [createdItem.id, validated.image_urls[i], i]
         ).catch(() => {});
       }
-    }
-
-    // 3NF: Upsert into postal_codes table
-    if (validated.pincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [validated.pincode, finalLocality]
-      ).catch(() => {});
     }
 
     return sendSuccess(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
