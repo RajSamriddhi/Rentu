@@ -147,8 +147,7 @@ STEPS
 
 ### Screen 3: Item Detail & "Snag It" Proposal Flow
 - **Gallery:** High-res primary photo + thumbnail gallery carousel.
-- **Price Calculation Panel:** Date picker calculates dynamic price:
-  $$\text{Total Fee} = \text{Days} \times \text{Daily Rate}$$
+- **Price Calculation Panel:** Date picker calculates dynamic price (`Total Fee = Days * Daily Rate`).
 - **Owner Card:** Avatar, Trust Score, dynamic star rating from `user_scores_3nf_v`.
 - **CTA:** Sticky bottom button: `Snag for the Weekend ⚡`.
 

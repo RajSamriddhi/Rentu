@@ -91,9 +91,8 @@
 ## 🟡 MILESTONE 2: Version 2.0 (Escrow, Safety & Real-Time Engine) — IN-PROGRESS ⏳
 
 ### Phase 1: Escrow & Security Deposit State Machine
-- [ ] Implement escrow deposit calculation:
-  $$\text{Total Authorized Hold} = (\text{Daily Rate} \times \text{Days}) + \text{Security Deposit}$$
-- [ ] Escrow state machine transitions: `DRAFT` $\to$ `PROPOSED` $\to$ `ESCROW_HOLD` $\to$ `ACTIVE_RENTAL` $\to$ `RETURN_INSPECTION` $\to$ `COMPLETED`
+- [ ] Escrow deposit calculation: `Total Hold = (Daily Rate * Days) + Security Deposit`
+- [ ] Escrow state machine transitions: `DRAFT -> PROPOSED -> ESCROW_HOLD -> ACTIVE_RENTAL -> RETURN_INSPECTION -> COMPLETED`
 - [ ] Automatic deposit unlock & release upon clean return signoff
 
 ### Phase 2: Handover & Return OTP / QR Verification
