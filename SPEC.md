@@ -77,6 +77,11 @@ Gen Z values **experiences over ownership**. Why spend ₹60,000 buying a camera
   - Total community volume transacted ($₹$ saved / earned).
   - Leaderboard of most trending categories and unmet wishlists.
 
+### 3.6. Profile-Centric Location & GPS Distance Tracking
+- **Privacy-First Design**: City names and location indicators are removed from all navigation bars, search bars, and public headers.
+- **1-Click GPS Setup in Profile**: Users set their location strictly inside their Profile modal using browser Geolocation, which auto-fills building number, street, locality, and PIN code.
+- **Silent Coordinate Distance Tracking**: Stores high-accuracy `latitude` and `longitude` in the database to calculate real-time Haversine distance between borrowers and lenders (`X km away` / `Nearby`) without exposing private house/building addresses.
+
 ---
 
 ## 4. End-to-End User Journeys

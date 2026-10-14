@@ -26,9 +26,11 @@
 
 ## 🌟 Key Features
 
-### 1. 🏙️ Strict City-Level Isolation
-- Renters only see items and requests available in their **own city** (Delhi, Bangalore, Mumbai).
-- Unauthenticated visitors can browse by selecting a city; once logged in, listings and community requests automatically filter to the user's registered home city.
+### 1. 📍 Profile-Centric Location & GPS Distance Tracking
+- **Zero Location Clutter**: City names and location pills are removed from the global navigation, search bar, and public views for a clean, privacy-first interface.
+- **1-Click GPS Auto-Detection**: Users configure their location exclusively inside their Profile (`EditProfileModal`) via high-accuracy browser Geolocation, which reverse-geocodes into building number, street address, locality, and PIN code.
+- **Discrete Address Management**: Dedicated input fields for Building / Flat / House No., Street / Road / Landmark, Locality / Neighborhood, and PIN / Postal Code.
+- **Peer-to-Peer Distance Matching**: Silent GPS coordinate capture (`latitude`, `longitude`) enables real-time Haversine distance tracking between nearby borrowers and lenders without exposing private house/building addresses.
 
 ### 2. 🌙 Full Dark Mode & Light Mode (with Dedicated Toggle)
 - Smooth animated Sun/Moon toggle button (`#theme-toggle-btn`) in the top navigation bar.
@@ -45,7 +47,6 @@
   - **Explore**: Browse available gear listings with category pills and price filters.
   - **Requests**: Wanted board where community members post gear requests with offered budgets.
   - **How It Works**: Interactive modal explaining the rental and listing lifecycle.
-  - **City Location Badge**: Highlights the active city.
   - **Theme Toggle**: 1-click Dark/Light mode switch.
   - **Notifications & Messages**: In-app booking alerts and direct messaging.
   - **+ Post Dropdown**: Consolidated action menu for **List Gear for Rent** and **Post a Request**.
