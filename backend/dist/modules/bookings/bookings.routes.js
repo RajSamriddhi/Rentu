@@ -64,8 +64,9 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         const { role } = req.query; // 'borrower' | 'lender' | all
         let sql = `
       SELECT 
-        b.id, b.item_id, b.borrower_id, b.lender_id, 
-        b.start_date, b.start_time, b.duration_days, b.total_price, 
+        b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
+        b.start_date, b.start_time, b.duration_days, 
+        COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
         b.status, b.message, b.created_at,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
@@ -76,15 +77,15 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
       FROM bookings b
       JOIN items i ON b.item_id = i.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON b.lender_id = lender.id
-      WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+      JOIN users lender ON i.owner_id = lender.id
+      WHERE (b.borrower_id = $1 OR i.owner_id = $1)
     `;
         const params = [userId];
         if (role === 'borrower') {
             sql += ` AND b.borrower_id = $1`;
         }
         else if (role === 'lender') {
-            sql += ` AND b.lender_id = $1`;
+            sql += ` AND i.owner_id = $1`;
         }
         sql += ` ORDER BY b.created_at DESC`;
         const result = await (0, db_1.query)(sql, params);
@@ -100,10 +101,10 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         const { id } = req.params;
         const { status } = updateStatusSchema.parse(req.body);
         const userId = req.user.id;
-        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, lender.name AS lender_name, borrower.name AS borrower_name
+        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users lender ON b.lender_id = lender.id
+       JOIN users lender ON i.owner_id = lender.id
        JOIN users borrower ON b.borrower_id = borrower.id
        WHERE b.id = $1`, [id]);
         if (bookingRes.rows.length === 0) {

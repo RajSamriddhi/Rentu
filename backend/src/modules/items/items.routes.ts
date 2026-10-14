@@ -225,11 +225,28 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.pincode || null,
         validated.latitude || 28.5355,
         validated.longitude || 77.2167,
-      ]
-    );
+      ]);
+    const createdItem = result.rows[0];
 
+    // 1NF: Save images into normalized item_images table
+    if (Array.isArray(validated.image_urls) && validated.image_urls.length > 0) {
+      for (let i = 0; i < validated.image_urls.length; i++) {
+        await query(
+          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
+          [createdItem.id, validated.image_urls[i], i]
+        ).catch(() => {});
+      }
+    }
 
-    return sendSuccess(res, result.rows[0], 'Gear listed successfully! ✨ It is now live on the feed.', 201);
+    // 3NF: Upsert into postal_codes table
+    if (validated.pincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [validated.pincode, finalLocality]
+      ).catch(() => {});
+    }
+
+    return sendSuccess(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
   } catch (error) {
     next(error);
   }

@@ -8,7 +8,7 @@ const auth_1 = require("../../middleware/auth");
 const router = (0, express_1.Router)();
 const sendMessageSchema = zod_1.z.object({
     booking_id: zod_1.z.string().uuid(),
-    receiver_id: zod_1.z.string().uuid(),
+    receiver_id: zod_1.z.string().optional(),
     content: zod_1.z.string().min(1, 'Message cannot be empty'),
 });
 // Get User's Active Conversations
@@ -34,7 +34,7 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
       FROM bookings b
       JOIN items i ON b.item_id = i.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON b.lender_id = lender.id
+      JOIN users lender ON i.owner_id = lender.id
       LEFT JOIN LATERAL (
         SELECT content, created_at FROM messages 
         WHERE booking_id = b.id 
@@ -82,8 +82,11 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const validated = sendMessageSchema.parse(req.body);
         const senderId = req.user.id;
-        // Verify booking membership
-        const bookingRes = await (0, db_1.query)(`SELECT id, borrower_id, lender_id FROM bookings WHERE id = $1`, [validated.booking_id]);
+        // Verify booking membership & resolve lender
+        const bookingRes = await (0, db_1.query)(`SELECT b.id, b.borrower_id, i.owner_id AS lender_id 
+       FROM bookings b 
+       JOIN items i ON b.item_id = i.id 
+       WHERE b.id = $1`, [validated.booking_id]);
         if (bookingRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
@@ -91,9 +94,11 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         if (booking.borrower_id !== senderId && booking.lender_id !== senderId) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Cannot send message to this booking', 403);
         }
+        // 3NF: Automatically deduce receiver_id from the two booking parties if not supplied
+        const targetReceiver = validated.receiver_id || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
         const result = await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, $4)
-       RETURNING *`, [validated.booking_id, senderId, validated.receiver_id, validated.content]);
+       RETURNING *`, [validated.booking_id, senderId, targetReceiver, validated.content]);
         return (0, response_1.sendSuccess)(res, result.rows[0], 'Message sent');
     }
     catch (error) {

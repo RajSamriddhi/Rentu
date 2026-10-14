@@ -127,7 +127,12 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             validated.latitude || 28.5355,
             validated.longitude || 77.2167,
         ]);
-        return (0, response_1.sendSuccess)(res, result.rows[0], 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
+        const createdRequest = result.rows[0];
+        // 3NF: Upsert into postal_codes table
+        if (validated.pincode && finalLocality) {
+            await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [validated.pincode, finalLocality]).catch(() => { });
+        }
+        return (0, response_1.sendSuccess)(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
     }
     catch (error) {
         next(error);

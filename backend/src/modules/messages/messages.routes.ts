@@ -8,7 +8,7 @@ const router = Router();
 
 const sendMessageSchema = z.object({
   booking_id: z.string().uuid(),
-  receiver_id: z.string().uuid(),
+  receiver_id: z.string().optional(),
   content: z.string().min(1, 'Message cannot be empty'),
 });
 
@@ -37,7 +37,7 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
       FROM bookings b
       JOIN items i ON b.item_id = i.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON b.lender_id = lender.id
+      JOIN users lender ON i.owner_id = lender.id
       LEFT JOIN LATERAL (
         SELECT content, created_at FROM messages 
         WHERE booking_id = b.id 
@@ -99,9 +99,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     const validated = sendMessageSchema.parse(req.body);
     const senderId = req.user!.id;
 
-    // Verify booking membership
+    // Verify booking membership & resolve lender
     const bookingRes = await query(
-      `SELECT id, borrower_id, lender_id FROM bookings WHERE id = $1`,
+      `SELECT b.id, b.borrower_id, i.owner_id AS lender_id 
+       FROM bookings b 
+       JOIN items i ON b.item_id = i.id 
+       WHERE b.id = $1`,
       [validated.booking_id]
     );
 
@@ -114,11 +117,14 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       return sendError(res, 'FORBIDDEN', 'Cannot send message to this booking', 403);
     }
 
+    // 3NF: Automatically deduce receiver_id from the two booking parties if not supplied
+    const targetReceiver = validated.receiver_id || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
+
     const result = await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [validated.booking_id, senderId, validated.receiver_id, validated.content]
+      [validated.booking_id, senderId, targetReceiver, validated.content]
     );
 
     return sendSuccess(res, result.rows[0], 'Message sent');

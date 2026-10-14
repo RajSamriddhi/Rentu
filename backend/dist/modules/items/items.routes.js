@@ -189,7 +189,18 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             validated.latitude || 28.5355,
             validated.longitude || 77.2167,
         ]);
-        return (0, response_1.sendSuccess)(res, result.rows[0], 'Gear listed successfully! ✨ It is now live on the feed.', 201);
+        const createdItem = result.rows[0];
+        // 1NF: Save images into normalized item_images table
+        if (Array.isArray(validated.image_urls) && validated.image_urls.length > 0) {
+            for (let i = 0; i < validated.image_urls.length; i++) {
+                await (0, db_1.query)(`INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`, [createdItem.id, validated.image_urls[i], i]).catch(() => { });
+            }
+        }
+        // 3NF: Upsert into postal_codes table
+        if (validated.pincode && finalLocality) {
+            await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [validated.pincode, finalLocality]).catch(() => { });
+        }
+        return (0, response_1.sendSuccess)(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
     }
     catch (error) {
         next(error);

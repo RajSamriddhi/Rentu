@@ -106,7 +106,12 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
       RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
     `;
         const result = await (0, db_1.query)(updateSql, values);
-        return (0, response_1.sendSuccess)(res, result.rows[0], 'Profile updated successfully ✨');
+        const updatedUser = result.rows[0];
+        // 3NF: Upsert into postal_codes table
+        if (validated.pincode && validated.locality) {
+            await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [validated.pincode, validated.locality]).catch(() => { });
+        }
+        return (0, response_1.sendSuccess)(res, updatedUser, 'Profile updated successfully ✨');
     }
     catch (error) {
         next(error);
