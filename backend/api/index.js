@@ -1832,7 +1832,7 @@ var startServer = async () => {
     console.error("Failed to start server:", error);
   }
 };
-if (require.main === module) {
+if (require.main === module && !process.env.VERCEL) {
   startServer();
 }
 if (typeof module !== "undefined" && module.exports) {

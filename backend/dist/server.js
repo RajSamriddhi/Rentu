@@ -30,8 +30,8 @@ const startServer = async () => {
         console.error('Failed to start server:', error);
     }
 };
-// Listen on port when executed directly as standalone process (local, container, or Vercel Service)
-if (require.main === module) {
+// Only listen on port when executed directly in non-serverless environment (local dev)
+if (require.main === module && !process.env.VERCEL) {
     startServer();
 }
 // Export for both ESM and CJS compatibility in serverless environments

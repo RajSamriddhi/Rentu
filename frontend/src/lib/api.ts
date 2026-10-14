@@ -36,7 +36,14 @@ const getHeaders = () => {
 };
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  const json = await res.json().catch(() => ({}));
+  const text = await res.text().catch(() => '');
+  let json: any = {};
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = {};
+  }
+
   if (!res.ok || json.success === false) {
     const errorInfo = json.error || {};
     let msg = errorInfo.message;
@@ -44,11 +51,19 @@ async function handleResponse<T>(res: Response): Promise<T> {
       const detailStr = errorInfo.details.map((d: any) => `${d.field ? `${d.field}: ` : ''}${d.message}`).join(', ');
       msg = errorInfo.message ? `${errorInfo.message} (${detailStr})` : detailStr;
     }
+
+    if (!msg && text) {
+      if (text.includes('<title>')) {
+        const match = text.match(/<title>(.*?)<\/title>/i);
+        if (match && match[1]) msg = match[1].trim();
+      } else if (text.length < 200 && !text.startsWith('<!DOCTYPE')) {
+        msg = text.trim();
+      }
+    }
+
     const fallbackMsg = res.status === 401 
       ? 'Please sign in to complete this action.' 
-      : res.status === 500 
-      ? 'Backend service encountered an error. Please try again in a moment.'
-      : `Request failed (HTTP ${res.status})`;
+      : `Backend service error (HTTP ${res.status})${msg ? `: ${msg}` : ''}`;
     throw new ApiError(
       msg || fallbackMsg,
       errorInfo.code || `HTTP_${res.status}`,
