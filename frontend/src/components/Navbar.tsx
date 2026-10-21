@@ -89,24 +89,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
-            {/* Nav links matching Screen 1 & Screen 2: Explore, Requests, How it works */}
+            {/* Nav links: Marketplace, How it works */}
             <nav className="hidden md:flex items-center gap-5 text-xs font-bold">
               <button
                 onClick={() => setActiveTab('explore')}
                 className={`transition-colors cursor-pointer ${
-                  activeTab === 'explore' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
+                  activeTab === 'explore' || activeTab === 'requests' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
                 }`}
               >
-                Explore
-              </button>
-
-              <button
-                onClick={() => setActiveTab('requests')}
-                className={`transition-colors cursor-pointer ${
-                  activeTab === 'requests' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                Requests
+                Marketplace
               </button>
 
               <button
@@ -351,21 +342,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'explore' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
+                  activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
                 }`}
               >
                 <Compass className="w-4 h-4" />
-                <span>Explore Rentals</span>
-              </button>
-
-              <button
-                onClick={() => { setActiveTab('requests'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'requests' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Target className="w-4 h-4" />
-                <span>Requests Wanted Board</span>
+                <span>Marketplace (Items & Requests)</span>
               </button>
 
               <button

@@ -35,6 +35,7 @@ export interface Item {
   longitude?: number;
   distance_meters?: number | null;
   status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE';
+  condition?: string;
   created_at: string;
   owner_name?: string;
   owner_avatar?: string;
