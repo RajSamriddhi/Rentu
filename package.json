@@ -11,7 +11,7 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build:backend": "npm --prefix backend run build",
     "build:frontend": "npm --prefix frontend run build",
-    "build": "npm run build:backend && cp backend/index.js api/index.js && npm run build:frontend && mkdir -p frontend/api frontend/dist/api && cp backend/index.js frontend/api/index.js && cp backend/index.js frontend/dist/api/index.js",
+    "build": "npm run build:backend && cp backend/index.js api/index.js && npm run build:frontend",
     "seed": "npm --prefix backend run seed",
     "start": "npm --prefix backend start"
   },
