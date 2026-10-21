@@ -4,21 +4,7 @@ import { ENV } from '../config/env';
 import { query } from '../config/db';
 import { sendError } from './response';
 
-// Safely initialize Firebase Admin without hard crashes in serverless
-let firebaseAuthInstance: any = null;
-try {
-  const { getApps, initializeApp } = require('firebase-admin/app');
-  const { getAuth } = require('firebase-admin/auth');
-  if (ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
-    initializeApp({
-      projectId: ENV.FIREBASE_PROJECT_ID,
-    });
-  }
-  firebaseAuthInstance = getAuth();
-} catch (err: any) {
-  console.warn('Firebase Admin SDK notice (fallback active):', err?.message);
-}
-
+// Robust JWT & Firebase token verification without heavy GCP SDK dependencies
 export interface AuthUser {
   id: string;
   email: string;
@@ -69,17 +55,6 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
       firebaseUid = decodedRaw.user_id || decodedRaw.sub;
       email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
       name = decodedRaw.name || 'User';
-    } else if (firebaseAuthInstance) {
-      try {
-        const decodedFb = await firebaseAuthInstance.verifyIdToken(token);
-        if (decodedFb && decodedFb.uid) {
-          firebaseUid = decodedFb.uid;
-          email = decodedFb.email || `${decodedFb.uid}@firebase.rentu.internal`;
-          name = decodedFb.name || 'User';
-        }
-      } catch {
-        // Fallback
-      }
     }
 
       if (firebaseUid) {

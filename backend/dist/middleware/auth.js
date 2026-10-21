@@ -8,21 +8,6 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../config/env");
 const db_1 = require("../config/db");
 const response_1 = require("./response");
-// Safely initialize Firebase Admin without hard crashes in serverless
-let firebaseAuthInstance = null;
-try {
-    const { getApps, initializeApp } = require('firebase-admin/app');
-    const { getAuth } = require('firebase-admin/auth');
-    if (env_1.ENV.FIREBASE_PROJECT_ID && getApps().length === 0) {
-        initializeApp({
-            projectId: env_1.ENV.FIREBASE_PROJECT_ID,
-        });
-    }
-    firebaseAuthInstance = getAuth();
-}
-catch (err) {
-    console.warn('Firebase Admin SDK notice (fallback active):', err?.message);
-}
 async function resolveUserFromToken(token) {
     // 1. Try local Rentu⁺ JWT first
     try {
@@ -56,19 +41,6 @@ async function resolveUserFromToken(token) {
             firebaseUid = decodedRaw.user_id || decodedRaw.sub;
             email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
             name = decodedRaw.name || 'User';
-        }
-        else if (firebaseAuthInstance) {
-            try {
-                const decodedFb = await firebaseAuthInstance.verifyIdToken(token);
-                if (decodedFb && decodedFb.uid) {
-                    firebaseUid = decodedFb.uid;
-                    email = decodedFb.email || `${decodedFb.uid}@firebase.rentu.internal`;
-                    name = decodedFb.name || 'User';
-                }
-            }
-            catch {
-                // Fallback
-            }
         }
         if (firebaseUid) {
             // Look up user by firebase_uid or id or email
