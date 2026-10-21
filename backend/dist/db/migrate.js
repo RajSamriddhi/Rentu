@@ -138,6 +138,7 @@ const runMigrations = async () => {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
 

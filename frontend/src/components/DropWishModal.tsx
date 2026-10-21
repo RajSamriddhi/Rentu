@@ -63,7 +63,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
 
   // Form Fields - Pickup & Return Logistics
-  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION'>('LENDER_LOCATION');
+  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [pickupLocality, setPickupLocality] = useState('');
   const [locality, setLocality] = useState(user?.locality || '');
 
   const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
@@ -71,6 +72,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
   // States
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isDetectingPickupLoc, setIsDetectingPickupLoc] = useState(false);
   const [isDetectingReturnLoc, setIsDetectingReturnLoc] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -126,22 +128,27 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
     }
   }, [user]);
 
-  const handleDetectLocation = async (isReturn: boolean = false) => {
-    if (isReturn) setIsDetectingReturnLoc(true);
+  const handleDetectLocation = async (target: 'main' | 'pickup' | 'return' = 'main') => {
+    if (target === 'return') setIsDetectingReturnLoc(true);
+    else if (target === 'pickup') setIsDetectingPickupLoc(true);
     else setIsDetectingLocation(true);
     setErrorMsg('');
 
     try {
       const loc = await detectCurrentLocation();
-      if (isReturn) {
+      if (target === 'return') {
         setReturnLocality(loc.locality);
+      } else if (target === 'pickup') {
+        setPickupLocality(loc.locality);
+        if (!locality) setLocality(loc.locality);
       } else {
         setLocality(loc.locality);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect GPS location.');
     } finally {
-      if (isReturn) setIsDetectingReturnLoc(false);
+      if (target === 'return') setIsDetectingReturnLoc(false);
+      else if (target === 'pickup') setIsDetectingPickupLoc(false);
       else setIsDetectingLocation(false);
     }
   };
@@ -263,6 +270,11 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
       return;
     }
 
+    if (pickupType === 'CUSTOM_LOCATION' && !pickupLocality.trim()) {
+      setErrorMsg('Please specify the custom pickup meetup spot or landmark.');
+      return;
+    }
+
     if (returnType === 'CUSTOM_LOCATION' && !returnLocality.trim()) {
       setErrorMsg('Please specify the return meetup spot or landmark.');
       return;
@@ -272,6 +284,12 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
     setErrorMsg('');
 
     try {
+      const finalPickupLoc = pickupType === 'MY_LOCATION' 
+        ? locality.trim() 
+        : pickupType === 'CUSTOM_LOCATION' 
+        ? pickupLocality.trim() 
+        : '';
+
       const finalReturnLoc = returnType === 'MY_LOCATION' 
         ? locality.trim() 
         : returnType === 'CUSTOM_LOCATION' 
@@ -290,6 +308,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         offered_amount: Number(offeredAmount || 0),
         locality: locality.trim() || user?.locality || '',
         pickup_type: pickupType,
+        pickup_locality: finalPickupLoc || undefined,
         return_type: returnType,
         return_locality: finalReturnLoc || undefined,
         image_url: imageUrl || undefined,
@@ -648,18 +667,18 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
               4. Pickup Handover: Where will you receive the item?
             </h3>
 
-            {/* 2 Selectable Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 3 Selectable Pickup Options */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <button
                 type="button"
                 onClick={() => setPickupType('LENDER_LOCATION')}
-                className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
                   pickupType === 'LENDER_LOCATION'
                     ? 'border-brand bg-brand-soft/40 text-ink ring-1 ring-brand shadow-xs'
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink hover:border-zinc-300'
                 }`}
               >
-                <div className="text-xs font-black flex items-center gap-1.5 text-ink">
+                <div className="text-xs font-black text-ink flex items-center gap-1.5">
                   <span>🚶 I'll go to Lender's place</span>
                 </div>
                 <div className="text-[11px] text-ink-secondary mt-1">
@@ -669,31 +688,86 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setPickupType('MY_LOCATION')}
-                className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                onClick={() => {
+                  setPickupType('MY_LOCATION');
+                  if (!locality && user?.locality) setLocality(user.locality);
+                }}
+                className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
                   pickupType === 'MY_LOCATION'
                     ? 'border-brand bg-brand-soft/40 text-ink ring-1 ring-brand shadow-xs'
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink hover:border-zinc-300'
                 }`}
               >
-                <div className="text-xs font-black flex items-center gap-1.5 text-ink">
-                  <span>📍 Deliver to My Place / Location</span>
+                <div className="text-xs font-black text-ink flex items-center gap-1.5">
+                  <span>📍 My Current Location</span>
                 </div>
                 <div className="text-[11px] text-ink-secondary mt-1">
-                  Lender brings or delivers the gear directly to your address or campus.
+                  Ask lender to deliver the gear directly to your current live location.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPickupType('CUSTOM_LOCATION')}
+                className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                  pickupType === 'CUSTOM_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-ink ring-1 ring-brand shadow-xs'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink hover:border-zinc-300'
+                }`}
+              >
+                <div className="text-xs font-black text-ink flex items-center gap-1.5">
+                  <span>🤝 Custom Meet Location</span>
+                </div>
+                <div className="text-[11px] text-ink-secondary mt-1">
+                  Choose a mutual landmark, cafe, or metro station for pickup.
                 </div>
               </button>
             </div>
+
+            {/* Custom Pickup Location Input when CUSTOM_LOCATION is selected */}
+            {pickupType === 'CUSTOM_LOCATION' && (
+              <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-ink">
+                    Custom Pickup Meetup Spot / Landmark *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleDetectLocation('pickup')}
+                    disabled={isDetectingPickupLoc}
+                    className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Navigation className="w-3 h-3 text-brand" />
+                    <span>{isDetectingPickupLoc ? 'Detecting...' : 'GPS'}</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={pickupLocality}
+                  onChange={(e) => setPickupLocality(e.target.value)}
+                  placeholder="e.g. Indiranagar Metro Station Gate 1 or Forum Mall Main Entrance"
+                  className="w-full bg-surface border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  required
+                />
+                <p className="text-[11px] text-ink-secondary">
+                  Specify the exact mutual public spot where you'd like to meet the lender to collect the gear.
+                </p>
+              </div>
+            )}
 
             {/* Address / Locality Input */}
             <div className="pt-1">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-ink">
-                  {pickupType === 'MY_LOCATION' ? 'Your Delivery Address / Locality *' : 'Your Area / Neighborhood (to find nearby lenders) *'}
+                  {pickupType === 'MY_LOCATION' 
+                    ? 'Your Current Delivery Address / Locality *' 
+                    : pickupType === 'CUSTOM_LOCATION'
+                    ? 'Your General Area / City *'
+                    : 'Your Area / Neighborhood (to find nearby lenders) *'}
                 </label>
                 <button
                   type="button"
-                  onClick={() => handleDetectLocation(false)}
+                  onClick={() => handleDetectLocation('main')}
                   disabled={isDetectingLocation}
                   className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2.5 py-1 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
                   title="Detect GPS location"
@@ -719,6 +793,11 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                 className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                 required
               />
+              <p className="text-[11px] text-ink-secondary mt-1">
+                {pickupType === 'MY_LOCATION'
+                  ? 'Lender will bring or deliver the gear directly to this current address.'
+                  : 'Helps us show your request to lenders in your immediate area.'}
+              </p>
             </div>
           </div>
 
@@ -790,10 +869,16 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   </label>
 
                   <div className="flex items-center gap-2">
-                    {locality && returnType === 'MY_LOCATION' && (
+                    {((pickupType === 'CUSTOM_LOCATION' && pickupLocality) || locality) && (
                       <button
                         type="button"
-                        onClick={() => setReturnLocality(locality)}
+                        onClick={() => {
+                          if (returnType === 'CUSTOM_LOCATION' && pickupType === 'CUSTOM_LOCATION' && pickupLocality) {
+                            setReturnLocality(pickupLocality);
+                          } else if (locality) {
+                            setReturnLocality(locality);
+                          }
+                        }}
                         className="text-[11px] font-bold text-brand hover:underline cursor-pointer"
                       >
                         Same as pickup
@@ -801,7 +886,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     )}
                     <button
                       type="button"
-                      onClick={() => handleDetectLocation(true)}
+                      onClick={() => handleDetectLocation('return')}
                       disabled={isDetectingReturnLoc}
                       className="text-[11px] font-bold text-brand hover:underline cursor-pointer"
                     >

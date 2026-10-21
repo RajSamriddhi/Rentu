@@ -53012,6 +53012,7 @@ var createRequestSchema = external_exports.object({
   longitude: external_exports.number().optional(),
   image_url: external_exports.string().nullable().optional(),
   pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional().default("LENDER_LOCATION"),
   return_locality: external_exports.string().optional()
 });
@@ -53029,6 +53030,7 @@ var updateRequestSchema = external_exports.object({
   status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
   image_url: external_exports.string().nullable().optional(),
   pickup_type: external_exports.string().optional(),
+  pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional(),
   return_locality: external_exports.string().optional()
 });
@@ -53039,7 +53041,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
@@ -53085,7 +53087,7 @@ router3.get("/:id", async (req, res, next) => {
       `SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.status, r.created_at, r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
@@ -53128,9 +53130,9 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     }
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, return_type, return_locality, status)
+        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'OPEN')
        RETURNING *`,
       [
         req.user.id,
@@ -53150,6 +53152,7 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.longitude ?? null,
         validated.image_url ?? null,
         validated.pickup_type || "LENDER_LOCATION",
+        validated.pickup_locality || null,
         validated.return_type || "LENDER_LOCATION",
         validated.return_locality || null
       ]
@@ -53232,6 +53235,10 @@ router3.put("/:id", authMiddleware, async (req, res, next) => {
     if (validated.pickup_type !== void 0) {
       values.push(validated.pickup_type);
       fields.push(`pickup_type = $${values.length}`);
+    }
+    if (validated.pickup_locality !== void 0) {
+      values.push(validated.pickup_locality);
+      fields.push(`pickup_locality = $${values.length}`);
     }
     if (validated.return_type !== void 0) {
       values.push(validated.return_type);

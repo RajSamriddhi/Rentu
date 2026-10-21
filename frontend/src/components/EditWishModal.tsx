@@ -26,7 +26,8 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   const [durationDays, setDurationDays] = useState<number | ''>('');
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
   const [locality, setLocality] = useState('');
-  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION'>('LENDER_LOCATION');
+  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [pickupLocality, setPickupLocality] = useState('');
   const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
   const [returnLocality, setReturnLocality] = useState('');
   const [status, setStatus] = useState<'OPEN' | 'FULFILLED' | 'CANCELLED'>('OPEN');
@@ -53,6 +54,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setOfferedAmount(Number(request.offered_amount) || '');
       setLocality(request.locality || '');
       setPickupType(request.pickup_type || 'LENDER_LOCATION');
+      setPickupLocality(request.pickup_locality || '');
       setReturnType(request.return_type || 'LENDER_LOCATION');
       setReturnLocality(request.return_locality || '');
       setStatus(request.status || 'OPEN');
@@ -116,6 +118,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
         offered_amount: Number(offeredAmount),
         locality: locality.trim(),
         pickup_type: pickupType,
+        pickup_locality: pickupType === 'CUSTOM_LOCATION' ? (pickupLocality.trim() || undefined) : undefined,
         return_type: returnType,
         return_locality: returnLocality.trim() || undefined,
         status,
@@ -350,31 +353,57 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
           {/* Pickup Preference */}
           <div className="space-y-1.5 pt-1">
             <label className="block text-xs font-bold text-ink">Pickup Handover Choice</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2 text-[11px] font-bold">
               <button
                 type="button"
                 onClick={() => setPickupType('LENDER_LOCATION')}
-                className={`p-2.5 rounded-xl border text-xs font-bold text-left cursor-pointer transition-colors ${
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
                   pickupType === 'LENDER_LOCATION'
                     ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                 }`}
               >
-                🚶 Pick up from Lender
+                🚶 Go to Lender
               </button>
               <button
                 type="button"
                 onClick={() => setPickupType('MY_LOCATION')}
-                className={`p-2.5 rounded-xl border text-xs font-bold text-left cursor-pointer transition-colors ${
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
                   pickupType === 'MY_LOCATION'
                     ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                 }`}
               >
-                📍 Deliver to My Place
+                📍 My Location
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickupType('CUSTOM_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  pickupType === 'CUSTOM_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🤝 Meetup Spot
               </button>
             </div>
           </div>
+
+          {/* Custom Pickup Landmark if applicable */}
+          {pickupType === 'CUSTOM_LOCATION' && (
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">Pickup Landmark / Meetup Spot *</label>
+              <input
+                type="text"
+                value={pickupLocality}
+                onChange={(e) => setPickupLocality(e.target.value)}
+                placeholder="e.g. Indiranagar Metro Station Gate 1"
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                required
+              />
+            </div>
+          )}
 
           {/* Return Preference */}
           <div className="space-y-1.5 pt-1">

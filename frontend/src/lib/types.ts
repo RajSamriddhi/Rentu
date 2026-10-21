@@ -61,7 +61,8 @@ export interface CommunityRequest {
   duration_days: number;
   offered_amount: number | string;
   locality: string;
-  pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION';
+  pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  pickup_locality?: string;
   return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
   return_locality?: string;
   image_url?: string | null;

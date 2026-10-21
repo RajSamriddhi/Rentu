@@ -539,7 +539,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                               <span className="font-bold text-ink">Pickup:</span>
                               <span>
                                 {req.pickup_type === 'MY_LOCATION' 
-                                  ? `📍 Deliver to borrower (${req.locality})` 
+                                  ? `📍 Deliver to current location (${req.locality})` 
+                                  : req.pickup_type === 'CUSTOM_LOCATION'
+                                  ? `🤝 Meet at ${req.pickup_locality || req.locality || 'Custom Spot'}`
                                   : `🚶 Pickup from Lender's place`}
                               </span>
                             </span>
