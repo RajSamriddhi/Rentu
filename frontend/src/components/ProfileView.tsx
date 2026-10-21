@@ -15,7 +15,8 @@ import {
   TrendingUp,
   Award,
   ChevronRight,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -24,6 +25,8 @@ import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { EditProfileModal } from './EditProfileModal';
+import { EditItemModal } from './EditItemModal';
+import { EditWishModal } from './EditWishModal';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
@@ -46,11 +49,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editingRequest, setEditingRequest] = useState<CommunityRequest | null>(null);
 
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDeleteItemDirect = async (id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${title}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteItem(id);
+      loadData();
+    } catch (err: any) {
+      alert('Failed to delete listing: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handleDeleteRequestDirect = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete your request for "${name}"?`)) return;
+    try {
+      await api.deleteRequest(id);
+      loadData();
+    } catch (err: any) {
+      alert('Failed to delete request: ' + (err.message || 'Server error'));
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -365,6 +390,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }}
       />
 
+      {/* Edit Gear Listing Modal */}
+      <EditItemModal
+        item={editingItem}
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSuccess={() => {
+          setEditingItem(null);
+          loadData();
+        }}
+      />
+
+      {/* Edit Wish/Request Modal */}
+      <EditWishModal
+        request={editingRequest}
+        isOpen={!!editingRequest}
+        onClose={() => setEditingRequest(null)}
+        onSuccess={() => {
+          setEditingRequest(null);
+          loadData();
+        }}
+      />
+
       {/* Modern Segmented Navigation Tabs */}
       <div className="flex items-center gap-2 pt-8 pb-4 overflow-x-auto scrollbar-none whitespace-nowrap">
         {[
@@ -447,11 +494,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {myItems.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    onClick={() => {}}
-                  />
+                  <div key={item.id} className="flex flex-col gap-2">
+                    <ItemCard
+                      item={item}
+                      onClick={() => setEditingItem(item)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="flex-1 py-1.5 px-3 rounded-xl bg-surface border border-divider hover:border-brand hover:text-brand text-ink text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                        title="Edit Listing Details"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit Gear</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItemDirect(item.id, item.title)}
+                        className="py-1.5 px-3 rounded-xl bg-surface border border-divider hover:bg-rose-500/10 hover:border-rose-500/30 text-rose-500 text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                        title="Delete Listing"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -482,16 +548,70 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             ) : (
               myRequests.map((req) => (
-                <div key={req.id} className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex items-center justify-between shadow-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+                <div 
+                  key={req.id} 
+                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                >
                   <div className="space-y-1">
-                    <h4 className="font-extrabold text-ink text-sm sm:text-base">{req.item_name}</h4>
-                    <p className="text-xs text-ink-secondary">
-                      ₹{Number(req.offered_amount)} proposed budget • Needed by {req.start_date}
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h4 className="font-extrabold text-ink text-sm sm:text-base">{req.item_name}</h4>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                        req.status === 'OPEN'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : req.status === 'FULFILLED'
+                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                          : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
+                      }`}>
+                        {req.status}
+                      </span>
+                      {req.category && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
+                          {req.category}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
+                      <span>•</span>
+                      <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
+                      {req.duration_days ? (
+                        <>
+                          <span>•</span>
+                          <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
+                        </>
+                      ) : null}
+                      {req.locality ? (
+                        <>
+                          <span>•</span>
+                          <span>{req.locality}</span>
+                        </>
+                      ) : null}
                     </p>
+                    {req.description && (
+                      <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
+                        {req.description}
+                      </p>
+                    )}
                   </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-black bg-brand/10 text-brand border border-brand/20">
-                    {req.status}
-                  </span>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setEditingRequest(req)}
+                      className="btn-secondary text-xs px-3.5 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Request</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRequestDirect(req.id, req.item_name)}
+                      className="py-2 px-3 rounded-xl border border-divider hover:bg-rose-500/10 hover:border-rose-500/30 text-rose-500 text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                      title="Delete Request"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
                 </div>
               ))
             )}

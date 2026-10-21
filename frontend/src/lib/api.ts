@@ -234,11 +234,23 @@ export const api = {
     return handleResponse(res);
   },
 
-  async updateRequestStatus(id: string, status: 'OPEN' | 'FULFILLED' | 'CANCELLED'): Promise<CommunityRequest> {
+  async updateRequest(id: string, data: Partial<CommunityRequest>): Promise<CommunityRequest> {
     const res = await fetch(`${API_BASE}/requests/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async updateRequestStatus(id: string, status: 'OPEN' | 'FULFILLED' | 'CANCELLED'): Promise<CommunityRequest> {
+    return this.updateRequest(id, { status });
+  },
+
+  async deleteRequest(id: string): Promise<{ id: string }> {
+    const res = await fetch(`${API_BASE}/requests/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },

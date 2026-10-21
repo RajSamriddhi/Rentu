@@ -22,6 +22,18 @@ const createRequestSchema = z.object({
   longitude: z.number().optional(),
 });
 
+const updateRequestSchema = z.object({
+  item_name: z.string().min(3).optional(),
+  description: z.string().min(5).optional(),
+  category: z.string().optional(),
+  start_date: z.string().optional(),
+  start_time: z.string().optional(),
+  duration_days: z.number().int().positive().optional(),
+  offered_amount: z.number().min(0).optional(),
+  locality: z.string().optional(),
+  status: z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
+});
+
 
 // Browse Community Wishes / Bounties
 router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
@@ -162,26 +174,85 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   }
 });
 
-// Claim / Fulfill / Update Status ("I Gotchu")
+// Edit Request / Claim / Fulfill / Update Status
 router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { id } = req.params;
-    const { status = 'FULFILLED' } = req.body;
+    const validated = updateRequestSchema.parse(req.body);
 
     const check = await query('SELECT seeker_id, status FROM requests WHERE id = $1', [id]);
     if (check.rows.length === 0) {
       return sendError(res, 'NOT_FOUND', 'Wish request not found', 404);
     }
 
-    const result = await query(
-      `UPDATE requests
-       SET status = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [status, id]
-    );
+    const isSeeker = check.rows[0].seeker_id === req.user!.id || req.user!.role === 'ADMIN';
 
-    return sendSuccess(res, result.rows[0], `Wish marked as ${status.toLowerCase()}! 🤝`);
+    // If another neighbor is claiming/fulfilling it
+    if (!isSeeker) {
+      if (validated.status === 'FULFILLED') {
+        const result = await query(
+          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+          [id]
+        );
+        return sendSuccess(res, result.rows[0], 'Wish marked as fulfilled! 🤝');
+      }
+      return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
+    }
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (validated.item_name !== undefined) {
+      values.push(validated.item_name);
+      fields.push(`item_name = $${values.length}`);
+    }
+    if (validated.description !== undefined) {
+      values.push(validated.description);
+      fields.push(`description = $${values.length}`);
+    }
+    if (validated.category !== undefined) {
+      values.push(validated.category);
+      fields.push(`category = $${values.length}`);
+    }
+    if (validated.start_date !== undefined) {
+      values.push(validated.start_date);
+      fields.push(`start_date = $${values.length}`);
+    }
+    if (validated.start_time !== undefined) {
+      values.push(validated.start_time);
+      fields.push(`start_time = $${values.length}`);
+    }
+    if (validated.duration_days !== undefined) {
+      values.push(validated.duration_days);
+      fields.push(`duration_days = $${values.length}`);
+    }
+    if (validated.offered_amount !== undefined) {
+      values.push(validated.offered_amount);
+      fields.push(`offered_amount = $${values.length}`);
+    }
+    if (validated.locality !== undefined) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.status !== undefined) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+    }
+
+    if (fields.length === 0) {
+      return sendError(res, 'BAD_REQUEST', 'No fields provided for update', 400);
+    }
+
+    values.push(id);
+    const updateSql = `
+      UPDATE requests
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+
+    const result = await query(updateSql, values);
+    return sendSuccess(res, result.rows[0], 'Wish request updated successfully');
   } catch (error) {
     next(error);
   }
