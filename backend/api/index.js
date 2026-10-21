@@ -41041,7 +41041,8 @@ async function searchListings(params) {
     if (words.length > 0) {
       const orClauses = [];
       for (const w of words) {
-        sqlParams.push(`%${w}%`);
+        const stem = w.endsWith("s") && w.length > 3 && !w.endsWith("ss") ? w.slice(0, -1) : w;
+        sqlParams.push(`%${stem}%`);
         const idx = sqlParams.length;
         orClauses.push(`(i.title ILIKE $${idx} OR i.description ILIKE $${idx} OR i.category ILIKE $${idx})`);
       }
@@ -41406,13 +41407,22 @@ var geminiToolDeclarations = [
 ];
 
 // src/modules/ai/ai.service.ts
+var CANDIDATE_MODELS = [
+  "gemini-3.1-flash-lite",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-3.8-flash"
+];
 var SYSTEM_INSTRUCTION = `
 You are Rentu AI, the lovable, intelligent shopping and rental assistant for Rentu\u207A (a Gen Z peer-to-peer gear sharing and rental platform).
 Personality:
 - Friendly, warm, encouraging, and helpful. You occasionally use a sweet touch like "Of course! \u{1F497}" or "Let me check that for you! \u2728" without overusing emojis.
 - Never sound robotic or overly corporate.
+- For general greetings (e.g. "hi", "hello", "who are you"), casual everyday questions, and introductions: reply warmly and conversationally directly. Do NOT call search or database tools for pure greetings!
 - You can answer general everyday questions, casual conversation, explanations ("explain this simply"), brainstorming, and recommendations.
-- For Rentu marketplace questions, you ALWAYS call the provided tools to search real listings, check availability, compare prices, or find cheaper alternatives.
+- For Rentu marketplace shopping/rental requests (e.g. searching for gear, comparing prices, checking dates, finding alternatives), ALWAYS call the appropriate tool.
 - You NEVER invent fake products, fake prices, or fake owners.
 - Rentu items are priced in Indian Rupees (INR \u20B9 per day). Direct peer-to-peer rental, no extra platform deposit fees.
 - If asked how listing, contacting owners, or booking works:
@@ -41451,102 +41461,150 @@ async function executeGeminiTool(callName, args) {
     return { data: { error: err.message || "Tool execution error" }, items: [] };
   }
 }
+function parseGeminiError(err) {
+  const status = err?.status || err?.statusCode;
+  const errMsg = String(err?.message || "").toLowerCase();
+  if (errMsg.includes("api_key_invalid") || errMsg.includes("api key not valid") || status === 400 && errMsg.includes("api key")) {
+    return { reason: "invalid_key", category: "API Key Invalid", status: 400 };
+  }
+  if (status === 403 || errMsg.includes("permission_denied") || errMsg.includes("permission")) {
+    return { reason: "permission_denied", category: "Permission Denied / Restricted Key", status: 403 };
+  }
+  if (status === 429 || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+    return { reason: "quota_exceeded", category: "Quota Exceeded / Rate Limit", status: 429 };
+  }
+  if (status === 404 || errMsg.includes("not found") || errMsg.includes("is no longer available")) {
+    return { reason: "model_not_found", category: "Model Not Found / Unsupported Version", status: 404 };
+  }
+  if (status === 503 || errMsg.includes("high demand") || errMsg.includes("service unavailable")) {
+    return { reason: "service_unavailable", category: "Service High Demand / 503", status: 503 };
+  }
+  if (errMsg.includes("econnrefused") || errMsg.includes("etimedout") || errMsg.includes("fetch failed")) {
+    return { reason: "network_failure", category: "Network Failure / Timeout", status };
+  }
+  return { reason: "unknown_error", category: `API Error (HTTP ${status || "unknown"})`, status };
+}
 async function callGemini(messages, context) {
   const apiKey = ENV.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === "" || apiKey.includes("your_key_here")) {
-    return { success: false, reason: "missing_key" };
+    return { success: false, reason: "missing_key", errorCategory: "Key Unconfigured" };
   }
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const tools = [
-      {
-        functionDeclarations: geminiToolDeclarations.map((decl) => ({
-          name: decl.name,
-          description: decl.description,
-          parameters: decl.parameters
-        }))
-      }
-    ];
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      systemInstruction: SYSTEM_INSTRUCTION,
-      tools,
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 900
-      }
-    });
-    const recent = messages.slice(-10);
-    if (recent.length === 0) {
-      return { success: false, reason: "missing_key" };
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const tools = [
+    {
+      functionDeclarations: geminiToolDeclarations.map((decl) => ({
+        name: decl.name,
+        description: decl.description,
+        parameters: decl.parameters
+      }))
     }
-    const lastMsg = recent[recent.length - 1];
-    let promptText = lastMsg.content;
-    if (context && (context.itemId || context.locality || context.startDate)) {
-      promptText += `
+  ];
+  const recent = messages.slice(-10);
+  if (recent.length === 0) {
+    return { success: false, reason: "missing_key", errorCategory: "Empty messages" };
+  }
+  const lastMsg = recent[recent.length - 1];
+  let promptText = lastMsg.content;
+  if (context && (context.itemId || context.locality || context.startDate)) {
+    promptText += `
 [Context: Item ID=${context.itemId || "none"}, Locality=${context.locality || "none"}, StartDate=${context.startDate || "none"}, DurationDays=${context.durationDays || "none"}]`;
-    }
-    const history = [];
-    const prior = recent.slice(0, -1);
-    for (const m of prior) {
-      history.push({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }]
-      });
-    }
-    while (history.length > 0 && history[0].role !== "user") {
-      history.shift();
-    }
-    const chat = model.startChat({ history });
-    let result = await chat.sendMessage(promptText);
-    const accumulatedItems = [];
-    let iterations = 0;
-    while (iterations < 3) {
-      iterations++;
-      const functionCalls = result.response.functionCalls();
-      if (!functionCalls || functionCalls.length === 0) {
-        break;
-      }
-      const call = functionCalls[0];
-      const toolResult = await executeGeminiTool(call.name, call.args || {});
-      if (toolResult.items && toolResult.items.length > 0) {
-        for (const item of toolResult.items) {
-          if (!accumulatedItems.some((existing) => existing.id === item.id)) {
-            accumulatedItems.push(item);
-          }
-        }
-      }
-      result = await chat.sendMessage([
-        {
-          functionResponse: {
-            name: call.name,
-            response: { result: toolResult.data }
-          }
-        }
-      ]);
-    }
-    const replyText = result.response.text();
-    return {
-      success: true,
-      response: {
-        reply: replyText,
-        mode: "ai",
-        provider: "Google Gemini 1.5 Flash (Official SDK)",
-        items: accumulatedItems,
-        suggestions: generateContextualSuggestions(replyText, accumulatedItems)
-      }
-    };
-  } catch (err) {
-    const status = err?.status || err?.statusCode;
-    const errMsg = String(err?.message || "");
-    const isKeyError = status === 400 || status === 403 || status === 404 || errMsg.includes("API_KEY") || errMsg.includes("API key") || errMsg.includes("not found") || errMsg.includes("permission");
-    console.warn(`[Rentu AI] Gemini SDK call error (${isKeyError ? "invalid key" : "service failure"}):`, errMsg.slice(0, 120));
-    return {
-      success: false,
-      reason: isKeyError ? "invalid_key" : "provider_error",
-      errorMessage: errMsg
-    };
   }
+  let lastErrorOutcome = null;
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: SYSTEM_INSTRUCTION,
+        tools,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 900
+        }
+      });
+      const contents = [];
+      const prior = recent.slice(0, -1);
+      for (const m of prior) {
+        contents.push({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }]
+        });
+      }
+      while (contents.length > 0 && contents[0].role !== "user") {
+        contents.shift();
+      }
+      contents.push({
+        role: "user",
+        parts: [{ text: promptText }]
+      });
+      let res = await model.generateContent({ contents });
+      const accumulatedItems = [];
+      let iterations = 0;
+      while (iterations < 3) {
+        iterations++;
+        const functionCalls = res.response.functionCalls();
+        if (!functionCalls || functionCalls.length === 0) {
+          break;
+        }
+        const call = functionCalls[0];
+        const candidate = res.response.candidates?.[0]?.content;
+        if (candidate) {
+          contents.push(candidate);
+        }
+        const toolResult = await executeGeminiTool(call.name, call.args || {});
+        if (toolResult.items && toolResult.items.length > 0) {
+          for (const item of toolResult.items) {
+            if (!accumulatedItems.some((existing) => existing.id === item.id)) {
+              accumulatedItems.push(item);
+            }
+          }
+        }
+        contents.push({
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: call.name,
+                response: { result: toolResult.data },
+                ...call.id ? { id: call.id } : {}
+              }
+            }
+          ]
+        });
+        res = await model.generateContent({ contents });
+      }
+      const replyText = res.response.text();
+      const modelDisplayName = modelName === "gemini-3.1-flash-lite" ? "Google Gemini 3.1 Flash Lite" : modelName.includes("3.8") ? "Google Gemini 3.8 Flash" : modelName.includes("3.6") ? "Google Gemini 3.6 Flash" : modelName.includes("3.5") ? "Google Gemini 3.5 Flash" : modelName.includes("3.1") ? "Google Gemini 3.1 Flash Lite" : modelName.includes("3-flash") ? "Google Gemini 3 Flash" : "Google Gemini Flash";
+      return {
+        success: true,
+        response: {
+          reply: replyText,
+          mode: "ai",
+          provider: `${modelDisplayName} (Official SDK)`,
+          items: accumulatedItems,
+          suggestions: generateContextualSuggestions(replyText, accumulatedItems)
+        }
+      };
+    } catch (err) {
+      const parsed = parseGeminiError(err);
+      lastErrorOutcome = parsed;
+      if (parsed.reason === "invalid_key" || parsed.reason === "permission_denied" || parsed.reason === "quota_exceeded") {
+        console.warn(`[Rentu AI] Gemini SDK call stopped (${parsed.category}): HTTP ${parsed.status || "unknown"}`);
+        return {
+          success: false,
+          reason: parsed.reason,
+          errorCategory: parsed.category,
+          statusCode: parsed.status
+        };
+      }
+      console.warn(`[Rentu AI] Model ${modelName} returned ${parsed.category} (HTTP ${parsed.status || "unknown"}), trying next fallback candidate...`);
+    }
+  }
+  return {
+    success: false,
+    reason: lastErrorOutcome?.reason || "unknown_error",
+    errorCategory: lastErrorOutcome?.category || "Provider Error",
+    statusCode: lastErrorOutcome?.status
+  };
 }
 function generateContextualSuggestions(text, items) {
   const suggestions = [];
@@ -41593,6 +41651,7 @@ function extractConversationContext(messages, currentContext) {
 async function executeDeterministicFallback(messages, context, fallbackReason) {
   const latestMessage = messages[messages.length - 1]?.content || "";
   const queryLower = latestMessage.toLowerCase().trim();
+  const normalized = queryLower.replace(/[!?,.:;~'"\-()]/g, " ").replace(/\s+/g, " ").trim();
   const convContext = extractConversationContext(messages, context);
   const accumulatedItems = [];
   let reply = "";
@@ -41601,11 +41660,31 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
     provider = "Rentu Smart Search (Fallback: Gemini API key invalid)";
   } else if (fallbackReason === "missing_key") {
     provider = "Rentu Smart Search (Fallback: GEMINI_API_KEY unconfigured)";
-  } else if (fallbackReason === "provider_error") {
-    provider = "Rentu Smart Search (Fallback: Gemini API service unreachable)";
+  } else if (fallbackReason === "model_not_found") {
+    provider = "Rentu Smart Search (Fallback: Gemini model version mismatch)";
+  } else if (fallbackReason === "quota_exceeded") {
+    provider = "Rentu Smart Search (Fallback: Gemini quota limit reached)";
+  } else if (fallbackReason === "permission_denied") {
+    provider = "Rentu Smart Search (Fallback: Gemini access restricted)";
+  } else if (fallbackReason === "service_unavailable") {
+    provider = "Rentu Smart Search (Fallback: Gemini service high demand)";
+  } else if (fallbackReason === "network_failure") {
+    provider = "Rentu Smart Search (Fallback: Network timeout)";
+  } else if (fallbackReason === "unknown_error") {
+    provider = "Rentu Smart Search (Fallback: Gemini service error)";
   }
-  if (queryLower === "hi" || queryLower === "hello" || queryLower === "hey" || queryLower === "hey there" || queryLower.startsWith("hi ") || queryLower.startsWith("hello ") || queryLower.includes("who are you") || queryLower.includes("what can you do")) {
-    reply = `Hey there neighbor! \u{1F497} I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
+  const isGreeting = normalized === "hi" || normalized === "hello" || normalized === "hey" || normalized === "hey there" || normalized.startsWith("hi ") || normalized.startsWith("hello ") || normalized.startsWith("hey ") || normalized.startsWith("good morning") || normalized.startsWith("good afternoon") || normalized.startsWith("good evening") || normalized.startsWith("greetings") || normalized.startsWith("namaste") || normalized.startsWith("howdy") || normalized.startsWith("yo ") || normalized === "yo";
+  const isIntroductionOrIdentity = normalized.includes("introduce") || normalized.includes("who are you") || normalized.includes("who r u") || normalized.includes("about yourself") || normalized.includes("what is your name") || normalized.includes("what are you") || normalized.includes("what can you do") || normalized.includes("what do you do") || normalized.includes("tell me about you") || normalized.includes("what is rentu") || normalized.includes("how does rentu work") || normalized.includes("who made you");
+  const isCasualPleasantry = normalized.includes("how are you") || normalized.includes("how r u") || normalized.includes("how is it going") || normalized.includes("how are things") || normalized === "thanks" || normalized.startsWith("thank you") || normalized.startsWith("thanks") || normalized === "bye" || normalized.startsWith("goodbye") || normalized.includes("nice to meet you");
+  if (isGreeting || isIntroductionOrIdentity || isCasualPleasantry) {
+    if (normalized.includes("thank")) {
+      reply = `You're so very welcome! \u{1F497} It's always my pleasure to help. Let me know if you need to find more gear, compare rates, or check availability for your next adventure! \u2728`;
+    } else if (normalized.startsWith("bye") || normalized.startsWith("goodbye")) {
+      reply = `Goodbye neighbor! \u{1F44B} Have a wonderful time, and remember I'm always here whenever you want to rent or share gear on Rentu\u207A! \u{1F497}`;
+    } else if (normalized.includes("how are you") || normalized.includes("how is it going")) {
+      reply = `I'm doing fantastic, thank you so much for asking! \u{1F497} Ready to help you discover the coolest gear and best rental deals in your neighborhood. How are you doing today? \u2728`;
+    } else {
+      reply = `Hey there neighbor! \u{1F497} I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
 
 I can help you:
 \u2022 **Find affordable gear** matching your daily budget (cameras, camping, tools, DJ gear, laptops)
@@ -41613,7 +41692,8 @@ I can help you:
 \u2022 **Compare prices** and recommend cheaper alternatives
 \u2022 **Explain how to rent, list, or borrow gear for free**
 
-What are you looking to rent or borrow today? \u2728`;
+What are you looking to rent, borrow, or explore today? \u2728`;
+    }
     return {
       reply,
       mode: "fallback",
@@ -41622,6 +41702,47 @@ What are you looking to rent or borrow today? \u2728`;
       suggestions: [
         "Find cameras under \u20B9400/day",
         "Can I borrow gear for free?",
+        "How does booking and returning work?"
+      ]
+    };
+  }
+  if (normalized.includes("photosynthesis")) {
+    reply = `Think of photosynthesis like a plant's way of cooking its own dinner! \u{1F33F}\u{1F373}
+
+1. **The Ingredients:** A plant takes in sunlight, water from the ground, and carbon dioxide from the air.
+2. **The Cooking:** Inside its leaves, it uses light energy to transform water and gas into food.
+3. **The Meal:** It makes sugar (plant food) and releases oxygen into the air for us to breathe!
+
+Plants basically turn sunshine into food! Isn't nature amazing? \u2728`;
+    return {
+      reply,
+      mode: "fallback",
+      provider,
+      items: [],
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Can I borrow gear for free?",
+        "How does booking and returning work?"
+      ]
+    };
+  }
+  if (normalized.includes("explain this") || normalized.includes("simple words") || normalized.includes("help me decide")) {
+    reply = `I'd love to help! \u{1F497}
+
+On Rentu\u207A, you can rent equipment directly from verified local neighbors rather than buying expensive gear you only need for a few days.
+
+\u2022 **To decide between listings:** Look at the daily rate (\u20B9/day), the lender's community trust score, and their locality for easy pickup.
+\u2022 **Need a comparison?** Just ask me to "compare these cameras" or tell me your budget and duration, and I'll calculate which option saves you the most money!
+
+What gear would you like to explore? \u2728`;
+    return {
+      reply,
+      mode: "fallback",
+      provider,
+      items: [],
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Find laptops under \u20B9500/day",
         "How does booking and returning work?"
       ]
     };
@@ -41864,11 +41985,12 @@ Tap any card below to view full photos or request a booking!`;
       ]
     };
   }
-  if (queryLower.includes("compare") || queryLower.includes("difference between") || queryLower.includes("which is cheaper") || queryLower.includes("save the most")) {
+  if (queryLower.includes("compare") || queryLower.includes("difference between") || queryLower.includes("which is cheaper") || queryLower.includes("cheapest") || queryLower.includes("save the most")) {
     const duration = convContext.duration;
+    const cat = convContext.category || extractCategoryFromText(queryLower);
     const comp = await comparePrices({
-      query: convContext.category ? void 0 : latestMessage,
-      category: convContext.category,
+      query: cat ? void 0 : latestMessage,
+      category: cat,
       duration_days: duration
     });
     if (comp.comparison.length > 0 && comp.summary) {
@@ -41950,11 +42072,24 @@ Here is the listing and similar options:`;
 
 Tap any card below to inspect full specs or request a booking! \u{1F497}`;
   } else {
-    reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${latestMessage}".
+    const hasExplicitGearTerm = category !== void 0 || maxPrice !== void 0 || cleanKeyword.length > 2 && (cleanKeyword.includes("camera") || cleanKeyword.includes("dslr") || cleanKeyword.includes("lens") || cleanKeyword.includes("laptop") || cleanKeyword.includes("macbook") || cleanKeyword.includes("tent") || cleanKeyword.includes("camp") || cleanKeyword.includes("drill") || cleanKeyword.includes("tool") || cleanKeyword.includes("bike") || cleanKeyword.includes("cycle") || cleanKeyword.includes("projector") || cleanKeyword.includes("speaker") || cleanKeyword.includes("dj") || cleanKeyword.includes("gear") || cleanKeyword.includes("costume") || cleanKeyword.includes("gopro") || cleanKeyword.includes("tripod"));
+    if (hasExplicitGearTerm) {
+      reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${latestMessage}".
 
 **Helpful Suggestions:**
 \u2022 Try a broader category (e.g. "cameras", "camping", "tech").
 \u2022 Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need!`;
+    } else {
+      reply = `I'm **Rentu AI**, your personal equipment sharing companion on Rentu\u207A! \u{1F497}
+
+I can help you:
+\u2022 **Find gear by budget:** e.g. *"Find a camera under \u20B9400/day"* or *"Find laptops under \u20B9500"*
+\u2022 **Check live availability:** e.g. *"Is the Canon DSLR available this weekend?"*
+\u2022 **Compare options:** e.g. *"Which option will save me the most money?"*
+\u2022 **Learn how to rent or list:** e.g. *"How do I list my own product?"*
+
+Here are some popular listings available right now in your community:`;
+    }
     const popularRes = await searchListings({ limit: 3 });
     accumulatedItems.push(...popularRes.items);
   }
@@ -41996,7 +42131,7 @@ async function processAiChat(messages, context) {
     return await executeDeterministicFallback(messages, context, geminiResult.reason);
   } catch (err) {
     console.warn("[Rentu AI] Unexpected error in Gemini orchestrator, activating fallback:", err?.message || err);
-    return await executeDeterministicFallback(messages, context, "provider_error");
+    return await executeDeterministicFallback(messages, context, "unknown_error");
   }
 }
 

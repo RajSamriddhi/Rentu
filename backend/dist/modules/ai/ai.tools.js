@@ -100,7 +100,8 @@ async function searchListings(params) {
         if (words.length > 0) {
             const orClauses = [];
             for (const w of words) {
-                sqlParams.push(`%${w}%`);
+                const stem = (w.endsWith('s') && w.length > 3 && !w.endsWith('ss')) ? w.slice(0, -1) : w;
+                sqlParams.push(`%${stem}%`);
                 const idx = sqlParams.length;
                 orClauses.push(`(i.title ILIKE $${idx} OR i.description ILIKE $${idx} OR i.category ILIKE $${idx})`);
             }

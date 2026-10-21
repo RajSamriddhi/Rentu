@@ -47,7 +47,6 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [showTooltip, setShowTooltip] = useState(true);
   const [botExpression, setBotExpression] = useState<BotExpression>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -173,33 +172,15 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
     );
   };
 
-  const activeProvider = messages.length > 0 
-    ? messages[messages.length - 1]?.provider || 'Rentu Smart Search'
-    : 'Online • Real Marketplace Data';
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const isFallback = lastMsg ? lastMsg.mode === 'fallback' : false;
+  const activeProvider = lastMsg?.provider || 'Online • Real Marketplace Data';
 
   return (
     <>
       {/* 1. Adorable Floating Launcher Button */}
       {!isOpen && (
-        <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 flex items-center gap-3">
-          
-          {/* Cute Greeting Speech Tooltip */}
-          {showTooltip && (
-            <div className="hidden md:flex items-center gap-2 bg-surface border border-pink-200 dark:border-pink-900/40 text-ink text-xs font-semibold px-3.5 py-2 rounded-2xl shadow-pink animate-in fade-in slide-in-from-right-4 duration-300">
-              <span>Need help finding gear? 💗</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowTooltip(false);
-                }}
-                className="text-ink-muted hover:text-ink cursor-pointer ml-1"
-                title="Dismiss"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-
+        <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 flex items-center">
           <button
             onClick={onOpen}
             id="rentu-ai-launcher-btn"
@@ -243,8 +224,20 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-extrabold text-sm text-ink font-display">Rentu AI</h3>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-brand-soft text-brand border border-brand/20">
-                    {activeProvider.includes('Gemini') ? '✨ Gemini Active' : '🌸 Smart Search'}
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                    messages.length === 0
+                      ? 'bg-brand-soft text-brand border-brand/20'
+                      : !isFallback && (lastMsg?.mode === 'ai' || activeProvider.includes('Gemini'))
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                  }`}>
+                    {messages.length === 0
+                      ? '🌸 Rentu AI Ready'
+                      : !isFallback && (lastMsg?.mode === 'ai' || activeProvider.includes('Gemini'))
+                      ? '✨ Gemini Active'
+                      : activeProvider.includes('quota')
+                      ? '⚠️ Quota Fallback'
+                      : '🌸 Fallback Mode'}
                   </span>
                 </div>
                 <p className="text-[11px] text-ink-secondary truncate max-w-[210px] sm:max-w-xs">
