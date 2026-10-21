@@ -40213,17 +40213,19 @@ var geminiToolDeclarations = [
 
 // src/modules/ai/ai.service.ts
 var SYSTEM_INSTRUCTION = `
-You are Rentu AI, the intelligent shopping and rental assistant for Rentu\u207A (a Gen Z peer-to-peer gear and equipment rental marketplace).
-Your job is to help users discover affordable gear, compare rental prices, check calendar availability, and recommend cheaper alternatives.
-
-RULES:
-1. Only reference real items returned by your tools. NEVER invent fake listings, prices, or owners.
-2. Prices are in Indian Rupees (INR \u20B9 per day). Direct peer-to-peer rental, no extra platform deposit fees.
-3. If a user asks to check availability, call check_availability with the item_id, start_date (YYYY-MM-DD), and duration_days.
-4. If a user asks for cheaper alternatives, call find_alternatives.
-5. If a user asks to compare options, call compare_prices.
-6. If a user asks about free borrowing, explain that while listings have daily rates, Rentu encourages friendly community requests where owners can lend items for free or for community favors.
-7. Keep responses concise, warm, helpful, and formatted with clean markdown bullet points.
+You are Rentu AI, the lovable, intelligent shopping and rental assistant for Rentu\u207A (a Gen Z peer-to-peer gear sharing and rental platform).
+Personality:
+- Friendly, warm, encouraging, and helpful. You occasionally use a sweet touch like "Of course! \u{1F497}" or "Let me check that for you! \u2728" without overusing emojis.
+- Never sound robotic or overly corporate.
+- You can answer general everyday questions, casual conversation, explanations ("explain this simply"), brainstorming, and recommendations.
+- For Rentu marketplace questions, you ALWAYS call the provided tools to search real listings, check availability, compare prices, or find cheaper alternatives.
+- You NEVER invent fake products, fake prices, or fake owners.
+- Rentu items are priced in Indian Rupees (INR \u20B9 per day). Direct peer-to-peer rental, no extra platform deposit fees.
+- If asked how listing, contacting owners, or booking works:
+  * Listing: Tap '+ Post' -> 'List Gear for Rent' -> upload photos, set price/day, duration, and publish.
+  * Contacting owner: Click 'Chat with Owner' on any listing or send a proposal.
+  * Booking & Returns: Select dates -> click 'Request to Rent' -> owner accepts -> coordinate pickup via chat -> return on end date -> owner marks Completed and leave reviews.
+- When you recommend items, explain WHY (e.g. price per day, owner rating, locality).
 `;
 async function executeGeminiTool(callName, args) {
   try {
@@ -40262,7 +40264,7 @@ async function callGemini(messages, context) {
   }
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const contents = [];
-  const recent = messages.slice(-8);
+  const recent = messages.slice(-10);
   for (const m of recent) {
     contents.push({
       role: m.role === "assistant" ? "model" : "user",
@@ -40288,8 +40290,8 @@ async function callGemini(messages, context) {
       }
     ],
     generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 800
+      temperature: 0.4,
+      maxOutputTokens: 900
     }
   };
   const accumulatedItems = [];
@@ -40342,6 +40344,7 @@ async function callGemini(messages, context) {
     return {
       reply: replyText,
       mode: "ai",
+      provider: "Google Gemini 1.5 Flash",
       items: accumulatedItems,
       suggestions: generateContextualSuggestions(replyText, accumulatedItems)
     };
@@ -40358,24 +40361,193 @@ function generateContextualSuggestions(text, items) {
     suggestions.push(`Find cheaper alternatives to ${items[0].title}`);
   } else {
     suggestions.push("Find cameras under \u20B9400/day");
-    suggestions.push("Show outdoor & camping gear");
     suggestions.push("Can I borrow gear for free?");
+    suggestions.push("How does booking & returning work?");
   }
   return suggestions.slice(0, 3);
 }
-async function executeDeterministicFallback(userQuery, context) {
-  const queryLower = userQuery.toLowerCase();
-  const accumulatedItems = [];
-  let reply = "";
-  const isAvailabilityQuery = queryLower.includes("available") || queryLower.includes("free from") || queryLower.includes("book for");
-  if (isAvailabilityQuery) {
-    let itemId = context?.itemId;
-    let startDate = context?.startDate;
-    let duration = context?.durationDays || 3;
-    const dateMatch = queryLower.match(/\b(202\d-[0-1]\d-[0-3]\d)\b/);
+function extractConversationContext(messages, currentContext) {
+  let category = void 0;
+  let maxPrice = void 0;
+  let locality = currentContext?.locality || void 0;
+  let itemId = currentContext?.itemId || void 0;
+  let duration = currentContext?.durationDays || 3;
+  let startDate = currentContext?.startDate || void 0;
+  for (const m of messages) {
+    const text = m.content.toLowerCase();
+    const cat = extractCategoryFromText(text);
+    if (cat) category = cat;
+    const priceMatch = text.match(/(?:under|below|less than|budget of)\s*(?:₹|rs\.?|inr)?\s*(\d+)/i) || text.match(/(\d+)\s*(?:rs|inr|\/day|per day)/i);
+    if (priceMatch) {
+      const p = parseInt(priceMatch[1], 10);
+      if (p > 50 && p < 1e4) maxPrice = p;
+    }
+    const durMatch = text.match(/(\d+)\s*(?:day|days)/);
+    if (durMatch) {
+      duration = parseInt(durMatch[1], 10);
+    }
+    const dateMatch = text.match(/\b(202\d-[0-1]\d-[0-3]\d)\b/);
     if (dateMatch) {
       startDate = dateMatch[1];
-    } else if (queryLower.includes("friday") || queryLower.includes("weekend")) {
+    }
+  }
+  return { category, maxPrice, locality, itemId, duration, startDate };
+}
+async function executeDeterministicFallback(messages, context) {
+  const latestMessage = messages[messages.length - 1]?.content || "";
+  const queryLower = latestMessage.toLowerCase().trim();
+  const convContext = extractConversationContext(messages, context);
+  const accumulatedItems = [];
+  let reply = "";
+  if (queryLower === "hi" || queryLower === "hello" || queryLower === "hey" || queryLower === "hey there" || queryLower.startsWith("hi ") || queryLower.startsWith("hello ") || queryLower.includes("who are you") || queryLower.includes("what can you do")) {
+    reply = `Hey there neighbor! \u{1F497} I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
+
+I can help you:
+\u2022 **Find affordable gear** matching your daily budget (cameras, camping, tools, DJ gear, laptops)
+\u2022 **Check live availability** for your upcoming weekend or trip dates
+\u2022 **Compare prices** and recommend cheaper alternatives
+\u2022 **Explain how to rent, list, or borrow gear for free**
+
+What are you looking to rent or borrow today? \u2728`;
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: [],
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Can I borrow gear for free?",
+        "How does booking and returning work?"
+      ]
+    };
+  }
+  if (queryLower.includes("how do i list") || queryLower.includes("list my product") || queryLower.includes("list gear") || queryLower.includes("post an item")) {
+    reply = `\u{1F4B8} **How to List Your Gear for Rent on Rentu\u207A:**
+
+1. Tap the **"+ Post"** button in the top navigation bar (or bottom menu on mobile).
+2. Choose **"List Gear for Rent"**.
+3. Upload 1 or more clear photos of your equipment.
+4. Set your title, category, daily rental rate (e.g. \u20B9350/day), and max duration (up to 7 days).
+5. Enter your locality for easy local pickup, then hit **Publish**!
+
+Neighbors near you can now view your listing and send rental proposals. You get paid directly with zero platform cuts! \u{1F680}`;
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: [],
+      suggestions: [
+        "How do I contact the owner?",
+        "Explain how booking works",
+        "Find gear near me"
+      ]
+    };
+  }
+  if (queryLower.includes("contact the owner") || queryLower.includes("message the owner") || queryLower.includes("chat with owner") || queryLower.includes("talk to lender")) {
+    reply = `\u{1F4AC} **How to Contact a Gear Owner:**
+
+\u2022 **Direct Rental Chat:** When viewing any listing in the catalog, click **"Request to Rent"** with a quick note. A direct 2-way message thread will open between you and the lender in the Messages panel.
+\u2022 **Coordination:** You can discuss exact pickup times, equipment condition, memory cards/cables, and handoff spots directly.
+\u2022 **Verified Neighbors:** All owners display trust scores and community ratings so you always know who you are renting from.`;
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: [],
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Explain how returns work",
+        "Check availability for weekend"
+      ]
+    };
+  }
+  if (queryLower.includes("how does booking") || queryLower.includes("booking and return") || queryLower.includes("how it works") || queryLower.includes("how to rent")) {
+    reply = `\u{1F91D} **How Booking & Returning Works on Rentu\u207A:**
+
+1. **Discover:** Find the gear you need (cameras, outdoor equipment, DJ decks, tools).
+2. **Request:** Select your start date and duration, then click **"Request to Rent"**.
+3. **Lender Accepts:** The owner receives your proposal. Once accepted, the item is marked reserved.
+4. **Handoff:** Meet up locally to test and pick up the gear. No hidden platform fees!
+5. **Return:** Hand the item back on your scheduled end date. The owner marks the booking **"Completed"**, and you both exchange verified reviews! \u{1F31F}`;
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: [],
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Can I borrow gear for free?",
+        "List gear for rent"
+      ]
+    };
+  }
+  if (queryLower.includes("free") || queryLower.includes("borrow for free") || queryLower.includes("without paying") || queryLower.includes("borrow free")) {
+    const freeItemsRes = await searchListings({ free_only: true, limit: 3 });
+    if (freeItemsRes.items.length > 0) {
+      reply = `\u{1F389} Here are gear items currently listed with \u20B90 daily rates by friendly neighbors in your area!`;
+      accumulatedItems.push(...freeItemsRes.items);
+    } else {
+      reply = `\u{1F4A1} **Can You Borrow for Free on Rentu\u207A? Yes!**
+
+While most marketplace listings have a modest daily fee (e.g. \u20B9200\u2013\u20B9400/day) to cover wear & tear, Rentu\u207A features a dedicated **Requests Board**:
+
+1. Post a **Community Wish** explaining what you need (e.g. "Need camera for college film shoot").
+2. Community members often lend gear for free or in exchange for creative favors!
+
+Here are the most affordable verified options currently available in the community:`;
+      const cheapRes = await searchListings({ limit: 3 });
+      accumulatedItems.push(...cheapRes.items);
+    }
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: accumulatedItems,
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Compare rental rates",
+        "How do I post a wish?"
+      ]
+    };
+  }
+  if (queryLower.includes("which is best") || queryLower.includes("help me decide") || queryLower.includes("which one") || queryLower.includes("recommend one")) {
+    const searchRes2 = await searchListings({
+      category: convContext.category || "Electronics & Tech",
+      max_price: convContext.maxPrice,
+      limit: 3
+    });
+    if (searchRes2.items.length > 0) {
+      const best = searchRes2.items[0];
+      accumulatedItems.push(...searchRes2.items);
+      reply = `\u{1F31F} **Top Community Recommendation:**
+
+I recommend the **${best.title}**! Here is why:
+\u2022 **Price:** Just **\u20B9${best.price_per_day}/day** \u2014 one of the best values in ${best.category}.
+\u2022 **Lender Rating:** ${best.owner_rating ? `${best.owner_rating.toFixed(1)}/5.0` : "5.0/5.0"} (${best.owner_name})
+\u2022 **Verified Location:** ${best.locality || "Nearby"}
+
+Here are the top options compared side-by-side:`;
+    } else {
+      reply = `I'd love to help you decide! Tell me what you're working on (photo shoot, camping trip, rooftop party) and your budget.`;
+    }
+    return {
+      reply,
+      mode: "fallback",
+      provider: "Rentu Smart Search",
+      items: accumulatedItems,
+      suggestions: [
+        `Is "${accumulatedItems[0]?.title || "item"}" available?`,
+        `Find cheaper alternatives`,
+        `Compare these options`
+      ]
+    };
+  }
+  const isAvailabilityQuery = queryLower.includes("available") || queryLower.includes("free from") || queryLower.includes("book for") || queryLower.includes("available next") || queryLower.includes("weekend");
+  if (isAvailabilityQuery) {
+    let itemId = convContext.itemId;
+    let startDate = convContext.startDate;
+    const duration = convContext.duration;
+    if (queryLower.includes("friday") || queryLower.includes("weekend") || queryLower.includes("next weekend")) {
       const today = /* @__PURE__ */ new Date();
       const dayOfWeek = today.getDay();
       const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
@@ -40387,12 +40559,12 @@ async function executeDeterministicFallback(userQuery, context) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       startDate = tomorrow.toISOString().split("T")[0];
     }
-    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
-    if (durMatch) {
-      duration = parseInt(durMatch[1], 10);
-    }
     if (!itemId) {
-      const searchRes2 = await searchListings({ query: userQuery, limit: 1 });
+      const searchRes2 = await searchListings({
+        query: convContext.category ? void 0 : latestMessage,
+        category: convContext.category,
+        limit: 1
+      });
       if (searchRes2.items.length > 0) {
         itemId = searchRes2.items[0].id;
       }
@@ -40410,13 +40582,13 @@ async function executeDeterministicFallback(userQuery, context) {
 \u2022 **Estimated Total:** **\u20B9${avail.estimated_total}**
 \u2022 **Location:** ${avail.locality || "Nearby"}
 
-You can request to rent it directly from the listing below!`;
+You can view full specs or send a rental proposal below! \u{1F497}`;
       } else {
         reply = `\u26A0\uFE0F **Availability Notice:** **${avail.item_title || "Item"}** cannot be booked for those dates.
 
 \u2022 **Reason:** ${avail.reason || avail.error}
 
-Here are some alternative available listings in the same category:`;
+Here are available alternative listings in the same category:`;
       }
       const itemDetails = await getListingDetails(itemId);
       if (itemDetails.item) {
@@ -40429,89 +40601,69 @@ Here are some alternative available listings in the same category:`;
       return {
         reply,
         mode: "fallback",
+        provider: "Rentu Smart Search",
         items: accumulatedItems,
         suggestions: [
           `Find cheaper alternatives to this`,
-          `Check other dates`,
+          `Calculate cost for 5 days`,
           `Explore all gear near me`
         ]
       };
     }
   }
-  if (queryLower.includes("free") || queryLower.includes("borrow for free") || queryLower.includes("without paying")) {
-    const freeItemsRes = await searchListings({ free_only: true, limit: 3 });
-    if (freeItemsRes.items.length > 0) {
-      reply = `\u{1F389} Here are items currently listed with \u20B90 daily rate by generous neighbors in the community!`;
-      accumulatedItems.push(...freeItemsRes.items);
-    } else {
-      reply = `\u{1F4A1} **How Free Borrowing Works on Rentu\u207A:**
-
-Most equipment owners on Rentu list low daily rental rates (e.g. \u20B9200\u2013\u20B9500/day) to cover maintenance. However, Rentu features an active **Requests Board** where you can:
-
-1. Post a **Community Wish** asking neighbors if someone has gear they'd lend for free or a friendly favor.
-2. Chat with verified lenders who often offer discounts or free trials for students and creators.
-
-Here are the most affordable listings currently available in the marketplace:`;
-      const cheapRes = await searchListings({ limit: 4 });
-      accumulatedItems.push(...cheapRes.items);
-    }
-    return {
-      reply,
-      mode: "fallback",
-      items: accumulatedItems,
-      suggestions: [
-        "Find cameras under \u20B9400/day",
-        "Post a Community Request",
-        "Compare rental rates"
-      ]
-    };
-  }
-  const isAlternativeQuery = queryLower.includes("cheaper") || queryLower.includes("alternative") || queryLower.includes("less expensive") || queryLower.includes("save money");
+  const isAlternativeQuery = queryLower.includes("cheaper") || queryLower.includes("alternative") || queryLower.includes("less expensive") || queryLower.includes("save money") || queryLower.includes("any cheaper");
   if (isAlternativeQuery) {
-    let refItemId = context?.itemId;
+    let refItemId = convContext.itemId;
     if (!refItemId) {
-      const searchRes2 = await searchListings({ query: userQuery, limit: 1 });
+      const searchRes2 = await searchListings({
+        query: convContext.category ? void 0 : latestMessage,
+        category: convContext.category,
+        limit: 1
+      });
       if (searchRes2.items.length > 0) {
         refItemId = searchRes2.items[0].id;
       }
     }
     const alts = await findAlternatives({
       item_id: refItemId || void 0,
-      category: context?.itemId ? void 0 : extractCategoryFromText(queryLower),
-      duration_days: context?.durationDays || 3
+      category: convContext.category,
+      max_price: convContext.maxPrice,
+      locality: convContext.locality,
+      duration_days: convContext.duration
     });
     if (alts.alternatives.length > 0) {
       const topAlt = alts.alternatives[0];
-      const refTitle = alts.reference_item ? alts.reference_item.title : "standard listings";
+      const refTitle = alts.reference_item ? alts.reference_item.title : "similar items";
       const savingsMsg = topAlt.savings_per_day ? `saving you **\u20B9${topAlt.savings_per_day}/day (${topAlt.savings_percentage}% off)**` : `starting at just \u20B9${topAlt.price_per_day}/day`;
       reply = `\u{1F4B0} **Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**
 
 \u2022 **Top Pick:** **${topAlt.title}** at **\u20B9${topAlt.price_per_day}/day**, ${savingsMsg}.
 \u2022 **Verified Location:** ${topAlt.locality || "Nearby"}
 
-Tap any item below to view full photos, owner ratings, or request a booking!`;
+Tap any card below to view full photos or request a booking!`;
       accumulatedItems.push(...alts.alternatives);
     } else {
-      reply = `We didn't find any listings priced lower than the current item in this category, but here are the most affordable options available:`;
+      reply = `We didn't find any listings priced lower in this category, but here are the most affordable listings available:`;
       const fallbackSearch = await searchListings({ limit: 3 });
       accumulatedItems.push(...fallbackSearch.items);
     }
     return {
       reply,
       mode: "fallback",
+      provider: "Rentu Smart Search",
       items: accumulatedItems,
       suggestions: [
-        `Is "${accumulatedItems[0]?.title || "gear"}" available?`,
-        `Calculate total cost for 5 days`,
-        `Find items in my locality`
+        `Is "${accumulatedItems[0]?.title || "item"}" available?`,
+        `Calculate total cost for 4 days`,
+        `Find gear in my locality`
       ]
     };
   }
-  if (queryLower.includes("compare") || queryLower.includes("difference between") || queryLower.includes("which is cheaper")) {
-    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
-    const duration = durMatch ? parseInt(durMatch[1], 10) : 3;
+  if (queryLower.includes("compare") || queryLower.includes("difference between") || queryLower.includes("which is cheaper") || queryLower.includes("save the most")) {
+    const duration = convContext.duration;
     const comp = await comparePrices({
-      query: userQuery,
+      query: convContext.category ? void 0 : latestMessage,
+      category: convContext.category,
       duration_days: duration
     });
     if (comp.comparison.length > 0 && comp.summary) {
@@ -40519,33 +40671,33 @@ Tap any item below to view full photos, owner ratings, or request a booking!`;
       reply = `\u{1F4CA} **Rental Price Comparison (${duration} Days):**
 
 \u2022 **Cheapest Option:** **${s.cheapest_item}** at \u20B9${s.cheapest_daily_rate}/day (Total: **\u20B9${s.cheapest_total}**)
-` + (s.potential_total_savings > 0 ? `\u2022 **Potential Savings:** Up to **\u20B9${s.potential_total_savings}** total compared to higher-tier gear.
-` : "") + `\u2022 **Note:** ${s.pricing_note}
+` + (s.potential_total_savings > 0 ? `\u2022 **Potential Savings:** Up to **\u20B9${s.potential_total_savings}** total compared to higher-priced gear.
+` : "") + `\u2022 **Pricing Rule:** ${s.pricing_note}
 
 Here are the compared listings:`;
       for (const c of comp.comparison) {
         accumulatedItems.push(c);
       }
     } else {
-      reply = `I couldn't find multiple items matching that search to compare. Try browsing by category or refining your query.`;
+      reply = `I couldn't find multiple items matching that search to compare. Try specifying a category or price range!`;
     }
     return {
       reply,
       mode: "fallback",
+      provider: "Rentu Smart Search",
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
         `Find cheaper alternatives`,
-        `Explore all cameras`
+        `Explore all gear near me`
       ]
     };
   }
-  const isCostQuery = queryLower.includes("total") || queryLower.includes("cost for") || queryLower.includes("how much for");
-  if (isCostQuery) {
-    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
-    const duration = durMatch ? parseInt(durMatch[1], 10) : context?.durationDays || 3;
+  if (queryLower.includes("total cost") || queryLower.includes("how much for") || queryLower.includes("calculate cost")) {
+    const duration = convContext.duration;
     const searchRes2 = await searchListings({
-      query: userQuery,
+      query: convContext.category ? void 0 : latestMessage,
+      category: convContext.category,
       limit: 3
     });
     if (searchRes2.items.length > 0) {
@@ -40555,58 +40707,56 @@ Here are the compared listings:`;
       reply = `\u{1F4B5} **Estimated Rental Cost for ${duration} Day${duration > 1 ? "s" : ""}:**
 
 \u2022 **${first.title}:** \u20B9${first.price_per_day}/day \xD7 ${duration} days = **\u20B9${total}**
-\u2022 **Deposit / Fees:** \u20B90 platform fee. You coordinate pickup directly with the owner.
+\u2022 **Zero Deposit / No Hidden Fees:** Rentu does not charge platform cuts. You coordinate directly with the owner.
 
-Check out this listing and similar options below:`;
+Here is the listing and similar options:`;
     } else {
-      reply = `Please select an item or specify gear to calculate its total rental cost for ${duration} days.`;
+      reply = `Please specify an item to calculate its rental total for ${duration} days!`;
     }
     return {
       reply,
       mode: "fallback",
+      provider: "Rentu Smart Search",
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
-        `Find cheaper options`,
+        `Find cheaper alternatives`,
         `View item details`
       ]
     };
   }
-  let maxPrice;
-  const priceMatch = queryLower.match(/under\s*(?:₹|rs\.?|inr)?\s*(\d+)/i) || queryLower.match(/below\s*(?:₹|rs\.?|inr)?\s*(\d+)/i);
-  if (priceMatch) {
-    maxPrice = parseInt(priceMatch[1], 10);
-  }
-  const category = extractCategoryFromText(queryLower);
-  const cleanKeyword = userQuery.replace(/under\s*(?:₹|rs\.?|inr)?\s*\d+/gi, "").replace(/find|show|search|looking for|cheap|affordable|near me|in|for rent/gi, "").trim();
+  const category = convContext.category;
+  const maxPrice = convContext.maxPrice;
+  const cleanKeyword = latestMessage.replace(/under\s*(?:₹|rs\.?|inr)?\s*\d+/gi, "").replace(/below\s*(?:₹|rs\.?|inr)?\s*\d+/gi, "").replace(/find|show|search|looking for|cheap|affordable|near me|in|for rent/gi, "").trim();
   const searchRes = await searchListings({
     query: cleanKeyword || void 0,
     category,
     max_price: maxPrice,
-    locality: context?.locality || void 0,
+    locality: convContext.locality,
     limit: 6
   });
   accumulatedItems.push(...searchRes.items);
   if (accumulatedItems.length > 0) {
     const budgetNote = maxPrice ? ` under \u20B9${maxPrice}/day` : "";
-    const locNote = context?.locality ? ` in ${context.locality}` : "";
-    reply = `\u2728 **Found ${accumulatedItems.length} listing${accumulatedItems.length > 1 ? "s" : ""}${budgetNote}${locNote} in the Rentu marketplace:**
+    const locNote = convContext.locality ? ` in ${convContext.locality}` : "";
+    reply = `\u2728 **Found ${accumulatedItems.length} verified listing${accumulatedItems.length > 1 ? "s" : ""}${budgetNote}${locNote} on Rentu\u207A:**
 
 ` + accumulatedItems.map((item) => `\u2022 **${item.title}** \u2014 \u20B9${item.price_per_day}/day (${item.locality || "Nearby"})`).join("\n") + `
 
-Tap any card below to check full specs or request a rental!`;
+Tap any card below to inspect full specs or request a booking! \u{1F497}`;
   } else {
-    reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${userQuery}".
+    reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${latestMessage}".
 
-**Helpful suggestions:**
-\u2022 Try a higher budget or broader keywords (e.g. "camera", "tech", "tent").
-\u2022 You can also post a **Community Request** on the Requests Board so local gear owners can reach out to you!`;
+**Helpful Suggestions:**
+\u2022 Try a broader category (e.g. "cameras", "camping", "tech").
+\u2022 Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need!`;
     const popularRes = await searchListings({ limit: 3 });
     accumulatedItems.push(...popularRes.items);
   }
   return {
     reply,
     mode: "fallback",
+    provider: "Rentu Smart Search",
     items: accumulatedItems,
     suggestions: generateContextualSuggestions(reply, accumulatedItems)
   };
@@ -40615,19 +40765,24 @@ function extractCategoryFromText(text) {
   if (text.includes("camera") || text.includes("dslr") || text.includes("lens") || text.includes("photo") || text.includes("shoot")) {
     return "Electronics & Tech";
   }
-  if (text.includes("tent") || text.includes("camp") || text.includes("trek") || text.includes("outdoor")) {
+  if (text.includes("laptop") || text.includes("macbook") || text.includes("computer") || text.includes("monitor") || text.includes("tech")) {
+    return "Electronics & Tech";
+  }
+  if (text.includes("tent") || text.includes("camp") || text.includes("trek") || text.includes("outdoor") || text.includes("sleeping bag")) {
     return "Camping & Outdoor";
   }
-  if (text.includes("drill") || text.includes("tool") || text.includes("diy") || text.includes("repair")) {
+  if (text.includes("drill") || text.includes("tool") || text.includes("diy") || text.includes("repair") || text.includes("hammer")) {
     return "Tools & DIY";
   }
-  if (text.includes("dj") || text.includes("music") || text.includes("speaker") || text.includes("party")) {
+  if (text.includes("dj") || text.includes("music") || text.includes("speaker") || text.includes("party") || text.includes("controller") || text.includes("projector")) {
     return "Party & Events";
+  }
+  if (text.includes("bike") || text.includes("bicycle") || text.includes("cycle") || text.includes("sports") || text.includes("fitness")) {
+    return "Sports & Fitness";
   }
   return void 0;
 }
 async function processAiChat(messages, context) {
-  const latestMessage = messages[messages.length - 1]?.content || "";
   try {
     const geminiResponse = await callGemini(messages, context);
     if (geminiResponse) {
@@ -40636,7 +40791,7 @@ async function processAiChat(messages, context) {
   } catch (err) {
     console.warn("Gemini invocation failed, falling back to deterministic engine:", err);
   }
-  return await executeDeterministicFallback(latestMessage, context);
+  return await executeDeterministicFallback(messages, context);
 }
 
 // src/modules/ai/ai.routes.ts

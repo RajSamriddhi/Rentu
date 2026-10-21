@@ -136,6 +136,38 @@ async function runTests() {
     assert(chat.reply.includes('Requests Board') || chat.reply.includes('free'), 'Reply should explain borrowing mechanics');
   });
 
+  // 11. General greetings & casual introduction
+  await test('AI chat handles friendly greetings in character', async () => {
+    const chat = await processAiChat([{ role: 'user', content: 'Hello! Who are you?' }]);
+    assert(chat.reply.includes('Rentu AI') && chat.reply.includes('companion'), 'Should identify as Rentu AI');
+  });
+
+  // 12. Marketplace workflow: Listing gear
+  await test('AI chat explains listing gear workflow accurately', async () => {
+    const chat = await processAiChat([{ role: 'user', content: 'How do I list my own product?' }]);
+    assert(chat.reply.includes('Post') && chat.reply.includes('List Gear for Rent'), 'Should explain + Post workflow');
+  });
+
+  // 13. Marketplace workflow: Booking & returns
+  await test('AI chat explains booking and returns process accurately', async () => {
+    const chat = await processAiChat([{ role: 'user', content: 'Explain how booking and returning an item works' }]);
+    assert(chat.reply.includes('Request to Rent') && chat.reply.includes('Return'), 'Should explain booking and return process');
+  });
+
+  // 14. Multi-turn conversation context preservation
+  await test('AI chat preserves context across multi-turn follow-up queries', async () => {
+    const multiTurnHistory = [
+      { role: 'user' as const, content: 'Find a camera' },
+      { role: 'assistant' as const, content: 'Found cameras in the marketplace.' },
+      { role: 'user' as const, content: 'Below 400 per day' },
+      { role: 'assistant' as const, content: 'Here are cameras below 400.' },
+      { role: 'user' as const, content: 'Which is best?' },
+    ];
+    const chat = await processAiChat(multiTurnHistory);
+    assert(chat.items.length > 0, 'Should return recommended items based on inherited camera category');
+    assert(chat.reply.includes('Top Community Recommendation') || chat.reply.includes('recommend'), 'Should recommend an item');
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passed} / ${total} tests passed!`);
   console.log(`========================================\n`);

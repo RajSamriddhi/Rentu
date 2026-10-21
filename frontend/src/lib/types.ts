@@ -149,6 +149,7 @@ export interface AiChatMessage {
   items?: Item[];
   suggestions?: string[];
   mode?: 'ai' | 'fallback';
+  provider?: string;
   timestamp: string;
 }
 
@@ -162,6 +163,7 @@ export interface AiChatContext {
 export interface AiChatResponse {
   reply: string;
   mode: 'ai' | 'fallback';
+  provider?: string;
   items: Item[];
   suggestions: string[];
 }
