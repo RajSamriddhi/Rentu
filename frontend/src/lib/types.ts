@@ -143,3 +143,29 @@ export interface CategoryStat {
   count: number;
   avg_rate: number;
 }
+
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  items?: Item[];
+  suggestions?: string[];
+  mode?: 'ai' | 'fallback';
+  provider?: string;
+  timestamp: string;
+}
+
+export interface AiChatContext {
+  itemId?: string | null;
+  locality?: string | null;
+  startDate?: string | null;
+  durationDays?: number | null;
+}
+
+export interface AiChatResponse {
+  reply: string;
+  mode: 'ai' | 'fallback';
+  provider?: string;
+  items: Item[];
+  suggestions: string[];
+}

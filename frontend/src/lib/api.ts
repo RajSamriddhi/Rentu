@@ -6,7 +6,9 @@ import {
   Message, 
   Conversation, 
   CommunityPulse, 
-  CategoryStat 
+  CategoryStat,
+  AiChatResponse,
+  AiChatContext
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL 
@@ -338,6 +340,19 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  // Rentu AI Assistant
+  async sendAiChatMessage(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    context?: AiChatContext
+  ): Promise<AiChatResponse> {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ messages, context }),
     });
     return handleResponse(res);
   },
