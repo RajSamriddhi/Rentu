@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ENV } from '../../config/env';
 import {
   searchListings,
@@ -26,6 +27,13 @@ export interface AiResponse {
   provider: string;
   items: any[];
   suggestions: string[];
+}
+
+export interface GeminiCallOutcome {
+  success: boolean;
+  response?: AiResponse;
+  reason?: 'missing_key' | 'invalid_key' | 'provider_error';
+  errorMessage?: string;
 }
 
 /**
@@ -82,80 +90,79 @@ async function executeGeminiTool(callName: string, args: any): Promise<{ data: a
 }
 
 /**
- * Call Google Gemini REST API with native tool calling
+ * Call Google Gemini using the official @google/generative-ai SDK with function calling
  */
-async function callGemini(messages: ChatMessage[], context?: ChatContext): Promise<AiResponse | null> {
+async function callGemini(messages: ChatMessage[], context?: ChatContext): Promise<GeminiCallOutcome> {
   const apiKey = ENV.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === '' || apiKey.includes('your_key_here')) {
-    return null;
+    return { success: false, reason: 'missing_key' };
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-  // Format message history for Gemini
-  const contents: any[] = [];
-  const recent = messages.slice(-10);
-  for (const m of recent) {
-    contents.push({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    });
-  }
-
-  // If context is present, add it as a system contextual note in latest prompt
-  if (context && (context.itemId || context.locality || context.startDate)) {
-    const lastUserIdx = contents.map(c => c.role).lastIndexOf('user');
-    if (lastUserIdx !== -1) {
-      const ctxNote = `\n[Context: Item ID=${context.itemId || 'none'}, Locality=${context.locality || 'none'}, StartDate=${context.startDate || 'none'}, DurationDays=${context.durationDays || 'none'}]`;
-      contents[lastUserIdx].parts[0].text += ctxNote;
-    }
-  }
-
-  const payload: any = {
-    system_instruction: {
-      parts: [{ text: SYSTEM_INSTRUCTION }],
-    },
-    contents,
-    tools: [
+    const tools = [
       {
-        function_declarations: geminiToolDeclarations,
+        functionDeclarations: geminiToolDeclarations.map((decl: any) => ({
+          name: decl.name,
+          description: decl.description,
+          parameters: decl.parameters,
+        })),
       },
-    ],
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 900,
-    },
-  };
+    ];
 
-  const accumulatedItems: any[] = [];
-  let iterations = 0;
-
-  while (iterations < 3) {
-    iterations++;
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: SYSTEM_INSTRUCTION,
+      tools: tools as any,
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 900,
+      },
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn(`Gemini API error (HTTP ${res.status}):`, errText);
-      return null;
+    const recent = messages.slice(-10);
+    if (recent.length === 0) {
+      return { success: false, reason: 'missing_key' };
     }
 
-    const data: any = await res.json();
-    const candidate = data.candidates?.[0];
-    if (!candidate || !candidate.content) {
-      return null;
+    const lastMsg = recent[recent.length - 1];
+    let promptText = lastMsg.content;
+    if (context && (context.itemId || context.locality || context.startDate)) {
+      promptText += `\n[Context: Item ID=${context.itemId || 'none'}, Locality=${context.locality || 'none'}, StartDate=${context.startDate || 'none'}, DurationDays=${context.durationDays || 'none'}]`;
     }
 
-    const parts = candidate.content.parts || [];
-    const functionCallPart = parts.find((p: any) => p.functionCall);
+    // Convert prior messages to SDK chat history format
+    const history: any[] = [];
+    const prior = recent.slice(0, -1);
+    for (const m of prior) {
+      history.push({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      });
+    }
 
-    if (functionCallPart && functionCallPart.functionCall) {
-      const fn = functionCallPart.functionCall;
-      const toolResult = await executeGeminiTool(fn.name, fn.args || {});
+    // Gemini SDK requires history to alternate starting with a user turn
+    while (history.length > 0 && history[0].role !== 'user') {
+      history.shift();
+    }
+
+    const chat = model.startChat({ history });
+    let result = await chat.sendMessage(promptText);
+
+    const accumulatedItems: any[] = [];
+    let iterations = 0;
+
+    // Function calling loop
+    while (iterations < 3) {
+      iterations++;
+      const functionCalls = result.response.functionCalls();
+      if (!functionCalls || functionCalls.length === 0) {
+        break;
+      }
+
+      const call = functionCalls[0];
+      const toolResult = await executeGeminiTool(call.name, call.args || {});
 
       if (toolResult.items && toolResult.items.length > 0) {
         for (const item of toolResult.items) {
@@ -165,39 +172,44 @@ async function callGemini(messages: ChatMessage[], context?: ChatContext): Promi
         }
       }
 
-      // Add model's tool call to history
-      payload.contents.push(candidate.content);
-
-      // Add function response to history
-      payload.contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: fn.name,
-              response: { result: toolResult.data },
-            },
+      // Send function response back to the chat session
+      result = await chat.sendMessage([
+        {
+          functionResponse: {
+            name: call.name,
+            response: { result: toolResult.data },
           },
-        ],
-      });
-
-      continue;
+        },
+      ]);
     }
 
-    // Final text answer
-    const textPart = parts.find((p: any) => p.text);
-    const replyText = textPart?.text || 'I checked the marketplace for you.';
+    const replyText = result.response.text();
 
     return {
-      reply: replyText,
-      mode: 'ai',
-      provider: 'Google Gemini 1.5 Flash',
-      items: accumulatedItems,
-      suggestions: generateContextualSuggestions(replyText, accumulatedItems),
+      success: true,
+      response: {
+        reply: replyText,
+        mode: 'ai',
+        provider: 'Google Gemini 1.5 Flash (Official SDK)',
+        items: accumulatedItems,
+        suggestions: generateContextualSuggestions(replyText, accumulatedItems),
+      },
+    };
+  } catch (err: any) {
+    const status = err?.status || err?.statusCode;
+    const errMsg = String(err?.message || '');
+    const isKeyError = status === 400 || status === 403 || status === 404 ||
+                       errMsg.includes('API_KEY') || errMsg.includes('API key') ||
+                       errMsg.includes('not found') || errMsg.includes('permission');
+
+    console.warn(`[Rentu AI] Gemini SDK call error (${isKeyError ? 'invalid key' : 'service failure'}):`, errMsg.slice(0, 120));
+
+    return {
+      success: false,
+      reason: isKeyError ? 'invalid_key' : 'provider_error',
+      errorMessage: errMsg,
     };
   }
-
-  return null;
 }
 
 /**
@@ -269,13 +281,23 @@ function extractConversationContext(messages: ChatMessage[], currentContext?: Ch
  */
 async function executeDeterministicFallback(
   messages: ChatMessage[],
-  context?: ChatContext
+  context?: ChatContext,
+  fallbackReason?: 'missing_key' | 'invalid_key' | 'provider_error'
 ): Promise<AiResponse> {
   const latestMessage = messages[messages.length - 1]?.content || '';
   const queryLower = latestMessage.toLowerCase().trim();
   const convContext = extractConversationContext(messages, context);
   const accumulatedItems: any[] = [];
   let reply = '';
+
+  let provider = 'Rentu Smart Search';
+  if (fallbackReason === 'invalid_key') {
+    provider = 'Rentu Smart Search (Fallback: Gemini API key invalid)';
+  } else if (fallbackReason === 'missing_key') {
+    provider = 'Rentu Smart Search (Fallback: GEMINI_API_KEY unconfigured)';
+  } else if (fallbackReason === 'provider_error') {
+    provider = 'Rentu Smart Search (Fallback: Gemini API service unreachable)';
+  }
 
   // 1. General Greetings & Casual Chatter
   if (
@@ -299,7 +321,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: [],
       suggestions: [
         'Find cameras under ₹400/day',
@@ -322,7 +344,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: [],
       suggestions: [
         'How do I contact the owner?',
@@ -341,7 +363,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: [],
       suggestions: [
         'Find cameras under ₹400/day',
@@ -362,7 +384,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: [],
       suggestions: [
         'Find cameras under ₹400/day',
@@ -391,7 +413,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: accumulatedItems,
       suggestions: [
         'Find cameras under ₹400/day',
@@ -426,7 +448,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Is "${accumulatedItems[0]?.title || 'item'}" available?`,
@@ -501,7 +523,7 @@ async function executeDeterministicFallback(
       return {
         reply,
         mode: 'fallback',
-        provider: 'Rentu Smart Search',
+        provider,
         items: accumulatedItems,
         suggestions: [
           `Find cheaper alternatives to this`,
@@ -558,7 +580,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Is "${accumulatedItems[0]?.title || 'item'}" available?`,
@@ -595,7 +617,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
@@ -630,7 +652,7 @@ async function executeDeterministicFallback(
     return {
       reply,
       mode: 'fallback',
-      provider: 'Rentu Smart Search',
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
@@ -678,7 +700,7 @@ async function executeDeterministicFallback(
   return {
     reply,
     mode: 'fallback',
-    provider: 'Rentu Smart Search',
+    provider,
     items: accumulatedItems,
     suggestions: generateContextualSuggestions(reply, accumulatedItems),
   };
@@ -716,16 +738,17 @@ export async function processAiChat(
   messages: ChatMessage[],
   context?: ChatContext
 ): Promise<AiResponse> {
-  // 1. Try Google Gemini with native tool execution if key is present
+  // 1. Try official Google Gemini SDK with native tool calling
   try {
-    const geminiResponse = await callGemini(messages, context);
-    if (geminiResponse) {
-      return geminiResponse;
+    const geminiResult = await callGemini(messages, context);
+    if (geminiResult.success && geminiResult.response) {
+      return geminiResult.response;
     }
-  } catch (err) {
-    console.warn('Gemini invocation failed, falling back to deterministic engine:', err);
-  }
 
-  // 2. Deterministic Rule-Based & Real Database Engine Fallback
-  return await executeDeterministicFallback(messages, context);
+    // Handle missing or invalid keys, or service outages gracefully via fallback engine
+    return await executeDeterministicFallback(messages, context, geminiResult.reason);
+  } catch (err: any) {
+    console.warn('[Rentu AI] Unexpected error in Gemini orchestrator, activating fallback:', err?.message || err);
+    return await executeDeterministicFallback(messages, context, 'provider_error');
+  }
 }

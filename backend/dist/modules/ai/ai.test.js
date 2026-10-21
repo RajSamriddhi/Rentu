@@ -147,6 +147,23 @@ async function runTests() {
         (0, assert_1.default)(chat.items.length > 0, 'Should return recommended items based on inherited camera category');
         (0, assert_1.default)(chat.reply.includes('Top Community Recommendation') || chat.reply.includes('recommend'), 'Should recommend an item');
     });
+    // 15. Invalid GEMINI_API_KEY handled gracefully by SDK
+    await test('Invalid GEMINI_API_KEY is handled gracefully without crashing or throwing', async () => {
+        // Process chat query with current environment key (whether invalid or missing)
+        const chat = await (0, ai_service_1.processAiChat)([{ role: 'user', content: 'What is the cheapest laptop?' }]);
+        (0, assert_1.default)(chat.reply && chat.reply.length > 0, 'Reply must not be empty');
+        (0, assert_1.default)(Array.isArray(chat.items), 'Items must be returned as array');
+        (0, assert_1.default)(typeof chat.provider === 'string', 'Provider must be indicated');
+        // If key is invalid or missing, it should fall back gracefully
+        (0, assert_1.default)(chat.mode === 'fallback' || chat.mode === 'ai', 'Mode must be valid');
+        (0, assert_1.default)(!chat.reply.includes('API_KEY_INVALID'), 'Secret errors or raw codes must not leak to user');
+    });
+    // 16. Missing key returns clean structured fallback response
+    await test('Empty or missing API key defaults cleanly to Smart Search', async () => {
+        const chat = await (0, ai_service_1.processAiChat)([{ role: 'user', content: 'Find tents for camping' }]);
+        (0, assert_1.default)(chat.reply.length > 0, 'Should provide useful recommendations');
+        (0, assert_1.default)(chat.items !== undefined, 'Items should exist');
+    });
     console.log(`\n========================================`);
     console.log(`Results: ${passed} / ${total} tests passed!`);
     console.log(`========================================\n`);

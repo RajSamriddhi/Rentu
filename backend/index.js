@@ -1294,8 +1294,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs = require("fs");
-          stream2 = new fs.SyncWriteStream(fd2, { autoClose: false });
+          var fs2 = require("fs");
+          stream2 = new fs2.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -14082,11 +14082,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path) {
-      if (!path || typeof path !== "string") {
+    function lookup(path2) {
+      if (!path2 || typeof path2 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path).toLowerCase().substr(1);
+      var extension2 = extname("x." + path2).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -16159,6 +16159,17 @@ var require_utils = __commonJS({
     var setMaxIndex = function setMaxIndex2(obj, maxIndex) {
       overflowChannel.set(obj, maxIndex);
     };
+    var conflictChannel = getSideChannel();
+    var markConflict = function markConflict2(obj, maxIndex) {
+      conflictChannel.set(obj, maxIndex);
+      return obj;
+    };
+    var isConflict = function isConflict2(obj) {
+      return conflictChannel.has(obj);
+    };
+    var getConflictIndex = function getConflictIndex2(obj) {
+      return conflictChannel.get(obj);
+    };
     var hexTable = (function() {
       var array = [];
       for (var i = 0; i < 256; ++i) {
@@ -16202,6 +16213,27 @@ var require_utils = __commonJS({
         obj[key] = value;
       }
     };
+    var maxNumericIndex = function maxNumericIndex2(obj, min) {
+      var max = min;
+      var keys = Object.keys(obj);
+      for (var i = 0; i < keys.length; ++i) {
+        var num = parseInt(keys[i], 10);
+        if (String(num) === keys[i] && num > max) {
+          max = num;
+        }
+      }
+      return max;
+    };
+    var limitedPair = function limitedPair2(first, second, options) {
+      var pair = [first, second];
+      if (options && typeof options.arrayLimit === "number" && pair.length > options.arrayLimit) {
+        if (options.throwOnLimitExceeded) {
+          throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+        }
+        return markOverflow(arrayToObject(pair, options), 1);
+      }
+      return pair;
+    };
     var merge = function merge2(target, source, options) {
       if (!source) {
         return target;
@@ -16221,13 +16253,21 @@ var require_utils = __commonJS({
             var newIndex = getMaxIndex(target) + 1;
             target[newIndex] = source;
             setMaxIndex(target, newIndex);
+          } else if (options && options.strictMerge && isConflict(target)) {
+            var nextConflict = getConflictIndex(target) + 1;
+            if (options.throwOnLimitExceeded && typeof options.arrayLimit === "number" && nextConflict >= options.arrayLimit) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
+            target[nextConflict] = source;
+            markConflict(target, nextConflict);
           } else if (options && options.strictMerge) {
-            return [target, source];
+            var conflict = limitedPair(target, source, options);
+            return isArray(conflict) ? markConflict(conflict, 1) : conflict;
           } else if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
             target[source] = true;
           }
         } else {
-          return [target, source];
+          return limitedPair(target, source, options);
         }
         return target;
       }
@@ -16253,6 +16293,9 @@ var require_utils = __commonJS({
       var mergeTarget = target;
       if (isArray(target) && !isArray(source)) {
         mergeTarget = arrayToObject(target, options);
+        if (isConflict(target)) {
+          markConflict(mergeTarget, target.length - 1);
+        }
       }
       if (isArray(target) && isArray(source)) {
         source.forEach(function(item, i) {
@@ -16283,12 +16326,18 @@ var require_utils = __commonJS({
           setProperty(acc, key, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
-          markOverflow(acc, getMaxIndex(source));
+          markOverflow(acc, maxNumericIndex(acc, getMaxIndex(source)));
         }
         if (isOverflow(acc)) {
           var keyNum = parseInt(key, 10);
           if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
             setMaxIndex(acc, keyNum);
+          }
+        }
+        if (isConflict(acc)) {
+          var conflictKey = parseInt(key, 10);
+          if (String(conflictKey) === key && conflictKey > getConflictIndex(acc)) {
+            markConflict(acc, conflictKey);
           }
         }
         return acc;
@@ -16301,6 +16350,9 @@ var require_utils = __commonJS({
       }, target);
     };
     var decode = function(str, defaultDecoder, charset) {
+      if (typeof str === "string" && str.indexOf("%") === -1) {
+        return str.indexOf("+") === -1 ? str : str.replace(/\+/g, " ");
+      }
       var strWithoutPlus = str.replace(/\+/g, " ");
       if (charset === "iso-8859-1") {
         return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
@@ -16311,6 +16363,52 @@ var require_utils = __commonJS({
         return strWithoutPlus;
       }
     };
+    var hasToPrimitive = typeof Symbol === "function" && typeof Symbol.toPrimitive === "symbol";
+    var arrayJoin = Array.prototype.join;
+    var arrayToString = Array.prototype.toString;
+    var objectToString = Object.prototype.toString;
+    var toCoercible = function toCoercible2(value, joining) {
+      if (!value || typeof value !== "object" && typeof value !== "function") {
+        return value;
+      }
+      if (hasToPrimitive && value[Symbol.toPrimitive] != null) {
+        return value;
+      }
+      if (isArray(value) && value.toString === arrayToString && value.join === arrayJoin) {
+        var ancestors = joining || getSideChannel();
+        if (ancestors.has(value)) {
+          return "";
+        }
+        ancestors.set(value, true);
+        var copy;
+        for (var i = 0; i < value.length; i += 1) {
+          var item = value[i];
+          var coerced = toCoercible2(item, ancestors);
+          if (!copy && coerced !== item) {
+            copy = [];
+            for (var j = 0; j < i; j += 1) {
+              copy[j] = value[j];
+            }
+          }
+          if (copy) {
+            copy[i] = coerced;
+          }
+        }
+        ancestors["delete"](value);
+        return copy || value;
+      }
+      if (typeof value.toString === "function") {
+        return value;
+      }
+      var valueOf = value.valueOf;
+      if (typeof valueOf === "function") {
+        var primitive = valueOf.call(value);
+        if (!primitive || typeof primitive !== "object" && typeof primitive !== "function") {
+          return String(primitive);
+        }
+      }
+      return objectToString.call(value);
+    };
     var limit = 1024;
     var encode = function encode2(str, defaultEncoder, charset, kind, format) {
       if (str.length === 0) {
@@ -16320,12 +16418,12 @@ var require_utils = __commonJS({
       if (typeof str === "symbol") {
         string = Symbol.prototype.toString.call(str);
       } else if (typeof str !== "string") {
-        string = String(str);
+        string = String(toCoercible(str));
       }
       if (charset === "iso-8859-1") {
         return escape(string).replace(/%u[0-9a-f]{4}/gi, function($0) {
           return "%26%23" + parseInt($0.slice(2), 16) + "%3B";
-        });
+        }).replace(/\+/g, "%2B");
       }
       var out = "";
       for (var j = 0; j < string.length; j += limit) {
@@ -16437,7 +16535,8 @@ var require_utils = __commonJS({
       isRegExp,
       markOverflow,
       maybeMap,
-      merge
+      merge,
+      toCoercible
     };
   }
 });
@@ -16552,17 +16651,17 @@ var require_stringify = __commonJS({
       if (generateArrayPrefix === "comma" && isArray(obj)) {
         if (encodeValuesOnly && encoder) {
           obj = utils.maybeMap(obj, function(v) {
-            return v == null ? v : encoder(v);
+            return v == null ? v : encoder(v, defaults2.encoder, charset, "value", format);
           });
         }
-        objKeys = [{ value: obj.length > 0 ? obj.join(",") || null : void 0 }];
+        objKeys = [{ value: obj.length > 0 ? utils.toCoercible(obj).join(",") || null : void 0 }];
       } else if (isArray(filter)) {
         objKeys = filter;
       } else {
         var keys = Object.keys(obj);
         objKeys = sort ? keys.sort(sort) : keys;
       }
-      var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
+      var encodedPrefix = String(prefix);
       var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
       if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
         return adjustedPrefix + "[]";
@@ -16633,7 +16732,7 @@ var require_stringify = __commonJS({
         filter = opts.filter;
       }
       var arrayFormat;
-      if (opts.arrayFormat in arrayPrefixGenerators) {
+      if (has.call(arrayPrefixGenerators, opts.arrayFormat)) {
         arrayFormat = opts.arrayFormat;
       } else if ("indices" in opts) {
         arrayFormat = opts.indices ? "indices" : "repeat";
@@ -16743,9 +16842,53 @@ var require_stringify = __commonJS({
 var require_parse = __commonJS({
   "../node_modules/qs/lib/parse.js"(exports2, module2) {
     "use strict";
+    var getSideChannel = require_side_channel();
     var utils = require_utils();
     var has = Object.prototype.hasOwnProperty;
     var isArray = Array.isArray;
+    var getPrototypeOf = Object.getPrototypeOf;
+    var isPlainContainer = function isPlainContainer2(value) {
+      if (!value || typeof value !== "object") {
+        return false;
+      }
+      if (isArray(value)) {
+        return true;
+      }
+      var proto = getPrototypeOf(value);
+      return proto === Object.prototype || proto === null;
+    };
+    var emptyCopyOf = function emptyCopyOf2(value) {
+      if (isArray(value)) {
+        var arr = [];
+        arr.length = value.length;
+        return arr;
+      }
+      return getPrototypeOf(value) === null ? { __proto__: null } : {};
+    };
+    var copyInput = function copyInput2(input) {
+      var copies = getSideChannel();
+      var result = {};
+      var queue = [{ source: input, target: result }];
+      for (var i = 0; i < queue.length; ++i) {
+        var source = queue[i].source;
+        var target = queue[i].target;
+        var keys = Object.keys(source);
+        for (var j = 0; j < keys.length; ++j) {
+          var value = source[keys[j]];
+          if (isPlainContainer(value)) {
+            if (!copies.has(value)) {
+              var copy = emptyCopyOf(value);
+              copies.set(value, copy);
+              queue[queue.length] = { source: value, target: copy };
+            }
+            target[keys[j]] = copies.get(value);
+          } else {
+            target[keys[j]] = value;
+          }
+        }
+      }
+      return result;
+    };
     var defaults2 = {
       allowDots: false,
       allowEmptyArrays: false,
@@ -16832,6 +16975,7 @@ var require_parse = __commonJS({
         var part = parts[i];
         var bracketEqualsPos = part.indexOf("]=");
         var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
+        var isEmptyBracketKey = pos > 1 && part.slice(pos - 2, pos) === "[]";
         var key;
         var val;
         if (pos === -1) {
@@ -16855,7 +16999,7 @@ var require_parse = __commonJS({
         if (val && options.interpretNumericEntities && charset === "iso-8859-1") {
           val = interpretNumericEntities(String(val));
         }
-        if (part.indexOf("[]=") > -1) {
+        if (isEmptyBracketKey) {
           val = isArray(val) ? [val] : val;
         }
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
@@ -16863,7 +17007,7 @@ var require_parse = __commonJS({
         }
         if (key !== null) {
           var existing = has.call(obj, key);
-          if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
+          if (existing && (options.duplicates === "combine" || isEmptyBracketKey)) {
             obj[key] = utils.combine(
               obj[key],
               val,
@@ -16924,8 +17068,35 @@ var require_parse = __commonJS({
       }
       return leaf;
     };
+    var topLevelDotsToBrackets = function topLevelDotsToBrackets2(key) {
+      var result = "";
+      var depth = 0;
+      for (var i = 0; i < key.length; i += 1) {
+        var cu = key.charCodeAt(i);
+        if (cu === 91) {
+          depth += 1;
+          result += "[";
+        } else if (cu === 93) {
+          if (depth > 0) {
+            depth -= 1;
+          }
+          result += "]";
+        } else if (cu === 46 && depth === 0 && i + 1 < key.length && key.charCodeAt(i + 1) !== 46 && key.charCodeAt(i + 1) !== 91) {
+          var start = i + 1;
+          var j = start;
+          while (j < key.length && key.charCodeAt(j) !== 46 && key.charCodeAt(j) !== 91) {
+            j += 1;
+          }
+          result += "[" + key.slice(start, j) + "]";
+          i = j - 1;
+        } else {
+          result += key.charAt(i);
+        }
+      }
+      return result;
+    };
     var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
-      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
+      var key = options.allowDots ? topLevelDotsToBrackets(originalKey) : originalKey;
       if (options.depth <= 0) {
         if (!options.plainObjects && has.call(Object.prototype, key)) {
           if (!options.allowPrototypes) {
@@ -17051,7 +17222,7 @@ var require_parse = __commonJS({
       if (str === "" || str === null || typeof str === "undefined") {
         return options.plainObjects ? { __proto__: null } : {};
       }
-      var tempObj = typeof str === "string" ? parseValues(str, options) : str;
+      var tempObj = typeof str === "string" ? parseValues(str, options) : copyInput(str);
       var obj = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i = 0; i < keys.length; ++i) {
@@ -17699,7 +17870,7 @@ var require_path_to_regexp = __commonJS({
   "../node_modules/path-to-regexp/index.js"(exports2, module2) {
     module2.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path, keys, options) {
+    function pathToRegexp(path2, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -17713,8 +17884,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path.source)) {
+      if (path2 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path2.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -17722,18 +17893,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path;
+        return path2;
       }
-      if (Array.isArray(path)) {
-        path = path.map(function(value) {
+      if (Array.isArray(path2)) {
+        path2 = path2.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path.join("|"), flags);
+        return new RegExp(path2.join("|"), flags);
       }
-      if (typeof path !== "string") {
+      if (typeof path2 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path = path.replace(
+      path2 = path2.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional, offset) {
           if (match[0] === "\\") {
@@ -17750,7 +17921,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path.slice(pos, offset);
+            backtrack += path2.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -17780,7 +17951,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path2)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -17792,13 +17963,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path += strict ? "" : path[path.length - 1] === "/" ? "?" : "/?";
+      path2 += strict ? "" : path2[path2.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path += "$";
-      } else if (path[path.length - 1] !== "/") {
-        path += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path2 += "$";
+      } else if (path2[path2.length - 1] !== "/") {
+        path2 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path, flags);
+      return new RegExp("^" + path2, flags);
     }
   }
 });
@@ -17811,19 +17982,19 @@ var require_layer = __commonJS({
     var debug = require_src()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module2.exports = Layer;
-    function Layer(path, options, fn) {
+    function Layer(path2, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path, options, fn);
+        return new Layer(path2, options, fn);
       }
-      debug("new %o", path);
+      debug("new %o", path2);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path, this.keys = [], opts);
-      this.regexp.fast_star = path === "*";
-      this.regexp.fast_slash = path === "/" && opts.end === false;
+      this.regexp = pathRegexp(path2, this.keys = [], opts);
+      this.regexp.fast_star = path2 === "*";
+      this.regexp.fast_slash = path2 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error, req, res, next) {
       var fn = this.handle;
@@ -17847,20 +18018,20 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path) {
+    Layer.prototype.match = function match(path2) {
       var match2;
-      if (path != null) {
+      if (path2 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path) };
-          this.path = path;
+          this.params = { "0": decode_param(path2) };
+          this.path = path2;
           return true;
         }
-        match2 = this.regexp.exec(path);
+        match2 = this.regexp.exec(path2);
       }
       if (!match2) {
         this.params = void 0;
@@ -17953,10 +18124,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module2.exports = Route;
-    function Route(path) {
-      this.path = path;
+    function Route(path2) {
+      this.path = path2;
       this.stack = [];
-      debug("new %o", path);
+      debug("new %o", path2);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -18168,8 +18339,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        var path = getPathname(req);
-        if (path == null) {
+        var path2 = getPathname(req);
+        if (path2 == null) {
           return done(layerError);
         }
         var layer;
@@ -18177,7 +18348,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path);
+          match = matchLayer(layer, path2);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -18215,18 +18386,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next);
           } else {
-            trim_prefix(layer, layerError, layerPath, path);
+            trim_prefix(layer, layerError, layerPath, path2);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path) {
+      function trim_prefix(layer, layerError, layerPath, path2) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path.slice(0, layerPath.length)) {
+          if (layerPath !== path2.slice(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          var c = path[layerPath.length];
+          var c = path2[layerPath.length];
           if (c && c !== "/" && c !== ".") return next(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -18304,7 +18475,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path = "/";
+      var path2 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -18312,7 +18483,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path = fn;
+          path2 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -18324,8 +18495,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path, fn.name || "<anonymous>");
-        var layer = new Layer(path, {
+        debug("use %o %s", path2, fn.name || "<anonymous>");
+        var layer = new Layer(path2, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -18335,9 +18506,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path) {
-      var route2 = new Route(path);
-      var layer = new Layer(path, {
+    proto.route = function route(path2) {
+      var route2 = new Route(path2);
+      var layer = new Layer(path2, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -18347,8 +18518,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path) {
-        var route = this.route(path);
+      proto[method] = function(path2) {
+        var route = this.route(path2);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -18384,9 +18555,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path) {
+    function matchLayer(layer, path2) {
       try {
-        return layer.match(path);
+        return layer.match(path2);
       } catch (err) {
         return err;
       }
@@ -18504,13 +18675,13 @@ var require_view = __commonJS({
   "../node_modules/express/lib/view.js"(exports2, module2) {
     "use strict";
     var debug = require_src()("express:view");
-    var path = require("path");
-    var fs = require("fs");
-    var dirname = path.dirname;
-    var basename = path.basename;
-    var extname = path.extname;
-    var join = path.join;
-    var resolve = path.resolve;
+    var path2 = require("path");
+    var fs2 = require("fs");
+    var dirname = path2.dirname;
+    var basename = path2.basename;
+    var extname = path2.extname;
+    var join = path2.join;
+    var resolve = path2.resolve;
     module2.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -18539,17 +18710,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path2;
+      var path3;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path2; i++) {
+      for (var i = 0; i < roots.length && !path3; i++) {
         var root = roots[i];
         var loc = resolve(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path2 = this.resolve(dir, file);
+        path3 = this.resolve(dir, file);
       }
-      return path2;
+      return path3;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -18557,21 +18728,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file) {
       var ext = this.ext;
-      var path2 = join(dir, file);
-      var stat = tryStat(path2);
+      var path3 = join(dir, file);
+      var stat = tryStat(path3);
       if (stat && stat.isFile()) {
-        return path2;
+        return path3;
       }
-      path2 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path2);
+      path3 = join(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path3);
       if (stat && stat.isFile()) {
-        return path2;
+        return path3;
       }
     };
-    function tryStat(path2) {
-      debug('stat "%s"', path2);
+    function tryStat(path3) {
+      debug('stat "%s"', path3);
       try {
-        return fs.statSync(path2);
+        return fs2.statSync(path3);
       } catch (e) {
         return void 0;
       }
@@ -18925,8 +19096,8 @@ var require_types = __commonJS({
 // ../node_modules/send/node_modules/mime/mime.js
 var require_mime = __commonJS({
   "../node_modules/send/node_modules/mime/mime.js"(exports2, module2) {
-    var path = require("path");
-    var fs = require("fs");
+    var path2 = require("path");
+    var fs2 = require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -18947,7 +19118,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file) {
       this._loading = file;
-      var map = {}, content = fs.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
+      var map = {}, content = fs2.readFileSync(file, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map[fields.shift()] = fields;
@@ -18955,8 +19126,8 @@ var require_mime = __commonJS({
       this.define(map);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path2, fallback) {
-      var ext = path2.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path3, fallback) {
+      var ext = path3.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -19185,33 +19356,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs = require("fs");
+    var fs2 = require("fs");
     var mime = require_mime();
     var ms = require_ms2();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path = require("path");
+    var path2 = require("path");
     var statuses = require_statuses();
     var Stream = require("stream");
     var util2 = require("util");
-    var extname = path.extname;
-    var join = path.join;
-    var normalize = path.normalize;
-    var resolve = path.resolve;
-    var sep = path.sep;
+    var extname = path2.extname;
+    var join = path2.join;
+    var normalize = path2.normalize;
+    var resolve = path2.resolve;
+    var sep = path2.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module2.exports = send;
     module2.exports.mime = mime;
-    function send(req, path2, options) {
-      return new SendStream(req, path2, options);
+    function send(req, path3, options) {
+      return new SendStream(req, path3, options);
     }
-    function SendStream(req, path2, options) {
+    function SendStream(req, path3, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path2;
+      this.path = path3;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -19257,8 +19428,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path2) {
-      this._root = resolve(String(path2));
+    SendStream.prototype.root = function root(path3) {
+      this._root = resolve(String(path3));
       debug("root %s", this._root);
       return this;
     };
@@ -19371,10 +19542,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path2) {
+    SendStream.prototype.redirect = function redirect(path3) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path2);
+        this.emit("directory", res, path3);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -19394,42 +19565,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path2 = decode(this.path);
-      if (path2 === -1) {
+      var path3 = decode(this.path);
+      if (path3 === -1) {
         this.error(400);
         return res;
       }
-      if (~path2.indexOf("\0")) {
+      if (~path3.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path2) {
-          path2 = normalize("." + sep + path2);
+        if (path3) {
+          path3 = normalize("." + sep + path3);
         }
-        if (UP_PATH_REGEXP.test(path2)) {
-          debug('malicious path "%s"', path2);
+        if (UP_PATH_REGEXP.test(path3)) {
+          debug('malicious path "%s"', path3);
           this.error(403);
           return res;
         }
-        parts = path2.split(sep);
-        path2 = normalize(join(root, path2));
+        parts = path3.split(sep);
+        path3 = normalize(join(root, path3));
       } else {
-        if (UP_PATH_REGEXP.test(path2)) {
-          debug('malicious path "%s"', path2);
+        if (UP_PATH_REGEXP.test(path3)) {
+          debug('malicious path "%s"', path3);
           this.error(403);
           return res;
         }
-        parts = normalize(path2).split(sep);
-        path2 = resolve(path2);
+        parts = normalize(path3).split(sep);
+        path3 = resolve(path3);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path2);
+        debug('%s dotfile "%s"', access, path3);
         switch (access) {
           case "allow":
             break;
@@ -19443,13 +19614,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path2);
+        this.sendIndex(path3);
         return res;
       }
-      this.sendFile(path2);
+      this.sendFile(path3);
       return res;
     };
-    SendStream.prototype.send = function send2(path2, stat) {
+    SendStream.prototype.send = function send2(path3, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -19461,9 +19632,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path2);
-      this.setHeader(path2, stat);
-      this.type(path2);
+      debug('pipe "%s"', path3);
+      this.setHeader(path3, stat);
+      this.type(path3);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -19512,28 +19683,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path2, opts);
+      this.stream(path3, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path2) {
+    SendStream.prototype.sendFile = function sendFile(path3) {
       var i = 0;
       var self2 = this;
-      debug('stat "%s"', path2);
-      fs.stat(path2, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path2) && path2[path2.length - 1] !== sep) {
+      debug('stat "%s"', path3);
+      fs2.stat(path3, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path3) && path3[path3.length - 1] !== sep) {
           return next(err);
         }
         if (err) return self2.onStatError(err);
-        if (stat.isDirectory()) return self2.redirect(path2);
-        self2.emit("file", path2, stat);
-        self2.send(path2, stat);
+        if (stat.isDirectory()) return self2.redirect(path3);
+        self2.emit("file", path3, stat);
+        self2.send(path3, stat);
       });
       function next(err) {
         if (self2._extensions.length <= i) {
           return err ? self2.onStatError(err) : self2.error(404);
         }
-        var p = path2 + "." + self2._extensions[i++];
+        var p = path3 + "." + self2._extensions[i++];
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self2.emit("file", p, stat);
@@ -19541,7 +19712,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path2) {
+    SendStream.prototype.sendIndex = function sendIndex(path3) {
       var i = -1;
       var self2 = this;
       function next(err) {
@@ -19549,9 +19720,9 @@ var require_send = __commonJS({
           if (err) return self2.onStatError(err);
           return self2.error(404);
         }
-        var p = join(path2, self2._index[i]);
+        var p = join(path3, self2._index[i]);
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self2.emit("file", p, stat);
@@ -19560,10 +19731,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path2, options) {
+    SendStream.prototype.stream = function stream(path3, options) {
       var self2 = this;
       var res = this.res;
-      var stream2 = fs.createReadStream(path2, options);
+      var stream2 = fs2.createReadStream(path3, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -19578,10 +19749,10 @@ var require_send = __commonJS({
         self2.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path2) {
+    SendStream.prototype.type = function type(path3) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path2);
+      var type2 = mime.lookup(path3);
       if (!type2) {
         debug("no content-type");
         return;
@@ -19590,9 +19761,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path2, stat) {
+    SendStream.prototype.setHeader = function setHeader(path3, stat) {
       var res = this.res;
-      this.emit("headers", res, path2, stat);
+      this.emit("headers", res, path3, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -19651,9 +19822,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path2) {
+    function decode(path3) {
       try {
-        return decodeURIComponent(path2);
+        return decodeURIComponent(path3);
       } catch (err) {
         return -1;
       }
@@ -20578,10 +20749,10 @@ var require_utils2 = __commonJS({
     var querystring = require("querystring");
     exports2.etag = createETagGenerator({ weak: false });
     exports2.wetag = createETagGenerator({ weak: true });
-    exports2.isAbsolute = function(path) {
-      if ("/" === path[0]) return true;
-      if (":" === path[1] && ("\\" === path[2] || "/" === path[2])) return true;
-      if ("\\\\" === path.substring(0, 2)) return true;
+    exports2.isAbsolute = function(path2) {
+      if ("/" === path2[0]) return true;
+      if (":" === path2[1] && ("\\" === path2[2] || "/" === path2[2])) return true;
+      if ("\\\\" === path2.substring(0, 2)) return true;
     };
     exports2.flatten = deprecate.function(
       flatten,
@@ -20793,7 +20964,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path = "/";
+      var path2 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -20801,7 +20972,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path = fn;
+          path2 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -20812,12 +20983,12 @@ var require_application = __commonJS({
       var router9 = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router9.use(path, fn2);
+          return router9.use(path2, fn2);
         }
-        debug(".use app under %s", path);
-        fn2.mountpath = path;
+        debug(".use app under %s", path2);
+        fn2.mountpath = path2;
         fn2.parent = this;
-        router9.use(path, function mounted_app(req, res, next) {
+        router9.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -20829,9 +21000,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path) {
+    app2.route = function route(path2) {
       this.lazyrouter();
-      return this._router.route(path);
+      return this._router.route(path2);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -20882,7 +21053,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path() {
+    app2.path = function path2() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -20898,19 +21069,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path) {
+      app2[method] = function(path2) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path);
+          return this.set(path2);
         }
         this.lazyrouter();
-        var route = this._router.route(path);
+        var route = this._router.route(path2);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path) {
+    app2.all = function all(path2) {
       this.lazyrouter();
-      var route = this._router.route(path);
+      var route = this._router.route(path2);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -21669,7 +21840,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname) ? hostname.split(".").reverse() : [hostname];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path() {
+    defineGetter(req, "path", function path2() {
       return parse(this).pathname;
     });
     defineGetter(req, "hostname", function hostname() {
@@ -21991,7 +22162,7 @@ var require_response = __commonJS({
     var http = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
-    var path = require("path");
+    var path2 = require("path");
     var statuses = require_statuses();
     var merge = require_utils_merge();
     var sign = require_cookie_signature().sign;
@@ -22000,9 +22171,9 @@ var require_response = __commonJS({
     var setCharset = require_utils2().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path.extname;
+    var extname = path2.extname;
     var mime = send.mime;
-    var resolve = path.resolve;
+    var resolve = path2.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module2.exports = res;
@@ -22179,26 +22350,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path2, options, callback) {
+    res.sendFile = function sendFile(path3, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path2) {
+      if (!path3) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path2 !== "string") {
+      if (typeof path3 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path2)) {
+      if (!opts.root && !isAbsolute(path3)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path2);
+      var pathname = encodeURI(path3);
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
@@ -22208,7 +22379,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path2, options, callback) {
+    res.sendfile = function(path3, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -22218,7 +22389,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file = send(req, path2, opts);
+      var file = send(req, path3, opts);
       sendfile(res2, file, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next();
@@ -22231,7 +22402,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path2, filename, options, callback) {
+    res.download = function download(path3, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -22248,7 +22419,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path2)
+        "Content-Disposition": contentDisposition(name || path3)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -22261,7 +22432,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path2) : path2;
+      var fullPath = !opts.root ? resolve(path3) : path3;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -22562,11 +22733,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path = parseUrl(req).pathname;
-        if (path === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path = "";
+        var path2 = parseUrl(req).pathname;
+        if (path2 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path2 = "";
         }
-        var stream = send(req, path, opts);
+        var stream = send(req, path2, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -30278,15 +30449,15 @@ var require_pg_connection_string = __commonJS({
       if (config.sslnegotiation === "direct" && config.ssl === void 0) {
         config.ssl = true;
       }
-      const fs = config.sslcert || config.sslkey || config.sslrootcert ? require("fs") : null;
+      const fs2 = config.sslcert || config.sslkey || config.sslrootcert ? require("fs") : null;
       if (config.sslcert) {
-        config.ssl.cert = fs.readFileSync(config.sslcert).toString();
+        config.ssl.cert = fs2.readFileSync(config.sslcert).toString();
       }
       if (config.sslkey) {
-        config.ssl.key = fs.readFileSync(config.sslkey).toString();
+        config.ssl.key = fs2.readFileSync(config.sslkey).toString();
       }
       if (config.sslrootcert) {
-        config.ssl.ca = fs.readFileSync(config.sslrootcert).toString();
+        config.ssl.ca = fs2.readFileSync(config.sslrootcert).toString();
       }
       if (options.useLibpqCompat && config.uselibpqcompat) {
         throw new Error("Both useLibpqCompat and uselibpqcompat are set. Please use only one of them.");
@@ -32114,7 +32285,7 @@ var require_split2 = __commonJS({
 var require_helper = __commonJS({
   "../node_modules/pgpass/lib/helper.js"(exports2, module2) {
     "use strict";
-    var path = require("path");
+    var path2 = require("path");
     var Stream = require("stream").Stream;
     var split = require_split2();
     var util2 = require("util");
@@ -32153,7 +32324,7 @@ var require_helper = __commonJS({
     };
     module2.exports.getFileName = function(rawEnv) {
       var env = rawEnv || process.env;
-      var file = env.PGPASSFILE || (isWin ? path.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path.join(env.HOME || "./", ".pgpass"));
+      var file = env.PGPASSFILE || (isWin ? path2.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path2.join(env.HOME || "./", ".pgpass"));
       return file;
     };
     module2.exports.usePgPass = function(stats, fname) {
@@ -32285,16 +32456,16 @@ var require_helper = __commonJS({
 var require_lib4 = __commonJS({
   "../node_modules/pgpass/lib/index.js"(exports2, module2) {
     "use strict";
-    var path = require("path");
-    var fs = require("fs");
+    var path2 = require("path");
+    var fs2 = require("fs");
     var helper = require_helper();
     module2.exports = function(connInfo, cb) {
       var file = helper.getFileName();
-      fs.stat(file, function(err, stat) {
+      fs2.stat(file, function(err, stat) {
         if (err || !helper.usePgPass(stat, file)) {
           return cb(void 0);
         }
-        var st = fs.createReadStream(file);
+        var st = fs2.createReadStream(file);
         helper.getPassword(connInfo, st, cb);
       });
     };
@@ -34051,8 +34222,8 @@ var require_package = __commonJS({
 // ../node_modules/dotenv/lib/main.js
 var require_main = __commonJS({
   "../node_modules/dotenv/lib/main.js"(exports2, module2) {
-    var fs = require("fs");
-    var path = require("path");
+    var fs2 = require("fs");
+    var path2 = require("path");
     var os = require("os");
     var crypto = require("crypto");
     var packageJson = require_package();
@@ -34160,7 +34331,7 @@ var require_main = __commonJS({
       if (options && options.path && options.path.length > 0) {
         if (Array.isArray(options.path)) {
           for (const filepath of options.path) {
-            if (fs.existsSync(filepath)) {
+            if (fs2.existsSync(filepath)) {
               possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
             }
           }
@@ -34168,15 +34339,15 @@ var require_main = __commonJS({
           possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
         }
       } else {
-        possibleVaultPath = path.resolve(process.cwd(), ".env.vault");
+        possibleVaultPath = path2.resolve(process.cwd(), ".env.vault");
       }
-      if (fs.existsSync(possibleVaultPath)) {
+      if (fs2.existsSync(possibleVaultPath)) {
         return possibleVaultPath;
       }
       return null;
     }
     function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path.join(os.homedir(), envPath.slice(1)) : envPath;
+      return envPath[0] === "~" ? path2.join(os.homedir(), envPath.slice(1)) : envPath;
     }
     function _configVault(options) {
       const debug = Boolean(options && options.debug);
@@ -34193,7 +34364,7 @@ var require_main = __commonJS({
       return { parsed };
     }
     function configDotenv(options) {
-      const dotenvPath = path.resolve(process.cwd(), ".env");
+      const dotenvPath = path2.resolve(process.cwd(), ".env");
       let encoding = "utf8";
       const debug = Boolean(options && options.debug);
       const quiet = options && "quiet" in options ? options.quiet : true;
@@ -34217,13 +34388,13 @@ var require_main = __commonJS({
       }
       let lastError;
       const parsedAll = {};
-      for (const path2 of optionPaths) {
+      for (const path3 of optionPaths) {
         try {
-          const parsed = DotenvModule.parse(fs.readFileSync(path2, { encoding }));
+          const parsed = DotenvModule.parse(fs2.readFileSync(path3, { encoding }));
           DotenvModule.populate(parsedAll, parsed, options);
         } catch (e) {
           if (debug) {
-            _debug(`Failed to load ${path2} ${e.message}`);
+            _debug(`Failed to load ${path3} ${e.message}`);
           }
           lastError = e;
         }
@@ -34238,7 +34409,7 @@ var require_main = __commonJS({
         const shortPaths = [];
         for (const filePath of optionPaths) {
           try {
-            const relative = path.relative(process.cwd(), filePath);
+            const relative = path2.relative(process.cwd(), filePath);
             shortPaths.push(relative);
           } catch (e) {
             if (debug) {
@@ -34832,8 +35003,8 @@ function getErrorMap() {
 
 // ../node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path, errorMaps, issueData } = params;
-  const fullPath = [...path, ...issueData.path || []];
+  const { data, path: path2, errorMaps, issueData } = params;
+  const fullPath = [...path2, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -34949,11 +35120,11 @@ var errorUtil;
 
 // ../node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path, key) {
+  constructor(parent, value, path2, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path;
+    this._path = path2;
     this._key = key;
   }
   get path() {
@@ -38410,8 +38581,24 @@ var TypeOverrides = import_lib.default.TypeOverrides;
 var defaults = import_lib.default.defaults;
 
 // src/config/env.ts
+var import_path = __toESM(require("path"));
+var import_fs = __toESM(require("fs"));
 var import_dotenv = __toESM(require_main());
+var possibleEnvPaths = [
+  import_path.default.resolve(process.cwd(), ".env"),
+  import_path.default.resolve(process.cwd(), "backend/.env"),
+  import_path.default.resolve(__dirname, "../../.env"),
+  import_path.default.resolve(__dirname, "../../../.env"),
+  import_path.default.resolve(__dirname, "../../../backend/.env")
+];
+for (const envPath of possibleEnvPaths) {
+  if (import_fs.default.existsSync(envPath)) {
+    import_dotenv.default.config({ path: envPath });
+  }
+}
 import_dotenv.default.config();
+var rawGeminiKey = (process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+var isPlaceholderKey = rawGeminiKey.includes("your_key_here") || rawGeminiKey.includes("your_gemini_api_key_here") || rawGeminiKey === "";
 var ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
   DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres",
@@ -38421,7 +38608,7 @@ var ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  GEMINI_API_KEY: isPlaceholderKey ? "" : rawGeminiKey,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
 };
 
@@ -39755,6 +39942,1013 @@ var messages_routes_default = router7;
 // src/modules/ai/ai.routes.ts
 var import_express8 = __toESM(require_express2());
 
+// ../node_modules/@google/generative-ai/dist/index.mjs
+var SchemaType;
+(function(SchemaType2) {
+  SchemaType2["STRING"] = "string";
+  SchemaType2["NUMBER"] = "number";
+  SchemaType2["INTEGER"] = "integer";
+  SchemaType2["BOOLEAN"] = "boolean";
+  SchemaType2["ARRAY"] = "array";
+  SchemaType2["OBJECT"] = "object";
+})(SchemaType || (SchemaType = {}));
+var ExecutableCodeLanguage;
+(function(ExecutableCodeLanguage2) {
+  ExecutableCodeLanguage2["LANGUAGE_UNSPECIFIED"] = "language_unspecified";
+  ExecutableCodeLanguage2["PYTHON"] = "python";
+})(ExecutableCodeLanguage || (ExecutableCodeLanguage = {}));
+var Outcome;
+(function(Outcome2) {
+  Outcome2["OUTCOME_UNSPECIFIED"] = "outcome_unspecified";
+  Outcome2["OUTCOME_OK"] = "outcome_ok";
+  Outcome2["OUTCOME_FAILED"] = "outcome_failed";
+  Outcome2["OUTCOME_DEADLINE_EXCEEDED"] = "outcome_deadline_exceeded";
+})(Outcome || (Outcome = {}));
+var POSSIBLE_ROLES = ["user", "model", "function", "system"];
+var HarmCategory;
+(function(HarmCategory2) {
+  HarmCategory2["HARM_CATEGORY_UNSPECIFIED"] = "HARM_CATEGORY_UNSPECIFIED";
+  HarmCategory2["HARM_CATEGORY_HATE_SPEECH"] = "HARM_CATEGORY_HATE_SPEECH";
+  HarmCategory2["HARM_CATEGORY_SEXUALLY_EXPLICIT"] = "HARM_CATEGORY_SEXUALLY_EXPLICIT";
+  HarmCategory2["HARM_CATEGORY_HARASSMENT"] = "HARM_CATEGORY_HARASSMENT";
+  HarmCategory2["HARM_CATEGORY_DANGEROUS_CONTENT"] = "HARM_CATEGORY_DANGEROUS_CONTENT";
+  HarmCategory2["HARM_CATEGORY_CIVIC_INTEGRITY"] = "HARM_CATEGORY_CIVIC_INTEGRITY";
+})(HarmCategory || (HarmCategory = {}));
+var HarmBlockThreshold;
+(function(HarmBlockThreshold2) {
+  HarmBlockThreshold2["HARM_BLOCK_THRESHOLD_UNSPECIFIED"] = "HARM_BLOCK_THRESHOLD_UNSPECIFIED";
+  HarmBlockThreshold2["BLOCK_LOW_AND_ABOVE"] = "BLOCK_LOW_AND_ABOVE";
+  HarmBlockThreshold2["BLOCK_MEDIUM_AND_ABOVE"] = "BLOCK_MEDIUM_AND_ABOVE";
+  HarmBlockThreshold2["BLOCK_ONLY_HIGH"] = "BLOCK_ONLY_HIGH";
+  HarmBlockThreshold2["BLOCK_NONE"] = "BLOCK_NONE";
+})(HarmBlockThreshold || (HarmBlockThreshold = {}));
+var HarmProbability;
+(function(HarmProbability2) {
+  HarmProbability2["HARM_PROBABILITY_UNSPECIFIED"] = "HARM_PROBABILITY_UNSPECIFIED";
+  HarmProbability2["NEGLIGIBLE"] = "NEGLIGIBLE";
+  HarmProbability2["LOW"] = "LOW";
+  HarmProbability2["MEDIUM"] = "MEDIUM";
+  HarmProbability2["HIGH"] = "HIGH";
+})(HarmProbability || (HarmProbability = {}));
+var BlockReason;
+(function(BlockReason2) {
+  BlockReason2["BLOCKED_REASON_UNSPECIFIED"] = "BLOCKED_REASON_UNSPECIFIED";
+  BlockReason2["SAFETY"] = "SAFETY";
+  BlockReason2["OTHER"] = "OTHER";
+})(BlockReason || (BlockReason = {}));
+var FinishReason;
+(function(FinishReason2) {
+  FinishReason2["FINISH_REASON_UNSPECIFIED"] = "FINISH_REASON_UNSPECIFIED";
+  FinishReason2["STOP"] = "STOP";
+  FinishReason2["MAX_TOKENS"] = "MAX_TOKENS";
+  FinishReason2["SAFETY"] = "SAFETY";
+  FinishReason2["RECITATION"] = "RECITATION";
+  FinishReason2["LANGUAGE"] = "LANGUAGE";
+  FinishReason2["BLOCKLIST"] = "BLOCKLIST";
+  FinishReason2["PROHIBITED_CONTENT"] = "PROHIBITED_CONTENT";
+  FinishReason2["SPII"] = "SPII";
+  FinishReason2["MALFORMED_FUNCTION_CALL"] = "MALFORMED_FUNCTION_CALL";
+  FinishReason2["OTHER"] = "OTHER";
+})(FinishReason || (FinishReason = {}));
+var TaskType;
+(function(TaskType2) {
+  TaskType2["TASK_TYPE_UNSPECIFIED"] = "TASK_TYPE_UNSPECIFIED";
+  TaskType2["RETRIEVAL_QUERY"] = "RETRIEVAL_QUERY";
+  TaskType2["RETRIEVAL_DOCUMENT"] = "RETRIEVAL_DOCUMENT";
+  TaskType2["SEMANTIC_SIMILARITY"] = "SEMANTIC_SIMILARITY";
+  TaskType2["CLASSIFICATION"] = "CLASSIFICATION";
+  TaskType2["CLUSTERING"] = "CLUSTERING";
+})(TaskType || (TaskType = {}));
+var FunctionCallingMode;
+(function(FunctionCallingMode2) {
+  FunctionCallingMode2["MODE_UNSPECIFIED"] = "MODE_UNSPECIFIED";
+  FunctionCallingMode2["AUTO"] = "AUTO";
+  FunctionCallingMode2["ANY"] = "ANY";
+  FunctionCallingMode2["NONE"] = "NONE";
+})(FunctionCallingMode || (FunctionCallingMode = {}));
+var DynamicRetrievalMode;
+(function(DynamicRetrievalMode2) {
+  DynamicRetrievalMode2["MODE_UNSPECIFIED"] = "MODE_UNSPECIFIED";
+  DynamicRetrievalMode2["MODE_DYNAMIC"] = "MODE_DYNAMIC";
+})(DynamicRetrievalMode || (DynamicRetrievalMode = {}));
+var GoogleGenerativeAIError = class extends Error {
+  constructor(message) {
+    super(`[GoogleGenerativeAI Error]: ${message}`);
+  }
+};
+var GoogleGenerativeAIResponseError = class extends GoogleGenerativeAIError {
+  constructor(message, response) {
+    super(message);
+    this.response = response;
+  }
+};
+var GoogleGenerativeAIFetchError = class extends GoogleGenerativeAIError {
+  constructor(message, status, statusText, errorDetails) {
+    super(message);
+    this.status = status;
+    this.statusText = statusText;
+    this.errorDetails = errorDetails;
+  }
+};
+var GoogleGenerativeAIRequestInputError = class extends GoogleGenerativeAIError {
+};
+var GoogleGenerativeAIAbortError = class extends GoogleGenerativeAIError {
+};
+var DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
+var DEFAULT_API_VERSION = "v1beta";
+var PACKAGE_VERSION = "0.24.1";
+var PACKAGE_LOG_HEADER = "genai-js";
+var Task;
+(function(Task2) {
+  Task2["GENERATE_CONTENT"] = "generateContent";
+  Task2["STREAM_GENERATE_CONTENT"] = "streamGenerateContent";
+  Task2["COUNT_TOKENS"] = "countTokens";
+  Task2["EMBED_CONTENT"] = "embedContent";
+  Task2["BATCH_EMBED_CONTENTS"] = "batchEmbedContents";
+})(Task || (Task = {}));
+var RequestUrl = class {
+  constructor(model, task, apiKey, stream, requestOptions) {
+    this.model = model;
+    this.task = task;
+    this.apiKey = apiKey;
+    this.stream = stream;
+    this.requestOptions = requestOptions;
+  }
+  toString() {
+    var _a, _b;
+    const apiVersion = ((_a = this.requestOptions) === null || _a === void 0 ? void 0 : _a.apiVersion) || DEFAULT_API_VERSION;
+    const baseUrl = ((_b = this.requestOptions) === null || _b === void 0 ? void 0 : _b.baseUrl) || DEFAULT_BASE_URL;
+    let url = `${baseUrl}/${apiVersion}/${this.model}:${this.task}`;
+    if (this.stream) {
+      url += "?alt=sse";
+    }
+    return url;
+  }
+};
+function getClientHeaders(requestOptions) {
+  const clientHeaders = [];
+  if (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.apiClient) {
+    clientHeaders.push(requestOptions.apiClient);
+  }
+  clientHeaders.push(`${PACKAGE_LOG_HEADER}/${PACKAGE_VERSION}`);
+  return clientHeaders.join(" ");
+}
+async function getHeaders(url) {
+  var _a;
+  const headers = new Headers();
+  headers.append("Content-Type", "application/json");
+  headers.append("x-goog-api-client", getClientHeaders(url.requestOptions));
+  headers.append("x-goog-api-key", url.apiKey);
+  let customHeaders = (_a = url.requestOptions) === null || _a === void 0 ? void 0 : _a.customHeaders;
+  if (customHeaders) {
+    if (!(customHeaders instanceof Headers)) {
+      try {
+        customHeaders = new Headers(customHeaders);
+      } catch (e) {
+        throw new GoogleGenerativeAIRequestInputError(`unable to convert customHeaders value ${JSON.stringify(customHeaders)} to Headers: ${e.message}`);
+      }
+    }
+    for (const [headerName, headerValue] of customHeaders.entries()) {
+      if (headerName === "x-goog-api-key") {
+        throw new GoogleGenerativeAIRequestInputError(`Cannot set reserved header name ${headerName}`);
+      } else if (headerName === "x-goog-api-client") {
+        throw new GoogleGenerativeAIRequestInputError(`Header name ${headerName} can only be set using the apiClient field`);
+      }
+      headers.append(headerName, headerValue);
+    }
+  }
+  return headers;
+}
+async function constructModelRequest(model, task, apiKey, stream, body, requestOptions) {
+  const url = new RequestUrl(model, task, apiKey, stream, requestOptions);
+  return {
+    url: url.toString(),
+    fetchOptions: Object.assign(Object.assign({}, buildFetchOptions(requestOptions)), { method: "POST", headers: await getHeaders(url), body })
+  };
+}
+async function makeModelRequest(model, task, apiKey, stream, body, requestOptions = {}, fetchFn = fetch) {
+  const { url, fetchOptions } = await constructModelRequest(model, task, apiKey, stream, body, requestOptions);
+  return makeRequest(url, fetchOptions, fetchFn);
+}
+async function makeRequest(url, fetchOptions, fetchFn = fetch) {
+  let response;
+  try {
+    response = await fetchFn(url, fetchOptions);
+  } catch (e) {
+    handleResponseError(e, url);
+  }
+  if (!response.ok) {
+    await handleResponseNotOk(response, url);
+  }
+  return response;
+}
+function handleResponseError(e, url) {
+  let err = e;
+  if (err.name === "AbortError") {
+    err = new GoogleGenerativeAIAbortError(`Request aborted when fetching ${url.toString()}: ${e.message}`);
+    err.stack = e.stack;
+  } else if (!(e instanceof GoogleGenerativeAIFetchError || e instanceof GoogleGenerativeAIRequestInputError)) {
+    err = new GoogleGenerativeAIError(`Error fetching from ${url.toString()}: ${e.message}`);
+    err.stack = e.stack;
+  }
+  throw err;
+}
+async function handleResponseNotOk(response, url) {
+  let message = "";
+  let errorDetails;
+  try {
+    const json = await response.json();
+    message = json.error.message;
+    if (json.error.details) {
+      message += ` ${JSON.stringify(json.error.details)}`;
+      errorDetails = json.error.details;
+    }
+  } catch (e) {
+  }
+  throw new GoogleGenerativeAIFetchError(`Error fetching from ${url.toString()}: [${response.status} ${response.statusText}] ${message}`, response.status, response.statusText, errorDetails);
+}
+function buildFetchOptions(requestOptions) {
+  const fetchOptions = {};
+  if ((requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.signal) !== void 0 || (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.timeout) >= 0) {
+    const controller = new AbortController();
+    if ((requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.timeout) >= 0) {
+      setTimeout(() => controller.abort(), requestOptions.timeout);
+    }
+    if (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.signal) {
+      requestOptions.signal.addEventListener("abort", () => {
+        controller.abort();
+      });
+    }
+    fetchOptions.signal = controller.signal;
+  }
+  return fetchOptions;
+}
+function addHelpers(response) {
+  response.text = () => {
+    if (response.candidates && response.candidates.length > 0) {
+      if (response.candidates.length > 1) {
+        console.warn(`This response had ${response.candidates.length} candidates. Returning text from the first candidate only. Access response.candidates directly to use the other candidates.`);
+      }
+      if (hadBadFinishReason(response.candidates[0])) {
+        throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+      }
+      return getText(response);
+    } else if (response.promptFeedback) {
+      throw new GoogleGenerativeAIResponseError(`Text not available. ${formatBlockErrorMessage(response)}`, response);
+    }
+    return "";
+  };
+  response.functionCall = () => {
+    if (response.candidates && response.candidates.length > 0) {
+      if (response.candidates.length > 1) {
+        console.warn(`This response had ${response.candidates.length} candidates. Returning function calls from the first candidate only. Access response.candidates directly to use the other candidates.`);
+      }
+      if (hadBadFinishReason(response.candidates[0])) {
+        throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+      }
+      console.warn(`response.functionCall() is deprecated. Use response.functionCalls() instead.`);
+      return getFunctionCalls(response)[0];
+    } else if (response.promptFeedback) {
+      throw new GoogleGenerativeAIResponseError(`Function call not available. ${formatBlockErrorMessage(response)}`, response);
+    }
+    return void 0;
+  };
+  response.functionCalls = () => {
+    if (response.candidates && response.candidates.length > 0) {
+      if (response.candidates.length > 1) {
+        console.warn(`This response had ${response.candidates.length} candidates. Returning function calls from the first candidate only. Access response.candidates directly to use the other candidates.`);
+      }
+      if (hadBadFinishReason(response.candidates[0])) {
+        throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+      }
+      return getFunctionCalls(response);
+    } else if (response.promptFeedback) {
+      throw new GoogleGenerativeAIResponseError(`Function call not available. ${formatBlockErrorMessage(response)}`, response);
+    }
+    return void 0;
+  };
+  return response;
+}
+function getText(response) {
+  var _a, _b, _c, _d;
+  const textStrings = [];
+  if ((_b = (_a = response.candidates) === null || _a === void 0 ? void 0 : _a[0].content) === null || _b === void 0 ? void 0 : _b.parts) {
+    for (const part of (_d = (_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0].content) === null || _d === void 0 ? void 0 : _d.parts) {
+      if (part.text) {
+        textStrings.push(part.text);
+      }
+      if (part.executableCode) {
+        textStrings.push("\n```" + part.executableCode.language + "\n" + part.executableCode.code + "\n```\n");
+      }
+      if (part.codeExecutionResult) {
+        textStrings.push("\n```\n" + part.codeExecutionResult.output + "\n```\n");
+      }
+    }
+  }
+  if (textStrings.length > 0) {
+    return textStrings.join("");
+  } else {
+    return "";
+  }
+}
+function getFunctionCalls(response) {
+  var _a, _b, _c, _d;
+  const functionCalls = [];
+  if ((_b = (_a = response.candidates) === null || _a === void 0 ? void 0 : _a[0].content) === null || _b === void 0 ? void 0 : _b.parts) {
+    for (const part of (_d = (_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0].content) === null || _d === void 0 ? void 0 : _d.parts) {
+      if (part.functionCall) {
+        functionCalls.push(part.functionCall);
+      }
+    }
+  }
+  if (functionCalls.length > 0) {
+    return functionCalls;
+  } else {
+    return void 0;
+  }
+}
+var badFinishReasons = [
+  FinishReason.RECITATION,
+  FinishReason.SAFETY,
+  FinishReason.LANGUAGE
+];
+function hadBadFinishReason(candidate) {
+  return !!candidate.finishReason && badFinishReasons.includes(candidate.finishReason);
+}
+function formatBlockErrorMessage(response) {
+  var _a, _b, _c;
+  let message = "";
+  if ((!response.candidates || response.candidates.length === 0) && response.promptFeedback) {
+    message += "Response was blocked";
+    if ((_a = response.promptFeedback) === null || _a === void 0 ? void 0 : _a.blockReason) {
+      message += ` due to ${response.promptFeedback.blockReason}`;
+    }
+    if ((_b = response.promptFeedback) === null || _b === void 0 ? void 0 : _b.blockReasonMessage) {
+      message += `: ${response.promptFeedback.blockReasonMessage}`;
+    }
+  } else if ((_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0]) {
+    const firstCandidate = response.candidates[0];
+    if (hadBadFinishReason(firstCandidate)) {
+      message += `Candidate was blocked due to ${firstCandidate.finishReason}`;
+      if (firstCandidate.finishMessage) {
+        message += `: ${firstCandidate.finishMessage}`;
+      }
+    }
+  }
+  return message;
+}
+function __await(v) {
+  return this instanceof __await ? (this.v = v, this) : new __await(v);
+}
+function __asyncGenerator(thisArg, _arguments, generator) {
+  if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+  var g = generator.apply(thisArg, _arguments || []), i, q = [];
+  return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function() {
+    return this;
+  }, i;
+  function verb(n) {
+    if (g[n]) i[n] = function(v) {
+      return new Promise(function(a, b) {
+        q.push([n, v, a, b]) > 1 || resume(n, v);
+      });
+    };
+  }
+  function resume(n, v) {
+    try {
+      step(g[n](v));
+    } catch (e) {
+      settle(q[0][3], e);
+    }
+  }
+  function step(r) {
+    r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);
+  }
+  function fulfill(value) {
+    resume("next", value);
+  }
+  function reject(value) {
+    resume("throw", value);
+  }
+  function settle(f, v) {
+    if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]);
+  }
+}
+var responseLineRE = /^data\: (.*)(?:\n\n|\r\r|\r\n\r\n)/;
+function processStream(response) {
+  const inputStream = response.body.pipeThrough(new TextDecoderStream("utf8", { fatal: true }));
+  const responseStream = getResponseStream(inputStream);
+  const [stream1, stream2] = responseStream.tee();
+  return {
+    stream: generateResponseSequence(stream1),
+    response: getResponsePromise(stream2)
+  };
+}
+async function getResponsePromise(stream) {
+  const allResponses = [];
+  const reader = stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      return addHelpers(aggregateResponses(allResponses));
+    }
+    allResponses.push(value);
+  }
+}
+function generateResponseSequence(stream) {
+  return __asyncGenerator(this, arguments, function* generateResponseSequence_1() {
+    const reader = stream.getReader();
+    while (true) {
+      const { value, done } = yield __await(reader.read());
+      if (done) {
+        break;
+      }
+      yield yield __await(addHelpers(value));
+    }
+  });
+}
+function getResponseStream(inputStream) {
+  const reader = inputStream.getReader();
+  const stream = new ReadableStream({
+    start(controller) {
+      let currentText = "";
+      return pump();
+      function pump() {
+        return reader.read().then(({ value, done }) => {
+          if (done) {
+            if (currentText.trim()) {
+              controller.error(new GoogleGenerativeAIError("Failed to parse stream"));
+              return;
+            }
+            controller.close();
+            return;
+          }
+          currentText += value;
+          let match = currentText.match(responseLineRE);
+          let parsedResponse;
+          while (match) {
+            try {
+              parsedResponse = JSON.parse(match[1]);
+            } catch (e) {
+              controller.error(new GoogleGenerativeAIError(`Error parsing JSON response: "${match[1]}"`));
+              return;
+            }
+            controller.enqueue(parsedResponse);
+            currentText = currentText.substring(match[0].length);
+            match = currentText.match(responseLineRE);
+          }
+          return pump();
+        }).catch((e) => {
+          let err = e;
+          err.stack = e.stack;
+          if (err.name === "AbortError") {
+            err = new GoogleGenerativeAIAbortError("Request aborted when reading from the stream");
+          } else {
+            err = new GoogleGenerativeAIError("Error reading from the stream");
+          }
+          throw err;
+        });
+      }
+    }
+  });
+  return stream;
+}
+function aggregateResponses(responses) {
+  const lastResponse = responses[responses.length - 1];
+  const aggregatedResponse = {
+    promptFeedback: lastResponse === null || lastResponse === void 0 ? void 0 : lastResponse.promptFeedback
+  };
+  for (const response of responses) {
+    if (response.candidates) {
+      let candidateIndex = 0;
+      for (const candidate of response.candidates) {
+        if (!aggregatedResponse.candidates) {
+          aggregatedResponse.candidates = [];
+        }
+        if (!aggregatedResponse.candidates[candidateIndex]) {
+          aggregatedResponse.candidates[candidateIndex] = {
+            index: candidateIndex
+          };
+        }
+        aggregatedResponse.candidates[candidateIndex].citationMetadata = candidate.citationMetadata;
+        aggregatedResponse.candidates[candidateIndex].groundingMetadata = candidate.groundingMetadata;
+        aggregatedResponse.candidates[candidateIndex].finishReason = candidate.finishReason;
+        aggregatedResponse.candidates[candidateIndex].finishMessage = candidate.finishMessage;
+        aggregatedResponse.candidates[candidateIndex].safetyRatings = candidate.safetyRatings;
+        if (candidate.content && candidate.content.parts) {
+          if (!aggregatedResponse.candidates[candidateIndex].content) {
+            aggregatedResponse.candidates[candidateIndex].content = {
+              role: candidate.content.role || "user",
+              parts: []
+            };
+          }
+          const newPart = {};
+          for (const part of candidate.content.parts) {
+            if (part.text) {
+              newPart.text = part.text;
+            }
+            if (part.functionCall) {
+              newPart.functionCall = part.functionCall;
+            }
+            if (part.executableCode) {
+              newPart.executableCode = part.executableCode;
+            }
+            if (part.codeExecutionResult) {
+              newPart.codeExecutionResult = part.codeExecutionResult;
+            }
+            if (Object.keys(newPart).length === 0) {
+              newPart.text = "";
+            }
+            aggregatedResponse.candidates[candidateIndex].content.parts.push(newPart);
+          }
+        }
+      }
+      candidateIndex++;
+    }
+    if (response.usageMetadata) {
+      aggregatedResponse.usageMetadata = response.usageMetadata;
+    }
+  }
+  return aggregatedResponse;
+}
+async function generateContentStream(apiKey, model, params, requestOptions) {
+  const response = await makeModelRequest(
+    model,
+    Task.STREAM_GENERATE_CONTENT,
+    apiKey,
+    /* stream */
+    true,
+    JSON.stringify(params),
+    requestOptions
+  );
+  return processStream(response);
+}
+async function generateContent(apiKey, model, params, requestOptions) {
+  const response = await makeModelRequest(
+    model,
+    Task.GENERATE_CONTENT,
+    apiKey,
+    /* stream */
+    false,
+    JSON.stringify(params),
+    requestOptions
+  );
+  const responseJson = await response.json();
+  const enhancedResponse = addHelpers(responseJson);
+  return {
+    response: enhancedResponse
+  };
+}
+function formatSystemInstruction(input) {
+  if (input == null) {
+    return void 0;
+  } else if (typeof input === "string") {
+    return { role: "system", parts: [{ text: input }] };
+  } else if (input.text) {
+    return { role: "system", parts: [input] };
+  } else if (input.parts) {
+    if (!input.role) {
+      return { role: "system", parts: input.parts };
+    } else {
+      return input;
+    }
+  }
+}
+function formatNewContent(request) {
+  let newParts = [];
+  if (typeof request === "string") {
+    newParts = [{ text: request }];
+  } else {
+    for (const partOrString of request) {
+      if (typeof partOrString === "string") {
+        newParts.push({ text: partOrString });
+      } else {
+        newParts.push(partOrString);
+      }
+    }
+  }
+  return assignRoleToPartsAndValidateSendMessageRequest(newParts);
+}
+function assignRoleToPartsAndValidateSendMessageRequest(parts) {
+  const userContent = { role: "user", parts: [] };
+  const functionContent = { role: "function", parts: [] };
+  let hasUserContent = false;
+  let hasFunctionContent = false;
+  for (const part of parts) {
+    if ("functionResponse" in part) {
+      functionContent.parts.push(part);
+      hasFunctionContent = true;
+    } else {
+      userContent.parts.push(part);
+      hasUserContent = true;
+    }
+  }
+  if (hasUserContent && hasFunctionContent) {
+    throw new GoogleGenerativeAIError("Within a single message, FunctionResponse cannot be mixed with other type of part in the request for sending chat message.");
+  }
+  if (!hasUserContent && !hasFunctionContent) {
+    throw new GoogleGenerativeAIError("No content is provided for sending chat message.");
+  }
+  if (hasUserContent) {
+    return userContent;
+  }
+  return functionContent;
+}
+function formatCountTokensInput(params, modelParams) {
+  var _a;
+  let formattedGenerateContentRequest = {
+    model: modelParams === null || modelParams === void 0 ? void 0 : modelParams.model,
+    generationConfig: modelParams === null || modelParams === void 0 ? void 0 : modelParams.generationConfig,
+    safetySettings: modelParams === null || modelParams === void 0 ? void 0 : modelParams.safetySettings,
+    tools: modelParams === null || modelParams === void 0 ? void 0 : modelParams.tools,
+    toolConfig: modelParams === null || modelParams === void 0 ? void 0 : modelParams.toolConfig,
+    systemInstruction: modelParams === null || modelParams === void 0 ? void 0 : modelParams.systemInstruction,
+    cachedContent: (_a = modelParams === null || modelParams === void 0 ? void 0 : modelParams.cachedContent) === null || _a === void 0 ? void 0 : _a.name,
+    contents: []
+  };
+  const containsGenerateContentRequest = params.generateContentRequest != null;
+  if (params.contents) {
+    if (containsGenerateContentRequest) {
+      throw new GoogleGenerativeAIRequestInputError("CountTokensRequest must have one of contents or generateContentRequest, not both.");
+    }
+    formattedGenerateContentRequest.contents = params.contents;
+  } else if (containsGenerateContentRequest) {
+    formattedGenerateContentRequest = Object.assign(Object.assign({}, formattedGenerateContentRequest), params.generateContentRequest);
+  } else {
+    const content = formatNewContent(params);
+    formattedGenerateContentRequest.contents = [content];
+  }
+  return { generateContentRequest: formattedGenerateContentRequest };
+}
+function formatGenerateContentInput(params) {
+  let formattedRequest;
+  if (params.contents) {
+    formattedRequest = params;
+  } else {
+    const content = formatNewContent(params);
+    formattedRequest = { contents: [content] };
+  }
+  if (params.systemInstruction) {
+    formattedRequest.systemInstruction = formatSystemInstruction(params.systemInstruction);
+  }
+  return formattedRequest;
+}
+function formatEmbedContentInput(params) {
+  if (typeof params === "string" || Array.isArray(params)) {
+    const content = formatNewContent(params);
+    return { content };
+  }
+  return params;
+}
+var VALID_PART_FIELDS = [
+  "text",
+  "inlineData",
+  "functionCall",
+  "functionResponse",
+  "executableCode",
+  "codeExecutionResult"
+];
+var VALID_PARTS_PER_ROLE = {
+  user: ["text", "inlineData"],
+  function: ["functionResponse"],
+  model: ["text", "functionCall", "executableCode", "codeExecutionResult"],
+  // System instructions shouldn't be in history anyway.
+  system: ["text"]
+};
+function validateChatHistory(history) {
+  let prevContent = false;
+  for (const currContent of history) {
+    const { role, parts } = currContent;
+    if (!prevContent && role !== "user") {
+      throw new GoogleGenerativeAIError(`First content should be with role 'user', got ${role}`);
+    }
+    if (!POSSIBLE_ROLES.includes(role)) {
+      throw new GoogleGenerativeAIError(`Each item should include role field. Got ${role} but valid roles are: ${JSON.stringify(POSSIBLE_ROLES)}`);
+    }
+    if (!Array.isArray(parts)) {
+      throw new GoogleGenerativeAIError("Content should have 'parts' property with an array of Parts");
+    }
+    if (parts.length === 0) {
+      throw new GoogleGenerativeAIError("Each Content should have at least one part");
+    }
+    const countFields = {
+      text: 0,
+      inlineData: 0,
+      functionCall: 0,
+      functionResponse: 0,
+      fileData: 0,
+      executableCode: 0,
+      codeExecutionResult: 0
+    };
+    for (const part of parts) {
+      for (const key of VALID_PART_FIELDS) {
+        if (key in part) {
+          countFields[key] += 1;
+        }
+      }
+    }
+    const validParts = VALID_PARTS_PER_ROLE[role];
+    for (const key of VALID_PART_FIELDS) {
+      if (!validParts.includes(key) && countFields[key] > 0) {
+        throw new GoogleGenerativeAIError(`Content with role '${role}' can't contain '${key}' part`);
+      }
+    }
+    prevContent = true;
+  }
+}
+function isValidResponse(response) {
+  var _a;
+  if (response.candidates === void 0 || response.candidates.length === 0) {
+    return false;
+  }
+  const content = (_a = response.candidates[0]) === null || _a === void 0 ? void 0 : _a.content;
+  if (content === void 0) {
+    return false;
+  }
+  if (content.parts === void 0 || content.parts.length === 0) {
+    return false;
+  }
+  for (const part of content.parts) {
+    if (part === void 0 || Object.keys(part).length === 0) {
+      return false;
+    }
+    if (part.text !== void 0 && part.text === "") {
+      return false;
+    }
+  }
+  return true;
+}
+var SILENT_ERROR = "SILENT_ERROR";
+var ChatSession = class {
+  constructor(apiKey, model, params, _requestOptions = {}) {
+    this.model = model;
+    this.params = params;
+    this._requestOptions = _requestOptions;
+    this._history = [];
+    this._sendPromise = Promise.resolve();
+    this._apiKey = apiKey;
+    if (params === null || params === void 0 ? void 0 : params.history) {
+      validateChatHistory(params.history);
+      this._history = params.history;
+    }
+  }
+  /**
+   * Gets the chat history so far. Blocked prompts are not added to history.
+   * Blocked candidates are not added to history, nor are the prompts that
+   * generated them.
+   */
+  async getHistory() {
+    await this._sendPromise;
+    return this._history;
+  }
+  /**
+   * Sends a chat message and receives a non-streaming
+   * {@link GenerateContentResult}.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async sendMessage(request, requestOptions = {}) {
+    var _a, _b, _c, _d, _e, _f;
+    await this._sendPromise;
+    const newContent = formatNewContent(request);
+    const generateContentRequest = {
+      safetySettings: (_a = this.params) === null || _a === void 0 ? void 0 : _a.safetySettings,
+      generationConfig: (_b = this.params) === null || _b === void 0 ? void 0 : _b.generationConfig,
+      tools: (_c = this.params) === null || _c === void 0 ? void 0 : _c.tools,
+      toolConfig: (_d = this.params) === null || _d === void 0 ? void 0 : _d.toolConfig,
+      systemInstruction: (_e = this.params) === null || _e === void 0 ? void 0 : _e.systemInstruction,
+      cachedContent: (_f = this.params) === null || _f === void 0 ? void 0 : _f.cachedContent,
+      contents: [...this._history, newContent]
+    };
+    const chatSessionRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    let finalResult;
+    this._sendPromise = this._sendPromise.then(() => generateContent(this._apiKey, this.model, generateContentRequest, chatSessionRequestOptions)).then((result) => {
+      var _a2;
+      if (isValidResponse(result.response)) {
+        this._history.push(newContent);
+        const responseContent = Object.assign({
+          parts: [],
+          // Response seems to come back without a role set.
+          role: "model"
+        }, (_a2 = result.response.candidates) === null || _a2 === void 0 ? void 0 : _a2[0].content);
+        this._history.push(responseContent);
+      } else {
+        const blockErrorMessage = formatBlockErrorMessage(result.response);
+        if (blockErrorMessage) {
+          console.warn(`sendMessage() was unsuccessful. ${blockErrorMessage}. Inspect response object for details.`);
+        }
+      }
+      finalResult = result;
+    }).catch((e) => {
+      this._sendPromise = Promise.resolve();
+      throw e;
+    });
+    await this._sendPromise;
+    return finalResult;
+  }
+  /**
+   * Sends a chat message and receives the response as a
+   * {@link GenerateContentStreamResult} containing an iterable stream
+   * and a response promise.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async sendMessageStream(request, requestOptions = {}) {
+    var _a, _b, _c, _d, _e, _f;
+    await this._sendPromise;
+    const newContent = formatNewContent(request);
+    const generateContentRequest = {
+      safetySettings: (_a = this.params) === null || _a === void 0 ? void 0 : _a.safetySettings,
+      generationConfig: (_b = this.params) === null || _b === void 0 ? void 0 : _b.generationConfig,
+      tools: (_c = this.params) === null || _c === void 0 ? void 0 : _c.tools,
+      toolConfig: (_d = this.params) === null || _d === void 0 ? void 0 : _d.toolConfig,
+      systemInstruction: (_e = this.params) === null || _e === void 0 ? void 0 : _e.systemInstruction,
+      cachedContent: (_f = this.params) === null || _f === void 0 ? void 0 : _f.cachedContent,
+      contents: [...this._history, newContent]
+    };
+    const chatSessionRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    const streamPromise = generateContentStream(this._apiKey, this.model, generateContentRequest, chatSessionRequestOptions);
+    this._sendPromise = this._sendPromise.then(() => streamPromise).catch((_ignored) => {
+      throw new Error(SILENT_ERROR);
+    }).then((streamResult) => streamResult.response).then((response) => {
+      if (isValidResponse(response)) {
+        this._history.push(newContent);
+        const responseContent = Object.assign({}, response.candidates[0].content);
+        if (!responseContent.role) {
+          responseContent.role = "model";
+        }
+        this._history.push(responseContent);
+      } else {
+        const blockErrorMessage = formatBlockErrorMessage(response);
+        if (blockErrorMessage) {
+          console.warn(`sendMessageStream() was unsuccessful. ${blockErrorMessage}. Inspect response object for details.`);
+        }
+      }
+    }).catch((e) => {
+      if (e.message !== SILENT_ERROR) {
+        console.error(e);
+      }
+    });
+    return streamPromise;
+  }
+};
+async function countTokens(apiKey, model, params, singleRequestOptions) {
+  const response = await makeModelRequest(model, Task.COUNT_TOKENS, apiKey, false, JSON.stringify(params), singleRequestOptions);
+  return response.json();
+}
+async function embedContent(apiKey, model, params, requestOptions) {
+  const response = await makeModelRequest(model, Task.EMBED_CONTENT, apiKey, false, JSON.stringify(params), requestOptions);
+  return response.json();
+}
+async function batchEmbedContents(apiKey, model, params, requestOptions) {
+  const requestsWithModel = params.requests.map((request) => {
+    return Object.assign(Object.assign({}, request), { model });
+  });
+  const response = await makeModelRequest(model, Task.BATCH_EMBED_CONTENTS, apiKey, false, JSON.stringify({ requests: requestsWithModel }), requestOptions);
+  return response.json();
+}
+var GenerativeModel = class {
+  constructor(apiKey, modelParams, _requestOptions = {}) {
+    this.apiKey = apiKey;
+    this._requestOptions = _requestOptions;
+    if (modelParams.model.includes("/")) {
+      this.model = modelParams.model;
+    } else {
+      this.model = `models/${modelParams.model}`;
+    }
+    this.generationConfig = modelParams.generationConfig || {};
+    this.safetySettings = modelParams.safetySettings || [];
+    this.tools = modelParams.tools;
+    this.toolConfig = modelParams.toolConfig;
+    this.systemInstruction = formatSystemInstruction(modelParams.systemInstruction);
+    this.cachedContent = modelParams.cachedContent;
+  }
+  /**
+   * Makes a single non-streaming call to the model
+   * and returns an object containing a single {@link GenerateContentResponse}.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async generateContent(request, requestOptions = {}) {
+    var _a;
+    const formattedParams = formatGenerateContentInput(request);
+    const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    return generateContent(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, formattedParams), generativeModelRequestOptions);
+  }
+  /**
+   * Makes a single streaming call to the model and returns an object
+   * containing an iterable stream that iterates over all chunks in the
+   * streaming response as well as a promise that returns the final
+   * aggregated response.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async generateContentStream(request, requestOptions = {}) {
+    var _a;
+    const formattedParams = formatGenerateContentInput(request);
+    const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    return generateContentStream(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, formattedParams), generativeModelRequestOptions);
+  }
+  /**
+   * Gets a new {@link ChatSession} instance which can be used for
+   * multi-turn chats.
+   */
+  startChat(startChatParams) {
+    var _a;
+    return new ChatSession(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, startChatParams), this._requestOptions);
+  }
+  /**
+   * Counts the tokens in the provided request.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async countTokens(request, requestOptions = {}) {
+    const formattedParams = formatCountTokensInput(request, {
+      model: this.model,
+      generationConfig: this.generationConfig,
+      safetySettings: this.safetySettings,
+      tools: this.tools,
+      toolConfig: this.toolConfig,
+      systemInstruction: this.systemInstruction,
+      cachedContent: this.cachedContent
+    });
+    const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    return countTokens(this.apiKey, this.model, formattedParams, generativeModelRequestOptions);
+  }
+  /**
+   * Embeds the provided content.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async embedContent(request, requestOptions = {}) {
+    const formattedParams = formatEmbedContentInput(request);
+    const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    return embedContent(this.apiKey, this.model, formattedParams, generativeModelRequestOptions);
+  }
+  /**
+   * Embeds an array of {@link EmbedContentRequest}s.
+   *
+   * Fields set in the optional {@link SingleRequestOptions} parameter will
+   * take precedence over the {@link RequestOptions} values provided to
+   * {@link GoogleGenerativeAI.getGenerativeModel }.
+   */
+  async batchEmbedContents(batchEmbedContentRequest, requestOptions = {}) {
+    const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+    return batchEmbedContents(this.apiKey, this.model, batchEmbedContentRequest, generativeModelRequestOptions);
+  }
+};
+var GoogleGenerativeAI = class {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+  }
+  /**
+   * Gets a {@link GenerativeModel} instance for the provided model name.
+   */
+  getGenerativeModel(modelParams, requestOptions) {
+    if (!modelParams.model) {
+      throw new GoogleGenerativeAIError(`Must provide a model name. Example: genai.getGenerativeModel({ model: 'my-model-name' })`);
+    }
+    return new GenerativeModel(this.apiKey, modelParams, requestOptions);
+  }
+  /**
+   * Creates a {@link GenerativeModel} instance from provided content cache.
+   */
+  getGenerativeModelFromCachedContent(cachedContent, modelParams, requestOptions) {
+    if (!cachedContent.name) {
+      throw new GoogleGenerativeAIRequestInputError("Cached content must contain a `name` field.");
+    }
+    if (!cachedContent.model) {
+      throw new GoogleGenerativeAIRequestInputError("Cached content must contain a `model` field.");
+    }
+    const disallowedDuplicates = ["model", "systemInstruction"];
+    for (const key of disallowedDuplicates) {
+      if ((modelParams === null || modelParams === void 0 ? void 0 : modelParams[key]) && cachedContent[key] && (modelParams === null || modelParams === void 0 ? void 0 : modelParams[key]) !== cachedContent[key]) {
+        if (key === "model") {
+          const modelParamsComp = modelParams.model.startsWith("models/") ? modelParams.model.replace("models/", "") : modelParams.model;
+          const cachedContentComp = cachedContent.model.startsWith("models/") ? cachedContent.model.replace("models/", "") : cachedContent.model;
+          if (modelParamsComp === cachedContentComp) {
+            continue;
+          }
+        }
+        throw new GoogleGenerativeAIRequestInputError(`Different value for "${key}" specified in modelParams (${modelParams[key]}) and cachedContent (${cachedContent[key]})`);
+      }
+    }
+    const modelParamsFromCache = Object.assign(Object.assign({}, modelParams), { model: cachedContent.model, tools: cachedContent.tools, toolConfig: cachedContent.toolConfig, systemInstruction: cachedContent.systemInstruction, cachedContent });
+    return new GenerativeModel(this.apiKey, modelParamsFromCache, requestOptions);
+  }
+};
+
 // src/modules/ai/ai.tools.ts
 function formatItemRow(row) {
   let images = [];
@@ -40260,64 +41454,61 @@ async function executeGeminiTool(callName, args) {
 async function callGemini(messages, context) {
   const apiKey = ENV.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === "" || apiKey.includes("your_key_here")) {
-    return null;
+    return { success: false, reason: "missing_key" };
   }
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const contents = [];
-  const recent = messages.slice(-10);
-  for (const m of recent) {
-    contents.push({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    });
-  }
-  if (context && (context.itemId || context.locality || context.startDate)) {
-    const lastUserIdx = contents.map((c) => c.role).lastIndexOf("user");
-    if (lastUserIdx !== -1) {
-      const ctxNote = `
-[Context: Item ID=${context.itemId || "none"}, Locality=${context.locality || "none"}, StartDate=${context.startDate || "none"}, DurationDays=${context.durationDays || "none"}]`;
-      contents[lastUserIdx].parts[0].text += ctxNote;
-    }
-  }
-  const payload = {
-    system_instruction: {
-      parts: [{ text: SYSTEM_INSTRUCTION }]
-    },
-    contents,
-    tools: [
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const tools = [
       {
-        function_declarations: geminiToolDeclarations
+        functionDeclarations: geminiToolDeclarations.map((decl) => ({
+          name: decl.name,
+          description: decl.description,
+          parameters: decl.parameters
+        }))
       }
-    ],
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 900
-    }
-  };
-  const accumulatedItems = [];
-  let iterations = 0;
-  while (iterations < 3) {
-    iterations++;
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+    ];
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: SYSTEM_INSTRUCTION,
+      tools,
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 900
+      }
     });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      console.warn(`Gemini API error (HTTP ${res.status}):`, errText);
-      return null;
+    const recent = messages.slice(-10);
+    if (recent.length === 0) {
+      return { success: false, reason: "missing_key" };
     }
-    const data = await res.json();
-    const candidate = data.candidates?.[0];
-    if (!candidate || !candidate.content) {
-      return null;
+    const lastMsg = recent[recent.length - 1];
+    let promptText = lastMsg.content;
+    if (context && (context.itemId || context.locality || context.startDate)) {
+      promptText += `
+[Context: Item ID=${context.itemId || "none"}, Locality=${context.locality || "none"}, StartDate=${context.startDate || "none"}, DurationDays=${context.durationDays || "none"}]`;
     }
-    const parts = candidate.content.parts || [];
-    const functionCallPart = parts.find((p) => p.functionCall);
-    if (functionCallPart && functionCallPart.functionCall) {
-      const fn = functionCallPart.functionCall;
-      const toolResult = await executeGeminiTool(fn.name, fn.args || {});
+    const history = [];
+    const prior = recent.slice(0, -1);
+    for (const m of prior) {
+      history.push({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }]
+      });
+    }
+    while (history.length > 0 && history[0].role !== "user") {
+      history.shift();
+    }
+    const chat = model.startChat({ history });
+    let result = await chat.sendMessage(promptText);
+    const accumulatedItems = [];
+    let iterations = 0;
+    while (iterations < 3) {
+      iterations++;
+      const functionCalls = result.response.functionCalls();
+      if (!functionCalls || functionCalls.length === 0) {
+        break;
+      }
+      const call = functionCalls[0];
+      const toolResult = await executeGeminiTool(call.name, call.args || {});
       if (toolResult.items && toolResult.items.length > 0) {
         for (const item of toolResult.items) {
           if (!accumulatedItems.some((existing) => existing.id === item.id)) {
@@ -40325,31 +41516,37 @@ async function callGemini(messages, context) {
           }
         }
       }
-      payload.contents.push(candidate.content);
-      payload.contents.push({
-        role: "user",
-        parts: [
-          {
-            functionResponse: {
-              name: fn.name,
-              response: { result: toolResult.data }
-            }
+      result = await chat.sendMessage([
+        {
+          functionResponse: {
+            name: call.name,
+            response: { result: toolResult.data }
           }
-        ]
-      });
-      continue;
+        }
+      ]);
     }
-    const textPart = parts.find((p) => p.text);
-    const replyText = textPart?.text || "I checked the marketplace for you.";
+    const replyText = result.response.text();
     return {
-      reply: replyText,
-      mode: "ai",
-      provider: "Google Gemini 1.5 Flash",
-      items: accumulatedItems,
-      suggestions: generateContextualSuggestions(replyText, accumulatedItems)
+      success: true,
+      response: {
+        reply: replyText,
+        mode: "ai",
+        provider: "Google Gemini 1.5 Flash (Official SDK)",
+        items: accumulatedItems,
+        suggestions: generateContextualSuggestions(replyText, accumulatedItems)
+      }
+    };
+  } catch (err) {
+    const status = err?.status || err?.statusCode;
+    const errMsg = String(err?.message || "");
+    const isKeyError = status === 400 || status === 403 || status === 404 || errMsg.includes("API_KEY") || errMsg.includes("API key") || errMsg.includes("not found") || errMsg.includes("permission");
+    console.warn(`[Rentu AI] Gemini SDK call error (${isKeyError ? "invalid key" : "service failure"}):`, errMsg.slice(0, 120));
+    return {
+      success: false,
+      reason: isKeyError ? "invalid_key" : "provider_error",
+      errorMessage: errMsg
     };
   }
-  return null;
 }
 function generateContextualSuggestions(text, items) {
   const suggestions = [];
@@ -40393,12 +41590,20 @@ function extractConversationContext(messages, currentContext) {
   }
   return { category, maxPrice, locality, itemId, duration, startDate };
 }
-async function executeDeterministicFallback(messages, context) {
+async function executeDeterministicFallback(messages, context, fallbackReason) {
   const latestMessage = messages[messages.length - 1]?.content || "";
   const queryLower = latestMessage.toLowerCase().trim();
   const convContext = extractConversationContext(messages, context);
   const accumulatedItems = [];
   let reply = "";
+  let provider = "Rentu Smart Search";
+  if (fallbackReason === "invalid_key") {
+    provider = "Rentu Smart Search (Fallback: Gemini API key invalid)";
+  } else if (fallbackReason === "missing_key") {
+    provider = "Rentu Smart Search (Fallback: GEMINI_API_KEY unconfigured)";
+  } else if (fallbackReason === "provider_error") {
+    provider = "Rentu Smart Search (Fallback: Gemini API service unreachable)";
+  }
   if (queryLower === "hi" || queryLower === "hello" || queryLower === "hey" || queryLower === "hey there" || queryLower.startsWith("hi ") || queryLower.startsWith("hello ") || queryLower.includes("who are you") || queryLower.includes("what can you do")) {
     reply = `Hey there neighbor! \u{1F497} I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
 
@@ -40412,7 +41617,7 @@ What are you looking to rent or borrow today? \u2728`;
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: [],
       suggestions: [
         "Find cameras under \u20B9400/day",
@@ -40434,7 +41639,7 @@ Neighbors near you can now view your listing and send rental proposals. You get 
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: [],
       suggestions: [
         "How do I contact the owner?",
@@ -40452,7 +41657,7 @@ Neighbors near you can now view your listing and send rental proposals. You get 
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: [],
       suggestions: [
         "Find cameras under \u20B9400/day",
@@ -40472,7 +41677,7 @@ Neighbors near you can now view your listing and send rental proposals. You get 
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: [],
       suggestions: [
         "Find cameras under \u20B9400/day",
@@ -40501,7 +41706,7 @@ Here are the most affordable verified options currently available in the communi
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: accumulatedItems,
       suggestions: [
         "Find cameras under \u20B9400/day",
@@ -40533,7 +41738,7 @@ Here are the top options compared side-by-side:`;
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Is "${accumulatedItems[0]?.title || "item"}" available?`,
@@ -40601,7 +41806,7 @@ Here are available alternative listings in the same category:`;
       return {
         reply,
         mode: "fallback",
-        provider: "Rentu Smart Search",
+        provider,
         items: accumulatedItems,
         suggestions: [
           `Find cheaper alternatives to this`,
@@ -40650,7 +41855,7 @@ Tap any card below to view full photos or request a booking!`;
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Is "${accumulatedItems[0]?.title || "item"}" available?`,
@@ -40684,7 +41889,7 @@ Here are the compared listings:`;
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
@@ -40716,7 +41921,7 @@ Here is the listing and similar options:`;
     return {
       reply,
       mode: "fallback",
-      provider: "Rentu Smart Search",
+      provider,
       items: accumulatedItems,
       suggestions: [
         `Check availability for ${duration} days`,
@@ -40756,7 +41961,7 @@ Tap any card below to inspect full specs or request a booking! \u{1F497}`;
   return {
     reply,
     mode: "fallback",
-    provider: "Rentu Smart Search",
+    provider,
     items: accumulatedItems,
     suggestions: generateContextualSuggestions(reply, accumulatedItems)
   };
@@ -40784,14 +41989,15 @@ function extractCategoryFromText(text) {
 }
 async function processAiChat(messages, context) {
   try {
-    const geminiResponse = await callGemini(messages, context);
-    if (geminiResponse) {
-      return geminiResponse;
+    const geminiResult = await callGemini(messages, context);
+    if (geminiResult.success && geminiResult.response) {
+      return geminiResult.response;
     }
+    return await executeDeterministicFallback(messages, context, geminiResult.reason);
   } catch (err) {
-    console.warn("Gemini invocation failed, falling back to deterministic engine:", err);
+    console.warn("[Rentu AI] Unexpected error in Gemini orchestrator, activating fallback:", err?.message || err);
+    return await executeDeterministicFallback(messages, context, "provider_error");
   }
-  return await executeDeterministicFallback(messages, context);
 }
 
 // src/modules/ai/ai.routes.ts
@@ -41277,6 +42483,25 @@ bcryptjs/dist/bcrypt.js:
    * @license bcrypt.js (c) 2013 Daniel Wirtz <dcode@dcode.io>
    * Released under the Apache License, Version 2.0
    * see: https://github.com/dcodeIO/bcrypt.js for details
+   *)
+
+@google/generative-ai/dist/index.mjs:
+@google/generative-ai/dist/index.mjs:
+  (**
+   * @license
+   * Copyright 2024 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
    *)
 */
 module.exports = serverless_default; module.exports.default = serverless_default;
