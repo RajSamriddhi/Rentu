@@ -312,54 +312,35 @@ export const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
     `);
 
-    // 4.6. STRICT 3NF VIEWS (For mathematical relational normalization)
-    await client.query(`
-      -- 3NF Bookings View: lender_id derived via items.owner_id; total_price computed dynamically
-      CREATE OR REPLACE VIEW bookings_3nf_v AS
-      SELECT 
-        b.id,
-        b.item_id,
-        b.borrower_id,
-        i.owner_id AS lender_id,
-        b.start_date,
-        b.start_time,
-        b.duration_days,
-        (b.duration_days * i.price_per_day) AS total_price,
-        b.status,
-        b.message,
-        b.created_at,
-        b.updated_at
-      FROM bookings b
-      JOIN items i ON b.item_id = i.id;
+    // Clean up unnecessary helper views to maintain clean database tables
+    await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
 
-      -- 3NF User Scores View: rating & trust_score computed on-the-fly from reviews & completed transactions
-      CREATE OR REPLACE VIEW user_scores_3nf_v AS
-      SELECT 
-        u.id AS user_id,
-        ROUND(COALESCE(AVG(r.rating), 5.00), 2) AS rating,
-        COUNT(r.id) AS review_count,
-        LEAST(100, GREATEST(50, 70 + (COUNT(r.id) * 5) + (
-          SELECT COUNT(*) FROM bookings b 
-          JOIN items i ON b.item_id = i.id
-          WHERE (b.borrower_id = u.id OR i.owner_id = u.id) AND b.status = 'COMPLETED'
-        ) * 3)) AS trust_score
-      FROM users u
-      LEFT JOIN reviews r ON u.id = r.reviewee_id
-      GROUP BY u.id;
+    // 4.7. RELATIONAL FOREIGN KEY CONSTRAINTS (SCHEMA.md Full Relational Integrity)
+    // Clean up empty string pincodes before adding constraints
+    await client.query(`UPDATE users SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE items SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE requests SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
 
-      -- 3NF Messages View: receiver_id derived dynamically from booking participants
-      CREATE OR REPLACE VIEW messages_3nf_v AS
-      SELECT 
-        m.id,
-        m.booking_id,
-        m.sender_id,
-        COALESCE(m.receiver_id, CASE WHEN b.borrower_id = m.sender_id THEN i.owner_id ELSE b.borrower_id END) AS receiver_id,
-        m.content,
-        m.created_at
-      FROM messages m
-      LEFT JOIN bookings b ON m.booking_id = b.id
-      LEFT JOIN items i ON b.item_id = i.id;
-    `);
+    const relationalConstraints = [
+      { name: 'fk_items_owner', sql: `ALTER TABLE items ADD CONSTRAINT fk_items_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: 'fk_requests_seeker', sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_seeker FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: 'fk_bookings_borrower', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: 'fk_bookings_lender', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: 'fk_messages_sender', sql: `ALTER TABLE messages ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: 'fk_users_pincode', sql: `ALTER TABLE users ADD CONSTRAINT fk_users_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: 'fk_items_pincode', sql: `ALTER TABLE items ADD CONSTRAINT fk_items_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: 'fk_requests_pincode', sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` }
+    ];
+
+    for (const c of relationalConstraints) {
+      const check = await client.query(`
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = $1 AND table_schema = 'public'
+      `, [c.name]);
+      if (check.rows.length === 0) {
+        await client.query(c.sql);
+      }
+    }
 
     await client.query('COMMIT');
     console.log('Database migrations completed successfully!');

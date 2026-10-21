@@ -203,53 +203,8 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
 
--- 13. NORMALIZED 3NF VIEWS (Mathematical Relational Views)
-
--- View 1: 3NF Bookings (Eliminates lender_id transitive dependency and derives total_price on-the-fly)
-CREATE OR REPLACE VIEW bookings_3nf_v AS
-SELECT 
-    b.id,
-    b.item_id,
-    b.borrower_id,
-    i.owner_id AS lender_id,
-    b.start_date,
-    b.start_time,
-    b.duration_days,
-    (b.duration_days * i.price_per_day) AS total_price,
-    b.status,
-    b.message,
-    b.created_at,
-    b.updated_at
-FROM bookings b
-JOIN items i ON b.item_id = i.id;
-
--- View 2: 3NF User Scores (Dynamically aggregates rating and trust_score from reviews & completed transactions)
-CREATE OR REPLACE VIEW user_scores_3nf_v AS
-SELECT 
-    u.id AS user_id,
-    ROUND(COALESCE(AVG(r.rating), 5.00), 2) AS rating,
-    COUNT(r.id) AS review_count,
-    LEAST(100, GREATEST(50, 70 + (COUNT(r.id) * 5) + (
-        SELECT COUNT(*) FROM bookings b 
-        JOIN items i ON b.item_id = i.id
-        WHERE (b.borrower_id = u.id OR i.owner_id = u.id) AND b.status = 'COMPLETED'
-    ) * 3)) AS trust_score
-FROM users u
-LEFT JOIN reviews r ON u.id = r.reviewee_id
-GROUP BY u.id;
-
--- View 3: 3NF Messages (Derives receiver_id dynamically from booking parties)
-CREATE OR REPLACE VIEW messages_3nf_v AS
-SELECT 
-    m.id,
-    m.booking_id,
-    m.sender_id,
-    COALESCE(m.receiver_id, CASE WHEN b.borrower_id = m.sender_id THEN i.owner_id ELSE b.borrower_id END) AS receiver_id,
-    m.content,
-    m.created_at
-FROM messages m
-LEFT JOIN bookings b ON m.booking_id = b.id
-LEFT JOIN items i ON b.item_id = i.id;
+-- 13. CLEANUP UNNECESSARY VIEWS (Ensures only pure physical tables are displayed in Tables dashboard)
+DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;
 
 -- 14. SUPABASE STORAGE BUCKET FOR ITEM PHOTOS
 INSERT INTO storage.buckets (id, name, public) 

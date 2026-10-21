@@ -11,11 +11,11 @@ const createItemSchema = zod_1.z.object({
     title: zod_1.z.string().min(3, 'Title must be at least 3 characters'),
     description: zod_1.z.string().min(10, 'Description must be at least 10 characters'),
     category: zod_1.z.string().min(2, 'Category is required'),
-    price_per_day: zod_1.z.number().positive('Price per day must be greater than 0'),
+    price_per_day: zod_1.z.number().min(0, 'Price per day cannot be negative'),
     max_duration_days: zod_1.z.number().int().positive().default(3),
     image_urls: zod_1.z.array(zod_1.z.string().url()).min(1, 'At least one photo is required'),
-    sticker_badge: zod_1.z.string().default('✨ Weekend Flex'),
-    locality: zod_1.z.string().min(2, 'Locality is required'),
+    sticker_badge: zod_1.z.string().default('✨ Available'),
+    locality: zod_1.z.string().optional().default('Bangalore'),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
     latitude: zod_1.z.number().optional(),
@@ -280,6 +280,13 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
       RETURNING *
     `;
         const result = await (0, db_1.query)(updateSql, values);
+        // 1NF: Keep item_images table in sync when images are updated
+        if (Array.isArray(validated.image_urls)) {
+            await (0, db_1.query)(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => { });
+            for (let i = 0; i < validated.image_urls.length; i++) {
+                await (0, db_1.query)(`INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`, [id, validated.image_urls[i], i]).catch(() => { });
+            }
+        }
         return (0, response_1.sendSuccess)(res, result.rows[0], 'Listing updated successfully');
     }
     catch (error) {

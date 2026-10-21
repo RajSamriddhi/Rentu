@@ -11,11 +11,11 @@ const createItemSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
   category: z.string().min(2, 'Category is required'),
-  price_per_day: z.number().positive('Price per day must be greater than 0'),
+  price_per_day: z.number().min(0, 'Price per day cannot be negative'),
   max_duration_days: z.number().int().positive().default(3),
   image_urls: z.array(z.string().url()).min(1, 'At least one photo is required'),
-  sticker_badge: z.string().default('✨ Weekend Flex'),
-  locality: z.string().min(2, 'Locality is required'),
+  sticker_badge: z.string().default('✨ Available'),
+  locality: z.string().optional().default('Bangalore'),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
   latitude: z.number().optional(),
@@ -334,6 +334,18 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     `;
 
     const result = await query(updateSql, values);
+
+    // 1NF: Keep item_images table in sync when images are updated
+    if (Array.isArray(validated.image_urls)) {
+      await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => {});
+      for (let i = 0; i < validated.image_urls.length; i++) {
+        await query(
+          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
+          [id, validated.image_urls[i], i]
+        ).catch(() => {});
+      }
+    }
+
     return sendSuccess(res, result.rows[0], 'Listing updated successfully');
   } catch (error) {
     next(error);
