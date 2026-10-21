@@ -12,6 +12,7 @@ import { DropGearModal } from './components/DropGearModal';
 import { DropWishModal } from './components/DropWishModal';
 import { MessagesView } from './components/MessagesView';
 import { CommunityView } from './components/CommunityView';
+import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { ItemCard } from './components/ItemCard';
@@ -200,6 +201,16 @@ export const App: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {/* How Rentu⁺ Works Section on the Main Page */}
+            <HowItWorksSection
+              onExploreGear={() => setActiveTab('explore')}
+              onOpenDropGear={() => setIsDropGearOpen(true)}
+              onOpenDropWish={() => setIsDropWishOpen(true)}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onViewCommunity={() => setActiveTab('community')}
+              showCommunityLink={true}
+            />
           </div>
         )}
 
