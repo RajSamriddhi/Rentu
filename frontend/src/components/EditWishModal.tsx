@@ -52,8 +52,6 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
     }
   }, [request, isOpen]);
 
-  if (!isOpen || !request) return null;
-
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
@@ -86,6 +84,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!request) return;
     if (!itemName.trim()) {
       setErrorMsg('Item name is required');
       return;
@@ -121,6 +120,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   };
 
   const handleDelete = async () => {
+    if (!request) return;
     if (!window.confirm(`Are you sure you want to delete your request for "${request.item_name}"?`)) {
       return;
     }
@@ -138,6 +138,8 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setIsDeleting(false);
     }
   };
+
+  if (!isOpen || !request) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">

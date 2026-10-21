@@ -48,8 +48,6 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     }
   }, [item, isOpen]);
 
-  if (!isOpen || !item) return null;
-
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
@@ -82,6 +80,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!item) return;
     if (!title.trim()) {
       setErrorMsg('Title is required');
       return;
@@ -116,6 +115,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   };
 
   const handleDelete = async () => {
+    if (!item) return;
     if (!window.confirm(`Are you sure you want to permanently delete "${item.title}"? This cannot be undone.`)) {
       return;
     }
@@ -133,6 +133,8 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       setIsDeleting(false);
     }
   };
+
+  if (!isOpen || !item) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">

@@ -58,6 +58,14 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
   // Stop camera when closing modal
   useEffect(() => {
     if (!isOpen) {
@@ -74,8 +82,6 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       setLocality(user.locality);
     }
   }, [user]);
-
-  if (!isOpen) return null;
 
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
@@ -140,14 +146,6 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       console.warn('Webcam access error, falling back to camera file input:', err);
       cameraInputRef.current?.click();
     }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setIsCameraActive(false);
   };
 
   const capturePhotoFromCamera = async () => {
@@ -248,6 +246,8 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">

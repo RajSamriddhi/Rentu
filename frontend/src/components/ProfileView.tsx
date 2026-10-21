@@ -56,10 +56,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [user]);
-
   const loadData = async () => {
     if (!user) return;
     setIsLoading(true);
@@ -78,6 +74,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, [user]);
 
   const handleDirectBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
