@@ -53289,7 +53289,14 @@ var createBookingSchema = external_exports.object({
   item_id: external_exports.string().uuid("Invalid item ID"),
   start_date: external_exports.string().min(1, "Start date is required"),
   start_time: external_exports.string().optional(),
+  end_date: external_exports.string().optional(),
+  end_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive("Duration must be at least 1 day"),
+  total_price: external_exports.number().min(0).optional(),
+  pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  pickup_locality: external_exports.string().optional(),
+  return_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  return_locality: external_exports.string().optional(),
   message: external_exports.string().optional()
 });
 var updateStatusSchema = external_exports.object({
@@ -53307,12 +53314,12 @@ router4.post("/", authMiddleware, async (req, res, next) => {
     if (item.owner_id === borrowerId) {
       return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear \u{1F609}", 400);
     }
-    const totalPrice = Number(item.price_per_day) * validated.duration_days;
+    const totalPrice = validated.total_price !== void 0 ? Number(validated.total_price) : Number(item.price_per_day) * validated.duration_days;
     const bookingRes = await query(
       `INSERT INTO bookings
-        (item_id, borrower_id, lender_id, start_date, start_time, duration_days, total_price, status, message)
+        (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, status, message)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDING', $14)
        RETURNING *`,
       [
         item.id,
@@ -53320,8 +53327,14 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         item.owner_id,
         validated.start_date,
         validated.start_time || "10:00",
+        validated.end_date || null,
+        validated.end_time || "18:00",
         validated.duration_days,
         totalPrice,
+        validated.pickup_type || "LENDER_LOCATION",
+        validated.pickup_locality || null,
+        validated.return_type || "LENDER_LOCATION",
+        validated.return_locality || null,
         validated.message || `Hey! Would love to rent your ${item.title}.`
       ]
     );
@@ -53345,7 +53358,8 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
-        b.start_date, b.start_time, b.duration_days, 
+        b.start_date, b.start_time, b.end_date, b.end_time, b.duration_days,
+        b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
         b.status, b.message, b.created_at,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,

@@ -144,10 +144,17 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                       {booking.item_title}
                     </h3>
                     <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-ink-secondary">
-                      <span>{booking.start_date} • {booking.duration_days} days</span>
+                      <span>{booking.start_date}{booking.end_date ? ` to ${booking.end_date}` : ''} • {booking.duration_days} days</span>
                       <span>•</span>
                       <span className="font-bold text-brand">₹{Number(booking.total_price)}</span>
                     </div>
+                    {(booking.pickup_type || booking.return_type) && (
+                      <div className="text-[11px] text-ink-secondary pt-0.5 flex flex-wrap gap-x-2">
+                        <span>Pickup: <strong className="text-ink">{booking.pickup_type === 'MY_LOCATION' ? '📍 Deliver to Borrower' : booking.pickup_type === 'CUSTOM_LOCATION' ? `🤝 Meet at ${booking.pickup_locality || 'Custom Spot'}` : "🚶 Lender's Place"}</strong></span>
+                        <span>•</span>
+                        <span>Return: <strong className="text-ink">{booking.return_type === 'MY_LOCATION' ? '🏠 Collect at Borrower' : booking.return_type === 'CUSTOM_LOCATION' ? `🤝 Meet at ${booking.return_locality || 'Custom Spot'}` : "🚶 To Lender"}</strong></span>
+                      </div>
+                    )}
                     <div className="text-xs font-semibold text-ink">
                       {isLender ? 'Requested by: ' : 'Lender: '}
                       <span className="font-bold">{otherPartyName || 'Community Member'}</span>

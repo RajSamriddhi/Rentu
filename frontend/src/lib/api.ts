@@ -275,7 +275,14 @@ export const api = {
     item_id: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
+    total_price?: number;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    pickup_locality?: string;
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
     message?: string;
   }): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings`, {

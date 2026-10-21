@@ -169,6 +169,13 @@ export const runMigrations = async () => {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_lender ON bookings(lender_id);
