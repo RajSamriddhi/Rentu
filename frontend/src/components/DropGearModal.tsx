@@ -252,11 +252,11 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       <div 
-        className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-4 border border-divider text-ink"
+        className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden border border-divider text-ink flex flex-col max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface sticky top-0 z-10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface shrink-0">
           <div>
             <h2 className="text-lg sm:text-xl font-black text-ink font-display tracking-tight">
               List an Item
@@ -275,7 +275,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         </div>
 
         {/* Single-Page Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
+        <form id="drop-gear-form" onSubmit={handleSubmit} className="p-6 space-y-6 flex-1 overflow-y-auto">
           {errorMsg && (
             <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold animate-in fade-in">
               {errorMsg}
@@ -646,37 +646,38 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
               />
             </div>
           </div>
-
-          {/* Footer Actions */}
-          <div className="pt-4 border-t border-divider flex items-center justify-end gap-3 sticky bottom-0 bg-surface pb-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="btn-secondary text-xs px-5 py-2.5 cursor-pointer font-bold"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={isSubmitting || isUploading}
-              className="btn-primary text-xs px-6 py-2.5 shadow-pink cursor-pointer inline-flex items-center gap-2 font-bold disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Publishing Gear...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 stroke-[2.5]" />
-                  <span>List Item Now</span>
-                </>
-              )}
-            </button>
-          </div>
         </form>
+
+        {/* Clean, Non-overlapping Fixed Footer outside scrollable form */}
+        <div className="px-6 py-4 border-t border-divider bg-surface shrink-0 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="btn-secondary text-xs px-5 py-2.5 cursor-pointer font-bold"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            form="drop-gear-form"
+            disabled={isSubmitting || isUploading}
+            className="btn-primary text-xs px-6 py-2.5 shadow-pink cursor-pointer inline-flex items-center gap-2 font-bold disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Publishing Gear...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 stroke-[2.5]" />
+                <span>List Item Now</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

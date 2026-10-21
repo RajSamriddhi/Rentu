@@ -225,6 +225,7 @@ export const api = {
     duration_days: number;
     offered_amount: number;
     locality: string;
+    image_url?: string;
   }): Promise<CommunityRequest> {
     const res = await fetch(`${API_BASE}/requests`, {
       method: 'POST',
