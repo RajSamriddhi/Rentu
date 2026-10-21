@@ -88,10 +88,12 @@ export const App: React.FC = () => {
           category: selectedCategory,
         }),
       ]);
-      setItems(itemsData);
-      setRequests(requestsData);
+      setItems(Array.isArray(itemsData) ? itemsData : []);
+      setRequests(Array.isArray(requestsData) ? requestsData : []);
     } catch (err) {
       console.error('Failed to load feed data:', err);
+      setItems([]);
+      setRequests([]);
     } finally {
       setIsLoading(false);
     }
@@ -181,12 +183,12 @@ export const App: React.FC = () => {
                   onClick={() => setActiveTab('explore')}
                   className="text-xs font-bold text-brand hover:underline cursor-pointer"
                 >
-                  Explore All ({items.length}) →
+                  Explore All ({(items || []).length}) →
                 </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {items.slice(0, 4).map((item) => (
+                {(items || []).slice(0, 4).map((item) => (
                   <ItemCard
                     key={item.id}
                     item={item}

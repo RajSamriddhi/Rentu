@@ -41,7 +41,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   ];
 
   // Filter items based on sidebar state
-  const filteredItems = items.filter((item) => {
+  const filteredItems = (items || []).filter((item) => {
     if (Number(item.price_per_day) > maxPrice) return false;
     return true;
   });

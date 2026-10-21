@@ -64,7 +64,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
     return 'bg-indigo-100';
   };
 
-  const filteredRequests = requests.filter((r) => {
+  const filteredRequests = (requests || []).filter((r) => {
     if (activeTab === 'my') return r.seeker_id === user?.id;
     return true;
   });
