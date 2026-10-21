@@ -16,14 +16,15 @@ import {
   Menu,
   X,
   Compass,
-  Target
+  Target,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 
 interface NavbarProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onSearch: () => void;
@@ -31,7 +32,7 @@ interface NavbarProps {
   onOpenDropWish: () => void;
   onOpenAuth: () => void;
   onOpenChat: () => void;
-  onOpenHowItWorks: () => void;
+  onOpenHowItWorks?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -89,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
-            {/* Nav links: Marketplace, How it works */}
+            {/* Nav links: Marketplace, Community */}
             <nav className="hidden md:flex items-center gap-5 text-xs font-bold">
               <button
                 onClick={() => setActiveTab('explore')}
@@ -101,10 +102,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               <button
-                onClick={onOpenHowItWorks}
-                className="text-ink-secondary hover:text-ink transition-colors cursor-pointer"
+                onClick={() => setActiveTab('community')}
+                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
+                }`}
               >
-                How it works
+                <span>Community</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-colors ${
+                  activeTab === 'community' ? 'bg-brand text-white' : 'bg-brand-soft text-brand'
+                }`}>
+                  Top 10
+                </span>
               </button>
             </nav>
           </div>
@@ -354,13 +362,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               <button
-                onClick={() => { onOpenHowItWorks(); setShowMobileMenu(false); }}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  activeTab === 'community' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
+                }`}
               >
-                <Sparkles className="w-4 h-4 text-brand" />
-                <span>How It Works</span>
+                <div className="flex items-center gap-3">
+                  <Users className="w-4 h-4" />
+                  <span>Community & Leaderboard</span>
+                </div>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                  activeTab === 'community' ? 'bg-white/20 text-white' : 'bg-brand-soft text-brand'
+                }`}>
+                  Top 10
+                </span>
               </button>
-
             </div>
 
             {/* Authenticated or Unauthenticated actions in Mobile Menu */}

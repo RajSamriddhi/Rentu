@@ -155,3 +155,34 @@ export interface CategoryStat {
   count: number;
   avg_rate: number;
 }
+
+export interface CommunityLeaderboardMember {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  bio?: string;
+  rating: number;
+  trust_score: number;
+  reviews_count: number;
+  highlight_review?: string;
+  rank: number;
+  category_type: 'top_rated' | 'top_lenders' | 'top_borrowers' | 'top_sharers';
+  metric_label: string;
+  metric_value: string;
+  badges: string[];
+  items_count?: number;
+  free_items_count?: number;
+  lent_count?: number;
+  borrowed_count?: number;
+  requests_count?: number;
+}
+
+export interface CommunityLeaderboardData {
+  top_rated: CommunityLeaderboardMember[];
+  top_lenders: CommunityLeaderboardMember[];
+  top_borrowers: CommunityLeaderboardMember[];
+  top_sharers: CommunityLeaderboardMember[];
+  total_community_members: number;
+}

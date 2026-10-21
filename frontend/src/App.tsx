@@ -11,14 +11,15 @@ import { ItemDetailModal } from './components/ItemDetailModal';
 import { DropGearModal } from './components/DropGearModal';
 import { DropWishModal } from './components/DropWishModal';
 import { MessagesView } from './components/MessagesView';
-import { HowItWorksModal } from './components/HowItWorksModal';
+import { CommunityView } from './components/CommunityView';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { ItemCard } from './components/ItemCard';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest } from './lib/types';
 
-export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'hustle' | 'profile';
+export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
 const getTabFromUrl = (): TabType => {
   if (typeof window === 'undefined') return 'home';
@@ -28,6 +29,7 @@ const getTabFromUrl = (): TabType => {
   if (path === '/requests' || hash === '#requests') return 'requests';
   if (path === '/bookings' || hash === '#bookings') return 'bookings';
   if (path === '/messages' || hash === '#messages' || path === '/chat' || hash === '#chat') return 'messages';
+  if (path === '/community' || hash === '#community') return 'community';
   if (path === '/profile' || hash === '#profile') return 'profile';
   if (path === '/explore' || hash === '#explore' || path === '/marketplace' || hash === '#marketplace') return 'explore';
   return 'home';
@@ -70,7 +72,6 @@ export const App: React.FC = () => {
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -139,7 +140,7 @@ export const App: React.FC = () => {
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenChat={() => setActiveTab('messages')}
-        onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
+        onOpenHowItWorks={() => setActiveTab('community')}
       />
 
       {/* Main View Router */}
@@ -250,6 +251,16 @@ export const App: React.FC = () => {
           <HustleHub />
         )}
 
+        {/* VIEW 11: COMMUNITY & TOP 10 LEADERBOARD (Replaces How It Works) */}
+        {activeTab === 'community' && (
+          <CommunityView
+            onOpenDropGear={() => setIsDropGearOpen(true)}
+            onOpenDropWish={() => setIsDropWishOpen(true)}
+            onExploreGear={() => setActiveTab('explore')}
+            onOpenAuth={() => setIsAuthOpen(true)}
+          />
+        )}
+
       </main>
 
       {/* Screen 3: Item Detail Modal */}
@@ -279,20 +290,21 @@ export const App: React.FC = () => {
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
-      {/* Screen 11: How It Works Modal */}
-      <HowItWorksModal
-        isOpen={isHowItWorksOpen}
-        onClose={() => setIsHowItWorksOpen(false)}
-        onOpenDropGear={() => setIsDropGearOpen(true)}
-        onOpenDropWish={() => setIsDropWishOpen(true)}
-        onOpenAuth={() => setIsAuthOpen(true)}
-      />
-
       {/* Auth Modal */}
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
+      />
+
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenDropGear={() => setIsDropGearOpen(true)}
+        onOpenDropWish={() => setIsDropWishOpen(true)}
+        onOpenChat={() => setActiveTab('messages')}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
 
     </div>

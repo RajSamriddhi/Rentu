@@ -9,13 +9,14 @@ import {
   MessageSquare, 
   Sparkles, 
   X, 
-  LogIn 
+  LogIn,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
@@ -169,13 +170,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         ) : (
           /* LOGGED OUT: No post button, show How it Works and Log In */
           <>
-            {/* Tab 3: How it Works */}
+            {/* Tab 3: Community */}
             <button
-              onClick={() => onOpenHowItWorks?.()}
-              className="flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold text-ink-secondary hover:text-ink transition-all cursor-pointer"
+              onClick={() => setActiveTab('community')}
+              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
+                activeTab === 'community' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              }`}
             >
-              <Sparkles className="w-5 h-5" />
-              <span>How it works</span>
+              <Users className="w-5 h-5" />
+              <span>Community</span>
             </button>
 
             {/* Tab 4: Sign In */}

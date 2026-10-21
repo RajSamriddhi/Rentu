@@ -6,7 +6,8 @@ import {
   Message, 
   Conversation, 
   CommunityPulse, 
-  CategoryStat 
+  CategoryStat,
+  CommunityLeaderboardData 
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL 
@@ -351,6 +352,13 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {
+    const res = await fetch(`${API_BASE}/users/leaderboard`, {
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },
