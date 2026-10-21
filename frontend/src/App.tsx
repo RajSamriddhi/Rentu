@@ -29,7 +29,7 @@ const getTabFromUrl = (): TabType => {
   if (path === '/requests' || hash === '#requests') return 'requests';
   if (path === '/bookings' || hash === '#bookings') return 'bookings';
   if (path === '/profile' || hash === '#profile') return 'profile';
-  if (path === '/explore' || hash === '#explore') return 'explore';
+  if (path === '/explore' || hash === '#explore' || path === '/marketplace' || hash === '#marketplace') return 'explore';
   return 'home';
 };
 
@@ -204,28 +204,20 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* VIEW 2: EXPLORE / BROWSE (Screen 2 in Mockup) */}
-        {activeTab === 'explore' && (
+        {/* VIEW 2: UNIFIED MARKETPLACE (Gear Listings & Community Requests in One Page) */}
+        {(activeTab === 'explore' || activeTab === 'requests') && (
           <ExploreView
             items={items}
-            isLoading={isLoading}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            onSelectItem={(item) => setSelectedItem(item)}
-            onToggleToRequests={() => setActiveTab('requests')}
-          />
-        )}
-
-        {/* VIEW 6: REQUESTS BOARD (WANTED BOARD - Screen 6 in Mockup) */}
-        {activeTab === 'requests' && (
-          <RequestsBoard
             requests={requests}
             isLoading={isLoading}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
+            onSelectItem={(item) => setSelectedItem(item)}
             onOpenDropWish={() => setIsDropWishOpen(true)}
+            onOpenDropGear={() => setIsDropGearOpen(true)}
             onClaimRequest={handleClaimRequest}
             onOpenAuth={() => setIsAuthOpen(true)}
+            initialSubView={activeTab === 'requests' ? 'requests' : 'items'}
           />
         )}
 

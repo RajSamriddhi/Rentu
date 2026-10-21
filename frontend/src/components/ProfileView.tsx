@@ -24,6 +24,8 @@ import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { EditProfileModal } from './EditProfileModal';
+import { EditItemModal } from './EditItemModal';
+import { EditWishModal } from './EditWishModal';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
@@ -46,15 +48,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editingRequest, setEditingRequest] = useState<CommunityRequest | null>(null);
 
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    loadData();
-  }, [user]);
 
   const loadData = async () => {
     if (!user) return;
@@ -74,6 +74,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, [user]);
 
   const handleDirectBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -365,6 +369,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }}
       />
 
+      {/* Edit Gear Listing Modal */}
+      <EditItemModal
+        item={editingItem}
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSuccess={() => {
+          setEditingItem(null);
+          loadData();
+        }}
+      />
+
+      {/* Edit Wish/Request Modal */}
+      <EditWishModal
+        request={editingRequest}
+        isOpen={!!editingRequest}
+        onClose={() => setEditingRequest(null)}
+        onSuccess={() => {
+          setEditingRequest(null);
+          loadData();
+        }}
+      />
+
       {/* Modern Segmented Navigation Tabs */}
       <div className="flex items-center gap-2 pt-8 pb-4 overflow-x-auto scrollbar-none whitespace-nowrap">
         {[
@@ -450,7 +476,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <ItemCard
                     key={item.id}
                     item={item}
-                    onClick={() => {}}
+                    onClick={() => setEditingItem(item)}
                   />
                 ))}
               </div>
@@ -482,16 +508,67 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             ) : (
               myRequests.map((req) => (
-                <div key={req.id} className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex items-center justify-between shadow-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-ink text-sm sm:text-base">{req.item_name}</h4>
-                    <p className="text-xs text-ink-secondary">
-                      ₹{Number(req.offered_amount)} proposed budget • Needed by {req.start_date}
-                    </p>
+                <div 
+                  key={req.id} 
+                  onClick={() => setEditingRequest(req)}
+                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-brand hover:shadow-sm transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start gap-3.5">
+                    {req.image_url && (
+                      <div className="w-14 h-14 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0">
+                        <img 
+                          src={req.image_url} 
+                          alt={req.item_name} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h4 className="font-extrabold text-ink text-sm sm:text-base group-hover:text-brand transition-colors">
+                          {req.item_name}
+                        </h4>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                          req.status === 'OPEN'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : req.status === 'FULFILLED'
+                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                            : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
+                        }`}>
+                          {req.status}
+                        </span>
+                        {req.category && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
+                            {req.category}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
+                        <span>•</span>
+                        <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
+                        {req.duration_days ? (
+                          <>
+                            <span>•</span>
+                            <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
+                          </>
+                        ) : null}
+                        {req.locality ? (
+                          <>
+                            <span>•</span>
+                            <span>{req.locality}</span>
+                          </>
+                        ) : null}
+                      </p>
+                      {req.description && (
+                        <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
+                          {req.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-black bg-brand/10 text-brand border border-brand/20">
-                    {req.status}
-                  </span>
+
+                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
                 </div>
               ))
             )}

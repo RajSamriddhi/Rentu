@@ -35,6 +35,7 @@ export interface Item {
   longitude?: number;
   distance_meters?: number | null;
   status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE';
+  condition?: string;
   created_at: string;
   owner_name?: string;
   owner_avatar?: string;
@@ -58,6 +59,7 @@ export interface CommunityRequest {
   duration_days: number;
   offered_amount: number | string;
   locality: string;
+  image_url?: string | null;
   status: 'OPEN' | 'FULFILLED' | 'CANCELLED';
   created_at: string;
   seeker_name?: string;

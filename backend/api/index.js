@@ -39325,7 +39325,20 @@ var createRequestSchema = external_exports.object({
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional()
+  longitude: external_exports.number().optional(),
+  image_url: external_exports.string().nullable().optional()
+});
+var updateRequestSchema = external_exports.object({
+  item_name: external_exports.string().min(3).optional(),
+  description: external_exports.string().min(5).optional(),
+  category: external_exports.string().optional(),
+  start_date: external_exports.string().optional(),
+  start_time: external_exports.string().optional(),
+  duration_days: external_exports.number().int().positive().optional(),
+  offered_amount: external_exports.number().min(0).optional(),
+  locality: external_exports.string().optional(),
+  status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
+  image_url: external_exports.string().nullable().optional()
 });
 router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
@@ -39335,6 +39348,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
         u.avatar_url AS seeker_avatar,
@@ -39380,6 +39394,7 @@ router3.get("/:id", async (req, res, next) => {
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
@@ -39421,9 +39436,9 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     }
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
+        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'OPEN')
        RETURNING *`,
       [
         req.user.id,
@@ -39438,7 +39453,8 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.address_text || finalLocality,
         cleanPincode,
         validated.latitude ?? null,
-        validated.longitude ?? null
+        validated.longitude ?? null,
+        validated.image_url ?? null
       ]
     );
     const createdRequest = result.rows[0];
@@ -39450,19 +39466,76 @@ router3.post("/", authMiddleware, async (req, res, next) => {
 router3.put("/:id", authMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status = "FULFILLED" } = req.body;
+    const validated = updateRequestSchema.parse(req.body);
     const check = await query("SELECT seeker_id, status FROM requests WHERE id = $1", [id]);
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Wish request not found", 404);
     }
-    const result = await query(
-      `UPDATE requests
-       SET status = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [status, id]
-    );
-    return sendSuccess(res, result.rows[0], `Wish marked as ${status.toLowerCase()}! \u{1F91D}`);
+    const isSeeker = check.rows[0].seeker_id === req.user.id || req.user.role === "ADMIN";
+    if (!isSeeker) {
+      if (validated.status === "FULFILLED") {
+        const result2 = await query(
+          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+          [id]
+        );
+        return sendSuccess(res, result2.rows[0], "Wish marked as fulfilled! \u{1F91D}");
+      }
+      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    }
+    const fields = [];
+    const values = [];
+    if (validated.item_name !== void 0) {
+      values.push(validated.item_name);
+      fields.push(`item_name = $${values.length}`);
+    }
+    if (validated.description !== void 0) {
+      values.push(validated.description);
+      fields.push(`description = $${values.length}`);
+    }
+    if (validated.category !== void 0) {
+      values.push(validated.category);
+      fields.push(`category = $${values.length}`);
+    }
+    if (validated.start_date !== void 0) {
+      values.push(validated.start_date);
+      fields.push(`start_date = $${values.length}`);
+    }
+    if (validated.start_time !== void 0) {
+      values.push(validated.start_time);
+      fields.push(`start_time = $${values.length}`);
+    }
+    if (validated.duration_days !== void 0) {
+      values.push(validated.duration_days);
+      fields.push(`duration_days = $${values.length}`);
+    }
+    if (validated.offered_amount !== void 0) {
+      values.push(validated.offered_amount);
+      fields.push(`offered_amount = $${values.length}`);
+    }
+    if (validated.locality !== void 0) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.status !== void 0) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+    }
+    if (validated.image_url !== void 0) {
+      values.push(validated.image_url);
+      fields.push(`image_url = $${values.length}`);
+    }
+    if (fields.length === 0) {
+      return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
+    }
+    values.push(id);
+    const updateSql = `
+      UPDATE requests
+      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    const result = await query(updateSql, values);
+    return sendSuccess(res, result.rows[0], "Wish request updated successfully");
   } catch (error) {
     next(error);
   }

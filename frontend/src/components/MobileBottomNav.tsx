@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { 
+  Home as HomeIcon,
   Compass, 
   Target, 
   Plus, 
@@ -98,26 +99,26 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         aria-label="Mobile navigation"
         className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 dark:bg-[#111218]/95 backdrop-blur-md border-t border-divider px-3 py-1.5 flex items-center justify-around shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       >
-        {/* Tab 1: Explore */}
+        {/* Tab 1: Home */}
+        <button
+          onClick={() => setActiveTab('home')}
+          className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
+            activeTab === 'home' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+          }`}
+        >
+          <HomeIcon className="w-5 h-5" />
+          <span>Home</span>
+        </button>
+
+        {/* Tab 2: Marketplace (Items & Requests) */}
         <button
           onClick={() => setActiveTab('explore')}
           className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-            activeTab === 'explore' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+            activeTab === 'explore' || activeTab === 'requests' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
           }`}
         >
           <Compass className="w-5 h-5" />
-          <span>Explore</span>
-        </button>
-
-        {/* Tab 2: Requests */}
-        <button
-          onClick={() => setActiveTab('requests')}
-          className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-            activeTab === 'requests' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
-          }`}
-        >
-          <Target className="w-5 h-5" />
-          <span>Requests</span>
+          <span>Market</span>
         </button>
 
         {/* LOGGED IN: Show Center Post Button + Messages + Profile */}

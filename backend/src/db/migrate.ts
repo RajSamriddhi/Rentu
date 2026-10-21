@@ -141,6 +141,7 @@ export const runMigrations = async () => {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
 
       CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
       CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
