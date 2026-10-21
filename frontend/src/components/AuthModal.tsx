@@ -13,7 +13,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose, 
   onSuccess 
 }) => {
-  const { loginWithGoogle, continueWithEmail } = useAuth();
+  const { loginWithGoogle, continueWithEmail, demoLogin } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -210,6 +210,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
 
+          {/* Quick 1-Click Access for Evaluation */}
+          <div className="pt-2 border-t border-divider">
+            <p className="text-[10px] text-ink-muted text-center font-bold uppercase mb-2">⚡ Quick 1-Click Access</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsLoading(true);
+                  try {
+                    await demoLogin('lender');
+                    handlePostAuthSuccess();
+                  } catch (err: any) {
+                    setErrorMsg(err.message || 'Demo login failed');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="py-1.5 px-2 bg-canvas hover:bg-surface-hover border border-divider rounded-xl text-[11px] font-bold text-ink transition-colors cursor-pointer text-center"
+              >
+                👤 Sadiqua (Lender)
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsLoading(true);
+                  try {
+                    await demoLogin('borrower');
+                    handlePostAuthSuccess();
+                  } catch (err: any) {
+                    setErrorMsg(err.message || 'Demo login failed');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="py-1.5 px-2 bg-canvas hover:bg-surface-hover border border-divider rounded-xl text-[11px] font-bold text-ink transition-colors cursor-pointer text-center"
+              >
+                👤 Geetansh (Borrower)
+              </button>
+            </div>
+          </div>
 
           <div className="flex items-center gap-1.5 text-[10px] text-ink-secondary justify-center pt-1">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />

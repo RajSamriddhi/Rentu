@@ -52545,17 +52545,23 @@ router.post("/login", async (req, res, next) => {
 router.post("/demo-login", async (req, res, next) => {
   try {
     const { role = "lender" } = req.body;
-    let targetEmail = "rohit@lens.com";
-    if (role === "borrower") targetEmail = "ananya@studio.com";
-    if (role === "admin") targetEmail = "admin@borrowflex.com";
-    if (role === "creator") targetEmail = "kabir@vibes.com";
-    const result = await query(
+    let targetEmail = "falaksadiqua786@gmail.com";
+    if (role === "borrower") targetEmail = "goyalgeetansh@gmail.com";
+    if (role === "admin") targetEmail = "falaksadiqua786@gmail.com";
+    if (role === "creator") targetEmail = "goyalgeetansh@gmail.com";
+    let result = await query(
       `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
        FROM users WHERE email = $1`,
       [targetEmail]
     );
     if (result.rows.length === 0) {
-      return sendError(res, "USER_NOT_FOUND", "Demo user not seeded yet", 404);
+      result = await query(
+        `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+         FROM users ORDER BY created_at ASC LIMIT 1`
+      );
+    }
+    if (result.rows.length === 0) {
+      return sendError(res, "USER_NOT_FOUND", "No demo users found", 404);
     }
     const user = result.rows[0];
     const token = generateToken(user);
@@ -53653,32 +53659,36 @@ router7.get("/conversations", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const result = await query(
-      `SELECT DISTINCT ON (b.id)
-        b.id AS booking_id,
-        b.status AS booking_status,
-        b.start_date,
-        b.duration_days,
-        b.total_price,
-        i.title AS item_title,
-        i.image_urls AS item_images,
-        i.locality AS item_locality,
-        CASE WHEN b.borrower_id = $1 THEN lender.id ELSE borrower.id END AS partner_id,
-        CASE WHEN b.borrower_id = $1 THEN lender.name ELSE borrower.name END AS partner_name,
-        CASE WHEN b.borrower_id = $1 THEN lender.avatar_url ELSE borrower.avatar_url END AS partner_avatar,
-        CASE WHEN b.borrower_id = $1 THEN lender.phone ELSE borrower.phone END AS partner_phone,
-        m.content AS last_message,
-        m.created_at AS last_message_at
-      FROM bookings b
-      JOIN items i ON b.item_id = i.id
-      JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON i.owner_id = lender.id
-      LEFT JOIN LATERAL (
-        SELECT content, created_at FROM messages 
-        WHERE booking_id = b.id 
-        ORDER BY created_at DESC LIMIT 1
-      ) m ON true
-      WHERE (b.borrower_id = $1 OR b.lender_id = $1)
-      ORDER BY b.id, m.created_at DESC NULLS LAST`,
+      `SELECT * FROM (
+        SELECT DISTINCT ON (b.id)
+          b.id AS booking_id,
+          b.status AS booking_status,
+          b.start_date,
+          b.duration_days,
+          b.total_price,
+          i.title AS item_title,
+          i.image_urls AS item_images,
+          i.locality AS item_locality,
+          CASE WHEN b.borrower_id = $1 THEN COALESCE(lender.id, b.lender_id) ELSE borrower.id END AS partner_id,
+          CASE WHEN b.borrower_id = $1 THEN COALESCE(lender.name, 'Lender') ELSE COALESCE(borrower.name, 'Borrower') END AS partner_name,
+          CASE WHEN b.borrower_id = $1 THEN lender.avatar_url ELSE borrower.avatar_url END AS partner_avatar,
+          CASE WHEN b.borrower_id = $1 THEN lender.phone ELSE borrower.phone END AS partner_phone,
+          m.content AS last_message,
+          m.created_at AS last_message_at,
+          b.created_at AS booking_created_at
+        FROM bookings b
+        JOIN items i ON b.item_id = i.id
+        LEFT JOIN users borrower ON b.borrower_id = borrower.id
+        LEFT JOIN users lender ON (b.lender_id = lender.id OR i.owner_id = lender.id)
+        LEFT JOIN LATERAL (
+          SELECT content, created_at FROM messages 
+          WHERE booking_id = b.id 
+          ORDER BY created_at DESC LIMIT 1
+        ) m ON true
+        WHERE (b.borrower_id = $1 OR b.lender_id = $1 OR i.owner_id = $1)
+        ORDER BY b.id, m.created_at DESC NULLS LAST
+      ) convs
+      ORDER BY COALESCE(convs.last_message_at, convs.booking_created_at) DESC`,
       [userId]
     );
     return sendSuccess(res, result.rows);
@@ -53694,7 +53704,7 @@ router7.get("/:bookingId", authMiddleware, async (req, res, next) => {
       `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       WHERE b.id = $1 AND (b.borrower_id = $2 OR b.lender_id = $2)`,
+       WHERE b.id = $1 AND (b.borrower_id = $2 OR b.lender_id = $2 OR i.owner_id = $2)`,
       [bookingId, userId]
     );
     if (bookingRes.rows.length === 0) {
@@ -53703,9 +53713,9 @@ router7.get("/:bookingId", authMiddleware, async (req, res, next) => {
     const messagesRes = await query(
       `SELECT 
         m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.created_at,
-        u.name AS sender_name, u.avatar_url AS sender_avatar
+        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
        FROM messages m
-       JOIN users u ON m.sender_id = u.id
+       LEFT JOIN users u ON m.sender_id = u.id
        WHERE m.booking_id = $1
        ORDER BY m.created_at ASC`,
       [bookingId]
