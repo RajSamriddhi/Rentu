@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, MapPin, Loader2, Trash2, Calendar, Target } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, MapPin, Loader2, Trash2, Calendar, Target, Upload, Camera, ImageIcon } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { api } from '../lib/api';
 import { detectCurrentLocation } from '../lib/location';
+import { uploadItemPhoto } from '../lib/supabase';
 
 interface EditWishModalProps {
   request: CommunityRequest | null;
@@ -25,11 +26,14 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
   const [locality, setLocality] = useState('');
   const [status, setStatus] = useState<'OPEN' | 'FULFILLED' | 'CANCELLED'>('OPEN');
+  const [imageUrl, setImageUrl] = useState('');
 
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (request && isOpen) {
@@ -43,6 +47,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setOfferedAmount(Number(request.offered_amount) || '');
       setLocality(request.locality || '');
       setStatus(request.status || 'OPEN');
+      setImageUrl(request.image_url || '');
       setErrorMsg('');
     }
   }, [request, isOpen]);
@@ -59,6 +64,23 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setErrorMsg(err.message || 'Could not detect location.');
     } finally {
       setIsDetectingLocation(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    setErrorMsg('');
+    try {
+      const publicUrl = await uploadItemPhoto(file, 'gear');
+      setImageUrl(publicUrl);
+    } catch (err: any) {
+      console.error('Photo upload error:', err);
+      setErrorMsg('Failed to upload image. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -85,6 +107,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
         offered_amount: Number(offeredAmount),
         locality: locality.trim(),
         status,
+        image_url: imageUrl || null,
       });
 
       onSuccess();
@@ -146,6 +169,66 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
               {errorMsg}
             </div>
           )}
+
+          {/* Reference Photo Upload */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1.5">
+              Reference Picture <span className="font-normal text-ink-secondary">(Optional)</span>
+            </label>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-2xl bg-canvas border border-divider overflow-hidden shrink-0 relative group flex items-center justify-center">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt="Request Reference"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-ink-secondary p-2 text-center">
+                    <Camera className="w-6 h-6 stroke-[1.5]" />
+                  </div>
+                )}
+                {isUploadingPhoto && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingPhoto}
+                    className="px-3.5 py-1.5 rounded-full border border-divider hover:bg-canvas text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-brand" />
+                    <span>{isUploadingPhoto ? 'Uploading...' : imageUrl ? 'Change Picture' : 'Upload Picture'}</span>
+                  </button>
+                  {imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="px-3 py-1.5 rounded-full hover:bg-rose-500/10 text-rose-500 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+                <p className="text-[11px] text-ink-secondary">
+                  Add a photo of the item you want so neighbors know the exact model or condition.
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* Item Name */}
           <div>

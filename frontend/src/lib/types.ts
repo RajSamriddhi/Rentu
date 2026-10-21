@@ -58,6 +58,7 @@ export interface CommunityRequest {
   duration_days: number;
   offered_amount: number | string;
   locality: string;
+  image_url?: string | null;
   status: 'OPEN' | 'FULFILLED' | 'CANCELLED';
   created_at: string;
   seeker_name?: string;

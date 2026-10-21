@@ -20,6 +20,7 @@ const createRequestSchema = zod_1.z.object({
     pincode: zod_1.z.string().optional(),
     latitude: zod_1.z.number().optional(),
     longitude: zod_1.z.number().optional(),
+    image_url: zod_1.z.string().nullable().optional(),
 });
 const updateRequestSchema = zod_1.z.object({
     item_name: zod_1.z.string().min(3).optional(),
@@ -31,6 +32,7 @@ const updateRequestSchema = zod_1.z.object({
     offered_amount: zod_1.z.number().min(0).optional(),
     locality: zod_1.z.string().optional(),
     status: zod_1.z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
+    image_url: zod_1.z.string().nullable().optional(),
 });
 // Browse Community Wishes / Bounties
 router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
@@ -41,6 +43,7 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
         u.avatar_url AS seeker_avatar,
@@ -88,6 +91,7 @@ router.get('/:id', async (req, res, next) => {
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
@@ -125,9 +129,9 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, finalLocality]).catch(() => { });
         }
         const result = await (0, db_1.query)(`INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
+        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'OPEN')
        RETURNING *`, [
             req.user.id,
             validated.item_name,
@@ -142,6 +146,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             cleanPincode,
             validated.latitude ?? null,
             validated.longitude ?? null,
+            validated.image_url ?? null,
         ]);
         const createdRequest = result.rows[0];
         return (0, response_1.sendSuccess)(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
@@ -205,6 +210,10 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (validated.status !== undefined) {
             values.push(validated.status);
             fields.push(`status = $${values.length}`);
+        }
+        if (validated.image_url !== undefined) {
+            values.push(validated.image_url);
+            fields.push(`image_url = $${values.length}`);
         }
         if (fields.length === 0) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'No fields provided for update', 400);

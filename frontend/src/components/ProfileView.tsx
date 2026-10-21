@@ -494,30 +494,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {myItems.map((item) => (
-                  <div key={item.id} className="flex flex-col gap-2">
-                    <ItemCard
-                      item={item}
-                      onClick={() => setEditingItem(item)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setEditingItem(item)}
-                        className="flex-1 py-1.5 px-3 rounded-xl bg-surface border border-divider hover:border-brand hover:text-brand text-ink text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                        title="Edit Listing Details"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit Gear</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteItemDirect(item.id, item.title)}
-                        className="py-1.5 px-3 rounded-xl bg-surface border border-divider hover:bg-rose-500/10 hover:border-rose-500/30 text-rose-500 text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                        title="Delete Listing"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => setEditingItem(item)}
+                  />
                 ))}
               </div>
             )}
@@ -550,52 +531,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               myRequests.map((req) => (
                 <div 
                   key={req.id} 
-                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  onClick={() => setEditingRequest(req)}
+                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-brand hover:shadow-sm transition-all cursor-pointer group"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <h4 className="font-extrabold text-ink text-sm sm:text-base">{req.item_name}</h4>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
-                        req.status === 'OPEN'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                          : req.status === 'FULFILLED'
-                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                          : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
-                      }`}>
-                        {req.status}
-                      </span>
-                      {req.category && (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
-                          {req.category}
+                  <div className="flex items-start gap-3.5">
+                    {req.image_url && (
+                      <div className="w-14 h-14 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0">
+                        <img 
+                          src={req.image_url} 
+                          alt={req.item_name} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h4 className="font-extrabold text-ink text-sm sm:text-base group-hover:text-brand transition-colors">
+                          {req.item_name}
+                        </h4>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                          req.status === 'OPEN'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : req.status === 'FULFILLED'
+                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                            : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
+                        }`}>
+                          {req.status}
                         </span>
+                        {req.category && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
+                            {req.category}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
+                        <span>•</span>
+                        <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
+                        {req.duration_days ? (
+                          <>
+                            <span>•</span>
+                            <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
+                          </>
+                        ) : null}
+                        {req.locality ? (
+                          <>
+                            <span>•</span>
+                            <span>{req.locality}</span>
+                          </>
+                        ) : null}
+                      </p>
+                      {req.description && (
+                        <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
+                          {req.description}
+                        </p>
                       )}
                     </div>
-                    <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
-                      <span>•</span>
-                      <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
-                      {req.duration_days ? (
-                        <>
-                          <span>•</span>
-                          <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
-                        </>
-                      ) : null}
-                      {req.locality ? (
-                        <>
-                          <span>•</span>
-                          <span>{req.locality}</span>
-                        </>
-                      ) : null}
-                    </p>
-                    {req.description && (
-                      <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
-                        {req.description}
-                      </p>
-                    )}
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => setEditingRequest(req)}
                       className="btn-secondary text-xs px-3.5 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"

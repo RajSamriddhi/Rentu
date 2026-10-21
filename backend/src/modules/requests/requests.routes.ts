@@ -20,6 +20,7 @@ const createRequestSchema = z.object({
   pincode: z.string().optional(),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
+  image_url: z.string().nullable().optional(),
 });
 
 const updateRequestSchema = z.object({
@@ -32,6 +33,7 @@ const updateRequestSchema = z.object({
   offered_amount: z.number().min(0).optional(),
   locality: z.string().optional(),
   status: z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
+  image_url: z.string().nullable().optional(),
 });
 
 
@@ -45,6 +47,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
         u.avatar_url AS seeker_avatar,
@@ -98,6 +101,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.duration_days, 
         r.offered_amount, r.locality, r.status, r.created_at,
+        r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
@@ -147,9 +151,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, status)
+        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'OPEN')
        RETURNING *`,
       [
         req.user!.id,
@@ -165,6 +169,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         cleanPincode,
         validated.latitude ?? null,
         validated.longitude ?? null,
+        validated.image_url ?? null,
       ]);
     const createdRequest = result.rows[0];
 
@@ -237,6 +242,10 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.status !== undefined) {
       values.push(validated.status);
       fields.push(`status = $${values.length}`);
+    }
+    if (validated.image_url !== undefined) {
+      values.push(validated.image_url);
+      fields.push(`image_url = $${values.length}`);
     }
 
     if (fields.length === 0) {
