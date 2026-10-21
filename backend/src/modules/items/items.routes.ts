@@ -105,8 +105,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
-        COALESCE(u.trust_score, 98) AS owner_trust_score,
-        COALESCE(u.rating, 5.00) AS owner_rating
+        u.trust_score AS owner_trust_score,
+        u.rating AS owner_rating
       FROM items i
       LEFT JOIN users u ON i.owner_id = u.id
       WHERE 1=1 ${distanceFilter}
