@@ -18086,17 +18086,17 @@ var require_router = __commonJS({
     var toString = Object.prototype.toString;
     var proto = module2.exports = function(options) {
       var opts = options || {};
-      function router8(req, res, next) {
-        router8.handle(req, res, next);
+      function router9(req, res, next) {
+        router9.handle(req, res, next);
       }
-      setPrototypeOf(router8, proto);
-      router8.params = {};
-      router8._params = [];
-      router8.caseSensitive = opts.caseSensitive;
-      router8.mergeParams = opts.mergeParams;
-      router8.strict = opts.strict;
-      router8.stack = [];
-      return router8;
+      setPrototypeOf(router9, proto);
+      router9.params = {};
+      router9._params = [];
+      router9.caseSensitive = opts.caseSensitive;
+      router9.mergeParams = opts.mergeParams;
+      router9.strict = opts.strict;
+      router9.stack = [];
+      return router9;
     };
     proto.param = function param(name, fn) {
       if (typeof name === "function") {
@@ -20705,7 +20705,7 @@ var require_application = __commonJS({
   "../node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router8 = require_router();
+    var Router9 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query2 = require_query();
@@ -20770,7 +20770,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router8({
+        this._router = new Router9({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -20779,17 +20779,17 @@ var require_application = __commonJS({
       }
     };
     app2.handle = function handle(req, res, callback) {
-      var router8 = this._router;
+      var router9 = this._router;
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
-      if (!router8) {
+      if (!router9) {
         debug("no routes defined on app");
         done();
         return;
       }
-      router8.handle(req, res, done);
+      router9.handle(req, res, done);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -20809,15 +20809,15 @@ var require_application = __commonJS({
         throw new TypeError("app.use() requires a middleware function");
       }
       this.lazyrouter();
-      var router8 = this._router;
+      var router9 = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router8.use(path, fn2);
+          return router9.use(path, fn2);
         }
         debug(".use app under %s", path);
         fn2.mountpath = path;
         fn2.parent = this;
-        router8.use(path, function mounted_app(req, res, next) {
+        router9.use(path, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -22634,7 +22634,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router8 = require_router();
+    var Router9 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -22657,7 +22657,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router8;
+    exports2.Router = Router9;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -34346,7 +34346,7 @@ __export(serverless_exports, {
 module.exports = __toCommonJS(serverless_exports);
 
 // src/app.ts
-var import_express8 = __toESM(require_express2());
+var import_express9 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // src/modules/auth/auth.routes.ts
@@ -38420,7 +38420,9 @@ var ENV = {
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "rentu-732b7",
   SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR",
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
 };
 
 // src/config/db.ts
@@ -39750,6 +39752,990 @@ router7.post("/", authMiddleware, async (req, res, next) => {
 });
 var messages_routes_default = router7;
 
+// src/modules/ai/ai.routes.ts
+var import_express8 = __toESM(require_express2());
+
+// src/modules/ai/ai.tools.ts
+function formatItemRow(row) {
+  let images = [];
+  if (Array.isArray(row.image_urls)) {
+    images = row.image_urls;
+  } else if (typeof row.image_urls === "string") {
+    try {
+      images = JSON.parse(row.image_urls);
+    } catch {
+      images = [row.image_urls];
+    }
+  }
+  return {
+    id: row.id,
+    owner_id: row.owner_id,
+    owner_name: row.owner_name || "Community Member",
+    owner_avatar: row.owner_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.owner_name || "Owner")}&background=0F172A&color=fff&bold=true`,
+    owner_rating: row.owner_rating ? Number(row.owner_rating) : 5,
+    owner_trust_score: row.owner_trust_score ?? 98,
+    owner_locality: row.owner_locality || row.locality || "",
+    title: row.title,
+    description: row.description || "",
+    category: row.category,
+    price_per_day: Number(row.price_per_day || 0),
+    max_duration_days: Number(row.max_duration_days || 3),
+    image_urls: images,
+    sticker_badge: row.sticker_badge || "\u2728 Available",
+    locality: row.locality || "",
+    address_text: row.address_text || "",
+    pincode: row.pincode || "",
+    latitude: row.latitude ? Number(row.latitude) : void 0,
+    longitude: row.longitude ? Number(row.longitude) : void 0,
+    status: row.status || "AVAILABLE",
+    created_at: row.created_at
+  };
+}
+async function searchListings(params) {
+  const {
+    query: searchKeyword,
+    category,
+    max_price,
+    min_price,
+    free_only,
+    locality,
+    status = "AVAILABLE",
+    limit = 6
+  } = params;
+  const sqlParams = [];
+  let sql = `
+    SELECT 
+      i.id, i.title, i.description, i.category, i.price_per_day,
+      i.max_duration_days, i.image_urls, i.sticker_badge, i.locality,
+      i.address_text, i.pincode, i.latitude, i.longitude, i.status, i.created_at,
+      u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+      u.rating AS owner_rating, u.trust_score AS owner_trust_score,
+      u.locality AS owner_locality
+    FROM items i
+    LEFT JOIN users u ON i.owner_id = u.id
+    WHERE 1=1
+  `;
+  if (status && status !== "ALL") {
+    sqlParams.push(status);
+    sql += ` AND i.status = $${sqlParams.length}`;
+  }
+  if (free_only) {
+    sql += ` AND i.price_per_day = 0`;
+  } else {
+    if (typeof max_price === "number" && !isNaN(max_price)) {
+      sqlParams.push(max_price);
+      sql += ` AND i.price_per_day <= $${sqlParams.length}`;
+    }
+    if (typeof min_price === "number" && !isNaN(min_price)) {
+      sqlParams.push(min_price);
+      sql += ` AND i.price_per_day >= $${sqlParams.length}`;
+    }
+  }
+  if (category && category !== "All") {
+    sqlParams.push(category);
+    sql += ` AND i.category ILIKE $${sqlParams.length}`;
+  }
+  if (locality) {
+    const city = extractCity(String(locality)) || String(locality).trim();
+    if (city) {
+      sqlParams.push(`%${city}%`);
+      sql += ` AND (i.locality ILIKE $${sqlParams.length} OR u.locality ILIKE $${sqlParams.length})`;
+    }
+  }
+  if (searchKeyword && searchKeyword.trim().length > 0) {
+    const words = searchKeyword.trim().split(/\s+/).filter((w) => w.length > 2);
+    if (words.length > 0) {
+      const orClauses = [];
+      for (const w of words) {
+        sqlParams.push(`%${w}%`);
+        const idx = sqlParams.length;
+        orClauses.push(`(i.title ILIKE $${idx} OR i.description ILIKE $${idx} OR i.category ILIKE $${idx})`);
+      }
+      sql += ` AND (${orClauses.join(" OR ")})`;
+    }
+  }
+  sql += ` ORDER BY i.price_per_day ASC, i.created_at DESC`;
+  const safeLimit = Math.min(Math.max(1, limit || 6), 20);
+  sqlParams.push(safeLimit);
+  sql += ` LIMIT $${sqlParams.length}`;
+  const res = await query(sql, sqlParams);
+  const items = res.rows.map(formatItemRow);
+  return {
+    count: items.length,
+    items
+  };
+}
+async function comparePrices(params) {
+  const duration = Math.max(1, Math.floor(params.duration_days || 1));
+  let itemsToCompare = [];
+  if (params.item_ids && params.item_ids.length > 0) {
+    const validUuids = params.item_ids.filter((id) => /^[0-9a-fA-F-]{36}$/.test(id));
+    if (validUuids.length > 0) {
+      const placeholders = validUuids.map((_, i) => `$${i + 1}`).join(",");
+      const res = await query(`
+        SELECT 
+          i.id, i.title, i.description, i.category, i.price_per_day,
+          i.max_duration_days, i.image_urls, i.sticker_badge, i.locality,
+          i.status, i.created_at,
+          u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+          u.rating AS owner_rating
+        FROM items i
+        LEFT JOIN users u ON i.owner_id = u.id
+        WHERE i.id IN (${placeholders})
+      `, validUuids);
+      itemsToCompare = res.rows.map(formatItemRow);
+    }
+  }
+  if (itemsToCompare.length < 2) {
+    const searchRes = await searchListings({
+      category: params.category,
+      query: params.query,
+      limit: 4
+    });
+    itemsToCompare = searchRes.items;
+  }
+  if (itemsToCompare.length === 0) {
+    return {
+      comparison: [],
+      message: "No items found to compare."
+    };
+  }
+  const comparison = itemsToCompare.map((item) => {
+    const dailyRate = Number(item.price_per_day);
+    const estimatedTotal = dailyRate * duration;
+    return {
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      locality: item.locality,
+      price_per_day: dailyRate,
+      duration_days: duration,
+      estimated_total: estimatedTotal,
+      max_duration_days: item.max_duration_days,
+      image_urls: item.image_urls,
+      status: item.status
+    };
+  });
+  comparison.sort((a, b) => a.estimated_total - b.estimated_total);
+  const cheapest = comparison[0];
+  const mostExpensive = comparison[comparison.length - 1];
+  const totalSavings = mostExpensive.estimated_total - cheapest.estimated_total;
+  const dailySavings = mostExpensive.price_per_day - cheapest.price_per_day;
+  return {
+    duration_days: duration,
+    comparison,
+    summary: {
+      cheapest_item: cheapest.title,
+      cheapest_daily_rate: cheapest.price_per_day,
+      cheapest_total: cheapest.estimated_total,
+      potential_daily_savings: dailySavings > 0 ? dailySavings : 0,
+      potential_total_savings: totalSavings > 0 ? totalSavings : 0,
+      pricing_note: "Estimates are based on owner daily rates. Rentu does not charge platform processing or booking fees."
+    }
+  };
+}
+async function checkAvailability(params) {
+  const { item_id, start_date, duration_days } = params;
+  if (!item_id || !/^[0-9a-fA-F-]{36}$/.test(item_id)) {
+    return {
+      available: false,
+      error: "Invalid item ID format (UUID required)"
+    };
+  }
+  const duration = Math.max(1, Math.floor(duration_days || 1));
+  const parsedStartDate = new Date(start_date);
+  if (isNaN(parsedStartDate.getTime())) {
+    return {
+      available: false,
+      error: "Invalid start date format. Please use YYYY-MM-DD."
+    };
+  }
+  const itemRes = await query(`
+    SELECT id, title, price_per_day, max_duration_days, status, locality
+    FROM items
+    WHERE id = $1
+  `, [item_id]);
+  if (itemRes.rows.length === 0) {
+    return {
+      available: false,
+      error: "Item not found in marketplace catalog."
+    };
+  }
+  const item = itemRes.rows[0];
+  if (item.status === "UNAVAILABLE") {
+    return {
+      available: false,
+      item_id: item.id,
+      item_title: item.title,
+      status: item.status,
+      reason: `Listing "${item.title}" is currently marked UNAVAILABLE by the owner.`
+    };
+  }
+  if (duration > item.max_duration_days) {
+    return {
+      available: false,
+      item_id: item.id,
+      item_title: item.title,
+      max_duration_days: item.max_duration_days,
+      requested_duration: duration,
+      reason: `Requested duration (${duration} days) exceeds the owner's maximum allowed rental period (${item.max_duration_days} days).`
+    };
+  }
+  const conflictRes = await query(`
+    SELECT 
+      b.id, b.start_date, b.duration_days, b.status,
+      (b.start_date + (b.duration_days || ' days')::interval)::date AS end_date
+    FROM bookings b
+    WHERE b.item_id = $1
+      AND b.status IN ('ACCEPTED', 'PENDING')
+      AND (
+        b.start_date < ($2::date + ($3 || ' days')::interval)
+        AND
+        (b.start_date + (b.duration_days || ' days')::interval) > $2::date
+      )
+  `, [item_id, start_date, duration]);
+  const requestedEndDate = new Date(parsedStartDate);
+  requestedEndDate.setDate(requestedEndDate.getDate() + duration);
+  const formattedEndDate = requestedEndDate.toISOString().split("T")[0];
+  if (conflictRes.rows.length > 0) {
+    const conflict = conflictRes.rows[0];
+    const conflictStart = new Date(conflict.start_date).toISOString().split("T")[0];
+    const conflictEnd = new Date(conflict.end_date).toISOString().split("T")[0];
+    return {
+      available: false,
+      item_id: item.id,
+      item_title: item.title,
+      requested_dates: {
+        start_date,
+        duration_days: duration,
+        end_date: formattedEndDate
+      },
+      conflict: {
+        booking_status: conflict.status,
+        conflict_start: conflictStart,
+        conflict_end: conflictEnd
+      },
+      reason: `"${item.title}" is already reserved from ${conflictStart} to ${conflictEnd} (${conflict.status.toLowerCase()}).`
+    };
+  }
+  const estimatedTotal = Number(item.price_per_day) * duration;
+  return {
+    available: true,
+    item_id: item.id,
+    item_title: item.title,
+    locality: item.locality,
+    price_per_day: Number(item.price_per_day),
+    duration_days: duration,
+    estimated_total: estimatedTotal,
+    requested_dates: {
+      start_date,
+      duration_days: duration,
+      end_date: formattedEndDate
+    },
+    message: `"${item.title}" is available for your dates (${start_date} to ${formattedEndDate})! Estimated rental cost is \u20B9${estimatedTotal}.`
+  };
+}
+async function getListingDetails(itemId) {
+  if (!itemId || !/^[0-9a-fA-F-]{36}$/.test(itemId)) {
+    return { error: "Invalid item ID" };
+  }
+  const res = await query(`
+    SELECT 
+      i.id, i.title, i.description, i.category, i.price_per_day,
+      i.max_duration_days, i.image_urls, i.sticker_badge, i.locality,
+      i.address_text, i.pincode, i.latitude, i.longitude, i.status, i.created_at,
+      u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+      u.rating AS owner_rating, u.trust_score AS owner_trust_score,
+      u.locality AS owner_locality, u.bio AS owner_bio
+    FROM items i
+    LEFT JOIN users u ON i.owner_id = u.id
+    WHERE i.id = $1
+  `, [itemId]);
+  if (res.rows.length === 0) {
+    return { error: "Listing not found" };
+  }
+  return { item: formatItemRow(res.rows[0]) };
+}
+async function findAlternatives(params) {
+  let targetCategory = params.category;
+  let targetPrice = params.max_price;
+  let referenceItem = null;
+  if (params.item_id && /^[0-9a-fA-F-]{36}$/.test(params.item_id)) {
+    const refRes = await query(`
+      SELECT id, title, category, price_per_day, locality
+      FROM items
+      WHERE id = $1
+    `, [params.item_id]);
+    if (refRes.rows.length > 0) {
+      referenceItem = refRes.rows[0];
+      targetCategory = referenceItem.category;
+      targetPrice = targetPrice ? Math.min(targetPrice, Number(referenceItem.price_per_day)) : Number(referenceItem.price_per_day);
+    }
+  }
+  const sqlParams = [];
+  let sql = `
+    SELECT 
+      i.id, i.title, i.description, i.category, i.price_per_day,
+      i.max_duration_days, i.image_urls, i.sticker_badge, i.locality,
+      i.status, i.created_at,
+      u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+      u.rating AS owner_rating, u.trust_score AS owner_trust_score
+    FROM items i
+    LEFT JOIN users u ON i.owner_id = u.id
+    WHERE i.status = 'AVAILABLE'
+  `;
+  if (referenceItem) {
+    sqlParams.push(referenceItem.id);
+    sql += ` AND i.id != $${sqlParams.length}`;
+  }
+  if (targetCategory) {
+    sqlParams.push(targetCategory);
+    sql += ` AND i.category ILIKE $${sqlParams.length}`;
+  }
+  if (typeof targetPrice === "number" && !isNaN(targetPrice)) {
+    sqlParams.push(targetPrice);
+    sql += ` AND i.price_per_day <= $${sqlParams.length}`;
+  }
+  if (params.locality) {
+    const city = extractCity(String(params.locality)) || String(params.locality).trim();
+    if (city) {
+      sqlParams.push(`%${city}%`);
+      sql += ` AND (i.locality ILIKE $${sqlParams.length} OR u.locality ILIKE $${sqlParams.length})`;
+    }
+  }
+  sql += ` ORDER BY i.price_per_day ASC, i.created_at DESC LIMIT 5`;
+  const res = await query(sql, sqlParams);
+  const items = res.rows.map(formatItemRow);
+  const duration = Math.max(1, params.duration_days || 1);
+  const alternatives = items.map((item) => {
+    const dailyPrice = item.price_per_day;
+    const estTotal = dailyPrice * duration;
+    let savingsPerDay = null;
+    let savingsTotal = null;
+    let savingsPercent = null;
+    if (referenceItem) {
+      const refDaily = Number(referenceItem.price_per_day);
+      if (refDaily > dailyPrice) {
+        savingsPerDay = refDaily - dailyPrice;
+        savingsTotal = savingsPerDay * duration;
+        savingsPercent = Math.round(savingsPerDay / refDaily * 100);
+      }
+    }
+    return {
+      ...item,
+      duration_days: duration,
+      estimated_total: estTotal,
+      savings_per_day: savingsPerDay,
+      savings_total: savingsTotal,
+      savings_percentage: savingsPercent
+    };
+  });
+  return {
+    reference_item: referenceItem ? {
+      id: referenceItem.id,
+      title: referenceItem.title,
+      price_per_day: Number(referenceItem.price_per_day)
+    } : null,
+    alternatives
+  };
+}
+var geminiToolDeclarations = [
+  {
+    name: "search_listings",
+    description: "Search available rental equipment and gear in the real Rentu marketplace database by keyword, category, locality, or maximum daily price.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        query: { type: "STRING", description: 'Search keywords such as "camera", "dslr", "tent", "projector", "laptop", "drill", "bike".' },
+        category: { type: "STRING", description: 'Specific category such as "Electronics & Tech", "Camping & Outdoor", "Tools & DIY", "Party & Events".' },
+        max_price: { type: "NUMBER", description: "Maximum price per day in Indian Rupees (INR \u20B9)." },
+        locality: { type: "STRING", description: 'Locality or city such as "Bengaluru", "Indiranagar", "Mylasandra", "Saket", "Mumbai".' },
+        free_only: { type: "BOOLEAN", description: "True to filter for free items if any (price_per_day = 0)." }
+      }
+    }
+  },
+  {
+    name: "compare_prices",
+    description: "Compare daily rental rates and calculate total estimated costs across multiple listings for a given rental duration.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        item_ids: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Array of item UUIDs to compare."
+        },
+        category: { type: "STRING", description: "Category to compare items within." },
+        query: { type: "STRING", description: "Search term for items to compare." },
+        duration_days: { type: "INTEGER", description: "Rental duration in days." }
+      }
+    }
+  },
+  {
+    name: "check_availability",
+    description: "Check whether a specific listing is actually available for requested rental dates, inspecting real booking date-range overlaps.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        item_id: { type: "STRING", description: "The UUID of the item to check." },
+        start_date: { type: "STRING", description: "Requested start date in YYYY-MM-DD format." },
+        duration_days: { type: "INTEGER", description: "Number of rental days requested." }
+      },
+      required: ["item_id", "start_date", "duration_days"]
+    }
+  },
+  {
+    name: "find_alternatives",
+    description: "Find cheaper alternative listings in the same category and calculate potential savings for the user.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        item_id: { type: "STRING", description: "Reference item UUID to beat in price." },
+        category: { type: "STRING", description: "Category to search alternatives in." },
+        max_price: { type: "NUMBER", description: "Maximum price cap." },
+        locality: { type: "STRING", description: "Target locality or city." },
+        duration_days: { type: "INTEGER", description: "Duration in days to calculate total savings." }
+      }
+    }
+  },
+  {
+    name: "get_listing_details",
+    description: "Get verified details for a single listing including owner rating, description, and daily price.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        item_id: { type: "STRING", description: "UUID of the item." }
+      },
+      required: ["item_id"]
+    }
+  }
+];
+
+// src/modules/ai/ai.service.ts
+var SYSTEM_INSTRUCTION = `
+You are Rentu AI, the intelligent shopping and rental assistant for Rentu\u207A (a Gen Z peer-to-peer gear and equipment rental marketplace).
+Your job is to help users discover affordable gear, compare rental prices, check calendar availability, and recommend cheaper alternatives.
+
+RULES:
+1. Only reference real items returned by your tools. NEVER invent fake listings, prices, or owners.
+2. Prices are in Indian Rupees (INR \u20B9 per day). Direct peer-to-peer rental, no extra platform deposit fees.
+3. If a user asks to check availability, call check_availability with the item_id, start_date (YYYY-MM-DD), and duration_days.
+4. If a user asks for cheaper alternatives, call find_alternatives.
+5. If a user asks to compare options, call compare_prices.
+6. If a user asks about free borrowing, explain that while listings have daily rates, Rentu encourages friendly community requests where owners can lend items for free or for community favors.
+7. Keep responses concise, warm, helpful, and formatted with clean markdown bullet points.
+`;
+async function executeGeminiTool(callName, args) {
+  try {
+    switch (callName) {
+      case "search_listings": {
+        const res = await searchListings(args);
+        return { data: res, items: res.items || [] };
+      }
+      case "compare_prices": {
+        const res = await comparePrices(args);
+        return { data: res, items: (res.comparison || []).map((c) => ({ ...c, image_urls: c.image_urls || [] })) };
+      }
+      case "check_availability": {
+        const res = await checkAvailability(args);
+        return { data: res, items: [] };
+      }
+      case "find_alternatives": {
+        const res = await findAlternatives(args);
+        return { data: res, items: res.alternatives || [] };
+      }
+      case "get_listing_details": {
+        const res = await getListingDetails(args.item_id);
+        return { data: res, items: res.item ? [res.item] : [] };
+      }
+      default:
+        return { data: { error: `Tool ${callName} not found` }, items: [] };
+    }
+  } catch (err) {
+    return { data: { error: err.message || "Tool execution error" }, items: [] };
+  }
+}
+async function callGemini(messages, context) {
+  const apiKey = ENV.GEMINI_API_KEY;
+  if (!apiKey || apiKey.trim() === "" || apiKey.includes("your_key_here")) {
+    return null;
+  }
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const contents = [];
+  const recent = messages.slice(-8);
+  for (const m of recent) {
+    contents.push({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    });
+  }
+  if (context && (context.itemId || context.locality || context.startDate)) {
+    const lastUserIdx = contents.map((c) => c.role).lastIndexOf("user");
+    if (lastUserIdx !== -1) {
+      const ctxNote = `
+[Context: Item ID=${context.itemId || "none"}, Locality=${context.locality || "none"}, StartDate=${context.startDate || "none"}, DurationDays=${context.durationDays || "none"}]`;
+      contents[lastUserIdx].parts[0].text += ctxNote;
+    }
+  }
+  const payload = {
+    system_instruction: {
+      parts: [{ text: SYSTEM_INSTRUCTION }]
+    },
+    contents,
+    tools: [
+      {
+        function_declarations: geminiToolDeclarations
+      }
+    ],
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 800
+    }
+  };
+  const accumulatedItems = [];
+  let iterations = 0;
+  while (iterations < 3) {
+    iterations++;
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`Gemini API error (HTTP ${res.status}):`, errText);
+      return null;
+    }
+    const data = await res.json();
+    const candidate = data.candidates?.[0];
+    if (!candidate || !candidate.content) {
+      return null;
+    }
+    const parts = candidate.content.parts || [];
+    const functionCallPart = parts.find((p) => p.functionCall);
+    if (functionCallPart && functionCallPart.functionCall) {
+      const fn = functionCallPart.functionCall;
+      const toolResult = await executeGeminiTool(fn.name, fn.args || {});
+      if (toolResult.items && toolResult.items.length > 0) {
+        for (const item of toolResult.items) {
+          if (!accumulatedItems.some((existing) => existing.id === item.id)) {
+            accumulatedItems.push(item);
+          }
+        }
+      }
+      payload.contents.push(candidate.content);
+      payload.contents.push({
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: fn.name,
+              response: { result: toolResult.data }
+            }
+          }
+        ]
+      });
+      continue;
+    }
+    const textPart = parts.find((p) => p.text);
+    const replyText = textPart?.text || "I checked the marketplace for you.";
+    return {
+      reply: replyText,
+      mode: "ai",
+      items: accumulatedItems,
+      suggestions: generateContextualSuggestions(replyText, accumulatedItems)
+    };
+  }
+  return null;
+}
+function generateContextualSuggestions(text, items) {
+  const suggestions = [];
+  if (items.length > 0) {
+    if (items.length >= 2) {
+      suggestions.push(`Compare these ${items.length} options`);
+    }
+    suggestions.push(`Is "${items[0].title}" available this weekend?`);
+    suggestions.push(`Find cheaper alternatives to ${items[0].title}`);
+  } else {
+    suggestions.push("Find cameras under \u20B9400/day");
+    suggestions.push("Show outdoor & camping gear");
+    suggestions.push("Can I borrow gear for free?");
+  }
+  return suggestions.slice(0, 3);
+}
+async function executeDeterministicFallback(userQuery, context) {
+  const queryLower = userQuery.toLowerCase();
+  const accumulatedItems = [];
+  let reply = "";
+  const isAvailabilityQuery = queryLower.includes("available") || queryLower.includes("free from") || queryLower.includes("book for");
+  if (isAvailabilityQuery) {
+    let itemId = context?.itemId;
+    let startDate = context?.startDate;
+    let duration = context?.durationDays || 3;
+    const dateMatch = queryLower.match(/\b(202\d-[0-1]\d-[0-3]\d)\b/);
+    if (dateMatch) {
+      startDate = dateMatch[1];
+    } else if (queryLower.includes("friday") || queryLower.includes("weekend")) {
+      const today = /* @__PURE__ */ new Date();
+      const dayOfWeek = today.getDay();
+      const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+      const nextFriday = new Date(today);
+      nextFriday.setDate(today.getDate() + daysUntilFriday);
+      startDate = nextFriday.toISOString().split("T")[0];
+    } else if (!startDate) {
+      const tomorrow = /* @__PURE__ */ new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      startDate = tomorrow.toISOString().split("T")[0];
+    }
+    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
+    if (durMatch) {
+      duration = parseInt(durMatch[1], 10);
+    }
+    if (!itemId) {
+      const searchRes2 = await searchListings({ query: userQuery, limit: 1 });
+      if (searchRes2.items.length > 0) {
+        itemId = searchRes2.items[0].id;
+      }
+    }
+    if (itemId) {
+      const avail = await checkAvailability({
+        item_id: itemId,
+        start_date: startDate,
+        duration_days: duration
+      });
+      if (avail.available) {
+        reply = `\u2705 **Great news!** **${avail.item_title}** is **available** for your requested dates (${avail.requested_dates?.start_date} to ${avail.requested_dates?.end_date}, ${duration} days).
+
+\u2022 **Daily Rate:** \u20B9${avail.price_per_day}/day
+\u2022 **Estimated Total:** **\u20B9${avail.estimated_total}**
+\u2022 **Location:** ${avail.locality || "Nearby"}
+
+You can request to rent it directly from the listing below!`;
+      } else {
+        reply = `\u26A0\uFE0F **Availability Notice:** **${avail.item_title || "Item"}** cannot be booked for those dates.
+
+\u2022 **Reason:** ${avail.reason || avail.error}
+
+Here are some alternative available listings in the same category:`;
+      }
+      const itemDetails = await getListingDetails(itemId);
+      if (itemDetails.item) {
+        accumulatedItems.push(itemDetails.item);
+      }
+      if (!avail.available) {
+        const alts = await findAlternatives({ item_id: itemId, duration_days: duration });
+        accumulatedItems.push(...alts.alternatives.slice(0, 3));
+      }
+      return {
+        reply,
+        mode: "fallback",
+        items: accumulatedItems,
+        suggestions: [
+          `Find cheaper alternatives to this`,
+          `Check other dates`,
+          `Explore all gear near me`
+        ]
+      };
+    }
+  }
+  if (queryLower.includes("free") || queryLower.includes("borrow for free") || queryLower.includes("without paying")) {
+    const freeItemsRes = await searchListings({ free_only: true, limit: 3 });
+    if (freeItemsRes.items.length > 0) {
+      reply = `\u{1F389} Here are items currently listed with \u20B90 daily rate by generous neighbors in the community!`;
+      accumulatedItems.push(...freeItemsRes.items);
+    } else {
+      reply = `\u{1F4A1} **How Free Borrowing Works on Rentu\u207A:**
+
+Most equipment owners on Rentu list low daily rental rates (e.g. \u20B9200\u2013\u20B9500/day) to cover maintenance. However, Rentu features an active **Requests Board** where you can:
+
+1. Post a **Community Wish** asking neighbors if someone has gear they'd lend for free or a friendly favor.
+2. Chat with verified lenders who often offer discounts or free trials for students and creators.
+
+Here are the most affordable listings currently available in the marketplace:`;
+      const cheapRes = await searchListings({ limit: 4 });
+      accumulatedItems.push(...cheapRes.items);
+    }
+    return {
+      reply,
+      mode: "fallback",
+      items: accumulatedItems,
+      suggestions: [
+        "Find cameras under \u20B9400/day",
+        "Post a Community Request",
+        "Compare rental rates"
+      ]
+    };
+  }
+  const isAlternativeQuery = queryLower.includes("cheaper") || queryLower.includes("alternative") || queryLower.includes("less expensive") || queryLower.includes("save money");
+  if (isAlternativeQuery) {
+    let refItemId = context?.itemId;
+    if (!refItemId) {
+      const searchRes2 = await searchListings({ query: userQuery, limit: 1 });
+      if (searchRes2.items.length > 0) {
+        refItemId = searchRes2.items[0].id;
+      }
+    }
+    const alts = await findAlternatives({
+      item_id: refItemId || void 0,
+      category: context?.itemId ? void 0 : extractCategoryFromText(queryLower),
+      duration_days: context?.durationDays || 3
+    });
+    if (alts.alternatives.length > 0) {
+      const topAlt = alts.alternatives[0];
+      const refTitle = alts.reference_item ? alts.reference_item.title : "standard listings";
+      const savingsMsg = topAlt.savings_per_day ? `saving you **\u20B9${topAlt.savings_per_day}/day (${topAlt.savings_percentage}% off)**` : `starting at just \u20B9${topAlt.price_per_day}/day`;
+      reply = `\u{1F4B0} **Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**
+
+\u2022 **Top Pick:** **${topAlt.title}** at **\u20B9${topAlt.price_per_day}/day**, ${savingsMsg}.
+\u2022 **Verified Location:** ${topAlt.locality || "Nearby"}
+
+Tap any item below to view full photos, owner ratings, or request a booking!`;
+      accumulatedItems.push(...alts.alternatives);
+    } else {
+      reply = `We didn't find any listings priced lower than the current item in this category, but here are the most affordable options available:`;
+      const fallbackSearch = await searchListings({ limit: 3 });
+      accumulatedItems.push(...fallbackSearch.items);
+    }
+    return {
+      reply,
+      mode: "fallback",
+      items: accumulatedItems,
+      suggestions: [
+        `Is "${accumulatedItems[0]?.title || "gear"}" available?`,
+        `Calculate total cost for 5 days`,
+        `Find items in my locality`
+      ]
+    };
+  }
+  if (queryLower.includes("compare") || queryLower.includes("difference between") || queryLower.includes("which is cheaper")) {
+    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
+    const duration = durMatch ? parseInt(durMatch[1], 10) : 3;
+    const comp = await comparePrices({
+      query: userQuery,
+      duration_days: duration
+    });
+    if (comp.comparison.length > 0 && comp.summary) {
+      const s = comp.summary;
+      reply = `\u{1F4CA} **Rental Price Comparison (${duration} Days):**
+
+\u2022 **Cheapest Option:** **${s.cheapest_item}** at \u20B9${s.cheapest_daily_rate}/day (Total: **\u20B9${s.cheapest_total}**)
+` + (s.potential_total_savings > 0 ? `\u2022 **Potential Savings:** Up to **\u20B9${s.potential_total_savings}** total compared to higher-tier gear.
+` : "") + `\u2022 **Note:** ${s.pricing_note}
+
+Here are the compared listings:`;
+      for (const c of comp.comparison) {
+        accumulatedItems.push(c);
+      }
+    } else {
+      reply = `I couldn't find multiple items matching that search to compare. Try browsing by category or refining your query.`;
+    }
+    return {
+      reply,
+      mode: "fallback",
+      items: accumulatedItems,
+      suggestions: [
+        `Check availability for ${duration} days`,
+        `Find cheaper alternatives`,
+        `Explore all cameras`
+      ]
+    };
+  }
+  const isCostQuery = queryLower.includes("total") || queryLower.includes("cost for") || queryLower.includes("how much for");
+  if (isCostQuery) {
+    const durMatch = queryLower.match(/(\d+)\s*(?:day|days)/);
+    const duration = durMatch ? parseInt(durMatch[1], 10) : context?.durationDays || 3;
+    const searchRes2 = await searchListings({
+      query: userQuery,
+      limit: 3
+    });
+    if (searchRes2.items.length > 0) {
+      accumulatedItems.push(...searchRes2.items);
+      const first = searchRes2.items[0];
+      const total = first.price_per_day * duration;
+      reply = `\u{1F4B5} **Estimated Rental Cost for ${duration} Day${duration > 1 ? "s" : ""}:**
+
+\u2022 **${first.title}:** \u20B9${first.price_per_day}/day \xD7 ${duration} days = **\u20B9${total}**
+\u2022 **Deposit / Fees:** \u20B90 platform fee. You coordinate pickup directly with the owner.
+
+Check out this listing and similar options below:`;
+    } else {
+      reply = `Please select an item or specify gear to calculate its total rental cost for ${duration} days.`;
+    }
+    return {
+      reply,
+      mode: "fallback",
+      items: accumulatedItems,
+      suggestions: [
+        `Check availability for ${duration} days`,
+        `Find cheaper options`,
+        `View item details`
+      ]
+    };
+  }
+  let maxPrice;
+  const priceMatch = queryLower.match(/under\s*(?:₹|rs\.?|inr)?\s*(\d+)/i) || queryLower.match(/below\s*(?:₹|rs\.?|inr)?\s*(\d+)/i);
+  if (priceMatch) {
+    maxPrice = parseInt(priceMatch[1], 10);
+  }
+  const category = extractCategoryFromText(queryLower);
+  const cleanKeyword = userQuery.replace(/under\s*(?:₹|rs\.?|inr)?\s*\d+/gi, "").replace(/find|show|search|looking for|cheap|affordable|near me|in|for rent/gi, "").trim();
+  const searchRes = await searchListings({
+    query: cleanKeyword || void 0,
+    category,
+    max_price: maxPrice,
+    locality: context?.locality || void 0,
+    limit: 6
+  });
+  accumulatedItems.push(...searchRes.items);
+  if (accumulatedItems.length > 0) {
+    const budgetNote = maxPrice ? ` under \u20B9${maxPrice}/day` : "";
+    const locNote = context?.locality ? ` in ${context.locality}` : "";
+    reply = `\u2728 **Found ${accumulatedItems.length} listing${accumulatedItems.length > 1 ? "s" : ""}${budgetNote}${locNote} in the Rentu marketplace:**
+
+` + accumulatedItems.map((item) => `\u2022 **${item.title}** \u2014 \u20B9${item.price_per_day}/day (${item.locality || "Nearby"})`).join("\n") + `
+
+Tap any card below to check full specs or request a rental!`;
+  } else {
+    reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${userQuery}".
+
+**Helpful suggestions:**
+\u2022 Try a higher budget or broader keywords (e.g. "camera", "tech", "tent").
+\u2022 You can also post a **Community Request** on the Requests Board so local gear owners can reach out to you!`;
+    const popularRes = await searchListings({ limit: 3 });
+    accumulatedItems.push(...popularRes.items);
+  }
+  return {
+    reply,
+    mode: "fallback",
+    items: accumulatedItems,
+    suggestions: generateContextualSuggestions(reply, accumulatedItems)
+  };
+}
+function extractCategoryFromText(text) {
+  if (text.includes("camera") || text.includes("dslr") || text.includes("lens") || text.includes("photo") || text.includes("shoot")) {
+    return "Electronics & Tech";
+  }
+  if (text.includes("tent") || text.includes("camp") || text.includes("trek") || text.includes("outdoor")) {
+    return "Camping & Outdoor";
+  }
+  if (text.includes("drill") || text.includes("tool") || text.includes("diy") || text.includes("repair")) {
+    return "Tools & DIY";
+  }
+  if (text.includes("dj") || text.includes("music") || text.includes("speaker") || text.includes("party")) {
+    return "Party & Events";
+  }
+  return void 0;
+}
+async function processAiChat(messages, context) {
+  const latestMessage = messages[messages.length - 1]?.content || "";
+  try {
+    const geminiResponse = await callGemini(messages, context);
+    if (geminiResponse) {
+      return geminiResponse;
+    }
+  } catch (err) {
+    console.warn("Gemini invocation failed, falling back to deterministic engine:", err);
+  }
+  return await executeDeterministicFallback(latestMessage, context);
+}
+
+// src/modules/ai/ai.routes.ts
+var router8 = (0, import_express8.Router)();
+var rateLimitMap = /* @__PURE__ */ new Map();
+var RATE_LIMIT_WINDOW_MS = 60 * 1e3;
+var MAX_REQUESTS_PER_WINDOW = 30;
+function rateLimiter(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
+    return sendError(res, "RATE_LIMIT_EXCEEDED", "Too many requests to Rentu AI. Please slow down and try again in a minute.", 429);
+  }
+  record.count += 1;
+  return next();
+}
+var chatMessageSchema = external_exports.object({
+  role: external_exports.enum(["user", "assistant", "system"]),
+  content: external_exports.string().min(1, "Message cannot be empty").max(1e3, "Message cannot exceed 1000 characters")
+});
+var chatContextSchema = external_exports.object({
+  itemId: external_exports.string().uuid().nullable().optional(),
+  locality: external_exports.string().max(120).nullable().optional(),
+  startDate: external_exports.string().max(30).nullable().optional(),
+  durationDays: external_exports.number().int().positive().max(30).nullable().optional()
+}).optional();
+var chatRequestSchema = external_exports.object({
+  messages: external_exports.array(chatMessageSchema).min(1, "At least one message is required").max(15, "Conversation history is capped at 15 messages"),
+  context: chatContextSchema
+});
+router8.post("/chat", rateLimiter, optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const validated = chatRequestSchema.parse(req.body);
+    const context = {
+      ...validated.context,
+      locality: validated.context?.locality || req.user?.locality || null
+    };
+    const result = await processAiChat(validated.messages, context);
+    return sendSuccess(res, result, "Rentu AI responded");
+  } catch (error) {
+    if (error instanceof external_exports.ZodError) {
+      return sendError(res, "VALIDATION_ERROR", "Invalid request format for Rentu AI", 400, error.errors);
+    }
+    next(error);
+  }
+});
+router8.get("/tools/search", async (req, res, next) => {
+  try {
+    const { query: query2, category, max_price, locality, limit } = req.query;
+    const items = await searchListings({
+      query: query2 ? String(query2) : void 0,
+      category: category ? String(category) : void 0,
+      max_price: max_price ? Number(max_price) : void 0,
+      locality: locality ? String(locality) : void 0,
+      limit: limit ? Number(limit) : 6
+    });
+    return sendSuccess(res, items);
+  } catch (error) {
+    next(error);
+  }
+});
+router8.get("/tools/availability", async (req, res, next) => {
+  try {
+    const { item_id, start_date, duration_days } = req.query;
+    if (!item_id || !start_date || !duration_days) {
+      return sendError(res, "BAD_REQUEST", "item_id, start_date, and duration_days are required", 400);
+    }
+    const availability = await checkAvailability({
+      item_id: String(item_id),
+      start_date: String(start_date),
+      duration_days: parseInt(String(duration_days), 10)
+    });
+    return sendSuccess(res, availability);
+  } catch (error) {
+    next(error);
+  }
+});
+router8.get("/tools/alternatives", async (req, res, next) => {
+  try {
+    const { item_id, category, max_price, locality, duration_days } = req.query;
+    const alternatives = await findAlternatives({
+      item_id: item_id ? String(item_id) : void 0,
+      category: category ? String(category) : void 0,
+      max_price: max_price ? Number(max_price) : void 0,
+      locality: locality ? String(locality) : void 0,
+      duration_days: duration_days ? parseInt(String(duration_days), 10) : 1
+    });
+    return sendSuccess(res, alternatives);
+  } catch (error) {
+    next(error);
+  }
+});
+var ai_routes_default = router8;
+
 // src/middleware/error.ts
 var errorHandler = (err, req, res, next) => {
   if (err instanceof ZodError) {
@@ -39770,10 +40756,10 @@ var errorHandler = (err, req, res, next) => {
 
 // src/app.ts
 var createApp = () => {
-  const app2 = (0, import_express8.default)();
+  const app2 = (0, import_express9.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
-  app2.use(import_express8.default.json({ limit: "10mb" }));
-  app2.use(import_express8.default.urlencoded({ extended: true }));
+  app2.use(import_express9.default.json({ limit: "10mb" }));
+  app2.use(import_express9.default.urlencoded({ extended: true }));
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -39805,6 +40791,7 @@ var createApp = () => {
   app2.use(["/api/analytics", "/analytics"], analytics_routes_default);
   app2.use(["/api/users", "/users"], users_routes_default);
   app2.use(["/api/messages", "/messages"], messages_routes_default);
+  app2.use(["/api/ai", "/ai"], ai_routes_default);
   app2.use((req, res) => {
     return sendError(res, "ROUTE_NOT_FOUND", `Cannot ${req.method} ${req.originalUrl}`, 404);
   });

@@ -13,6 +13,7 @@ import { DropWishModal } from './components/DropWishModal';
 import { ChatModal } from './components/ChatModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { AuthModal } from './components/AuthModal';
+import { AiAssistantModal } from './components/AiAssistantModal';
 import { ItemCard } from './components/ItemCard';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
@@ -71,6 +72,7 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -302,6 +304,18 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
+      />
+
+      {/* Rentu AI Assistant Modal & Floating Launcher */}
+      <AiAssistantModal
+        isOpen={isAiOpen}
+        onOpen={() => setIsAiOpen(true)}
+        onClose={() => setIsAiOpen(false)}
+        onSelectItem={(item) => setSelectedItem(item)}
+        context={{
+          itemId: selectedItem?.id || null,
+          locality: selectedItem?.locality || null,
+        }}
       />
 
     </div>

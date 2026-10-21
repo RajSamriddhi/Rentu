@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "ts-node-dev --transpile-only src/db/migrate.ts",
-    "seed": "ts-node-dev --transpile-only src/db/seed.ts"
+    "seed": "ts-node-dev --transpile-only src/db/seed.ts",
+    "test:ai": "ts-node -T src/modules/ai/ai.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
