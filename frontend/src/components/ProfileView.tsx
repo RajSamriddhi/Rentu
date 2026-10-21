@@ -15,8 +15,7 @@ import {
   TrendingUp,
   Award,
   ChevronRight,
-  ArrowUpRight,
-  Trash2
+  ArrowUpRight
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -56,26 +55,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleDeleteItemDirect = async (id: string, title: string) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${title}"? This cannot be undone.`)) return;
-    try {
-      await api.deleteItem(id);
-      loadData();
-    } catch (err: any) {
-      alert('Failed to delete listing: ' + (err.message || 'Server error'));
-    }
-  };
-
-  const handleDeleteRequestDirect = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete your request for "${name}"?`)) return;
-    try {
-      await api.deleteRequest(id);
-      loadData();
-    } catch (err: any) {
-      alert('Failed to delete request: ' + (err.message || 'Server error'));
-    }
-  };
 
   useEffect(() => {
     loadData();
@@ -589,24 +568,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setEditingRequest(req)}
-                      className="btn-secondary text-xs px-3.5 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Edit Request</span>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRequestDirect(req.id, req.item_name)}
-                      className="py-2 px-3 rounded-xl border border-divider hover:bg-rose-500/10 hover:border-rose-500/30 text-rose-500 text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                      title="Delete Request"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
-                    </button>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
                 </div>
               ))
             )}
