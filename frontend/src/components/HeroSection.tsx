@@ -7,6 +7,8 @@ interface HeroSectionProps {
   onSearch: () => void;
   onGetStarted: () => void;
   onOpenDropGear: () => void;
+  itemsCount?: number;
+  requestsCount?: number;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
@@ -15,6 +17,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onSearch,
   onGetStarted,
   onOpenDropGear,
+  itemsCount = 0,
+  requestsCount = 0,
 }) => {
   return (
     <section className="relative overflow-hidden pt-6 pb-8 bg-gradient-to-b from-[#FFF5F7] via-[#FFF8F9] to-canvas dark:from-[#22101A] dark:via-[#16121A] dark:to-canvas transition-colors">
@@ -124,24 +128,24 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
         </div>
 
-        {/* Stats & Community Impact Banner matching Screen 1 bottom */}
+        {/* Stats & Community Impact Banner */}
         <div className="mt-6 bg-white dark:bg-[#181922] border border-divider rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 divide-x-0 sm:divide-x divide-divider w-full md:w-auto">
             <div className="text-center sm:text-left sm:pr-6">
-              <div className="text-2xl font-black text-ink font-display">10K+</div>
-              <div className="text-xs font-semibold text-ink-secondary">Members</div>
+              <div className="text-2xl font-black text-ink font-display">{itemsCount}</div>
+              <div className="text-xs font-semibold text-ink-secondary">Items Available</div>
             </div>
             <div className="text-center sm:text-left sm:px-6">
-              <div className="text-2xl font-black text-ink font-display">4K+</div>
-              <div className="text-xs font-semibold text-ink-secondary">Items Listed</div>
+              <div className="text-2xl font-black text-ink font-display">{requestsCount}</div>
+              <div className="text-xs font-semibold text-ink-secondary">Active Requests</div>
             </div>
             <div className="text-center sm:text-left sm:px-6">
-              <div className="text-2xl font-black text-ink font-display">2.5K+</div>
-              <div className="text-xs font-semibold text-ink-secondary">Requests Fulfilled</div>
+              <div className="text-2xl font-black text-ink font-display">8</div>
+              <div className="text-xs font-semibold text-ink-secondary">Categories</div>
             </div>
             <div className="text-center sm:text-left sm:pl-6">
-              <div className="text-2xl font-black text-ink font-display">12+</div>
-              <div className="text-xs font-semibold text-ink-secondary">Localities</div>
+              <div className="text-2xl font-black text-brand font-display">100%</div>
+              <div className="text-xs font-semibold text-ink-secondary">Peer Verified</div>
             </div>
           </div>
 

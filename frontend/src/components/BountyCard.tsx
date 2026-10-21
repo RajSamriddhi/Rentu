@@ -66,7 +66,7 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
       <div className="pt-3 border-t border-divider flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 truncate">
           <img
-            src={bounty.seeker_avatar || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=100&q=80'}
+            src={bounty.seeker_avatar || (bounty.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(bounty.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
             alt={bounty.seeker_name}
             className="w-7 h-7 rounded-full object-cover border border-ink/20"
           />

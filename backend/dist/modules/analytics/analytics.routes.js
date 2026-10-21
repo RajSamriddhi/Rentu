@@ -44,10 +44,21 @@ router.get('/overview', auth_1.optionalAuthMiddleware, async (req, res, next) =>
       ORDER BY gear_count DESC
       LIMIT 5
     `);
+        // Top localities
+        const localityRes = await (0, db_1.query)(`
+      SELECT 
+        COALESCE(NULLIF(TRIM(locality), ''), 'Nearby') AS locality,
+        COUNT(*)::int AS user_count
+      FROM users
+      GROUP BY 1
+      ORDER BY user_count DESC
+      LIMIT 5
+    `);
         return (0, response_1.sendSuccess)(res, {
             pulse,
             categories: categoryRes.rows,
             topLenders: topLendersRes.rows,
+            localities: localityRes.rows,
         });
     }
     catch (error) {

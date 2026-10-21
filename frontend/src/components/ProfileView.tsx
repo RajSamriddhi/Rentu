@@ -114,7 +114,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     : 'Recent';
 
   const completedCount = myBookings.filter(b => b.status === 'COMPLETED').length;
-  const ratingDisplay = user?.rating ? Number(user.rating).toFixed(1) : '5.0';
+  const ratingDisplay = user?.rating ? Number(user.rating).toFixed(1) : null;
 
   const bannerSrc = user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80';
   const avatarSrc = user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu');
@@ -162,7 +162,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10">
             <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md">
               <MapPin className="w-3.5 h-3.5 text-brand" />
-              <span>{user?.locality || 'Delhi'}</span>
+              <span>{user?.locality || user?.address_text || 'Location not set'}</span>
             </div>
           </div>
 
@@ -278,10 +278,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Metadata Badges */}
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs font-semibold text-ink-secondary pt-1">
-              <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-3 py-1 rounded-full border border-divider">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{ratingDisplay} Rating</span>
-              </span>
+              {ratingDisplay ? (
+                <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-3 py-1 rounded-full border border-divider">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  <span>{ratingDisplay} Rating</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider font-bold text-ink">
+                  <span>New Member</span>
+                </span>
+              )}
               
               <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider">
                 <Calendar className="w-3.5 h-3.5 text-ink-muted" />
@@ -340,8 +346,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <Star className="w-5 h-5 fill-amber-400" />
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{ratingDisplay}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">Trust Rating</div>
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{ratingDisplay || '—'}</div>
+              <div className="text-[11px] font-bold text-ink-secondary">{ratingDisplay ? 'Trust Rating' : 'New Member'}</div>
             </div>
           </div>
 
@@ -540,9 +546,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="text-right">
                 <div className="text-2xl font-black text-ink font-display flex items-center gap-1 justify-end">
                   <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                  <span>{ratingDisplay}</span>
+                  <span>{ratingDisplay || '—'}</span>
                 </div>
-                <div className="text-[10px] font-bold text-ink-secondary">Perfect 5.0 Rating</div>
+                <div className="text-[10px] font-bold text-ink-secondary">
+                  {ratingDisplay ? `${ratingDisplay} Rating` : 'No Reviews Yet'}
+                </div>
               </div>
             </div>
 

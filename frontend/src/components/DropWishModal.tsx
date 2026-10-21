@@ -31,8 +31,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   const [category, setCategory] = useState('Electronics & Tech');
   const [startDate, setStartDate] = useState(defaultDate);
   const [startTime, setStartTime] = useState('10:00 AM');
-  const [durationDays, setDurationDays] = useState(2);
-  const [offeredAmount, setOfferedAmount] = useState(300);
+  const [durationDays, setDurationDays] = useState<number | ''>('');
+  const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
   const [locality, setLocality] = useState(user?.locality || '');
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,8 +75,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         category,
         start_date: startDate,
         start_time: startTime,
-        duration_days: Number(durationDays),
-        offered_amount: Number(offeredAmount),
+        duration_days: Number(durationDays || 1),
+        offered_amount: Number(offeredAmount || 0),
         locality: locality || user?.locality || '',
       });
 
@@ -296,8 +296,9 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                         type="number"
                         min="1"
                         max="30"
+                        placeholder="e.g. 2"
                         value={durationDays}
-                        onChange={(e) => setDurationDays(Number(e.target.value))}
+                        onChange={(e) => setDurationDays(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
                         required
                       />
@@ -306,9 +307,10 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                       <label className="block text-xs font-bold text-ink mb-1">Budget / Offered Amount (₹)</label>
                       <input
                         type="number"
-                        min="50"
+                        min="1"
+                        placeholder="e.g. 500"
                         value={offeredAmount}
-                        onChange={(e) => setOfferedAmount(Number(e.target.value))}
+                        onChange={(e) => setOfferedAmount(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
                         required
                       />
@@ -361,8 +363,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   <div className="text-xs space-y-1.5 text-ink-secondary">
                     <div><span className="font-bold text-ink">Item:</span> {itemName}</div>
                     <div><span className="font-bold text-ink">Category:</span> {category}</div>
-                    <div><span className="font-bold text-ink">Dates:</span> {startDate} ({durationDays} days)</div>
-                    <div><span className="font-bold text-ink">Offered Budget:</span> ₹{offeredAmount}</div>
+                    <div><span className="font-bold text-ink">Dates:</span> {startDate} ({durationDays || 1} days)</div>
+                    <div><span className="font-bold text-ink">Offered Budget:</span> ₹{offeredAmount || 0}</div>
                     <div><span className="font-bold text-ink">Locality:</span> {locality}</div>
                   </div>
                 </div>

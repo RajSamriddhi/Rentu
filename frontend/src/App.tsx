@@ -155,6 +155,8 @@ export const App: React.FC = () => {
               onSearch={handleSearch}
               onGetStarted={() => setActiveTab('explore')}
               onOpenDropGear={() => setIsDropGearOpen(true)}
+              itemsCount={(items || []).length}
+              requestsCount={(requests || []).length}
             />
 
             {/* Screen 1: 8 Soft Pastel Category Tiles Container */}

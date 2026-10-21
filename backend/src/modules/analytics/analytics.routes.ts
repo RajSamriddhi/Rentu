@@ -48,10 +48,22 @@ router.get('/overview', optionalAuthMiddleware, async (req: AuthenticatedRequest
       LIMIT 5
     `);
 
+    // Top localities
+    const localityRes = await query(`
+      SELECT 
+        COALESCE(NULLIF(TRIM(locality), ''), 'Nearby') AS locality,
+        COUNT(*)::int AS user_count
+      FROM users
+      GROUP BY 1
+      ORDER BY user_count DESC
+      LIMIT 5
+    `);
+
     return sendSuccess(res, {
       pulse,
       categories: categoryRes.rows,
       topLenders: topLendersRes.rows,
+      localities: localityRes.rows,
     });
   } catch (error) {
     next(error);

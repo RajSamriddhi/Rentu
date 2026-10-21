@@ -15,7 +15,7 @@ const createItemSchema = zod_1.z.object({
     max_duration_days: zod_1.z.number().int().positive().default(3),
     image_urls: zod_1.z.array(zod_1.z.string().url()).min(1, 'At least one photo is required'),
     sticker_badge: zod_1.z.string().default('✨ Available'),
-    locality: zod_1.z.string().optional().default('Bangalore'),
+    locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
     latitude: zod_1.z.number().optional(),
@@ -202,8 +202,8 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             finalLocality,
             validated.address_text || finalLocality,
             cleanPincode,
-            validated.latitude || 28.5355,
-            validated.longitude || 77.2167,
+            validated.latitude ?? null,
+            validated.longitude ?? null,
         ]);
         const createdItem = result.rows[0];
         // 1NF: Save images into normalized item_images table

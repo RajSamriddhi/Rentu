@@ -13,7 +13,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose, 
   onSuccess 
 }) => {
-  const { loginWithGoogle, continueWithEmail, demoLogin } = useAuth();
+  const { loginWithGoogle, continueWithEmail } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,17 +81,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleDemoSignIn = async (role: 'lender' | 'borrower') => {
-    setIsLoading(true);
-    try {
-      await demoLogin(role);
-      handlePostAuthSuccess();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Demo login failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
@@ -221,30 +210,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
 
-          {/* Fast Demo Account Option */}
-          <div className="pt-2 border-t border-divider text-center">
-            <span className="text-[10px] text-ink-secondary font-semibold block mb-1.5">
-              Quick Test Accounts:
-            </span>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('lender')}
-                disabled={isLoading}
-                className="px-2.5 py-1 rounded-lg bg-canvas hover:bg-zinc-200 dark:hover:bg-zinc-800 text-[11px] font-bold text-ink cursor-pointer border border-divider"
-              >
-                ⚡ Lender Demo
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('borrower')}
-                disabled={isLoading}
-                className="px-2.5 py-1 rounded-lg bg-canvas hover:bg-zinc-200 dark:hover:bg-zinc-800 text-[11px] font-bold text-ink cursor-pointer border border-divider"
-              >
-                🎒 Renter Demo
-              </button>
-            </div>
-          </div>
 
           <div className="flex items-center gap-1.5 text-[10px] text-ink-secondary justify-center pt-1">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />

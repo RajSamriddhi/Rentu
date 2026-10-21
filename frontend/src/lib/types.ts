@@ -43,6 +43,7 @@ export interface Item {
   owner_bio?: string;
   owner_phone?: string;
   owner_email?: string;
+  owner_rating?: number;
   related_items?: Item[];
 }
 

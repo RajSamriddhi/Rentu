@@ -15,7 +15,7 @@ const createItemSchema = z.object({
   max_duration_days: z.number().int().positive().default(3),
   image_urls: z.array(z.string().url()).min(1, 'At least one photo is required'),
   sticker_badge: z.string().default('✨ Available'),
-  locality: z.string().optional().default('Bangalore'),
+  locality: z.string().optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
   latitude: z.number().optional(),
@@ -244,8 +244,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         finalLocality,
         validated.address_text || finalLocality,
         cleanPincode,
-        validated.latitude || 28.5355,
-        validated.longitude || 77.2167,
+        validated.latitude ?? null,
+        validated.longitude ?? null,
       ]);
     const createdItem = result.rows[0];
 

@@ -73,14 +73,17 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
 
           {/* Rating & Distance */}
           <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-secondary">
-            <div className="flex items-center gap-1 font-semibold text-ink">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
-              <span>4.8</span>
-              <span className="text-ink-secondary font-normal">(24)</span>
-            </div>
-            <span className="text-zinc-300 dark:text-zinc-700">•</span>
+            {item.owner_rating ? (
+              <>
+                <div className="flex items-center gap-1 font-semibold text-ink">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                  <span>{Number(item.owner_rating).toFixed(1)}</span>
+                </div>
+                <span className="text-zinc-300 dark:text-zinc-700">•</span>
+              </>
+            ) : null}
             <span className="text-ink-secondary truncate">
-              {item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km` : 'Nearby'}
+              {item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km` : (item.locality || 'Nearby')}
             </span>
           </div>
 

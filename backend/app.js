@@ -38809,7 +38809,7 @@ var createItemSchema = external_exports.object({
   max_duration_days: external_exports.number().int().positive().default(3),
   image_urls: external_exports.array(external_exports.string().url()).min(1, "At least one photo is required"),
   sticker_badge: external_exports.string().default("\u2728 Available"),
-  locality: external_exports.string().optional().default("Bangalore"),
+  locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
@@ -39008,8 +39008,8 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         finalLocality,
         validated.address_text || finalLocality,
         cleanPincode,
-        validated.latitude || 28.5355,
-        validated.longitude || 77.2167
+        validated.latitude ?? null,
+        validated.longitude ?? null
       ]
     );
     const createdItem = result.rows[0];
@@ -39132,7 +39132,7 @@ var createRequestSchema = external_exports.object({
   start_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive().default(1),
   offered_amount: external_exports.number().min(0, "Offered budget cannot be negative"),
-  locality: external_exports.string().optional().default("Bangalore"),
+  locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
@@ -39150,7 +39150,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.name, 'Community Member') AS seeker_name, 
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
-        COALESCE(u.trust_score, 98) AS seeker_trust_score,
+        u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, 
         u.email AS seeker_email
       FROM requests r
@@ -39248,8 +39248,8 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         finalLocality,
         validated.address_text || finalLocality,
         cleanPincode,
-        validated.latitude || 28.5355,
-        validated.longitude || 77.2167
+        validated.latitude ?? null,
+        validated.longitude ?? null
       ]
     );
     const createdRequest = result.rows[0];
@@ -39479,10 +39479,20 @@ router5.get("/overview", optionalAuthMiddleware, async (req, res, next) => {
       ORDER BY gear_count DESC
       LIMIT 5
     `);
+    const localityRes = await query(`
+      SELECT 
+        COALESCE(NULLIF(TRIM(locality), ''), 'Nearby') AS locality,
+        COUNT(*)::int AS user_count
+      FROM users
+      GROUP BY 1
+      ORDER BY user_count DESC
+      LIMIT 5
+    `);
     return sendSuccess(res, {
       pulse,
       categories: categoryRes.rows,
-      topLenders: topLendersRes.rows
+      topLenders: topLendersRes.rows,
+      localities: localityRes.rows
     });
   } catch (error) {
     next(error);

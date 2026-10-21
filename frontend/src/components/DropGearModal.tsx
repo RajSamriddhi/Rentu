@@ -27,7 +27,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
   const [listingType, setListingType] = useState<'Rent' | 'Borrow'>('Rent');
-  const [pricePerDay, setPricePerDay] = useState(300);
+  const [pricePerDay, setPricePerDay] = useState<number | ''>('');
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
@@ -113,7 +113,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         title,
         description: description || `Great condition ${title} ready to rent or share locally.`,
         category,
-        price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay),
+        price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay || 0),
         max_duration_days: Number(maxDurationDays),
         image_urls: [finalImage],
         sticker_badge: '✨ Available',
@@ -344,9 +344,10 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                       <label className="block text-xs font-bold text-ink mb-1">Price per day * (₹)</label>
                       <input
                         type="number"
-                        min="10"
+                        min="1"
+                        placeholder="e.g. 250"
                         value={pricePerDay}
-                        onChange={(e) => setPricePerDay(Number(e.target.value))}
+                        onChange={(e) => setPricePerDay(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none"
                         required
                       />
@@ -505,7 +506,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                     <div><span className="font-bold text-ink">Title:</span> {title}</div>
                     <div><span className="font-bold text-ink">Category:</span> {category}</div>
                     <div><span className="font-bold text-ink">Type:</span> {listingType}</div>
-                    <div><span className="font-bold text-ink">Rate:</span> ₹{listingType === 'Borrow' ? '0 (Free)' : `${pricePerDay} / day`}</div>
+                    <div><span className="font-bold text-ink">Rate:</span> ₹{listingType === 'Borrow' ? '0 (Free)' : `${pricePerDay || 0} / day`}</div>
                     <div><span className="font-bold text-ink">Max Duration:</span> {maxDurationDays} days</div>
                     <div><span className="font-bold text-ink">Condition:</span> {condition}</div>
                     <div><span className="font-bold text-ink">Locality:</span> {locality}</div>

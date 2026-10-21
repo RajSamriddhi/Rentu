@@ -182,11 +182,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </div>
 
                   <div className="mt-2.5 flex items-center gap-3 text-xs font-semibold text-ink-secondary">
-                    <div className="flex items-center gap-1 text-ink">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>4.8 (24 reviews)</span>
-                    </div>
-                    <span>•</span>
+                    {item.owner_rating ? (
+                      <>
+                        <div className="flex items-center gap-1 text-ink">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          <span>{Number(item.owner_rating).toFixed(1)} Lender Rating</span>
+                        </div>
+                        <span>•</span>
+                      </>
+                    ) : null}
                     <div className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-brand" />
                       <span>{item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby'}</span>

@@ -15,7 +15,7 @@ const createRequestSchema = zod_1.z.object({
     start_time: zod_1.z.string().optional(),
     duration_days: zod_1.z.number().int().positive().default(1),
     offered_amount: zod_1.z.number().min(0, 'Offered budget cannot be negative'),
-    locality: zod_1.z.string().optional().default('Bangalore'),
+    locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
     latitude: zod_1.z.number().optional(),
@@ -34,7 +34,7 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.name, 'Community Member') AS seeker_name, 
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
-        COALESCE(u.trust_score, 98) AS seeker_trust_score,
+        u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, 
         u.email AS seeker_email
       FROM requests r
@@ -129,8 +129,8 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             finalLocality,
             validated.address_text || finalLocality,
             cleanPincode,
-            validated.latitude || 28.5355,
-            validated.longitude || 77.2167,
+            validated.latitude ?? null,
+            validated.longitude ?? null,
         ]);
         const createdRequest = result.rows[0];
         return (0, response_1.sendSuccess)(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
