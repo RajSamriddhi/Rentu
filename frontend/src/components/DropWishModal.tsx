@@ -220,7 +220,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         setImageUrl(publicUrl);
       } catch (err: any) {
         console.error('Upload error:', err);
-        setErrorMsg('Failed to upload captured photo. Please try again.');
+        setErrorMsg(err.message || 'Failed to upload captured photo. Please try again.');
       } finally {
         setIsUploading(false);
       }
