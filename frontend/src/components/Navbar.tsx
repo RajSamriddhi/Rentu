@@ -22,8 +22,8 @@ import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 
 interface NavbarProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onSearch: () => void;
@@ -170,8 +170,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Messages Icon (Hidden on small screens, accessible via hamburger) */}
                 <button
                   onClick={onOpenChat}
-                  className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer hidden md:flex"
-                  title="Messages"
+                  className={`p-2 rounded-full transition-colors cursor-pointer hidden md:flex ${
+                    activeTab === 'messages'
+                      ? 'bg-brand/10 text-brand ring-1 ring-brand/30'
+                      : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink'
+                  }`}
+                  title="Messages & Coordination"
                 >
                   <MessageSquare className="w-4 h-4" />
                 </button>
@@ -371,11 +375,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
 
                 <button
-                  onClick={() => { onOpenChat(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
+                  }`}
                 >
-                  <MessageSquare className="w-4 h-4 text-ink-secondary" />
-                  <span>Messages</span>
+                  <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
+                  <span>Messages & Coordination</span>
                 </button>
 
                 <button

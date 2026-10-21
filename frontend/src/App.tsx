@@ -10,7 +10,7 @@ import { HustleHub } from './components/HustleHub';
 import { ItemDetailModal } from './components/ItemDetailModal';
 import { DropGearModal } from './components/DropGearModal';
 import { DropWishModal } from './components/DropWishModal';
-import { ChatModal } from './components/ChatModal';
+import { MessagesView } from './components/MessagesView';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { AuthModal } from './components/AuthModal';
 import { ItemCard } from './components/ItemCard';
@@ -18,7 +18,7 @@ import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest } from './lib/types';
 
-export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile';
+export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'hustle' | 'profile';
 
 const getTabFromUrl = (): TabType => {
   if (typeof window === 'undefined') return 'home';
@@ -27,6 +27,7 @@ const getTabFromUrl = (): TabType => {
   if (path === '/admin' || hash === '#admin') return 'hustle';
   if (path === '/requests' || hash === '#requests') return 'requests';
   if (path === '/bookings' || hash === '#bookings') return 'bookings';
+  if (path === '/messages' || hash === '#messages' || path === '/chat' || hash === '#chat') return 'messages';
   if (path === '/profile' || hash === '#profile') return 'profile';
   if (path === '/explore' || hash === '#explore' || path === '/marketplace' || hash === '#marketplace') return 'explore';
   return 'home';
@@ -67,7 +68,6 @@ export const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [isDropGearOpen, setIsDropGearOpen] = useState(false);
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
@@ -122,7 +122,7 @@ export const App: React.FC = () => {
 
   const handleOpenChatWithBooking = (bookingId: string) => {
     setChatBookingId(bookingId);
-    setIsChatOpen(true);
+    setActiveTab('messages');
   };
 
   return (
@@ -138,7 +138,7 @@ export const App: React.FC = () => {
         onOpenDropGear={() => setIsDropGearOpen(true)}
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenChat={() => setIsChatOpen(true)}
+        onOpenChat={() => setActiveTab('messages')}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
       />
 
@@ -226,6 +226,15 @@ export const App: React.FC = () => {
           />
         )}
 
+        {/* VIEW 8: DEDICATED FULL-PAGE MESSAGES VIEW */}
+        {activeTab === 'messages' && (
+          <MessagesView
+            initialBookingId={chatBookingId}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onNavigateHome={() => setActiveTab('explore')}
+          />
+        )}
+
         {/* VIEW 9: PROFILE VIEW (Screen 9 in Mockup) */}
         {activeTab === 'profile' && (
           <ProfileView
@@ -268,16 +277,6 @@ export const App: React.FC = () => {
         onClose={() => setIsDropWishOpen(false)}
         onSuccess={() => loadFeed()}
         onOpenAuth={() => setIsAuthOpen(true)}
-      />
-
-      {/* Screen 8: Messages Split-Pane Modal */}
-      <ChatModal
-        isOpen={isChatOpen}
-        onClose={() => {
-          setIsChatOpen(false);
-          setChatBookingId(null);
-        }}
-        initialBookingId={chatBookingId}
       />
 
       {/* Screen 11: How It Works Modal */}

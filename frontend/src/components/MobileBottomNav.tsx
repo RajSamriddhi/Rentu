@@ -14,8 +14,8 @@ import {
 import { useAuth } from '../lib/authContext';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages') => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
@@ -136,8 +136,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
             {/* Tab 4: Messages */}
             <button
-              onClick={onOpenChat}
-              className="flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold text-ink-secondary hover:text-ink transition-all cursor-pointer relative"
+              onClick={() => setActiveTab('messages')}
+              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer relative ${
+                activeTab === 'messages' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              }`}
             >
               <MessageSquare className="w-5 h-5" />
               <span>Chat</span>
