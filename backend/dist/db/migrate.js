@@ -134,8 +134,12 @@ const runMigrations = async () => {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
 
       CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
       CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);

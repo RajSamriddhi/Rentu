@@ -222,9 +222,14 @@ export const api = {
     category: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
     offered_amount: number;
     locality: string;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION';
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
     image_url?: string;
   }): Promise<CommunityRequest> {
     const res = await fetch(`${API_BASE}/requests`, {

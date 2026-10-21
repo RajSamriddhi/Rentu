@@ -56,9 +56,14 @@ export interface CommunityRequest {
   category: string;
   start_date: string;
   start_time?: string;
+  end_date?: string;
+  end_time?: string;
   duration_days: number;
   offered_amount: number | string;
   locality: string;
+  pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION';
+  return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  return_locality?: string;
   image_url?: string | null;
   status: 'OPEN' | 'FULFILLED' | 'CANCELLED';
   created_at: string;

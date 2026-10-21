@@ -507,7 +507,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                           </div>
                         )}
 
-                        <div className="space-y-1 flex-1 min-w-0">
+                        <div className="space-y-1.5 flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-extrabold text-base text-ink tracking-tight">
                               {req.item_name}
@@ -515,9 +515,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             <span className="text-xs font-extrabold text-brand font-display bg-brand-soft/60 px-2 py-0.5 rounded-md">
                               ₹{Number(req.offered_amount)} budget
                             </span>
-                            <span className="text-zinc-300">•</span>
-                            <span className="text-xs font-medium text-ink-secondary">
-                              {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                          </div>
+
+                          {/* Rental Timeline (Start date -> Return date & duration) */}
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-ink-secondary">
+                            <span className="inline-flex items-center gap-1 bg-canvas border border-divider px-2 py-0.5 rounded-md text-ink">
+                              <Clock className="w-3 h-3 text-brand" />
+                              <span>
+                                {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                {req.end_date ? ` ➔ ${new Date(req.end_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}` : ''}
+                                {` (${req.duration_days} ${req.duration_days === 1 ? 'day' : 'days'})`}
+                              </span>
                             </span>
                           </div>
 
@@ -525,6 +533,32 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             {req.description}
                           </p>
 
+                          {/* Pickup & Return Logistics Summary */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[11px] font-medium text-ink-secondary">
+                            <span className="flex items-center gap-1">
+                              <span className="font-bold text-ink">Pickup:</span>
+                              <span>
+                                {req.pickup_type === 'MY_LOCATION' 
+                                  ? `📍 Deliver to borrower (${req.locality})` 
+                                  : `🚶 Pickup from Lender's place`}
+                              </span>
+                            </span>
+
+                            <span>•</span>
+
+                            <span className="flex items-center gap-1">
+                              <span className="font-bold text-ink">Return:</span>
+                              <span>
+                                {req.return_type === 'MY_LOCATION'
+                                  ? `🏠 Lender collects (${req.return_locality || req.locality})`
+                                  : req.return_type === 'CUSTOM_LOCATION'
+                                  ? `🤝 Meet at ${req.return_locality || 'Custom Spot'}`
+                                  : `🚶 Return to Lender's place`}
+                              </span>
+                            </span>
+                          </div>
+
+                          {/* Seeker Info */}
                           <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
                             <img
                               src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
