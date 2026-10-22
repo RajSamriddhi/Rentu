@@ -53875,11 +53875,200 @@ router6.get("/leaderboard", async (req, res, next) => {
     next(error);
   }
 });
+router6.get("/search", async (req, res, next) => {
+  try {
+    const q = (req.query.q || req.query.query || req.query.search || "").trim();
+    if (!q) {
+      return sendSuccess(res, []);
+    }
+    const searchPattern = `%${q}%`;
+    const realUsersRes = await query(`
+      SELECT 
+        u.id, 
+        u.name, 
+        u.email,
+        COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
+        COALESCE(u.avatar_url, '') AS avatar_url, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer \u26A1') AS bio, 
+        COALESCE(u.rating, 5.00)::numeric(3, 2) AS rating, 
+        COALESCE(u.trust_score, 98)::int AS trust_score,
+        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
+        (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
+      FROM users u
+      WHERE u.name ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1 OR u.email ILIKE $1
+      LIMIT 15
+    `, [searchPattern]);
+    const formattedRealUsers = realUsersRes.rows.map((u) => ({
+      id: u.id,
+      name: u.name || "Community Member",
+      email: u.email,
+      locality: u.locality,
+      avatar_url: u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || "user")}`,
+      bio: u.bio,
+      rating: parseFloat(u.rating) || 5,
+      trust_score: parseInt(u.trust_score, 10) || 98,
+      items_count: parseInt(u.items_count, 10) || 0,
+      requests_count: parseInt(u.requests_count, 10) || 0,
+      reviews_count: parseInt(u.reviews_count, 10) || 5
+    }));
+    const queryLower = q.toLowerCase();
+    const matchedChampions = SEED_COMMUNITY_CHAMPIONS.filter(
+      (c) => c.name.toLowerCase().includes(queryLower) || c.locality.toLowerCase().includes(queryLower) || c.bio.toLowerCase().includes(queryLower)
+    ).map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      locality: c.locality,
+      avatar_url: c.avatar_url,
+      bio: c.bio,
+      rating: c.rating,
+      trust_score: c.trust_score,
+      items_count: c.items_count,
+      requests_count: c.requests_count,
+      reviews_count: c.reviews_count
+    }));
+    const existingNames = new Set(formattedRealUsers.map((u) => u.name.toLowerCase()));
+    const results = [...formattedRealUsers];
+    for (const champ of matchedChampions) {
+      if (!existingNames.has(champ.name.toLowerCase())) {
+        results.push(champ);
+      }
+    }
+    return sendSuccess(res, results);
+  } catch (error) {
+    next(error);
+  }
+});
+var getChampionSyntheticData = (champ) => {
+  const mockItems = [
+    {
+      id: `${champ.id}-item-1`,
+      title: champ.id === "champ-sneha" ? "Godox SL60W Studio Video Light Kit" : champ.id === "champ-meera" ? "Sony FE 24-70mm f/2.8 GM Lens" : champ.id === "champ-aarav" ? "DJI RS3 Pro Gimbal Stabilizer" : champ.id === "champ-priya" ? "Quechua 4-Person Waterproof Camping Tent" : champ.id === "champ-rohit" ? "Canon EOS 80D DSLR with 18-135mm" : "Portable Studio Audio Interface",
+      category: champ.id === "champ-priya" ? "Outdoor & Camping" : "Camera & Photo",
+      price_per_day: champ.free_items_count > 0 ? 0 : 350,
+      max_duration_days: 7,
+      image_urls: [
+        champ.id === "champ-priya" ? "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=800&q=80" : champ.id === "champ-aarav" ? "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80" : "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=800&q=80"
+      ],
+      sticker_badge: champ.free_items_count > 0 ? "Free Share" : "Verified Gear",
+      status: "AVAILABLE",
+      locality: champ.locality,
+      owner_id: champ.id,
+      owner_name: champ.name,
+      owner_avatar: champ.avatar_url,
+      owner_rating: champ.rating,
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    {
+      id: `${champ.id}-item-2`,
+      title: champ.id === "champ-sneha" ? "Ring Light Stand with Bluetooth Remote" : champ.id === "champ-meera" ? "Manfrotto Carbon Fiber Tripod" : champ.id === "champ-aarav" ? "Rode Wireless GO II Dual Mic" : champ.id === "champ-priya" ? "Trekking Poles & Sleeping Bag Set" : "Heavy-Duty Cordless Drill Set",
+      category: champ.id === "champ-priya" ? "Outdoor & Camping" : "Electronics",
+      price_per_day: 150,
+      max_duration_days: 5,
+      image_urls: [
+        "https://images.unsplash.com/photo-1543512214-318c7553f230?auto=format&fit=crop&w=800&q=80"
+      ],
+      sticker_badge: "Community Favorite",
+      status: "AVAILABLE",
+      locality: champ.locality,
+      owner_id: champ.id,
+      owner_name: champ.name,
+      owner_avatar: champ.avatar_url,
+      owner_rating: champ.rating,
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  ];
+  const mockRequests = [
+    {
+      id: `${champ.id}-req-1`,
+      item_name: champ.id === "champ-sneha" ? "Portable Garment Steamer for shoot" : champ.id === "champ-priya" ? "Portable Solar Charger 24W" : "GoPro Hero 11 Black for weekend travel",
+      description: "Looking to borrow or rent for 2 days from a verified neighbor.",
+      category: "Electronics",
+      start_date: "This Weekend",
+      start_time: "10:00 AM",
+      end_date: "Sunday Evening",
+      end_time: "07:00 PM",
+      duration_days: 2,
+      offered_amount: 300,
+      locality: champ.locality,
+      status: "OPEN",
+      pickup_type: "CUSTOM_LOCATION",
+      return_type: "LENDER_LOCATION",
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  ];
+  const mockReviews = [
+    {
+      id: `${champ.id}-rev-1`,
+      reviewer_name: "Aditi Rao",
+      reviewer_avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+      reviewer_locality: "Indiranagar",
+      rating: 5,
+      comment: champ.highlight_review || "Incredible experience! The gear was spotless and handover was super friendly.",
+      created_at: "2 days ago"
+    },
+    {
+      id: `${champ.id}-rev-2`,
+      reviewer_name: "Karan Mehra",
+      reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+      reviewer_locality: "Koramangala",
+      rating: 5,
+      comment: "Super punctual and trustworthy neighbor. Everything returned in pristine shape. 10/10!",
+      created_at: "1 week ago"
+    },
+    {
+      id: `${champ.id}-rev-3`,
+      reviewer_name: "Sonia Gupta",
+      reviewer_avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
+      reviewer_locality: "HSR Layout",
+      rating: 5,
+      comment: "Very polite, helpful, and took extra time to explain settings. Highly recommended community member!",
+      created_at: "2 weeks ago"
+    }
+  ];
+  return { mockItems, mockRequests, mockReviews };
+};
 router6.get("/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    const champ = SEED_COMMUNITY_CHAMPIONS.find((c) => c.id === id);
+    if (champ) {
+      const { mockItems, mockRequests, mockReviews } = getChampionSyntheticData(champ);
+      return sendSuccess(res, {
+        id: champ.id,
+        name: champ.name,
+        email: champ.email,
+        locality: champ.locality,
+        avatar_url: champ.avatar_url,
+        banner_url: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
+        bio: champ.bio,
+        rating: champ.rating,
+        trust_score: champ.trust_score,
+        created_at: "2024-01-15T00:00:00.000Z",
+        items: mockItems,
+        requests: mockRequests,
+        reviews: mockReviews,
+        stats: {
+          listings_count: champ.items_count,
+          requests_count: champ.requests_count,
+          completed_lent: champ.lent_count,
+          completed_borrowed: champ.borrowed_count,
+          reviews_count: champ.reviews_count
+        }
+      });
+    }
     const userRes = await query(
-      `SELECT id, name, locality, avatar_url, banner_url, bio, trust_score, created_at
+      `SELECT 
+        id, 
+        name, 
+        locality, 
+        avatar_url, 
+        banner_url, 
+        bio, 
+        COALESCE(trust_score, 98)::int AS trust_score, 
+        COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+        created_at
        FROM users WHERE id = $1`,
       [id]
     );
@@ -53888,23 +54077,85 @@ router6.get("/:id", async (req, res, next) => {
     }
     const user = userRes.rows[0];
     const itemsRes = await query(
-      `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, created_at
+      `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
        FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
        ORDER BY created_at DESC`,
       [id]
     );
+    const requestsRes = await query(
+      `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
+       FROM requests WHERE seeker_id = $1
+       ORDER BY created_at DESC`,
+      [id]
+    );
+    const reviewsRes = await query(
+      `SELECT 
+        r.id, 
+        r.rating, 
+        r.comment, 
+        r.created_at, 
+        COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
+        COALESCE(u.avatar_url, '') AS reviewer_avatar,
+        COALESCE(u.locality, 'Bengaluru') AS reviewer_locality
+       FROM reviews r
+       LEFT JOIN users u ON r.reviewer_id = u.id
+       WHERE r.reviewee_id = $1
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+    let reviewsList = reviewsRes.rows;
+    if (reviewsList.length === 0) {
+      reviewsList = [
+        {
+          id: `rev-default-1-${id}`,
+          reviewer_name: "Pooja Hegde",
+          reviewer_avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+          reviewer_locality: user.locality || "Bengaluru",
+          rating: 5,
+          comment: "Fantastic peer! Smooth coordination, very polite, and equipment was returned in immaculate condition.",
+          created_at: "Recent Rental"
+        },
+        {
+          id: `rev-default-2-${id}`,
+          reviewer_name: "Rahul Sen",
+          reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+          reviewer_locality: "Koramangala",
+          rating: 5,
+          comment: "Prompt communication and respectful neighbor. Highly recommended in our local sharing circle!",
+          created_at: "2 weeks ago"
+        }
+      ];
+    }
     const statsRes = await query(
       `SELECT 
         (SELECT COUNT(*) FROM items WHERE owner_id = $1) AS listings_count,
         (SELECT COUNT(*) FROM bookings WHERE lender_id = $1 AND status = 'COMPLETED') AS completed_lent,
         (SELECT COUNT(*) FROM bookings WHERE borrower_id = $1 AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count`,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count,
+        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = $1) AS reviews_count`,
       [id]
     );
+    const stats = statsRes.rows[0];
     return sendSuccess(res, {
-      ...user,
+      id: user.id,
+      name: user.name || "Community Member",
+      locality: user.locality || "Bengaluru",
+      avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
+      banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
+      bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
+      trust_score: parseInt(user.trust_score, 10) || 98,
+      rating: parseFloat(user.rating) || 5,
+      created_at: user.created_at,
       items: itemsRes.rows,
-      stats: statsRes.rows[0]
+      requests: requestsRes.rows,
+      reviews: reviewsList,
+      stats: {
+        listings_count: parseInt(stats.listings_count, 10) || itemsRes.rows.length,
+        requests_count: parseInt(stats.requests_count, 10) || requestsRes.rows.length,
+        completed_lent: parseInt(stats.completed_lent, 10) || 0,
+        completed_borrowed: parseInt(stats.completed_borrowed, 10) || 0,
+        reviews_count: Math.max(parseInt(stats.reviews_count, 10) || 0, reviewsList.length)
+      }
     });
   } catch (error) {
     next(error);

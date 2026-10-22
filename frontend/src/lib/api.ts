@@ -7,7 +7,9 @@ import {
   Conversation, 
   CommunityPulse, 
   CategoryStat,
-  CommunityLeaderboardData 
+  CommunityLeaderboardData,
+  PublicUserProfile,
+  UserSearchResult 
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL 
@@ -358,6 +360,20 @@ export const api = {
 
   async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {
     const res = await fetch(`${API_BASE}/users/leaderboard`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getUserProfile(userId: string): Promise<PublicUserProfile> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async searchUsers(query: string): Promise<UserSearchResult[]> {
+    const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
       headers: getHeaders(),
     });
     return handleResponse(res);

@@ -6,9 +6,10 @@ interface BountyCardProps {
   bounty: CommunityRequest;
   onClaim: (bounty: CommunityRequest) => void;
   isOwner?: boolean;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
-export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner }) => {
+export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner, onOpenUserProfile }) => {
   const isFulfilled = bounty.status === 'FULFILLED';
 
   return (
@@ -71,17 +72,26 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
 
       {/* Footer Seeker Info & CTA */}
       <div className="pt-3 border-t border-divider flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 truncate">
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenUserProfile && bounty.seeker_id) {
+              onOpenUserProfile(bounty.seeker_id);
+            }
+          }}
+          className="flex items-center gap-2 truncate group text-left cursor-pointer hover:opacity-90 transition-opacity"
+          title={`View ${bounty.seeker_name}'s public profile`}
+        >
           <img
             src={bounty.seeker_avatar || (bounty.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(bounty.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
             alt={bounty.seeker_name}
-            className="w-7 h-7 rounded-full object-cover border border-ink/20"
+            className="w-7 h-7 rounded-full object-cover border border-ink/20 group-hover:border-brand"
           />
           <div className="truncate">
-            <div className="text-xs font-extrabold text-ink truncate">{bounty.seeker_name}</div>
+            <div className="text-xs font-extrabold text-ink truncate group-hover:text-brand">{bounty.seeker_name}</div>
             <div className="text-[10px] text-ink-secondary font-medium">Verified Renter</div>
           </div>
-        </div>
+        </button>
 
         {isFulfilled ? (
           <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full border border-emerald-300">

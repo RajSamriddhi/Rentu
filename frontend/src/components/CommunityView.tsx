@@ -35,6 +35,7 @@ interface CommunityViewProps {
   onOpenDropWish: () => void;
   onExploreGear: () => void;
   onOpenAuth?: () => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 type LeaderboardCategory = 'top_rated' | 'top_lenders' | 'top_borrowers' | 'top_sharers';
@@ -44,6 +45,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   onOpenDropWish,
   onExploreGear,
   onOpenAuth,
+  onOpenUserProfile,
 }) => {
   const { isAuthenticated } = useAuth();
   const [activeCategory, setActiveCategory] = useState<LeaderboardCategory>('top_rated');
@@ -418,19 +420,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   <div className="space-y-3 pt-4">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[1].id)}
+                      className="flex items-center gap-3 text-left group/user cursor-pointer"
+                      title={`View ${topThree[1].name}'s public profile`}
+                    >
                       <div className="relative">
                         <img
                           src={topThree[1].avatar_url}
                           alt={topThree[1].name}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-slate-300 dark:border-slate-600 shadow-sm"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-slate-300 dark:border-slate-600 shadow-sm group-hover/user:ring-2 group-hover/user:ring-brand"
                         />
                         <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-500 text-white flex items-center justify-center text-xs font-black shadow-xs">
                           2
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-extrabold text-base text-ink leading-tight flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-base text-ink leading-tight flex items-center gap-1.5 group-hover/user:text-brand">
                           <span>{topThree[1].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
@@ -439,7 +446,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <span>{topThree[1].locality || 'Bengaluru'}</span>
                         </div>
                       </div>
-                    </div>
+                    </button>
 
                     <p className="text-xs text-ink-secondary line-clamp-2">
                       {topThree[1].bio}
@@ -457,12 +464,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {topThree[1].badges.map((b, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        {b}
-                      </span>
-                    ))}
+                  <div className="pt-2 flex items-center justify-between gap-2 border-t border-divider/60">
+                    <div className="flex flex-wrap gap-1.5">
+                      {topThree[1].badges.map((b, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                    {onOpenUserProfile && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenUserProfile(topThree[1].id)}
+                        className="text-xs font-extrabold text-brand hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        Profile <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -476,19 +494,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   <div className="space-y-3 pt-4">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[0].id)}
+                      className="flex items-center gap-3 text-left group/user cursor-pointer"
+                      title={`View ${topThree[0].name}'s public profile`}
+                    >
                       <div className="relative">
                         <img
                           src={topThree[0].avatar_url}
                           alt={topThree[0].name}
-                          className="w-20 h-20 rounded-full object-cover border-4 border-amber-400 shadow-md ring-4 ring-amber-400/20"
+                          className="w-20 h-20 rounded-full object-cover border-4 border-amber-400 shadow-md ring-4 ring-amber-400/20 group-hover/user:ring-amber-500"
                         />
                         <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-black shadow-xs">
                           👑
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-extrabold text-lg text-ink leading-tight flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-lg text-ink leading-tight flex items-center gap-1.5 group-hover/user:text-amber-500">
                           <span>{topThree[0].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
@@ -500,7 +523,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           Community #1 Ranked
                         </div>
                       </div>
-                    </div>
+                    </button>
 
                     <p className="text-xs sm:text-sm text-ink-secondary line-clamp-2">
                       {topThree[0].bio}
@@ -518,12 +541,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {topThree[0].badges.map((b, i) => (
-                      <span key={i} className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/50">
-                        {b}
-                      </span>
-                    ))}
+                  <div className="pt-2 flex items-center justify-between gap-2 border-t border-amber-300/40">
+                    <div className="flex flex-wrap gap-1.5">
+                      {topThree[0].badges.map((b, i) => (
+                        <span key={i} className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/50">
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                    {onOpenUserProfile && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenUserProfile(topThree[0].id)}
+                        className="text-xs font-black text-amber-600 dark:text-amber-400 hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        View Profile <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -537,19 +571,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   <div className="space-y-3 pt-4">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[2].id)}
+                      className="flex items-center gap-3 text-left group/user cursor-pointer"
+                      title={`View ${topThree[2].name}'s public profile`}
+                    >
                       <div className="relative">
                         <img
                           src={topThree[2].avatar_url}
                           alt={topThree[2].name}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-amber-600/40 shadow-sm"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-amber-600/40 shadow-sm group-hover/user:ring-2 group-hover/user:ring-amber-600"
                         />
                         <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-700 text-white flex items-center justify-center text-xs font-black shadow-xs">
                           3
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-extrabold text-base text-ink leading-tight flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-base text-ink leading-tight flex items-center gap-1.5 group-hover/user:text-amber-700">
                           <span>{topThree[2].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
@@ -558,7 +597,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <span>{topThree[2].locality || 'Bengaluru'}</span>
                         </div>
                       </div>
-                    </div>
+                    </button>
 
                     <p className="text-xs text-ink-secondary line-clamp-2">
                       {topThree[2].bio}
@@ -576,12 +615,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {topThree[2].badges.map((b, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300">
-                        {b}
-                      </span>
-                    ))}
+                  <div className="pt-2 flex items-center justify-between gap-2 border-t border-divider/60">
+                    <div className="flex flex-wrap gap-1.5">
+                      {topThree[2].badges.map((b, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300">
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                    {onOpenUserProfile && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenUserProfile(topThree[2].id)}
+                        className="text-xs font-extrabold text-brand hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        Profile <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -604,74 +654,92 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </span>
                 </div>
 
-                <div className="divide-y divide-divider">
-                  {remainingMembers.map((member) => (
-                    <div 
-                      key={member.id}
-                      className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-canvas/50 transition-colors"
-                    >
-                      {/* Left: Rank & Member Identity */}
-                      <div className="flex items-center gap-3.5 sm:gap-4 flex-1">
-                        {/* Rank Badge */}
-                        <div className="w-8 h-8 rounded-full bg-canvas border border-divider font-black text-xs text-ink-secondary flex items-center justify-center shrink-0">
-                          #{member.rank}
+                  <div className="divide-y divide-divider">
+                    {remainingMembers.map((member) => (
+                      <div 
+                        key={member.id}
+                        className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-canvas/50 transition-colors"
+                      >
+                        {/* Left: Rank & Member Identity */}
+                        <div className="flex items-center gap-3.5 sm:gap-4 flex-1 min-w-0">
+                          {/* Rank Badge */}
+                          <div className="w-8 h-8 rounded-full bg-canvas border border-divider font-black text-xs text-ink-secondary flex items-center justify-center shrink-0">
+                            #{member.rank}
+                          </div>
+
+                          {/* Clickable Profile Identity */}
+                          <button
+                            type="button"
+                            onClick={() => onOpenUserProfile && onOpenUserProfile(member.id)}
+                            className="flex items-center gap-3 text-left group/member cursor-pointer min-w-0"
+                            title={`View ${member.name}'s public profile`}
+                          >
+                            <img
+                              src={member.avatar_url}
+                              alt={member.name}
+                              className="w-12 h-12 rounded-full object-cover border border-divider shrink-0 group-hover/member:ring-2 group-hover/member:ring-brand"
+                            />
+
+                            {/* Name, Locality, Bio */}
+                            <div className="space-y-0.5 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-sm text-ink group-hover/member:text-brand group-hover/member:underline">{member.name}</span>
+                                <span className="inline-flex items-center gap-1 text-[11px] text-ink-muted">
+                                  <MapPin className="w-3 h-3" />
+                                  <span>{member.locality || 'Bengaluru'}</span>
+                                </span>
+                              </div>
+                              <p className="text-xs text-ink-secondary line-clamp-1 max-w-md">
+                                {member.bio}
+                              </p>
+                              {member.highlight_review && (
+                                <p className="text-[11px] text-ink-muted italic line-clamp-1">
+                                  "{member.highlight_review}"
+                                </p>
+                              )}
+                            </div>
+                          </button>
                         </div>
 
-                        {/* Avatar */}
-                        <img
-                          src={member.avatar_url}
-                          alt={member.name}
-                          className="w-12 h-12 rounded-full object-cover border border-divider shrink-0"
-                        />
-
-                        {/* Name, Locality, Bio */}
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-extrabold text-sm text-ink">{member.name}</span>
-                            <span className="inline-flex items-center gap-1 text-[11px] text-ink-muted">
-                              <MapPin className="w-3 h-3" />
-                              <span>{member.locality || 'Bengaluru'}</span>
-                            </span>
+                        {/* Right: Scores & Metrics */}
+                        <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+                          {/* Trust & Rating */}
+                          <div className="text-right">
+                            <div className="flex items-center justify-end gap-1 text-xs font-black text-ink">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              <span>{member.rating.toFixed(2)} ★</span>
+                            </div>
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
+                              <ShieldCheck className="w-3 h-3" />
+                              <span>{member.trust_score}% Trust</span>
+                            </div>
                           </div>
-                          <p className="text-xs text-ink-secondary line-clamp-1 max-w-md">
-                            {member.bio}
-                          </p>
-                          {member.highlight_review && (
-                            <p className="text-[11px] text-ink-muted italic line-clamp-1">
-                              "{member.highlight_review}"
-                            </p>
+
+                          {/* Metric Badge */}
+                          <div className="px-3 py-1.5 rounded-xl bg-canvas border border-divider text-right min-w-[120px]">
+                            <div className="text-[9px] font-bold text-ink-muted uppercase tracking-wider">
+                              {member.metric_label}
+                            </div>
+                            <div className="text-xs font-black text-ink truncate">
+                              {member.metric_value}
+                            </div>
+                          </div>
+
+                          {onOpenUserProfile && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenUserProfile(member.id)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-brand/10 hover:bg-brand text-brand hover:text-white transition-all cursor-pointer hidden sm:flex items-center gap-1 shrink-0"
+                            >
+                              <span>Profile</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
                           )}
                         </div>
+
                       </div>
-
-                      {/* Right: Scores & Metrics */}
-                      <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
-                        {/* Trust & Rating */}
-                        <div className="text-right">
-                          <div className="flex items-center justify-end gap-1 text-xs font-black text-ink">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            <span>{member.rating.toFixed(2)} ★</span>
-                          </div>
-                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
-                            <ShieldCheck className="w-3 h-3" />
-                            <span>{member.trust_score}% Trust</span>
-                          </div>
-                        </div>
-
-                        {/* Metric Badge */}
-                        <div className="px-3 py-1.5 rounded-xl bg-canvas border border-divider text-right min-w-[120px]">
-                          <div className="text-[9px] font-bold text-ink-muted uppercase tracking-wider">
-                            {member.metric_label}
-                          </div>
-                          <div className="text-xs font-black text-ink truncate">
-                            {member.metric_value}
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
 
               </div>
             )}

@@ -1,5 +1,7 @@
-import React from 'react';
-import { Search, ArrowRight, Heart } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, ArrowRight, Heart, Users, X } from 'lucide-react';
+import { api } from '../lib/api';
+import { UserSearchResult } from '../lib/types';
 
 interface HeroSectionProps {
   searchQuery: string;
@@ -9,6 +11,7 @@ interface HeroSectionProps {
   onOpenDropGear: () => void;
   itemsCount?: number;
   requestsCount?: number;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
@@ -19,7 +22,47 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onOpenDropGear,
   itemsCount = 0,
   requestsCount = 0,
+  onOpenUserProfile,
 }) => {
+  const [userSearchResults, setUserSearchResults] = useState<UserSearchResult[]>([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const heroSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setUserSearchResults([]);
+      setIsSearchingUsers(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingUsers(true);
+      try {
+        const results = await api.searchUsers(trimmed);
+        setUserSearchResults(Array.isArray(results) ? results : []);
+      } catch (err) {
+        console.error('Failed to search users in hero:', err);
+        setUserSearchResults([]);
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (heroSearchRef.current && !heroSearchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   return (
     <section className="relative overflow-hidden pt-6 pb-8 bg-gradient-to-b from-[#FFF5F7] via-[#FFF8F9] to-canvas dark:from-[#22101A] dark:via-[#16121A] dark:to-canvas transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -51,19 +94,41 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </p>
 
             {/* Pill Search Bar matching Screen 1 */}
-            <div className="mt-8 max-w-xl mx-auto lg:mx-0">
+            <div ref={heroSearchRef} className="mt-8 max-w-xl mx-auto lg:mx-0 relative">
               <form 
-                onSubmit={(e) => { e.preventDefault(); onSearch(); }}
-                className="bg-white dark:bg-[#181922] border border-divider rounded-full p-2 pl-4 shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                onSubmit={(e) => { 
+                  e.preventDefault(); 
+                  setShowDropdown(false);
+                  onSearch(); 
+                }}
+                className="bg-white dark:bg-[#181922] border border-divider rounded-full p-2 pl-4 shadow-sm hover:shadow-md transition-all flex items-center gap-2 relative z-20"
               >
                 <Search className="w-5 h-5 text-ink-muted shrink-0" />
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="What are you looking for?"
+                  onFocus={() => setShowDropdown(true)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowDropdown(true);
+                  }}
+                  placeholder="What are you looking for? (Try gear or a neighbor's name)"
                   className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-ink placeholder:text-ink-muted placeholder:font-normal px-2"
                 />
+
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setUserSearchResults([]);
+                      setShowDropdown(false);
+                    }}
+                    className="p-1 text-ink-muted hover:text-ink text-xs cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
 
                 {/* Circular Pink Search Button */}
                 <button
@@ -74,6 +139,96 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   <Search className="w-4 h-4" />
                 </button>
               </form>
+
+              {/* Live Search Flyout Dropdown */}
+              {showDropdown && searchQuery.trim().length >= 2 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface/98 backdrop-blur-xl border border-divider rounded-2xl shadow-2xl p-3 z-30 animate-in fade-in zoom-in-95 duration-150 divide-y divide-divider">
+                  {/* Community Members section */}
+                  <div>
+                    <div className="flex items-center justify-between px-2 py-1 text-[10px] font-black uppercase tracking-wider text-ink-muted">
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-brand" />
+                        <span>Community Members</span>
+                      </span>
+                      {isSearchingUsers ? (
+                        <span className="text-[10px] text-ink-secondary flex items-center gap-1 animate-pulse">Searching neighbors...</span>
+                      ) : (
+                        <span>{userSearchResults.length} found</span>
+                      )}
+                    </div>
+
+                    {userSearchResults.length > 0 ? (
+                      <div className="space-y-1 mt-1 max-h-56 overflow-y-auto">
+                        {userSearchResults.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              if (onOpenUserProfile) {
+                                onOpenUserProfile(u.id);
+                              }
+                              setShowDropdown(false);
+                            }}
+                            onClick={() => {
+                              if (onOpenUserProfile) {
+                                onOpenUserProfile(u.id);
+                              }
+                              setShowDropdown(false);
+                            }}
+                            className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img
+                                src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                                alt={u.name}
+                                className="w-9 h-9 rounded-full object-cover border border-divider group-hover:border-brand shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs sm:text-sm font-bold text-ink group-hover:text-brand truncate">{u.name}</span>
+                                  <span className="inline-flex items-center text-[10px] font-black text-amber-500">
+                                    ★ {u.rating ? u.rating.toFixed(1) : '5.0'}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-ink-secondary truncate">
+                                  {u.locality || 'Verified Neighbor'} • {u.items_count} gear listed • {u.trust_score}% trust
+                                </div>
+                              </div>
+                            </div>
+
+                            <span className="text-xs font-bold text-brand group-hover:underline shrink-0 ml-2">
+                              View Profile →
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : !isSearchingUsers ? (
+                      <div className="px-3 py-2 text-xs text-ink-secondary text-center">
+                        No community members matching "{searchQuery}"
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Marketplace Gear Search option */}
+                  <div className="pt-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDropdown(false);
+                        onSearch();
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-brand-soft text-left cursor-pointer transition-colors text-xs font-bold text-ink hover:text-brand"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Search className="w-3.5 h-3.5 text-brand" />
+                        <span>Search gear listings for "{searchQuery}"</span>
+                      </span>
+                      <span className="text-[10px] text-ink-muted">Press Enter ↵</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

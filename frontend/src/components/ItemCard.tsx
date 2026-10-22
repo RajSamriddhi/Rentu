@@ -6,9 +6,10 @@ interface ItemCardProps {
   item: Item;
   onClick: () => void;
   onQuickSnag?: (item: Item) => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
-export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
+export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserProfile }) => {
   const [isLiked, setIsLiked] = useState(false);
 
   const images = Array.isArray(item.image_urls) ? item.image_urls : [];
@@ -87,15 +88,38 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
             </span>
           </div>
 
-          {/* Status badge on dedicated line matching Mockup Screen 2 */}
-          <div className="mt-2 flex items-center">
+          {/* Owner info row with clickable avatar */}
+          <div className="mt-2.5 pt-2 border-t border-divider flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onOpenUserProfile && item.owner_id) {
+                  onOpenUserProfile(item.owner_id);
+                }
+              }}
+              className="flex items-center gap-1.5 hover:text-brand transition-colors cursor-pointer text-left truncate group/owner"
+              title={`View ${item.owner_name || 'owner'}'s profile`}
+            >
+              <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-700 shrink-0 border border-zinc-300 dark:border-zinc-600">
+                <img
+                  src={item.owner_avatar || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(item.owner_name || item.owner_id || 'user')}`}
+                  alt={item.owner_name || 'Owner'}
+                  className="w-full h-full object-cover group-hover/owner:scale-110 transition-transform"
+                />
+              </div>
+              <span className="text-[11px] font-bold text-ink-secondary group-hover/owner:text-brand truncate">
+                {item.owner_name || 'Neighbor'}
+              </span>
+            </button>
+
             {isAvailable ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400 dark:border dark:border-emerald-800/40">
-                <Check className="w-3 h-3 stroke-[2.5]" /> Available
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
+                <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                Rented out
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                Rented
               </span>
             )}
           </div>

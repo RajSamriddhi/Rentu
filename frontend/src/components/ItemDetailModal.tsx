@@ -28,6 +28,7 @@ interface ItemDetailModalProps {
   onBookingSuccess: () => void;
   onOpenAuth: () => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
@@ -36,6 +37,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onBookingSuccess,
   onOpenAuth,
   onOpenChatWithBooking,
+  onOpenUserProfile,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -321,21 +323,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               </div>
 
               {/* Owner Profile Card matching Screen 3 */}
-              <div className="bg-canvas border border-divider rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div 
+                onClick={() => {
+                  if (onOpenUserProfile && item.owner_id) {
+                    onClose();
+                    onOpenUserProfile(item.owner_id);
+                  }
+                }}
+                className="bg-canvas border border-divider hover:border-brand/40 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors group"
+                title={`View ${item.owner_name || 'Owner'}'s community profile`}
+              >
                 <div className="flex items-center gap-3">
                   <img
                     src={item.owner_avatar || (item.owner_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(item.owner_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                     alt={item.owner_name || 'Owner'}
-                    className="w-12 h-12 rounded-full object-cover border border-zinc-200"
+                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform"
                   />
                   <div>
-                    <h4 className="text-sm font-extrabold text-ink">{item.owner_name || 'Verified Owner'}</h4>
-                    <p className="text-xs text-ink-secondary font-medium">Verified Lender</p>
+                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors">{item.owner_name || 'Verified Owner'}</h4>
+                    <p className="text-xs text-ink-secondary font-medium">Verified Lender • Click to view profile</p>
                   </div>
                 </div>
 
                 <button
-                  className="px-3.5 py-1.5 rounded-full border border-divider bg-canvas hover:bg-surface-hover text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onOpenUserProfile && item.owner_id) {
+                      onClose();
+                      onOpenUserProfile(item.owner_id);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
                 >
                   View profile
                 </button>

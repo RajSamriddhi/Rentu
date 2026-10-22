@@ -17,10 +17,15 @@ import {
   X,
   Compass,
   Target,
-  Users
+  Users,
+  ShieldCheck,
+  Star,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
+import { api } from '../lib/api';
+import { UserSearchResult } from '../lib/types';
 
 interface NavbarProps {
   activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
@@ -33,6 +38,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenChat: () => void;
   onOpenHowItWorks?: () => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenChat,
   onOpenHowItWorks,
+  onOpenUserProfile,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -55,8 +62,40 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
+  // Live User Search State
+  const [userSearchResults, setUserSearchResults] = useState<UserSearchResult[]>([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
   const postMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const mobileSearchBoxRef = useRef<HTMLDivElement>(null);
+
+  // Debounced user search
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setUserSearchResults([]);
+      setIsSearchingUsers(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingUsers(true);
+      try {
+        const results = await api.searchUsers(trimmed);
+        setUserSearchResults(Array.isArray(results) ? results : []);
+      } catch (err) {
+        console.error('Failed to search users:', err);
+        setUserSearchResults([]);
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -68,13 +107,19 @@ export const Navbar: React.FC<NavbarProps> = ({
       if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setShowUserMenu(false);
       }
+      if (
+        searchBoxRef.current && !searchBoxRef.current.contains(target) &&
+        mobileSearchBoxRef.current && !mobileSearchBoxRef.current.contains(target)
+      ) {
+        setShowUserDropdown(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#111218]/95 backdrop-blur-md border-b border-divider transition-colors">
+    <header className="sticky top-0 z-50 bg-white/95 dark:bg-[#111218]/95 backdrop-blur-md border-b border-divider transition-colors">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-6">
           
@@ -118,20 +163,131 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Center: Search Bar in Navbar on Desktop */}
-          <div className="flex-1 max-w-md hidden lg:block">
+          <div ref={searchBoxRef} className="flex-1 max-w-md hidden lg:block relative">
             <form 
-              onSubmit={(e) => { e.preventDefault(); onSearch(); }}
-              className="relative flex items-center bg-canvas border border-divider hover:border-zinc-300 dark:hover:border-zinc-600 rounded-full px-3.5 py-2 transition-all focus-within:border-brand focus-within:bg-surface"
+              onSubmit={(e) => { 
+                e.preventDefault(); 
+                setShowUserDropdown(false);
+                onSearch(); 
+              }}
+              className="relative flex items-center bg-canvas border border-divider hover:border-zinc-300 dark:hover:border-zinc-600 rounded-full px-3.5 py-2 transition-all focus-within:border-brand focus-within:bg-surface shadow-xs"
             >
               <Search className="w-4 h-4 text-ink-muted mr-2 shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search rentals, cameras, tents..."
+                onFocus={() => setShowUserDropdown(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowUserDropdown(true);
+                }}
+                placeholder="Search community members or gear..."
                 className="bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted placeholder:font-normal w-full"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setUserSearchResults([]);
+                    setShowUserDropdown(false);
+                  }}
+                  className="text-ink-muted hover:text-ink text-xs px-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </form>
+
+            {/* Live Search Flyout Dropdown */}
+            {showUserDropdown && searchQuery.trim().length >= 2 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-surface/98 backdrop-blur-xl border border-divider rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-divider">
+                {/* Community Members section */}
+                <div>
+                  <div className="flex items-center justify-between px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-ink-muted">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3 h-3 text-brand" />
+                      <span>Community Members</span>
+                    </span>
+                    {isSearchingUsers ? (
+                      <span className="text-[10px] text-ink-secondary flex items-center gap-1 animate-pulse">Searching...</span>
+                    ) : (
+                      <span>{userSearchResults.length} found</span>
+                    )}
+                  </div>
+
+                  {userSearchResults.length > 0 ? (
+                    <div className="space-y-1 mt-1 max-h-56 overflow-y-auto">
+                      {userSearchResults.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            if (onOpenUserProfile) {
+                              onOpenUserProfile(u.id);
+                            }
+                            setShowUserDropdown(false);
+                          }}
+                          onClick={() => {
+                            if (onOpenUserProfile) {
+                              onOpenUserProfile(u.id);
+                            }
+                            setShowUserDropdown(false);
+                          }}
+                          className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <img
+                              src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                              alt={u.name}
+                              className="w-8 h-8 rounded-full object-cover border border-divider group-hover:border-brand shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-ink group-hover:text-brand truncate">{u.name}</span>
+                                <span className="inline-flex items-center text-[10px] font-black text-amber-500">
+                                  ★ {u.rating ? u.rating.toFixed(1) : '5.0'}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-ink-secondary truncate">
+                                {u.locality || 'Verified Neighbor'} • {u.items_count} gear listed • {u.trust_score}% trust
+                              </div>
+                            </div>
+                          </div>
+
+                          <span className="text-[11px] font-bold text-brand group-hover:underline shrink-0 ml-2">
+                            Profile →
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : !isSearchingUsers ? (
+                    <div className="px-3 py-2 text-xs text-ink-secondary text-center">
+                      No members matching "{searchQuery}"
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Marketplace Gear Search option */}
+                <div className="pt-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserDropdown(false);
+                      onSearch();
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-brand-soft text-left cursor-pointer transition-colors text-xs font-bold text-ink hover:text-brand"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Search className="w-3.5 h-3.5 text-brand" />
+                      <span>Search gear listings for "{searchQuery}"</span>
+                    </span>
+                    <span className="text-[10px] text-ink-muted">Enter ↵</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: Controls & Actions */}
@@ -317,12 +473,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Search Input Dropdown */}
         {showMobileSearch && (
-          <div className="lg:hidden pb-3 pt-1 animate-in slide-in-from-top-2 duration-150 border-t border-divider/40 mt-1">
+          <div ref={mobileSearchBoxRef} className="lg:hidden pb-3 pt-1 animate-in slide-in-from-top-2 duration-150 border-t border-divider/40 mt-1 relative">
             <form 
               onSubmit={(e) => { 
                 e.preventDefault(); 
                 onSearch(); 
                 setShowMobileSearch(false);
+                setShowUserDropdown(false);
               }}
               className="relative flex items-center bg-canvas border border-divider rounded-full px-3.5 py-1.5 focus-within:border-brand shadow-xs"
             >
@@ -330,8 +487,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search rentals, cameras, tents..."
+                onFocus={() => setShowUserDropdown(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowUserDropdown(true);
+                }}
+                placeholder="Search community members or gear..."
                 className="bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted w-full"
                 autoFocus
               />
@@ -342,6 +503,65 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Go
               </button>
             </form>
+
+            {/* Mobile User Search Dropdown */}
+            {showUserDropdown && searchQuery.trim().length >= 2 && (
+              <div className="mt-2 bg-surface border border-divider rounded-2xl shadow-xl p-2.5 z-50 divide-y divide-divider max-h-72 overflow-y-auto">
+                <div className="flex items-center justify-between px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3 text-brand" />
+                    <span>Members ({userSearchResults.length})</span>
+                  </span>
+                  {isSearchingUsers && <span className="animate-pulse">Searching...</span>}
+                </div>
+
+                {userSearchResults.length > 0 ? (
+                  <div className="space-y-1 mt-1">
+                    {userSearchResults.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (onOpenUserProfile) {
+                            onOpenUserProfile(u.id);
+                          }
+                          setShowUserDropdown(false);
+                          setShowMobileSearch(false);
+                        }}
+                        onClick={() => {
+                          if (onOpenUserProfile) {
+                            onOpenUserProfile(u.id);
+                          }
+                          setShowUserDropdown(false);
+                          setShowMobileSearch(false);
+                        }}
+                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                            alt={u.name}
+                            className="w-7 h-7 rounded-full object-cover border border-divider shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-ink truncate">{u.name}</div>
+                            <div className="text-[10px] text-ink-secondary truncate">
+                              ★ {u.rating ? u.rating.toFixed(1) : '5.0'} • {u.locality || 'Nearby'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-brand ml-2 shrink-0">Profile →</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : !isSearchingUsers ? (
+                  <div className="py-2 text-center text-xs text-ink-muted">
+                    No members matching "{searchQuery}"
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
 

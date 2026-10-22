@@ -186,3 +186,50 @@ export interface CommunityLeaderboardData {
   top_sharers: CommunityLeaderboardMember[];
   total_community_members: number;
 }
+
+export interface UserReview {
+  id: string;
+  reviewer_name: string;
+  reviewer_avatar?: string;
+  reviewer_locality?: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  banner_url?: string;
+  bio?: string;
+  trust_score: number;
+  rating: number;
+  created_at?: string;
+  items: Item[];
+  requests: CommunityRequest[];
+  reviews: UserReview[];
+  stats: {
+    listings_count: number;
+    requests_count: number;
+    completed_lent: number;
+    completed_borrowed: number;
+    reviews_count: number;
+  };
+}
+
+export interface UserSearchResult {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  bio?: string;
+  rating: number;
+  trust_score: number;
+  items_count: number;
+  requests_count: number;
+  reviews_count: number;
+}
