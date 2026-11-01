@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Heart, Star, Check } from 'lucide-react';
+import { Heart, Star, Check, Package, MapPin } from 'lucide-react';
 import { Item } from '../lib/types';
+import { useAuth } from '../lib/authContext';
+import { getReachDistance } from '../lib/distance';
 
 interface ItemCardProps {
   item: Item;
@@ -10,12 +12,16 @@ interface ItemCardProps {
 }
 
 export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserProfile }) => {
+  const { user } = useAuth();
   const [isLiked, setIsLiked] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  const images = Array.isArray(item.image_urls) ? item.image_urls : [];
-  const primaryImage = images[0] || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80';
+  const images = Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean) : [];
+  const hasImage = images.length > 0 && Boolean(images[0]);
+  const primaryImage = images[0] || '';
 
   const isAvailable = item.status === 'AVAILABLE';
+  const reachDistanceText = getReachDistance(item, user);
 
   return (
     <div
@@ -25,12 +31,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
       <div>
         {/* Photo Container */}
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-800">
-          <img
-            src={primaryImage}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
+          {hasImage && !imageError ? (
+            <img
+              src={primaryImage}
+              alt={item.title}
+              onError={() => setImageError(true)}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-canvas text-ink-secondary">
+              <Package className="w-8 h-8 text-ink-secondary/60 mb-1" />
+              <span className="text-[11px] font-bold text-ink-secondary">No image</span>
+            </div>
+          )}
 
           {/* Floating Favorite Heart Icon */}
           <button
@@ -80,7 +94,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
             )}
           </div>
 
-          {/* Rating & Distance */}
+          {/* Rating & Reach Proximity */}
           <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-secondary">
             {item.owner_rating ? (
               <>
@@ -91,8 +105,9 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
                 <span className="text-zinc-300 dark:text-zinc-700">•</span>
               </>
             ) : null}
-            <span className="text-ink-secondary truncate">
-              {item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km` : (item.locality || 'Nearby')}
+            <span className="text-ink-secondary font-medium truncate flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-brand shrink-0" />
+              <span>{reachDistanceText}</span>
             </span>
           </div>
 

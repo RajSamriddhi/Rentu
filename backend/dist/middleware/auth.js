@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.requireRole = exports.optionalAuthMiddleware = exports.authMiddleware = void 0;
+exports.requireRole = exports.adminMiddleware = exports.isAdminEmail = exports.AUTHORIZED_ADMIN_EMAILS = exports.optionalAuthMiddleware = exports.authMiddleware = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../config/env");
 const db_1 = require("../config/db");
@@ -127,10 +127,45 @@ const optionalAuthMiddleware = async (req, res, next) => {
     next();
 };
 exports.optionalAuthMiddleware = optionalAuthMiddleware;
+exports.AUTHORIZED_ADMIN_EMAILS = [
+    'falaksadiqua786@gmail.com',
+    'rajsamriddhi60@gmail.com',
+];
+const isAdminEmail = (email) => {
+    if (!email)
+        return false;
+    return exports.AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+exports.isAdminEmail = isAdminEmail;
+const adminMiddleware = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Access token required', 401);
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+        const user = await resolveUserFromToken(token);
+        if (!user) {
+            return (0, response_1.sendError)(res, 'INVALID_TOKEN', 'Session expired or token invalid', 401);
+        }
+        req.user = user;
+        if (!(0, exports.isAdminEmail)(user.email)) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
+        }
+        next();
+    }
+    catch (err) {
+        return (0, response_1.sendError)(res, 'INVALID_TOKEN', 'Session expired or token invalid', 401);
+    }
+};
+exports.adminMiddleware = adminMiddleware;
 const requireRole = (role) => {
     return (req, res, next) => {
         if (!req.user) {
             return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Authentication required', 401);
+        }
+        if (role === 'ADMIN' && !(0, exports.isAdminEmail)(req.user.email)) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
         }
         if (req.user.role !== role && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', `Role '${role}' required for this action`, 403);

@@ -8,6 +8,7 @@ import { BookingsView } from './components/BookingsView';
 import { ProfileView } from './components/ProfileView';
 import { HustleHub } from './components/HustleHub';
 import { ItemDetailModal } from './components/ItemDetailModal';
+import { EditItemModal } from './components/EditItemModal';
 import { DropGearModal } from './components/DropGearModal';
 import { DropWishModal } from './components/DropWishModal';
 import { MessagesView } from './components/MessagesView';
@@ -16,11 +17,12 @@ import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { AiAssistantModal } from './components/AiAssistantModal';
+import { HelpSupportModal } from './components/HelpSupportModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
-import { Item, CommunityRequest } from './lib/types';
+import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
@@ -50,7 +52,9 @@ const getTabFromUrl = (): TabType => {
 };
 
 export const App: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, firebaseUser, isAuthenticated } = useAuth();
+  const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
+  const isUserAdmin = isAuthorizedAdmin(currentUserEmail);
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
@@ -102,11 +106,14 @@ export const App: React.FC = () => {
 
   // Modals
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isDropGearOpen, setIsDropGearOpen] = useState(false);
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
+  const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -157,7 +164,15 @@ export const App: React.FC = () => {
   };
 
   const handleOpenChatWithBooking = (bookingId: string) => {
+    setChatPartner(null);
     setChatBookingId(bookingId);
+    setActiveTab('messages');
+  };
+
+  const handleOpenChatWithUser = (targetUserId: string, targetUserName: string, avatarUrl?: string) => {
+    setChatBookingId(null);
+    setChatPartner({ id: targetUserId, name: targetUserName, avatar: avatarUrl });
+    handleCloseUserProfile();
     setActiveTab('messages');
   };
 
@@ -177,6 +192,7 @@ export const App: React.FC = () => {
         onOpenChat={() => setActiveTab('messages')}
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
+        onOpenHelpSupport={() => setIsHelpOpen(true)}
       />
 
       {/* Main View Router */}
@@ -189,25 +205,24 @@ export const App: React.FC = () => {
             onClaimRequest={handleClaimRequest}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenChatWithBooking={handleOpenChatWithBooking}
+            onOpenChatWithUser={handleOpenChatWithUser}
           />
         ) : (
           <>
             {/* VIEW 1: HOMEPAGE / LANDING (Screen 1 in Mockup) */}
             {activeTab === 'home' && (
               <div>
-                {/* Screen 1: Cream Blush Hero Section with Scrapbook Collage */}
+                {/* Minimalist Chic Hero Section */}
                 <HeroSection
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                  onSearch={handleSearch}
                   onGetStarted={() => setActiveTab('explore')}
                   onOpenDropGear={() => setIsDropGearOpen(true)}
+                  onOpenDropWish={() => setIsDropWishOpen(true)}
                   itemsCount={(items || []).length}
                   requestsCount={(requests || []).length}
                   onOpenUserProfile={handleOpenUserProfile}
                 />
 
-                {/* Screen 1: 8 Soft Pastel Category Tiles Container */}
+                {/* 8 Soft Pastel Category Tiles Container */}
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <CategoryTiles
                     selectedCategory={selectedCategory}
@@ -218,7 +233,17 @@ export const App: React.FC = () => {
                   />
                 </div>
 
-                {/* Popular / Trending Gear */}
+                {/* How Rentu⁺ Works Section (Placed Above Popular Gear) */}
+                <HowItWorksSection
+                  onExploreGear={() => setActiveTab('explore')}
+                  onOpenDropGear={() => setIsDropGearOpen(true)}
+                  onOpenDropWish={() => setIsDropWishOpen(true)}
+                  onOpenAuth={() => setIsAuthOpen(true)}
+                  onViewCommunity={() => setActiveTab('community')}
+                  showCommunityLink={true}
+                />
+
+                {/* Popular Gear Near You (Placed Below How Rentu Works) */}
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
@@ -248,16 +273,6 @@ export const App: React.FC = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* How Rentu⁺ Works Section on the Main Page */}
-                <HowItWorksSection
-                  onExploreGear={() => setActiveTab('explore')}
-                  onOpenDropGear={() => setIsDropGearOpen(true)}
-                  onOpenDropWish={() => setIsDropWishOpen(true)}
-                  onOpenAuth={() => setIsAuthOpen(true)}
-                  onViewCommunity={() => setActiveTab('community')}
-                  showCommunityLink={true}
-                />
               </div>
             )}
 
@@ -291,8 +306,11 @@ export const App: React.FC = () => {
             {activeTab === 'messages' && (
               <MessagesView
                 initialBookingId={chatBookingId}
+                initialPartner={chatPartner}
                 onOpenAuth={() => setIsAuthOpen(true)}
                 onNavigateHome={() => setActiveTab('explore')}
+                onOpenUserProfile={handleOpenUserProfile}
+                onOpenBookings={() => setActiveTab('bookings')}
               />
             )}
 
@@ -306,9 +324,27 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 10: ADMIN DASHBOARD (Screen 10 in Mockup) */}
+            {/* VIEW 10: ADMIN DASHBOARD (Protected to falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com) */}
             {activeTab === 'hustle' && (
-              <HustleHub />
+              isUserAdmin ? (
+                <HustleHub />
+              ) : (
+                <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-200">
+                  <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
+                    🔒
+                  </div>
+                  <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
+                  <p className="text-xs text-ink-secondary leading-relaxed">
+                    This management console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('explore')}
+                    className="btn-primary text-xs px-6 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>Back to Marketplace</span>
+                  </button>
+                </div>
+              )
             )}
 
             {/* VIEW 11: COMMUNITY & TOP 10 LEADERBOARD (Replaces How It Works) */}
@@ -334,14 +370,38 @@ export const App: React.FC = () => {
           onOpenAuth={() => setIsAuthOpen(true)}
           onOpenChatWithBooking={handleOpenChatWithBooking}
           onOpenUserProfile={handleOpenUserProfile}
+          onEditItem={(itemToEdit) => {
+            setSelectedItem(null);
+            setEditingItem(itemToEdit);
+          }}
+          onDeleteItem={() => {
+            setSelectedItem(null);
+            loadFeed();
+          }}
         />
       )}
+
+      {/* Edit Gear Listing Modal */}
+      <EditItemModal
+        item={editingItem}
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSuccess={() => {
+          setEditingItem(null);
+          loadFeed();
+        }}
+      />
 
       {/* Screen 5: List an Item Modal */}
       <DropGearModal
         isOpen={isDropGearOpen}
         onClose={() => setIsDropGearOpen(false)}
-        onSuccess={() => loadFeed()}
+        onSuccess={(createdItem) => {
+          loadFeed();
+          if (createdItem) {
+            setSelectedItem(createdItem);
+          }
+        }}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
@@ -380,6 +440,12 @@ export const App: React.FC = () => {
           itemId: selectedItem?.id || null,
           locality: selectedItem?.locality || null,
         }}
+      />
+
+      {/* Help & Community Support Modal */}
+      <HelpSupportModal
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
       />
 
     </div>

@@ -17,7 +17,12 @@ import {
   ExternalLink,
   Award,
   Zap,
-  Gift
+  Gift,
+  UserPlus,
+  UserCheck,
+  Ban,
+  Lock,
+  Users
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { PublicUserProfile, Item, CommunityRequest } from '../lib/types';
@@ -30,7 +35,7 @@ interface PublicProfileViewProps {
   onSelectItem: (item: Item) => void;
   onClaimRequest?: (request: CommunityRequest) => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
-  onOpenChatWithUser?: (userId: string, userName: string) => void;
+  onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
   onOpenAuth?: () => void;
 }
 
@@ -50,6 +55,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [activeTab, setActiveTab] = useState<'items' | 'requests' | 'reviews' | 'about'>('items');
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Relationship states
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isBlockedBy, setIsBlockedBy] = useState(false);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
   useEffect(() => {
     fetchProfile();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -61,11 +74,68 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     try {
       const data = await api.getUserProfile(userId);
       setProfile(data);
+      setIsFollowing(!!data.is_following);
+      setFollowersCount(data.followers_count || 0);
+      setFollowingCount(data.following_count || 0);
+      setIsBlocked(!!data.is_blocked);
+      setIsBlockedBy(!!data.is_blocked_by);
     } catch (err: any) {
       console.error('Failed to load user profile:', err);
       setError(err.message || 'Could not load community profile.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    if (isActionLoading || isBlocked) return;
+    setIsActionLoading(true);
+    try {
+      if (isFollowing) {
+        const res = await api.unfollowUser(userId);
+        setIsFollowing(false);
+        setFollowersCount(res?.followers_count ?? Math.max(0, followersCount - 1));
+      } else {
+        const res = await api.followUser(userId);
+        setIsFollowing(true);
+        setFollowersCount(res?.followers_count ?? (followersCount + 1));
+      }
+    } catch (err: any) {
+      alert(err.message || 'Could not update follow status');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleToggleBlock = async () => {
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    if (isBlocked) {
+      if (!confirm(`Unblock ${profile?.name}? You will be able to see each other's listings and send messages.`)) return;
+      try {
+        await api.unblockUser(userId);
+        setIsBlocked(false);
+        fetchProfile();
+      } catch (err: any) {
+        alert(err.message || 'Could not unblock user');
+      }
+    } else {
+      if (!confirm(`Block ${profile?.name}? You won't be able to message each other, see each other's requests, or rent items from each other.`)) return;
+      try {
+        await api.blockUser(userId);
+        setIsBlocked(true);
+        setIsFollowing(false);
+        setFollowersCount(Math.max(0, followersCount - 1));
+        fetchProfile();
+      } catch (err: any) {
+        alert(err.message || 'Could not block user');
+      }
     }
   };
 
@@ -141,19 +211,53 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </button>
 
             {!isOwnProfile && (
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onOpenAuth) {
-                    onOpenAuth();
-                  } else if (onOpenChatWithUser) {
-                    onOpenChatWithUser(profile.id, profile.name);
-                  }
-                }}
-                className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Message</span>
-              </button>
+              <>
+                {/* Follow / Following Button */}
+                <button
+                  onClick={handleToggleFollow}
+                  disabled={isActionLoading || isBlocked}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isFollowing
+                      ? 'bg-canvas border border-brand text-brand hover:bg-brand/10'
+                      : 'bg-brand hover:bg-brand-hover text-white shadow-pink'
+                  } disabled:opacity-50`}
+                >
+                  {isFollowing ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                  <span>{isFollowing ? 'Following ✓' : 'Follow'}</span>
+                </button>
+
+                {/* Message Button */}
+                <button
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else if (isBlocked) {
+                      alert('Communication is unavailable because this user is blocked.');
+                    } else if (onOpenChatWithUser) {
+                      onOpenChatWithUser(profile.id, profile.name, profile.avatar_url);
+                    }
+                  }}
+                  disabled={isBlocked}
+                  className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Message</span>
+                </button>
+
+                {/* Block / Unblock Button */}
+                <button
+                  onClick={handleToggleBlock}
+                  className={`px-2.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                    isBlocked 
+                      ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20' 
+                      : 'border-divider bg-canvas hover:bg-surface text-ink-muted hover:text-red-500 hover:border-red-500/30'
+                  }`}
+                  title={isBlocked ? 'Unblock user' : 'Block user'}
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{isBlocked ? 'Blocked' : 'Block'}</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -237,8 +341,40 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                     <span>{profile.reviews.length} Verified Reviews</span>
                   </span>
+                  <span className="text-divider">•</span>
+                  <span className="flex items-center gap-1 text-ink">
+                    <Users className="w-3.5 h-3.5 text-brand" />
+                    <span><strong className="text-ink">{followersCount}</strong> Followers</span>
+                  </span>
+                  <span className="text-divider">•</span>
+                  <span className="flex items-center gap-1 text-ink">
+                    <span><strong className="text-ink">{followingCount}</strong> Following</span>
+                  </span>
                 </div>
               </div>
+
+              {/* Blocked Notices */}
+              {isBlocked && (
+                <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/25 flex items-center justify-between gap-3 text-xs text-red-500">
+                  <div className="flex items-center gap-2">
+                    <Ban className="w-4 h-4 shrink-0" />
+                    <span>You have blocked <strong>{profile.name}</strong>. You cannot message each other, see each other's requests, or rent items.</span>
+                  </div>
+                  <button
+                    onClick={handleToggleBlock}
+                    className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs cursor-pointer shrink-0"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              )}
+
+              {isBlockedBy && !isBlocked && (
+                <div className="p-3.5 rounded-2xl bg-canvas border border-divider text-xs text-ink-secondary flex items-center gap-2">
+                  <Lock className="w-4 h-4 shrink-0" />
+                  <span>This neighbor's gear and requests are not available.</span>
+                </div>
+              )}
 
               {/* Bio / About */}
               <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed max-w-3xl">

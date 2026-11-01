@@ -355,27 +355,47 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                 </div>
 
                 {/* Handover & Return Logistics Details */}
-                {(booking.pickup_locality || booking.return_locality || booking.pickup_type) && (
-                  <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div className="flex items-start gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-brand shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-ink">Pickup Handover: </span>
-                        <span>{booking.pickup_type === 'MY_LOCATION' ? 'Deliver to Renter' : booking.pickup_type === 'CUSTOM_LOCATION' ? (booking.pickup_locality || 'Custom Spot') : `Owner's Location (${booking.item_locality || 'Nearby'})`}</span>
-                        <div className="text-[11px] text-ink-secondary font-medium">Time: {booking.start_time || '10:00'}</div>
+                <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="flex items-start gap-2">
+                    <span className="text-base shrink-0 mt-0.5">🚗</span>
+                    <div>
+                      <div className="font-bold text-ink">
+                        {booking.requires_delivery ? 'Lender Drop-off Delivery' : 'Renter Self-Pickup'}
+                        {booking.requires_delivery && Number(booking.delivery_fee) > 0 && (
+                          <span className="ml-1 text-[10px] font-extrabold text-brand bg-brand-soft px-1.5 py-0.5 rounded-md">
+                            +₹{Number(booking.delivery_fee)}
+                          </span>
+                        )}
                       </div>
-                    </div>
-
-                    <div className="flex items-start gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-ink">Return Handover: </span>
-                        <span>{booking.return_type === 'MY_LOCATION' ? 'Collect from Renter' : booking.return_type === 'CUSTOM_LOCATION' ? (booking.return_locality || 'Custom Spot') : `Return to Owner (${booking.item_locality || 'Nearby'})`}</span>
-                        <div className="text-[11px] text-ink-secondary font-medium">Time: {booking.end_time || '18:00'}</div>
+                      <div className="text-[11px] text-ink-secondary">
+                        {booking.requires_delivery
+                          ? 'Owner will deliver gear to the renter'
+                          : `Renter picks up from owner (${booking.item_locality || 'Owner location'})`}
                       </div>
+                      <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {booking.start_time || '10:00'}</div>
                     </div>
                   </div>
-                )}
+
+                  <div className="flex items-start gap-2">
+                    <span className="text-base shrink-0 mt-0.5">🔄</span>
+                    <div>
+                      <div className="font-bold text-ink">
+                        {booking.requires_pickup ? 'Lender Collects on Return' : 'Renter Returns to Lender'}
+                        {booking.requires_pickup && Number(booking.pickup_fee) > 0 && (
+                          <span className="ml-1 text-[10px] font-extrabold text-brand bg-brand-soft px-1.5 py-0.5 rounded-md">
+                            +₹{Number(booking.pickup_fee)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-ink-secondary">
+                        {booking.requires_pickup
+                          ? 'Owner will collect gear back from renter'
+                          : `Renter brings gear back to owner (${booking.item_locality || 'Owner location'})`}
+                      </div>
+                      <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {booking.end_time || '18:00'}</div>
+                    </div>
+                  </div>
+                </div>
 
                 {/* ======================================================== */}
                 {/* STAGE 1: RENTAL REQUEST (Owner Accept / Decline Buttons) */}

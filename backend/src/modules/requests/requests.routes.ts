@@ -94,6 +94,17 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       }
     }
 
+    // Exclude requests from blocked users
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND r.seeker_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
+
     sql += ` ORDER BY r.created_at DESC`;
 
     const result = await query(sql, params);
@@ -190,6 +201,99 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.return_locality || null,
       ]);
     const createdRequest = result.rows[0];
+    const seekerId = req.user!.id;
+    const seekerName = req.user!.name || 'A neighbor';
+
+    // 1. Send announcement to all followers of seeker
+    try {
+      const followersRes = await query(
+        `SELECT uf.follower_id FROM user_follows uf
+         WHERE uf.following_id = $1
+         AND uf.follower_id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+
+      const notifiedUserIds = new Set<string>();
+      notifiedUserIds.add(seekerId);
+
+      for (const f of followersRes.rows) {
+        notifiedUserIds.add(f.follower_id);
+        await query(
+          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+           VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+          [
+            f.follower_id,
+            seekerId,
+            `📢 New Request from ${seekerName}`,
+            `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: ₹${validated.offered_amount})`,
+            createdRequest.id,
+          ]
+        ).catch(() => {});
+      }
+
+      // 2. Send notification to all neighbors within 5 km who haven't disabled the 5km alert setting
+      const nearbyUsersRes = await query(
+        `SELECT id, locality, latitude, longitude FROM users
+         WHERE id != $1
+         AND COALESCE(notify_nearby_requests_5km, TRUE) = TRUE
+         AND id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+
+      const seekerLat = validated.latitude;
+      const seekerLon = validated.longitude;
+
+      for (const u of nearbyUsersRes.rows) {
+        if (notifiedUserIds.has(u.id)) continue;
+
+        let isWithin5Km = false;
+        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+          const R = 6371; // Earth radius in km
+          const dLat = (u.latitude - seekerLat) * Math.PI / 180;
+          const dLon = (u.longitude - seekerLon) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(seekerLat * Math.PI / 180) * Math.cos(u.latitude * Math.PI / 180) * 
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distKm = R * c;
+          if (distKm <= 5) {
+            isWithin5Km = true;
+          }
+        } else if (finalLocality && u.locality) {
+          const sCity = extractCity(finalLocality)?.toLowerCase();
+          const uCity = extractCity(u.locality)?.toLowerCase();
+          if (sCity && uCity && sCity === uCity) {
+            isWithin5Km = true;
+          }
+        }
+
+        if (isWithin5Km) {
+          notifiedUserIds.add(u.id);
+          await query(
+            `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+             VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+            [
+              u.id,
+              seekerId,
+              `📍 Nearby Gear Request (within 5 km)`,
+              `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || 'nearby'})`,
+              createdRequest.id,
+            ]
+          ).catch(() => {});
+        }
+      }
+    } catch (announcementErr) {
+      console.warn('Failed to dispatch request announcements:', announcementErr);
+    }
 
     return sendSuccess(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
   } catch (error) {

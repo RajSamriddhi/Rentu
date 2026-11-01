@@ -15,6 +15,7 @@ export interface User {
   bio?: string;
   trust_score?: number;
   role: 'USER' | 'ADMIN';
+  notify_nearby_requests_5km?: boolean;
   created_at: string;
 }
 
@@ -36,6 +37,10 @@ export interface Item {
   distance_meters?: number | null;
   status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE';
   available_for_borrowing?: boolean;
+  offers_delivery?: boolean;
+  delivery_fee?: number;
+  offers_pickup?: boolean;
+  pickup_fee?: number;
   booked_dates?: Array<{
     id?: string;
     start_date: string;
@@ -101,6 +106,10 @@ export interface Booking {
   pickup_locality?: string;
   return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
   return_locality?: string;
+  requires_delivery?: boolean;
+  delivery_fee?: number;
+  requires_pickup?: boolean;
+  pickup_fee?: number;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED';
   pickup_code?: string;
   return_code?: string;
@@ -127,26 +136,56 @@ export interface Booking {
   lender_email?: string;
 }
 
+export interface MessageProposalData {
+  type: 'LISTING' | 'REQUEST';
+  title: string;
+  description?: string;
+  category?: string;
+  price_per_day?: number;
+  total_price: number;
+  duration_days: number;
+  start_date: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  delivery_option?: 'SELF' | 'LENDER_DELIVERY';
+  delivery_fee?: number;
+  collection_option?: 'SELF' | 'LENDER_COLLECT';
+  collection_fee?: number;
+  delivery_location?: string;
+  return_location?: string;
+  notes?: string;
+  image_url?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  booking_id?: string;
+  item_id?: string;
+  accepted_at?: string;
+}
+
 export interface Message {
   id: string;
-  booking_id: string;
+  booking_id?: string | null;
   sender_id: string;
   receiver_id: string;
   content: string;
+  message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
+  proposal_data?: MessageProposalData | any;
+  is_edited?: boolean;
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;
 }
 
 export interface Conversation {
-  booking_id: string;
+  conversation_id?: string;
+  booking_id: string | null;
   booking_status: string;
-  start_date: string;
-  duration_days: number;
+  start_date?: string;
+  duration_days?: number;
   total_price: number | string;
   item_title: string;
   item_images: string[];
-  item_locality: string;
+  item_locality?: string;
   partner_id: string;
   partner_name: string;
   partner_avatar?: string;
@@ -226,6 +265,11 @@ export interface PublicUserProfile {
   trust_score: number;
   rating: number;
   created_at?: string;
+  is_following?: boolean;
+  is_blocked?: boolean;
+  is_blocked_by?: boolean;
+  followers_count?: number;
+  following_count?: number;
   items: Item[];
   requests: CommunityRequest[];
   reviews: UserReview[];
@@ -237,6 +281,49 @@ export interface PublicUserProfile {
     reviews_count: number;
   };
 }
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  sender_id?: string;
+  type: string;
+  title: string;
+  body: string;
+  reference_id?: string;
+  reference_type?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  user_id?: string | null;
+  user_name?: string;
+  user_email?: string;
+  user_avatar?: string;
+  user_phone?: string;
+  user_locality?: string;
+  type: 'CONCERN' | 'FEEDBACK';
+  category: string;
+  subject: string;
+  description: string;
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  admin_notes?: string;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'falaksadiqua786@gmail.com',
+  'rajsamriddhi60@gmail.com',
+];
+
+export const isAuthorizedAdmin = (email?: string | null): boolean => {
+  if (!email) return false;
+  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
 
 export interface UserSearchResult {
   id: string;
