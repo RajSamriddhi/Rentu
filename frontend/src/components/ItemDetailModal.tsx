@@ -115,15 +115,47 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [endTime, setEndTime] = useState('18:00');
 
   // Delivery & Return Collection options based on lender listing
-  const [optForDelivery, setOptForDelivery] = useState(Boolean(item?.offers_delivery));
-  const [optForPickup, setOptForPickup] = useState(Boolean(item?.offers_pickup));
+  const [optForDelivery, setOptForDelivery] = useState(false);
+  const [optForPickup, setOptForPickup] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState(user?.locality || '');
+  const [pickupAddress, setPickupAddress] = useState(user?.locality || '');
+  const [isDetectingDeliveryLoc, setIsDetectingDeliveryLoc] = useState(false);
+  const [isDetectingPickupLoc, setIsDetectingPickupLoc] = useState(false);
 
   React.useEffect(() => {
-    if (item) {
-      setOptForDelivery(Boolean(item.offers_delivery));
-      setOptForPickup(Boolean(item.offers_pickup));
+    if (user?.locality) {
+      if (!deliveryAddress) setDeliveryAddress(user.locality);
+      if (!pickupAddress) setPickupAddress(user.locality);
     }
-  }, [item]);
+  }, [user]);
+
+  const handleDetectDeliveryAddress = async () => {
+    setIsDetectingDeliveryLoc(true);
+    try {
+      const loc = await detectCurrentLocation();
+      if (loc?.locality) {
+        setDeliveryAddress(loc.locality);
+      }
+    } catch (err) {
+      console.warn('GPS detection failed:', err);
+    } finally {
+      setIsDetectingDeliveryLoc(false);
+    }
+  };
+
+  const handleDetectPickupAddress = async () => {
+    setIsDetectingPickupLoc(true);
+    try {
+      const loc = await detectCurrentLocation();
+      if (loc?.locality) {
+        setPickupAddress(loc.locality);
+      }
+    } catch (err) {
+      console.warn('GPS detection failed:', err);
+    } finally {
+      setIsDetectingPickupLoc(false);
+    }
+  };
 
   const [proposalMessage, setProposalMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -187,6 +219,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
+    if (item.offers_delivery && optForDelivery && !deliveryAddress.trim()) {
+      setErrorMsg('Please enter your delivery location/address where the owner should deliver the product.');
+      return;
+    }
+
+    if (item.offers_pickup && optForPickup && !pickupAddress.trim()) {
+      setErrorMsg('Please enter your return pickup location/address where the owner should collect the product.');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -207,9 +249,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         requires_pickup: isCollectedByLender,
         pickup_fee: pickupCost,
         pickup_type: isDeliveredByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
-        pickup_locality: isDeliveredByLender ? (user?.locality || 'Renter Address') : (item.locality || 'Lender Locality'),
+        pickup_locality: isDeliveredByLender ? deliveryAddress.trim() : (item.locality || 'Lender Locality'),
         return_type: isCollectedByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
-        return_locality: isCollectedByLender ? (user?.locality || 'Renter Address') : (item.locality || 'Lender Locality'),
+        return_locality: isCollectedByLender ? pickupAddress.trim() : (item.locality || 'Lender Locality'),
         message: proposalMessage || `Hey! I'd love to ${rentType.toLowerCase()} your ${item.title} for ${durationDays} days.`,
       });
 
@@ -567,73 +609,142 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
                         {/* Drop-off / Delivery toggle */}
                         {item.offers_delivery && (
-                          <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5">
-                              <span className="text-base">🚗</span>
-                              <div>
-                                <div className="text-xs font-bold text-ink flex items-center gap-1.5">
-                                  <span>Lender Delivery</span>
-                                  <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                                    {Number(item.delivery_fee) > 0 ? `+₹${Number(item.delivery_fee)}` : 'FREE'}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-ink-secondary">
-                                  {optForDelivery ? 'Deliver to your location' : 'You will pick up'}
+                          <div className="p-3 rounded-2xl bg-surface border border-divider space-y-2.5">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-base">🚗</span>
+                                <div>
+                                  <div className="text-xs font-bold text-ink flex items-center gap-1.5">
+                                    <span>Owner Delivery</span>
+                                    <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                                      {Number(item.delivery_fee) > 0 ? `+₹${Number(item.delivery_fee)}` : 'FREE'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-ink-secondary">
+                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner (${item.locality || 'nearby'})`}
+                                  </div>
                                 </div>
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setOptForDelivery(!optForDelivery)}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                  optForDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                                }`}
+                                role="switch"
+                                aria-checked={optForDelivery}
+                              >
+                                <span
+                                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    optForDelivery ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => setOptForDelivery(!optForDelivery)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                optForDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                              }`}
-                              role="switch"
-                              aria-checked={optForDelivery}
-                            >
-                              <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                  optForDelivery ? 'translate-x-5' : 'translate-x-0'
-                                }`}
-                              />
-                            </button>
+                            {optForDelivery && (
+                              <div className="pt-2 border-t border-divider/60 space-y-1 animate-in fade-in">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary">
+                                    Delivery Address <span className="text-brand">*</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={handleDetectDeliveryAddress}
+                                    disabled={isDetectingDeliveryLoc}
+                                    className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Navigation className="w-2.5 h-2.5" />
+                                    <span>{isDetectingDeliveryLoc ? 'Detecting...' : 'Detect GPS'}</span>
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={deliveryAddress}
+                                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                                  placeholder="Enter where the owner should deliver to you..."
+                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                                  required
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {/* Collection / Pickup toggle */}
                         {item.offers_pickup && (
-                          <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5">
-                              <span className="text-base">🔄</span>
-                              <div>
-                                <div className="text-xs font-bold text-ink flex items-center gap-1.5">
-                                  <span>Return Pickup</span>
-                                  <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                                    {Number(item.pickup_fee) > 0 ? `+₹${Number(item.pickup_fee)}` : 'FREE'}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-ink-secondary">
-                                  {optForPickup ? 'Owner collects from you' : 'You will return gear'}
+                          <div className="p-3 rounded-2xl bg-surface border border-divider space-y-2.5">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-base">🔄</span>
+                                <div>
+                                  <div className="text-xs font-bold text-ink flex items-center gap-1.5">
+                                    <span>Return Pickup by Owner</span>
+                                    <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                                      {Number(item.pickup_fee) > 0 ? `+₹${Number(item.pickup_fee)}` : 'FREE'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-ink-secondary">
+                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner (${item.locality || 'nearby'})`}
+                                  </div>
                                 </div>
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setOptForPickup(!optForPickup)}
+                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                  optForPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                                }`}
+                                role="switch"
+                                aria-checked={optForPickup}
+                              >
+                                <span
+                                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    optForPickup ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => setOptForPickup(!optForPickup)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                optForPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                              }`}
-                              role="switch"
-                              aria-checked={optForPickup}
-                            >
-                              <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                  optForPickup ? 'translate-x-5' : 'translate-x-0'
-                                }`}
-                              />
-                            </button>
+                            {optForPickup && (
+                              <div className="pt-2 border-t border-divider/60 space-y-1 animate-in fade-in">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary">
+                                    Return Collection Address <span className="text-brand">*</span>
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    {optForDelivery && deliveryAddress && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setPickupAddress(deliveryAddress)}
+                                        className="text-[10px] font-bold text-ink-secondary hover:text-ink hover:underline cursor-pointer"
+                                      >
+                                        Same as delivery
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={handleDetectPickupAddress}
+                                      disabled={isDetectingPickupLoc}
+                                      className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Navigation className="w-2.5 h-2.5" />
+                                      <span>{isDetectingPickupLoc ? 'Detecting...' : 'Detect GPS'}</span>
+                                    </button>
+                                  </div>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={pickupAddress}
+                                  onChange={(e) => setPickupAddress(e.target.value)}
+                                  placeholder="Enter where the owner should collect on return..."
+                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                                  required
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
