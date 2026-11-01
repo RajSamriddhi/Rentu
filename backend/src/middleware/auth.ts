@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   role: 'USER' | 'ADMIN';
   name: string;
+  avatar_url?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -168,10 +169,49 @@ export const optionalAuthMiddleware = async (
   next();
 };
 
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'falaksadiqua786@gmail.com',
+  'rajsamriddhi60@gmail.com',
+];
+
+export const isAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+
+export const adminMiddleware = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return sendError(res, 'UNAUTHORIZED', 'Access token required', 401);
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const user = await resolveUserFromToken(token);
+    if (!user) {
+      return sendError(res, 'INVALID_TOKEN', 'Session expired or token invalid', 401);
+    }
+    req.user = user;
+    if (!isAdminEmail(user.email)) {
+      return sendError(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
+    }
+    next();
+  } catch (err) {
+    return sendError(res, 'INVALID_TOKEN', 'Session expired or token invalid', 401);
+  }
+};
+
 export const requireRole = (role: 'USER' | 'ADMIN') => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    }
+    if (role === 'ADMIN' && !isAdminEmail(req.user.email)) {
+      return sendError(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
     }
     if (req.user.role !== role && req.user.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', `Role '${role}' required for this action`, 403);

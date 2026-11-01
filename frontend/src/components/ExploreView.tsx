@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   SlidersHorizontal, 
   ChevronDown, 
@@ -15,11 +15,14 @@ import {
   Sparkles,
   ArrowRight,
   Package,
-  Target
+  Target,
+  Users
 } from 'lucide-react';
-import { Item, CommunityRequest } from '../lib/types';
+import { Item, CommunityRequest, UserSearchResult } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { useAuth } from '../lib/authContext';
+import { api } from '../lib/api';
+import { getReachDistance } from '../lib/distance';
 
 interface ExploreViewProps {
   items: Item[];
@@ -33,6 +36,8 @@ interface ExploreViewProps {
   onClaimRequest: (request: CommunityRequest) => void;
   onOpenAuth: () => void;
   initialSubView?: 'items' | 'requests';
+  onOpenUserProfile?: (userId: string) => void;
+  searchQuery?: string;
 }
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
@@ -47,6 +52,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   onClaimRequest,
   onOpenAuth,
   initialSubView = 'items',
+  onOpenUserProfile,
+  searchQuery,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -55,6 +62,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   // Requests sub-filter tab
   const [requestSubTab, setRequestSubTab] = useState<'all' | 'my'>('all');
+
+  // Matched community members when searching
+  const [matchedUsers, setMatchedUsers] = useState<UserSearchResult[]>([]);
+
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      setMatchedUsers([]);
+      return;
+    }
+    let cancelled = false;
+    api.searchUsers(searchQuery.trim()).then((res) => {
+      if (!cancelled) setMatchedUsers(Array.isArray(res) ? res : []);
+    }).catch(() => {
+      if (!cancelled) setMatchedUsers([]);
+    });
+    return () => { cancelled = true; };
+  }, [searchQuery]);
 
   // Sidebar Filters State for Items
   const [maxPrice, setMaxPrice] = useState<number>(2000);
@@ -185,6 +209,60 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           );
         })}
       </div>
+
+      {/* MATCHED COMMUNITY MEMBERS SECTION (Triggered when searching for a user name) */}
+      {matchedUsers.length > 0 && (
+        <div className="mb-6 p-4 sm:p-5 rounded-3xl bg-surface border-2 border-brand/20 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-brand" />
+              <h2 className="text-xs sm:text-sm font-extrabold uppercase text-ink tracking-wider font-display">
+                Community Members Matching "{searchQuery}" ({matchedUsers.length})
+              </h2>
+            </div>
+            <span className="text-[11px] font-bold text-ink-muted">
+              Click profile to see their gear & reviews
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {matchedUsers.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => onOpenUserProfile && onOpenUserProfile(u.id)}
+                className="p-3 rounded-2xl bg-canvas hover:bg-brand-soft/40 border border-divider hover:border-brand/40 transition-all flex items-center justify-between gap-3 text-left cursor-pointer group shadow-2xs hover:shadow-xs"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                    alt={u.name}
+                    className="w-11 h-11 rounded-full object-cover border-2 border-divider group-hover:border-brand shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-extrabold text-sm text-ink group-hover:text-brand truncate">{u.name}</span>
+                      <span className="text-[10px] font-black text-amber-500">★ {u.rating ? u.rating.toFixed(1) : '5.0'}</span>
+                    </div>
+                    <div className="text-[11px] text-ink-secondary truncate">
+                      {u.locality || 'Neighbor'} • {u.items_count} gear • {u.trust_score}% trust
+                    </div>
+                    {u.bio && (
+                      <p className="text-[10px] text-ink-muted line-clamp-1 mt-0.5">
+                        {u.bio}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <span className="text-xs font-bold text-brand group-hover:underline shrink-0">
+                  Profile →
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* VIEW 1: PRODUCTS / GEAR LISTINGS                                          */}
@@ -390,6 +468,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       key={item.id}
                       item={item}
                       onClick={() => onSelectItem(item)}
+                      onOpenUserProfile={onOpenUserProfile}
                     />
                   ))}
                 </div>
@@ -507,7 +586,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                           </div>
                         )}
 
-                        <div className="space-y-1 flex-1 min-w-0">
+                        <div className="space-y-1.5 flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-extrabold text-base text-ink tracking-tight">
                               {req.item_name}
@@ -515,9 +594,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             <span className="text-xs font-extrabold text-brand font-display bg-brand-soft/60 px-2 py-0.5 rounded-md">
                               ₹{Number(req.offered_amount)} budget
                             </span>
-                            <span className="text-zinc-300">•</span>
-                            <span className="text-xs font-medium text-ink-secondary">
-                              {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                          </div>
+
+                          {/* Rental Timeline (Start date -> Return date & duration) */}
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-ink-secondary">
+                            <span className="inline-flex items-center gap-1 bg-canvas border border-divider px-2 py-0.5 rounded-md text-ink">
+                              <Clock className="w-3 h-3 text-brand" />
+                              <span>
+                                {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                {req.end_date ? ` ➔ ${new Date(req.end_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}` : ''}
+                                {` (${req.duration_days} ${req.duration_days === 1 ? 'day' : 'days'})`}
+                              </span>
                             </span>
                           </div>
 
@@ -525,17 +612,57 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             {req.description}
                           </p>
 
+                          {/* Pickup & Return Logistics Summary */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[11px] font-medium text-ink-secondary">
+                            <span className="flex items-center gap-1">
+                              <span className="font-bold text-ink">Pickup:</span>
+                              <span>
+                                {req.pickup_type === 'MY_LOCATION' 
+                                  ? `📍 Deliver to current location (${req.locality})` 
+                                  : req.pickup_type === 'CUSTOM_LOCATION'
+                                  ? `🤝 Meet at ${req.pickup_locality || req.locality || 'Custom Spot'}`
+                                  : `🚶 Pickup from Lender's place`}
+                              </span>
+                            </span>
+
+                            <span>•</span>
+
+                            <span className="flex items-center gap-1">
+                              <span className="font-bold text-ink">Return:</span>
+                              <span>
+                                {req.return_type === 'MY_LOCATION'
+                                  ? `🏠 Lender collects (${req.return_locality || req.locality})`
+                                  : req.return_type === 'CUSTOM_LOCATION'
+                                  ? `🤝 Meet at ${req.return_locality || 'Custom Spot'}`
+                                  : `🚶 Return to Lender's place`}
+                              </span>
+                            </span>
+                          </div>
+
+                          {/* Seeker Info */}
                           <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
-                            <img
-                              src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
-                              alt={req.seeker_name}
-                              className="w-4 h-4 rounded-full object-cover"
-                            />
-                            <span>{req.seeker_name || 'Neighbor'}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenUserProfile && req.seeker_id) {
+                                  onOpenUserProfile(req.seeker_id);
+                                }
+                              }}
+                              className="flex items-center gap-1.5 hover:text-brand hover:underline cursor-pointer group text-left transition-colors"
+                              title={`View ${req.seeker_name || 'Neighbor'}'s public profile`}
+                            >
+                              <img
+                                src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                                alt={req.seeker_name}
+                                className="w-4 h-4 rounded-full object-cover ring-1 ring-border group-hover:ring-brand"
+                              />
+                              <span className="font-semibold text-ink group-hover:text-brand">{req.seeker_name || 'Neighbor'}</span>
+                            </button>
                             <span>•</span>
                             <span className="flex items-center gap-0.5">
                               <MapPin className="w-3 h-3 text-brand" />
-                              <span>{req.locality || 'Nearby'}</span>
+                              <span>{getReachDistance(req, user)}</span>
                             </span>
                           </div>
                         </div>

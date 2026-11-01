@@ -1,20 +1,27 @@
 import React, { useState } from 'react';
-import { Heart, Star, Check } from 'lucide-react';
+import { Heart, Star, Check, Package, MapPin } from 'lucide-react';
 import { Item } from '../lib/types';
+import { useAuth } from '../lib/authContext';
+import { getReachDistance } from '../lib/distance';
 
 interface ItemCardProps {
   item: Item;
   onClick: () => void;
   onQuickSnag?: (item: Item) => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
-export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
+export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserProfile }) => {
+  const { user } = useAuth();
   const [isLiked, setIsLiked] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  const images = Array.isArray(item.image_urls) ? item.image_urls : [];
-  const primaryImage = images[0] || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80';
+  const images = Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean) : [];
+  const hasImage = images.length > 0 && Boolean(images[0]);
+  const primaryImage = images[0] || '';
 
   const isAvailable = item.status === 'AVAILABLE';
+  const reachDistanceText = getReachDistance(item, user);
 
   return (
     <div
@@ -24,12 +31,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
       <div>
         {/* Photo Container */}
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-800">
-          <img
-            src={primaryImage}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
+          {hasImage && !imageError ? (
+            <img
+              src={primaryImage}
+              alt={item.title}
+              onError={() => setImageError(true)}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-canvas text-ink-secondary">
+              <Package className="w-8 h-8 text-ink-secondary/60 mb-1" />
+              <span className="text-[11px] font-bold text-ink-secondary">No image</span>
+            </div>
+          )}
 
           {/* Floating Favorite Heart Icon */}
           <button
@@ -64,14 +79,22 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
             {item.title}
           </h4>
 
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-sm sm:text-base font-extrabold text-ink font-display">
-              ₹{Number(item.price_per_day)}
-            </span>
-            <span className="text-[11px] text-ink-secondary font-medium">/ day</span>
+          <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
+            <div className="flex items-baseline gap-1">
+              <span className="text-sm sm:text-base font-extrabold text-ink font-display">
+                ₹{Number(item.price_per_day)}
+              </span>
+              <span className="text-[11px] text-ink-secondary font-medium">/ day</span>
+            </div>
+
+            {item.available_for_borrowing && (
+              <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                🤝 Can Borrow
+              </span>
+            )}
           </div>
 
-          {/* Rating & Distance */}
+          {/* Rating & Reach Proximity */}
           <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-secondary">
             {item.owner_rating ? (
               <>
@@ -82,20 +105,44 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick }) => {
                 <span className="text-zinc-300 dark:text-zinc-700">•</span>
               </>
             ) : null}
-            <span className="text-ink-secondary truncate">
-              {item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km` : (item.locality || 'Nearby')}
+            <span className="text-ink-secondary font-medium truncate flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-brand shrink-0" />
+              <span>{reachDistanceText}</span>
             </span>
           </div>
 
-          {/* Status badge on dedicated line matching Mockup Screen 2 */}
-          <div className="mt-2 flex items-center">
+          {/* Owner info row with clickable avatar */}
+          <div className="mt-2.5 pt-2 border-t border-divider flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onOpenUserProfile && item.owner_id) {
+                  onOpenUserProfile(item.owner_id);
+                }
+              }}
+              className="flex items-center gap-1.5 hover:text-brand transition-colors cursor-pointer text-left truncate group/owner"
+              title={`View ${item.owner_name || 'owner'}'s profile`}
+            >
+              <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-700 shrink-0 border border-zinc-300 dark:border-zinc-600">
+                <img
+                  src={item.owner_avatar || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(item.owner_name || item.owner_id || 'user')}`}
+                  alt={item.owner_name || 'Owner'}
+                  className="w-full h-full object-cover group-hover/owner:scale-110 transition-transform"
+                />
+              </div>
+              <span className="text-[11px] font-bold text-ink-secondary group-hover/owner:text-brand truncate">
+                {item.owner_name || 'Neighbor'}
+              </span>
+            </button>
+
             {isAvailable ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400 dark:border dark:border-emerald-800/40">
-                <Check className="w-3 h-3 stroke-[2.5]" /> Available
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
+                <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                Rented out
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                Rented
               </span>
             )}
           </div>

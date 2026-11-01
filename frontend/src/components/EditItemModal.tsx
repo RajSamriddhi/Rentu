@@ -26,6 +26,11 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const [locality, setLocality] = useState('');
   const [status, setStatus] = useState<'AVAILABLE' | 'RENTED' | 'UNAVAILABLE'>('AVAILABLE');
   const [imageUrl, setImageUrl] = useState('');
+  const [availableForBorrowing, setAvailableForBorrowing] = useState(false);
+  const [offersDelivery, setOffersDelivery] = useState(false);
+  const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
+  const [offersPickup, setOffersPickup] = useState(false);
+  const [pickupFee, setPickupFee] = useState<number | ''>(0);
 
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -44,6 +49,11 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       setLocality(item.locality || '');
       setStatus(item.status || 'AVAILABLE');
       setImageUrl(item.image_urls?.[0] || '');
+      setAvailableForBorrowing(Boolean(item.available_for_borrowing));
+      setOffersDelivery(Boolean(item.offers_delivery));
+      setDeliveryFee(item.delivery_fee !== undefined ? Number(item.delivery_fee) : 0);
+      setOffersPickup(Boolean(item.offers_pickup));
+      setPickupFee(item.pickup_fee !== undefined ? Number(item.pickup_fee) : 0);
       setErrorMsg('');
     }
   }, [item, isOpen]);
@@ -101,6 +111,11 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
         max_duration_days: Number(maxDurationDays),
         locality: locality.trim(),
         status,
+        available_for_borrowing: availableForBorrowing,
+        offers_delivery: offersDelivery,
+        delivery_fee: offersDelivery ? Number(deliveryFee || 0) : 0,
+        offers_pickup: offersPickup,
+        pickup_fee: offersPickup ? Number(pickupFee || 0) : 0,
         image_urls: imageUrl ? [imageUrl] : item.image_urls,
       });
 
@@ -305,6 +320,157 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
               placeholder="e.g. Indiranagar, Bangalore"
               className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
             />
+          </div>
+
+          {/* Toggle: Also available for borrowing */}
+          <div className="p-3.5 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-ink">Available for Borrowing</span>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                  Option
+                </span>
+              </div>
+              <p className="text-[11px] text-ink-secondary">
+                Tell everyone this item can also be borrowed for free when you agree.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAvailableForBorrowing(!availableForBorrowing)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                availableForBorrowing ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+              }`}
+              role="switch"
+              aria-checked={availableForBorrowing}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  availableForBorrowing ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Delivery & Return Collection Options by Owner */}
+          <div className="space-y-3 pt-3 border-t border-divider">
+            <div>
+              <h4 className="text-xs font-bold text-ink">Delivery & Return Collection</h4>
+              <p className="text-[11px] text-ink-secondary">
+                Choose if you will deliver to the renter or collect the gear on return, plus any charges.
+              </p>
+            </div>
+
+            {/* Option 1: Delivery by Owner */}
+            <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-ink">I will deliver to the renter 🚗</span>
+                    {offersDelivery && (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        Ready to Deliver
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    Toggle ON if you are ready to deliver this product directly to the person renting it.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setOffersDelivery(!offersDelivery)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    offersDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={offersDelivery}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      offersDelivery ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {offersDelivery && (
+                <div className="pt-2 border-t border-divider/60 flex items-center justify-between gap-3 animate-in fade-in">
+                  <div>
+                    <label className="text-xs font-bold text-ink block">Delivery Fee (₹)</label>
+                    <span className="text-[10px] text-ink-secondary">Set ₹0 for free delivery or your delivery charge</span>
+                  </div>
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-secondary">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={deliveryFee}
+                      onChange={(e) => setDeliveryFee(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="0"
+                      className="w-full bg-surface border border-divider rounded-xl pl-7 pr-3 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Option 2: Pickup by Owner upon return */}
+            <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-ink">I will pick up / collect myself on return 🔄</span>
+                    {offersPickup && (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        Ready to Collect
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    Toggle ON if you will collect the product from the renter when rental duration ends.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setOffersPickup(!offersPickup)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    offersPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={offersPickup}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      offersPickup ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {offersPickup && (
+                <div className="pt-2 border-t border-divider/60 flex items-center justify-between gap-3 animate-in fade-in">
+                  <div>
+                    <label className="text-xs font-bold text-ink block">Return Collection Fee (₹)</label>
+                    <span className="text-[10px] text-ink-secondary">Set ₹0 for free collection or your pickup charge</span>
+                  </div>
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-secondary">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={pickupFee}
+                      onChange={(e) => setPickupFee(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="0"
+                      className="w-full bg-surface border border-divider rounded-xl pl-7 pr-3 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Description */}

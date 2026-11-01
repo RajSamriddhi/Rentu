@@ -7,6 +7,9 @@ import {
   Conversation, 
   CommunityPulse, 
   CategoryStat,
+  CommunityLeaderboardData,
+  PublicUserProfile,
+  UserSearchResult,
   AiChatResponse,
   AiChatContext
 } from './types';
@@ -173,6 +176,11 @@ export const api = {
     image_urls: string[];
     sticker_badge: string;
     locality: string;
+    available_for_borrowing?: boolean;
+    offers_delivery?: boolean;
+    delivery_fee?: number;
+    offers_pickup?: boolean;
+    pickup_fee?: number;
   }): Promise<Item> {
     const res = await fetch(`${API_BASE}/items`, {
       method: 'POST',
@@ -187,6 +195,30 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async toggleItemBorrowing(id: string, available_for_borrowing: boolean): Promise<Item> {
+    const res = await fetch(`${API_BASE}/items/${id}/borrowing`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ available_for_borrowing }),
+    });
+    return handleResponse(res);
+  },
+
+  async getItemAvailability(id: string): Promise<Array<{
+    id?: string;
+    start_date: string;
+    end_date: string;
+    start_time?: string;
+    end_time?: string;
+    duration_days?: number;
+    status?: string;
+  }>> {
+    const res = await fetch(`${API_BASE}/items/${id}/availability`, {
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },
@@ -224,9 +256,15 @@ export const api = {
     category: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
     offered_amount: number;
     locality: string;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    pickup_locality?: string;
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
     image_url?: string;
   }): Promise<CommunityRequest> {
     const res = await fetch(`${API_BASE}/requests`, {
@@ -271,7 +309,18 @@ export const api = {
     item_id: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
+    total_price?: number;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    pickup_locality?: string;
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
+    requires_delivery?: boolean;
+    delivery_fee?: number;
+    requires_pickup?: boolean;
+    pickup_fee?: number;
     message?: string;
   }): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings`, {
@@ -282,11 +331,38 @@ export const api = {
     return handleResponse(res);
   },
 
-  async updateBookingStatus(id: string, status: 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED'): Promise<Booking> {
+  async updateBookingStatus(id: string, status: 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async verifyPickup(id: string, code: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/verify-pickup`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code }),
+    });
+    return handleResponse(res);
+  },
+
+  async verifyReturn(id: string, code: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/verify-return`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code }),
+    });
+    return handleResponse(res);
+  },
+
+  async submitReview(bookingId: string, rating: number, comment?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/review`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rating, comment: comment || '' }),
     });
     return handleResponse(res);
   },
@@ -311,18 +387,71 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getMessages(bookingId: string): Promise<{ booking: Booking; messages: Message[] }> {
-    const res = await fetch(`${API_BASE}/messages/${bookingId}`, {
+  async getMessages(conversationId: string): Promise<{ booking?: Booking | null; partner?: any; messages: Message[] }> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}`, {
       headers: getHeaders(),
     });
     return handleResponse(res);
   },
 
-  async sendMessage(booking_id: string, receiver_id: string, content: string): Promise<Message> {
+  async sendMessage(
+    booking_id: string | null | undefined, 
+    receiver_id: string, 
+    content: string,
+    message_type?: string,
+    proposal_data?: any
+  ): Promise<Message> {
     const res = await fetch(`${API_BASE}/messages`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ booking_id, receiver_id, content }),
+      body: JSON.stringify({ 
+        booking_id: booking_id || undefined, 
+        receiver_id, 
+        content,
+        message_type: message_type || 'TEXT',
+        proposal_data,
+      }),
+    });
+    return handleResponse(res);
+  },
+
+  async acceptProposal(messageId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/proposal/${encodeURIComponent(messageId)}/accept`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async declineProposal(messageId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/proposal/${encodeURIComponent(messageId)}/decline`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteConversation(conversationId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async editMessage(messageId: string, content: string): Promise<Message> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ content }),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteMessage(messageId: string): Promise<{ id: string }> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },
@@ -340,6 +469,224 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {
+    const res = await fetch(`${API_BASE}/users/leaderboard`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getUserProfile(userId: string): Promise<PublicUserProfile> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async searchUsers(query: string): Promise<UserSearchResult[]> {
+    const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async followUser(userId: string): Promise<{ is_following: boolean; followers_count: number }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/follow`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async unfollowUser(userId: string): Promise<{ is_following: boolean; followers_count: number }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/unfollow`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async blockUser(userId: string): Promise<{ is_blocked: boolean }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/block`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async unblockUser(userId: string): Promise<{ is_blocked: boolean }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/unblock`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getNotifications(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/notifications`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async markNotificationRead(id: string): Promise<void> {
+    await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
+      method: 'PUT',
+      headers: getHeaders(),
+    });
+  },
+
+  async markAllNotificationsRead(): Promise<void> {
+    await fetch(`${API_BASE}/notifications/read-all`, {
+      method: 'PUT',
+      headers: getHeaders(),
+    });
+  },
+
+  // Support & Concerns (Community Care)
+  async submitSupportTicket(data: {
+    type: 'CONCERN' | 'FEEDBACK';
+    category: string;
+    subject: string;
+    description: string;
+    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    user_email?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/support`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getMySupportTickets(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/support/my`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminSupportTickets(filters?: { status?: string; type?: string; category?: string }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.type && filters.type !== 'ALL') params.append('type', filters.type);
+    if (filters?.category && filters.category !== 'ALL') params.append('category', filters.category);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/support/admin${qs}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminSupportTicket(id: string, data: {
+    status?: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    admin_notes?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/support/admin/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  // Admin Operations (Protected to Authorized Administrators)
+  async getAdminUsers(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminUser(id: string, data: { role?: 'USER' | 'ADMIN'; trust_score?: number; rating?: number }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminListings(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/listings`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminListingStatus(id: string, status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE'): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/listings/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteAdminListing(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/listings/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminRequests(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/requests`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteAdminRequest(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/requests/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminBookings(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/bookings`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminBookingStatus(id: string, status: 'ACCEPTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/bookings/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminLocalities(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/localities`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async addAdminLocality(data: { pincode: string; locality: string; city?: string; state?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/localities`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminReports(): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/reports`, {
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },

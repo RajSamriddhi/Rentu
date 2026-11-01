@@ -22,9 +22,14 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
   const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [durationDays, setDurationDays] = useState<number | ''>('');
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
   const [locality, setLocality] = useState('');
+  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [pickupLocality, setPickupLocality] = useState('');
+  const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [returnLocality, setReturnLocality] = useState('');
   const [status, setStatus] = useState<'OPEN' | 'FULFILLED' | 'CANCELLED'>('OPEN');
   const [imageUrl, setImageUrl] = useState('');
 
@@ -43,9 +48,15 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       // Format start_date to YYYY-MM-DD for date input
       const dateVal = request.start_date ? new Date(request.start_date).toISOString().split('T')[0] : '';
       setStartDate(dateVal);
+      const endDateVal = request.end_date ? new Date(request.end_date).toISOString().split('T')[0] : '';
+      setEndDate(endDateVal);
       setDurationDays(request.duration_days || 1);
       setOfferedAmount(Number(request.offered_amount) || '');
       setLocality(request.locality || '');
+      setPickupType(request.pickup_type || 'LENDER_LOCATION');
+      setPickupLocality(request.pickup_locality || '');
+      setReturnType(request.return_type || 'LENDER_LOCATION');
+      setReturnLocality(request.return_locality || '');
       setStatus(request.status || 'OPEN');
       setImageUrl(request.image_url || '');
       setErrorMsg('');
@@ -102,9 +113,14 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
         description: description.trim(),
         category,
         start_date: startDate || undefined,
+        end_date: endDate || undefined,
         duration_days: Number(durationDays || 1),
         offered_amount: Number(offeredAmount),
         locality: locality.trim(),
+        pickup_type: pickupType,
+        pickup_locality: pickupType === 'CUSTOM_LOCATION' ? (pickupLocality.trim() || undefined) : undefined,
+        return_type: returnType,
+        return_locality: returnLocality.trim() || undefined,
         status,
         image_url: imageUrl || null,
       });
@@ -256,7 +272,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
               >
                 <option value="Electronics & Tech">Electronics & Tech</option>
                 <option value="Camping & Outdoor">Camping & Outdoor</option>
-                <option value="Clothing & Accessories">Clothing & Accessories</option>
+                <option value="Clothing & Fits">Clothing & Fits</option>
                 <option value="Tools & DIY">Tools & DIY</option>
                 <option value="Home & Appliances">Home & Appliances</option>
                 <option value="Sports & Fitness">Sports & Fitness</option>
@@ -279,10 +295,10 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
             </div>
           </div>
 
-          {/* Date & Duration */}
+          {/* Date & Return Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-ink mb-1">Needed By Date *</label>
+              <label className="block text-xs font-bold text-ink mb-1">Needed From Date *</label>
               <input
                 type="date"
                 value={startDate}
@@ -293,11 +309,25 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
             </div>
 
             <div>
+              <label className="block text-xs font-bold text-ink mb-1">Return Date *</label>
+              <input
+                type="date"
+                min={startDate}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+              />
+            </div>
+          </div>
+
+          {/* Duration & Budget */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <label className="block text-xs font-bold text-ink mb-1">Duration (Days)</label>
               <input
                 type="number"
                 min="1"
-                max="30"
+                max="60"
                 value={durationDays}
                 onChange={(e) => setDurationDays(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="e.g. 2"
@@ -305,10 +335,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 required
               />
             </div>
-          </div>
 
-          {/* Offered Budget & Locality */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Offered Budget (₹) *</label>
               <input
@@ -321,29 +348,144 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 required
               />
             </div>
+          </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-ink">Locality</label>
-                <button
-                  type="button"
-                  onClick={handleDetectLocation}
-                  disabled={isDetectingLocation}
-                  className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <MapPin className="w-3 h-3" />
-                  <span>{isDetectingLocation ? '...' : 'GPS'}</span>
-                </button>
-              </div>
-              <input
-                type="text"
-                value={locality}
-                onChange={(e) => setLocality(e.target.value)}
-                placeholder="e.g. BEML Layout, Bengaluru"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-              />
+          {/* Pickup Preference */}
+          <div className="space-y-1.5 pt-1">
+            <label className="block text-xs font-bold text-ink">Pickup Handover Choice</label>
+            <div className="grid grid-cols-3 gap-2 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setPickupType('LENDER_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  pickupType === 'LENDER_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🚶 Go to Lender
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickupType('MY_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  pickupType === 'MY_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                📍 My Location
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickupType('CUSTOM_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  pickupType === 'CUSTOM_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🤝 Meetup Spot
+              </button>
             </div>
           </div>
+
+          {/* Custom Pickup Landmark if applicable */}
+          {pickupType === 'CUSTOM_LOCATION' && (
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">Pickup Landmark / Meetup Spot *</label>
+              <input
+                type="text"
+                value={pickupLocality}
+                onChange={(e) => setPickupLocality(e.target.value)}
+                placeholder="e.g. Indiranagar Metro Station Gate 1"
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                required
+              />
+            </div>
+          )}
+
+          {/* Return Preference */}
+          <div className="space-y-1.5 pt-1">
+            <label className="block text-xs font-bold text-ink">Return Handover Choice</label>
+            <div className="grid grid-cols-3 gap-2 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setReturnType('LENDER_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  returnType === 'LENDER_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🚶 To Lender
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnType('MY_LOCATION');
+                  if (!returnLocality && locality) setReturnLocality(locality);
+                }}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  returnType === 'MY_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🏠 Collect at Mine
+              </button>
+              <button
+                type="button"
+                onClick={() => setReturnType('CUSTOM_LOCATION')}
+                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
+                  returnType === 'CUSTOM_LOCATION'
+                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                }`}
+              >
+                🤝 Meetup Spot
+              </button>
+            </div>
+          </div>
+
+          {/* Locality Input */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-ink">Locality / Address *</label>
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={isDetectingLocation}
+                className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <MapPin className="w-3 h-3" />
+                <span>{isDetectingLocation ? '...' : 'GPS'}</span>
+              </button>
+            </div>
+            <input
+              type="text"
+              value={locality}
+              onChange={(e) => setLocality(e.target.value)}
+              placeholder="e.g. Indiranagar, Bengaluru"
+              className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+              required
+            />
+          </div>
+
+          {/* Return Locality if Custom or My Place */}
+          {returnType === 'CUSTOM_LOCATION' && (
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">Return Landmark / Spot *</label>
+              <input
+                type="text"
+                value={returnLocality}
+                onChange={(e) => setReturnLocality(e.target.value)}
+                placeholder="e.g. Indiranagar Metro Station Gate 2"
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                required
+              />
+            </div>
+          )}
 
           {/* Description */}
           <div>

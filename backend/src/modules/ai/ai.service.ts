@@ -1,4 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// Dynamically resolve @google/generative-ai with safe fallback
+let GoogleGenerativeAI: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
+} catch {
+  // Graceful fallback
+}
 import { ENV } from '../../config/env';
 import {
   searchListings,
