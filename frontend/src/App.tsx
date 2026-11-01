@@ -65,6 +65,10 @@ export const App: React.FC = () => {
   const [viewingUserId, setViewingUserId] = useState<string | null>(getUserIdFromUrl);
 
   const setActiveTab = (tab: TabType) => {
+    // Non-admin users cannot access 'hustle' (admin dashboard)
+    if (tab === 'hustle' && !isUserAdmin) {
+      tab = 'home';
+    }
     setActiveTabState(tab);
     const targetPath = tab === 'home' ? '/' : tab === 'hustle' ? '/admin' : `/${tab}`;
     if (window.location.pathname !== targetPath) {
@@ -72,6 +76,13 @@ export const App: React.FC = () => {
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Strictly prevent any non-admin user from remaining on the admin dashboard
+  useEffect(() => {
+    if (activeTab === 'hustle' && !isUserAdmin) {
+      setActiveTab('home');
+    }
+  }, [activeTab, isUserAdmin]);
 
   const handleOpenUserProfile = (userId: string) => {
     setViewingUserId(userId);
@@ -324,27 +335,9 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 10: ADMIN DASHBOARD (Protected to falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com) */}
-            {activeTab === 'hustle' && (
-              isUserAdmin ? (
-                <HustleHub />
-              ) : (
-                <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-200">
-                  <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
-                    🔒
-                  </div>
-                  <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
-                  <p className="text-xs text-ink-secondary leading-relaxed">
-                    This management console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('explore')}
-                    className="btn-primary text-xs px-6 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <span>Back to Marketplace</span>
-                  </button>
-                </div>
-              )
+            {/* VIEW 10: ADMIN DASHBOARD (Exclusively available to authorized platform administrators) */}
+            {activeTab === 'hustle' && isUserAdmin && (
+              <HustleHub />
             )}
 
             {/* VIEW 11: COMMUNITY & TOP 10 LEADERBOARD (Replaces How It Works) */}
