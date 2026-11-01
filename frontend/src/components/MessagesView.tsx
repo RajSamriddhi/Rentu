@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageSquare, Send, Search, ArrowLeft, Check, AlertCircle, 
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
-  Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle 
+  Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
+  Trash2, Pencil
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
@@ -43,6 +44,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // Message inline editing & deletion state
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Custom Listing & Request Proposal Modal State
   const [isCreateProposalOpen, setIsCreateProposalOpen] = useState(false);
@@ -126,30 +132,59 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     scrollToBottom(false);
   }, [messages.length]);
 
-  // Live polling every 3.5 seconds
+  // Live polling every 4 seconds for messages and conversations list
   useEffect(() => {
-    if (!isAuthenticated || !selectedConvId) return;
+    if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
-      api.getMessages(selectedConvId)
+      // 1. Refresh conversations
+      api.getConversations()
         .then((data) => {
-          if (data?.messages && Array.isArray(data.messages)) {
-            setMessages((prev) => {
-              if (
-                prev.length !== data.messages.length || 
-                prev[prev.length - 1]?.id !== data.messages[data.messages.length - 1]?.id
-              ) {
-                return data.messages;
+          if (Array.isArray(data)) {
+            setConversations((prev) => {
+              let updated = [...data];
+              const currentPartner = activePartnerData || initialPartner;
+              if (currentPartner && currentPartner.id) {
+                const dmKey = `dm_${currentPartner.id}`;
+                const exists = updated.some(c => 
+                  c.conversation_id === dmKey || 
+                  c.partner_id === currentPartner.id ||
+                  (currentPartner.firebase_uid && c.partner_id === currentPartner.firebase_uid)
+                );
+                if (!exists) {
+                  const synth = prev.find(c => c.conversation_id === dmKey || c.partner_id === currentPartner.id);
+                  if (synth) updated.unshift(synth);
+                }
               }
-              return prev;
+              return updated;
             });
           }
         })
         .catch(() => {});
-    }, 3500);
+
+      // 2. Refresh messages if a conversation is selected
+      if (selectedConvId) {
+        api.getMessages(selectedConvId)
+          .then((data) => {
+            if (data?.messages && Array.isArray(data.messages)) {
+              setMessages((prev) => {
+                if (
+                  prev.length !== data.messages.length || 
+                  prev[prev.length - 1]?.id !== data.messages[data.messages.length - 1]?.id ||
+                  JSON.stringify(prev.map(m => m.content)) !== JSON.stringify(data.messages.map(m => m.content))
+                ) {
+                  return data.messages;
+                }
+                return prev;
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }, 4000);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, selectedConvId]);
+  }, [isAuthenticated, selectedConvId, activePartnerData, initialPartner]);
 
   const loadConversations = async () => {
     setIsLoadingConversations(true);
@@ -157,12 +192,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       const data = await api.getConversations();
       let list: Conversation[] = Array.isArray(data) ? data : [];
 
-      // If initialPartner was passed and not in list, prepend synthetic DM entry
-      if (initialPartner) {
-        const dmKey = `dm_${initialPartner.id}`;
+      // If activePartnerData or initialPartner was set and not in list, prepend synthetic DM entry
+      const currentPartner = activePartnerData || initialPartner;
+      if (currentPartner && currentPartner.id) {
+        const dmKey = `dm_${currentPartner.id}`;
         const exists = list.some(c => 
           (c.conversation_id === dmKey) || 
-          (c.partner_id === initialPartner.id && (!c.booking_id || c.booking_status === 'DIRECT_DM'))
+          (c.partner_id === currentPartner.id && (!c.booking_id || c.booking_status === 'DIRECT_DM')) ||
+          (currentPartner.firebase_uid && c.partner_id === currentPartner.firebase_uid)
         );
         if (!exists) {
           const synth: Conversation = {
@@ -172,10 +209,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             item_title: 'Direct Message',
             item_images: [],
             total_price: 0,
-            partner_id: initialPartner.id,
-            partner_name: initialPartner.name,
-            partner_avatar: initialPartner.avatar,
-            last_message: 'Start a direct chat...',
+            partner_id: currentPartner.id,
+            partner_name: currentPartner.name || 'Neighbor',
+            partner_avatar: currentPartner.avatar_url || currentPartner.avatar,
+            last_message: 'Direct conversation',
             last_message_at: new Date().toISOString(),
           };
           list = [synth, ...list];
@@ -205,6 +242,33 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
       if (data?.partner) {
         setActivePartnerData(data.partner);
+        // Ensure this partner is visible in the conversations list!
+        setConversations((prev) => {
+          const dmKey = `dm_${data.partner.id}`;
+          const exists = prev.some(c => 
+            c.conversation_id === dmKey || 
+            c.partner_id === data.partner.id ||
+            c.conversation_id === convId ||
+            c.booking_id === convId
+          );
+          if (!exists) {
+            const synth: Conversation = {
+              conversation_id: dmKey,
+              booking_id: null,
+              booking_status: 'DIRECT_DM',
+              item_title: 'Direct Message',
+              item_images: [],
+              total_price: 0,
+              partner_id: data.partner.id,
+              partner_name: data.partner.name || 'Neighbor',
+              partner_avatar: data.partner.avatar_url || data.partner.avatar,
+              last_message: 'Direct conversation',
+              last_message_at: new Date().toISOString(),
+            };
+            return [synth, ...prev];
+          }
+          return prev;
+        });
       }
       if (data?.messages && Array.isArray(data.messages)) {
         setMessages(data.messages);
@@ -216,6 +280,120 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       setMessages([]);
     } finally {
       setIsLoadingMessages(false);
+    }
+  };
+
+  // Close active chat from right side
+  const handleCloseChat = () => {
+    setSelectedConvId(null);
+    setActivePartnerData(null);
+    setActiveBookingData(null);
+    setMessages([]);
+    setShowMobileThread(false);
+    setEditingMessageId(null);
+  };
+
+  // Delete entire conversation
+  const handleDeleteConversation = async (convId: string, partnerName?: string) => {
+    const confirmMsg = partnerName
+      ? `Are you sure you want to delete your conversation with ${partnerName}? All messages in this chat will be permanently deleted.`
+      : 'Are you sure you want to delete this chat conversation? All messages will be permanently deleted.';
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.deleteConversation(convId);
+      setConversations((prev) =>
+        prev.filter((c) => {
+          const key = c.conversation_id || c.booking_id || `dm_${c.partner_id}`;
+          return (
+            key !== convId &&
+            c.conversation_id !== convId &&
+            c.booking_id !== convId &&
+            `dm_${c.partner_id}` !== convId
+          );
+        })
+      );
+
+      const isActive =
+        selectedConvId === convId ||
+        activeConversation?.conversation_id === convId ||
+        activeConversation?.booking_id === convId ||
+        `dm_${activeConversation?.partner_id}` === convId;
+
+      if (isActive) {
+        handleCloseChat();
+      }
+    } catch (err: any) {
+      console.error('Failed to delete conversation:', err);
+      alert(err.message || 'Failed to delete conversation. Please try again.');
+    }
+  };
+
+  // Message Edit & Delete Handlers
+  const handleStartEdit = (m: Message) => {
+    setEditingMessageId(m.id);
+    setEditingText(m.content);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingText('');
+  };
+
+  const handleSaveEdit = async (messageId: string) => {
+    const trimmed = editingText.trim();
+    if (!trimmed || isSavingEdit) return;
+
+    setIsSavingEdit(true);
+    try {
+      await api.editMessage(messageId, trimmed);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, content: trimmed, is_edited: true } : m
+        )
+      );
+      setEditingMessageId(null);
+      setEditingText('');
+
+      // Also update last message in conversation list
+      setConversations((prev) =>
+        prev.map((c) => {
+          const match =
+            c.conversation_id === selectedConvId ||
+            c.booking_id === selectedConvId ||
+            `dm_${c.partner_id}` === selectedConvId;
+          return match ? { ...c, last_message: trimmed } : c;
+        })
+      );
+    } catch (err: any) {
+      console.error('Failed to edit message:', err);
+      alert(err.message || 'Failed to edit message');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!window.confirm('Are you sure you want to delete this message?')) return;
+
+    try {
+      await api.deleteMessage(messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+      // Update conversations if needed
+      setConversations((prev) =>
+        prev.map((c) => {
+          const match =
+            c.conversation_id === selectedConvId ||
+            c.booking_id === selectedConvId ||
+            `dm_${c.partner_id}` === selectedConvId;
+          return match ? { ...c, last_message: 'Message deleted' } : c;
+        })
+      );
+    } catch (err: any) {
+      console.error('Failed to delete message:', err);
+      alert(err.message || 'Failed to delete message');
     }
   };
 
@@ -300,17 +478,39 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         );
       }
 
-      setConversations((prev) =>
-        prev.map((c) => {
-          const match =
-            c.conversation_id === selectedConvId ||
-            c.booking_id === selectedConvId ||
-            `dm_${c.partner_id}` === selectedConvId;
-          return match
-            ? { ...c, last_message: textToSend, last_message_at: new Date().toISOString() }
-            : c;
-        })
-      );
+      setConversations((prev) => {
+        const exists = prev.some((c) =>
+          c.conversation_id === selectedConvId ||
+          c.booking_id === selectedConvId ||
+          `dm_${c.partner_id}` === selectedConvId
+        );
+        if (exists) {
+          return prev.map((c) => {
+            const match =
+              c.conversation_id === selectedConvId ||
+              c.booking_id === selectedConvId ||
+              `dm_${c.partner_id}` === selectedConvId;
+            return match
+              ? { ...c, last_message: textToSend, last_message_at: new Date().toISOString() }
+              : c;
+          });
+        } else {
+          const newEntry: Conversation = {
+            conversation_id: selectedConvId,
+            booking_id: activeConversation?.booking_id || null,
+            booking_status: activeConversation?.booking_status || 'DIRECT_DM',
+            item_title: activeConversation?.item_title || 'Direct Message',
+            item_images: activeConversation?.item_images || [],
+            total_price: activeConversation?.total_price || 0,
+            partner_id: receiverId,
+            partner_name: activeConversation?.partner_name || 'Neighbor',
+            partner_avatar: activeConversation?.partner_avatar,
+            last_message: textToSend,
+            last_message_at: new Date().toISOString(),
+          };
+          return [newEntry, ...prev];
+        }
+      });
 
       inputRef.current?.focus();
     } catch (err: any) {
@@ -585,7 +785,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         setSelectedConvId(chatKey);
                         setShowMobileThread(true);
                       }}
-                      className={`p-3.5 sm:p-4 flex items-start gap-3 cursor-pointer transition-all ${
+                      className={`p-3.5 sm:p-4 flex items-start gap-3 cursor-pointer transition-all group relative ${
                         isSelected 
                           ? 'bg-surface font-bold border-l-4 border-brand shadow-xs' 
                           : 'hover:bg-surface/70'
@@ -599,11 +799,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between text-xs mb-0.5">
                           <span className="font-black text-ink truncate">{chat.partner_name || 'Neighbor'}</span>
-                          {chat.last_message_at && (
-                            <span className="text-[10px] text-ink-secondary shrink-0 pl-1 font-medium">
-                              {new Date(chat.last_message_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0 pl-1">
+                            {chat.last_message_at && (
+                              <span className="text-[10px] text-ink-secondary font-medium">
+                                {new Date(chat.last_message_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteConversation(chatKey, chat.partner_name);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 text-ink-muted hover:text-red-500 transition-opacity cursor-pointer shrink-0"
+                              title="Delete conversation"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <p className="text-xs text-ink-secondary truncate font-medium">
                           {chat.last_message || (isDirect ? 'Direct conversation' : `Rental request for ${chat.item_title}`)}
@@ -710,7 +923,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     </button>
 
                     {activeConversation.booking_id && Number(activeConversation.total_price) > 0 ? (
-                      <div className="text-right shrink-0 pl-1">
+                      <div className="text-right shrink-0 pl-1 hidden sm:block">
                         <span className="font-black text-ink text-sm sm:text-base font-display block">
                           ₹{Number(activeConversation.total_price)}
                         </span>
@@ -725,6 +938,30 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         </span>
                       </div>
                     )}
+
+                    {/* Delete Entire Chat Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedConvId) {
+                          handleDeleteConversation(selectedConvId, activeConversation?.partner_name);
+                        }
+                      }}
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-red-500/10 border border-divider hover:border-red-500/30 text-ink-secondary hover:text-red-500 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Delete entire chat"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+
+                    {/* Close Active Chat Button */}
+                    <button
+                      type="button"
+                      onClick={handleCloseChat}
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-divider/60 border border-divider text-ink-secondary hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
+                      title="Close chat"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -962,7 +1199,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       return (
                         <div
                           key={m.id}
-                          className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}
+                          className={`flex items-end gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}
                         >
                           {!isMe && (
                             <img
@@ -977,6 +1214,28 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
                               title={`View ${m.sender_name || 'Member'}'s public profile`}
                             />
+                          )}
+
+                          {/* Hover action buttons for sender (Edit & Delete) */}
+                          {isMe && editingMessageId !== m.id && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity text-ink-muted mb-1 order-first">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(m)}
+                                className="p-1 rounded-full hover:bg-canvas hover:text-ink transition-colors cursor-pointer"
+                                title="Edit message"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors cursor-pointer"
+                                title="Delete message"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
                           )}
 
                           <div
@@ -996,16 +1255,59 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               </div>
                             )}
 
-                            <div className="break-words select-text">{m.content}</div>
+                            {editingMessageId === m.id ? (
+                              <div className="space-y-2 min-w-[200px]">
+                                <input
+                                  type="text"
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveEdit(m.id);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      handleCancelEdit();
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-full bg-white/15 dark:bg-black/30 border border-white/40 text-white rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white font-medium"
+                                />
+                                <div className="flex items-center justify-end gap-1.5 text-[10px]">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEdit}
+                                    className="px-2 py-0.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer font-bold"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEdit(m.id)}
+                                    disabled={!editingText.trim() || isSavingEdit}
+                                    className="px-2.5 py-0.5 rounded-full bg-white text-brand shadow-xs hover:bg-white/90 transition-all cursor-pointer font-extrabold disabled:opacity-50"
+                                  >
+                                    {isSavingEdit ? 'Saving...' : 'Save'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="break-words select-text">{m.content}</div>
 
-                            <div
-                              className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
-                                isMe ? 'text-white/75' : 'text-ink-secondary'
-                              }`}
-                            >
-                              <span>{formattedTime}</span>
-                              {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                            </div>
+                                <div
+                                  className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
+                                    isMe ? 'text-white/75' : 'text-ink-secondary'
+                                  }`}
+                                >
+                                  {m.is_edited && (
+                                    <span className="italic mr-0.5 opacity-80">(edited)</span>
+                                  )}
+                                  <span>{formattedTime}</span>
+                                  {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       );

@@ -21,7 +21,10 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
         // Get bookings & direct messages (excluding blocked relationships)
-        const result = await (0, db_1.query)(`WITH user_convs AS (
+        const result = await (0, db_1.query)(`WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      ),
+      user_convs AS (
         -- 1. Rental Booking conversations
         SELECT 
           b.id::text AS conversation_id,
@@ -33,34 +36,49 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
           i.title AS item_title,
           i.image_urls AS item_images,
           i.locality AS item_locality,
-          CASE WHEN b.borrower_id = $1 THEN COALESCE(lender.id, b.lender_id) ELSE borrower.id END AS partner_id,
-          CASE WHEN b.borrower_id = $1 THEN COALESCE(lender.name, 'Lender') ELSE COALESCE(borrower.name, 'Borrower') END AS partner_name,
-          CASE WHEN b.borrower_id = $1 THEN lender.avatar_url ELSE borrower.avatar_url END AS partner_avatar,
-          CASE WHEN b.borrower_id = $1 THEN lender.phone ELSE borrower.phone END AS partner_phone,
+          CASE 
+            WHEN b.borrower_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+            THEN COALESCE(lender.id::text, b.lender_id) 
+            ELSE borrower.id::text 
+          END AS partner_id,
+          CASE 
+            WHEN b.borrower_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+            THEN COALESCE(lender.name, 'Lender') 
+            ELSE COALESCE(borrower.name, 'Borrower') 
+          END AS partner_name,
+          CASE 
+            WHEN b.borrower_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+            THEN lender.avatar_url 
+            ELSE borrower.avatar_url 
+          END AS partner_avatar,
+          CASE 
+            WHEN b.borrower_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+            THEN lender.phone 
+            ELSE borrower.phone 
+          END AS partner_phone,
           m.content AS last_message,
           m.created_at AS last_message_at,
           b.created_at AS created_at
         FROM bookings b
         JOIN items i ON b.item_id = i.id
-        LEFT JOIN users borrower ON b.borrower_id = borrower.id
-        LEFT JOIN users lender ON (b.lender_id = lender.id OR i.owner_id = lender.id)
+        LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+        LEFT JOIN users lender ON (b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
         LEFT JOIN LATERAL (
           SELECT content, created_at FROM messages 
           WHERE booking_id = b.id 
           ORDER BY created_at DESC LIMIT 1
         ) m ON true
-        WHERE (b.borrower_id = $1 OR b.lender_id = $1 OR i.owner_id = $1)
-          AND NOT EXISTS (
-            SELECT 1 FROM user_blocks ub
-            WHERE (ub.blocker_id = $1 AND (ub.blocked_id = b.borrower_id OR ub.blocked_id = b.lender_id OR ub.blocked_id = i.owner_id))
-               OR (ub.blocked_id = $1 AND (ub.blocker_id = b.borrower_id OR ub.blocker_id = b.lender_id OR ub.blocker_id = i.owner_id))
-          )
+        WHERE (
+          b.borrower_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) OR 
+          b.lender_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) OR 
+          i.owner_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+        )
 
         UNION ALL
 
-        -- 2. Direct DM conversations (booking_id IS NULL)
+        -- 2. Direct DM conversations (matching by ID and Firebase UID)
         SELECT
-          'dm_' || partner.id AS conversation_id,
+          'dm_' || partner.id::text AS conversation_id,
           NULL::uuid AS booking_id,
           'DIRECT_DM' AS booking_status,
           NULL::date AS start_date,
@@ -69,7 +87,7 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
           'Direct Chat' AS item_title,
           ARRAY[]::text[] AS item_images,
           partner.locality AS item_locality,
-          partner.id AS partner_id,
+          partner.id::text AS partner_id,
           partner.name AS partner_name,
           partner.avatar_url AS partner_avatar,
           partner.phone AS partner_phone,
@@ -78,22 +96,40 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
           dm.created_at AS created_at
         FROM (
           SELECT DISTINCT ON (
-            CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END
+            CASE 
+              WHEN sender_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+              THEN receiver_id 
+              ELSE sender_id 
+            END
           )
             id,
-            CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END AS partner_id,
+            CASE 
+              WHEN sender_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+              THEN receiver_id 
+              ELSE sender_id 
+            END AS partner_id,
             content,
             created_at
           FROM messages
-          WHERE booking_id IS NULL AND (sender_id = $1 OR receiver_id = $1)
-          ORDER BY CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END, created_at DESC
+          WHERE (
+            sender_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+            OR receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+          )
+          ORDER BY (
+            CASE 
+              WHEN sender_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL) 
+              THEN receiver_id 
+              ELSE sender_id 
+            END
+          ), created_at DESC
         ) dm
-        JOIN users partner ON dm.partner_id = partner.id
-        WHERE NOT EXISTS (
-          SELECT 1 FROM user_blocks ub
-          WHERE (ub.blocker_id = $1 AND ub.blocked_id = partner.id)
-             OR (ub.blocked_id = $1 AND ub.blocker_id = partner.id)
-        )
+        JOIN users partner ON (dm.partner_id = partner.id::text OR dm.partner_id = partner.firebase_uid)
+        WHERE partner.id::text NOT IN (SELECT id_text FROM me)
+          AND NOT EXISTS (
+            SELECT 1 FROM user_blocks ub
+            WHERE (ub.blocker_id = ANY(ARRAY(SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)) AND (ub.blocked_id = partner.id::text OR ub.blocked_id = partner.firebase_uid))
+               OR (ub.blocked_id = ANY(ARRAY(SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)) AND (ub.blocker_id = partner.id::text OR ub.blocker_id = partner.firebase_uid))
+          )
       )
       SELECT * FROM user_convs
       ORDER BY COALESCE(last_message_at, created_at) DESC`, [userId]);
@@ -109,31 +145,37 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
         const { conversationId } = req.params;
         const userId = req.user.id;
         const isDm = conversationId.startsWith('dm_') || !isUuid(conversationId);
-        const partnerId = isDm ? conversationId.replace(/^dm_/, '') : null;
-        if (isDm && partnerId) {
-            // Check block
-            const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
-         WHERE (blocker_id = $1 AND blocked_id = $2)
-            OR (blocker_id = $2 AND blocked_id = $1)`, [userId, partnerId]);
-            if (blockCheck.rows.length > 0) {
-                return (0, response_1.sendError)(res, 'FORBIDDEN', 'Communication with this user is blocked.', 403);
-            }
-            // Fetch partner info
-            const partnerRes = await (0, db_1.query)(`SELECT id, name, avatar_url, locality, phone FROM users WHERE id = $1`, [partnerId]);
-            const partnerData = partnerRes.rows[0] || {
-                id: partnerId,
+        const rawPartnerId = isDm ? conversationId.replace(/^dm_/, '') : null;
+        if (isDm && rawPartnerId) {
+            // Find my IDs and partner IDs
+            const meRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+            const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+            const pRes = await (0, db_1.query)(`SELECT id::text, name, avatar_url, locality, phone, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+            const partnerData = pRes.rows[0] || {
+                id: rawPartnerId,
                 name: 'Community Member',
                 avatar_url: null,
                 locality: 'Bengaluru',
             };
+            const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean);
+            // Check block
+            const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = ANY($1::text[]) AND blocked_id = ANY($2::text[]))
+            OR (blocker_id = ANY($2::text[]) AND blocked_id = ANY($1::text[]))`, [myIds, pIds]);
+            if (blockCheck.rows.length > 0) {
+                return (0, response_1.sendError)(res, 'FORBIDDEN', 'Communication with this user is blocked.', 403);
+            }
             // Fetch direct messages between them
             const messagesRes = await (0, db_1.query)(`SELECT 
-          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
+          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
          FROM messages m
-         LEFT JOIN users u ON m.sender_id = u.id
-         WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
-         ORDER BY m.created_at ASC`, [userId, partnerId]);
+         LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+         WHERE (
+           (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
+           OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
+         )
+         ORDER BY m.created_at ASC`, [myIds, pIds]);
             return (0, response_1.sendSuccess)(res, {
                 booking: null,
                 partner: partnerData,
@@ -144,19 +186,25 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
         const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       WHERE b.id = $1 AND (b.borrower_id = $2 OR b.lender_id = $2 OR i.owner_id = $2)`, [conversationId, userId]);
+       WHERE b.id::text = $1 AND (b.borrower_id = $2 OR b.lender_id = $2 OR i.owner_id = $2)`, [conversationId, userId]);
         if (bookingRes.rows.length === 0) {
             // Check if conversationId was a user ID formatted as UUID
-            const userRes = await (0, db_1.query)(`SELECT id, name, avatar_url, locality, phone FROM users WHERE id = $1`, [conversationId]);
+            const userRes = await (0, db_1.query)(`SELECT id::text, name, avatar_url, locality, phone, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [conversationId]);
             if (userRes.rows.length > 0) {
                 const partner = userRes.rows[0];
+                const meRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+                const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+                const pIds = [conversationId, partner.id, partner.firebase_uid].filter(Boolean);
                 const messagesRes = await (0, db_1.query)(`SELECT 
-            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
+            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
             COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
            FROM messages m
-           LEFT JOIN users u ON m.sender_id = u.id
-           WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
-           ORDER BY m.created_at ASC`, [userId, partner.id]);
+           LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+           WHERE (
+             (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
+             OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
+           )
+           ORDER BY m.created_at ASC`, [myIds, pIds]);
                 return (0, response_1.sendSuccess)(res, {
                     booking: null,
                     partner,
@@ -166,11 +214,11 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Conversation not found or access denied', 404);
         }
         const messagesRes = await (0, db_1.query)(`SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
+        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
         COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
        FROM messages m
-       LEFT JOIN users u ON m.sender_id = u.id
-       WHERE m.booking_id = $1
+       LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+       WHERE m.booking_id::text = $1
        ORDER BY m.created_at ASC`, [conversationId]);
         return (0, response_1.sendSuccess)(res, {
             booking: bookingRes.rows[0],
@@ -370,6 +418,80 @@ router.post('/proposal/:messageId/decline', auth_1.authMiddleware, async (req, r
         const updatedProposal = { ...proposal, status: 'DECLINED' };
         await (0, db_1.query)(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
         return (0, response_1.sendSuccess)(res, { proposal_data: updatedProposal }, 'Proposal declined');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// 6. Delete entire conversation with someone
+router.delete('/conversations/:conversationId', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const { conversationId } = req.params;
+        const userId = req.user.id;
+        const isDm = conversationId.startsWith('dm_') || !isUuid(conversationId);
+        const rawPartnerId = isDm ? conversationId.replace(/^dm_/, '') : null;
+        if (isDm && rawPartnerId) {
+            // Find all IDs for me and partner
+            const meRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+            const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+            const pRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+            const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
+            await (0, db_1.query)(`DELETE FROM messages
+         WHERE (sender_id = ANY($1::text[]) AND receiver_id = ANY($2::text[]))
+            OR (sender_id = ANY($2::text[]) AND receiver_id = ANY($1::text[]))`, [myIds, pIds]);
+            return (0, response_1.sendSuccess)(res, { conversation_id: conversationId }, 'Chat deleted successfully');
+        }
+        // If it's a booking conversation, delete all messages for this booking
+        await (0, db_1.query)(`DELETE FROM messages WHERE booking_id::text = $1`, [conversationId]);
+        return (0, response_1.sendSuccess)(res, { conversation_id: conversationId }, 'Chat cleared');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// 7. Edit an individual message
+router.put('/:messageId', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const { messageId } = req.params;
+        const { content } = req.body;
+        const userId = req.user.id;
+        if (!content || !content.trim()) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Message content cannot be empty', 400);
+        }
+        const checkRes = await (0, db_1.query)(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
+        if (checkRes.rows.length === 0) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'Message not found', 404);
+        }
+        const msg = checkRes.rows[0];
+        const userRow = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+        const validSenders = [userId, userRow.rows[0]?.id, userRow.rows[0]?.firebase_uid].filter(Boolean);
+        if (!validSenders.includes(msg.sender_id)) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'You can only edit your own messages', 403);
+        }
+        const result = await (0, db_1.query)(`UPDATE messages SET content = $1, is_edited = true WHERE id::text = $2 RETURNING *`, [content.trim(), messageId]);
+        return (0, response_1.sendSuccess)(res, result.rows[0], 'Message updated');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// 8. Delete an individual message
+router.delete('/:messageId', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user.id;
+        const checkRes = await (0, db_1.query)(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
+        if (checkRes.rows.length === 0) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'Message not found', 404);
+        }
+        const msg = checkRes.rows[0];
+        const userRow = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+        const validSenders = [userId, userRow.rows[0]?.id, userRow.rows[0]?.firebase_uid].filter(Boolean);
+        if (!validSenders.includes(msg.sender_id)) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'You can only delete your own messages', 403);
+        }
+        await (0, db_1.query)(`DELETE FROM messages WHERE id::text = $1`, [messageId]);
+        return (0, response_1.sendSuccess)(res, { id: messageId }, 'Message deleted');
     }
     catch (error) {
         next(error);

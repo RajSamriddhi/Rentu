@@ -431,6 +431,31 @@ export const api = {
     return handleResponse(res);
   },
 
+  async deleteConversation(conversationId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async editMessage(messageId: string, content: string): Promise<Message> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ content }),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteMessage(messageId: string): Promise<{ id: string }> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   // Users
   async getUser(id: string): Promise<User & { items: Item[]; stats: any }> {
     const res = await fetch(`${API_BASE}/users/${id}`, {

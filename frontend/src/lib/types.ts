@@ -170,6 +170,7 @@ export interface Message {
   content: string;
   message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
   proposal_data?: MessageProposalData | any;
+  is_edited?: boolean;
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;

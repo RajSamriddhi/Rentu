@@ -215,6 +215,7 @@ export const runMigrations = async () => {
       ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
     `);
 
     // 4. NORMALIZATION TABLES (1NF & 3NF Compliance)
