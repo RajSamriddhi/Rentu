@@ -4,6 +4,7 @@ import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { extractCity } from '../../utils/city';
+import { createNotification } from '../notifications/notifications.service';
 
 const router = Router();
 
@@ -494,6 +495,27 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
           [id, validated.image_urls[i], i]
         ).catch(() => {});
       }
+    }
+
+    // Trigger availability notifications if status was modified
+    if (validated.status === 'UNAVAILABLE') {
+      await createNotification({
+        userId: req.user!.id,
+        type: 'ITEM_UNAVAILABLE',
+        title: 'Listing Marked Unavailable 🔒',
+        body: `"${result.rows[0]?.title || 'Item'}" is now marked unavailable and paused from rental listings.`,
+        referenceId: id,
+        referenceType: 'ITEM',
+      });
+    } else if (validated.status === 'AVAILABLE') {
+      await createNotification({
+        userId: req.user!.id,
+        type: 'ITEM_AVAILABLE',
+        title: 'Listing Marked Available ✨',
+        body: `"${result.rows[0]?.title || 'Item'}" is active and available for rent on the marketplace.`,
+        referenceId: id,
+        referenceType: 'ITEM',
+      });
     }
 
     return sendSuccess(res, result.rows[0], 'Listing updated successfully');

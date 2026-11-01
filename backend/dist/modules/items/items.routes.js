@@ -6,6 +6,7 @@ const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const city_1 = require("../../utils/city");
+const notifications_service_1 = require("../notifications/notifications.service");
 const router = (0, express_1.Router)();
 const createItemSchema = zod_1.z.object({
     title: zod_1.z.string().min(3, 'Title must be at least 3 characters'),
@@ -408,6 +409,27 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
             for (let i = 0; i < validated.image_urls.length; i++) {
                 await (0, db_1.query)(`INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`, [id, validated.image_urls[i], i]).catch(() => { });
             }
+        }
+        // Trigger availability notifications if status was modified
+        if (validated.status === 'UNAVAILABLE') {
+            await (0, notifications_service_1.createNotification)({
+                userId: req.user.id,
+                type: 'ITEM_UNAVAILABLE',
+                title: 'Listing Marked Unavailable 🔒',
+                body: `"${result.rows[0]?.title || 'Item'}" is now marked unavailable and paused from rental listings.`,
+                referenceId: id,
+                referenceType: 'ITEM',
+            });
+        }
+        else if (validated.status === 'AVAILABLE') {
+            await (0, notifications_service_1.createNotification)({
+                userId: req.user.id,
+                type: 'ITEM_AVAILABLE',
+                title: 'Listing Marked Available ✨',
+                body: `"${result.rows[0]?.title || 'Item'}" is active and available for rent on the marketplace.`,
+                referenceId: id,
+                referenceType: 'ITEM',
+            });
         }
         return (0, response_1.sendSuccess)(res, result.rows[0], 'Listing updated successfully');
     }

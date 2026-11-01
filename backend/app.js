@@ -53914,6 +53914,124 @@ function extractCity(locality) {
   return "Delhi";
 }
 
+// src/modules/notifications/notifications.service.ts
+async function createNotification(params) {
+  try {
+    await query(
+      `INSERT INTO notifications 
+        (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        params.userId,
+        params.senderId || null,
+        params.type,
+        params.title,
+        params.body,
+        params.bookingId || null,
+        params.messageId || null,
+        params.referenceId || null,
+        params.referenceType || null
+      ]
+    );
+  } catch (error) {
+    console.error("Failed to create notification:", error);
+  }
+}
+async function checkAndGenerateReminders(userId) {
+  try {
+    const upcomingPickups = await query(
+      `SELECT 
+        b.id, 
+        b.borrower_id, 
+        b.lender_id, 
+        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
+        b.start_time, 
+        i.title AS item_title,
+        borrower.name AS borrower_name,
+        lender.name AS lender_name,
+        (b.start_date = CURRENT_DATE) AS is_today
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       JOIN users borrower ON b.borrower_id = borrower.id
+       JOIN users lender ON i.owner_id = lender.id
+       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+         AND b.status = 'ACCEPTED'
+         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+      [userId]
+    );
+    for (const b of upcomingPickups.rows) {
+      const alreadyNotified = await query(
+        `SELECT id FROM notifications 
+         WHERE user_id = $1 
+           AND booking_id = $2 
+           AND type = 'REMINDER_PICKUP'
+           AND created_at >= CURRENT_DATE`,
+        [userId, b.id]
+      );
+      if (alreadyNotified.rows.length === 0) {
+        const isBorrower = b.borrower_id === userId;
+        const dayLabel = b.is_today ? "Today" : "Tomorrow";
+        await createNotification({
+          userId,
+          senderId: isBorrower ? b.lender_id : b.borrower_id,
+          bookingId: b.id,
+          referenceId: b.id,
+          referenceType: "BOOKING",
+          type: "REMINDER_PICKUP",
+          title: `\u23F0 Pickup ${dayLabel}!`,
+          body: isBorrower ? `Your pickup for "${b.item_title}" is scheduled ${dayLabel.toLowerCase()} (${b.start_date} at ${b.start_time || "10:00"}). Have your 6-digit code ready!` : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel.toLowerCase()} (${b.start_date} at ${b.start_time || "10:00"}).`
+        });
+      }
+    }
+    const upcomingReturns = await query(
+      `SELECT 
+        b.id, 
+        b.borrower_id, 
+        b.lender_id, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        b.end_time, 
+        i.title AS item_title,
+        borrower.name AS borrower_name,
+        lender.name AS lender_name,
+        (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       JOIN users borrower ON b.borrower_id = borrower.id
+       JOIN users lender ON i.owner_id = lender.id
+       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+         AND b.status = 'HANDED_OVER'
+         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+      [userId]
+    );
+    for (const b of upcomingReturns.rows) {
+      const alreadyNotified = await query(
+        `SELECT id FROM notifications 
+         WHERE user_id = $1 
+           AND booking_id = $2 
+           AND type = 'REMINDER_RETURN'
+           AND created_at >= CURRENT_DATE`,
+        [userId, b.id]
+      );
+      if (alreadyNotified.rows.length === 0) {
+        const isBorrower = b.borrower_id === userId;
+        const dayLabel = b.is_today ? "Today" : "Tomorrow";
+        await createNotification({
+          userId,
+          senderId: isBorrower ? b.lender_id : b.borrower_id,
+          bookingId: b.id,
+          referenceId: b.id,
+          referenceType: "BOOKING",
+          type: "REMINDER_RETURN",
+          title: `\u23F0 Return Due ${dayLabel}!`,
+          body: isBorrower ? `Your rental of "${b.item_title}" is due for return ${dayLabel.toLowerCase()} (${b.end_date} at ${b.end_time || "18:00"}). Meet ${b.lender_name} to verify exchange!` : `Scheduled return collection for "${b.item_title}" from ${b.borrower_name} is ${dayLabel.toLowerCase()} (${b.end_date} at ${b.end_time || "18:00"}).`
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error generating notification reminders:", error);
+  }
+}
+
 // src/modules/items/items.routes.ts
 var router2 = (0, import_express2.Router)();
 var createItemSchema = external_exports.object({
@@ -54343,6 +54461,25 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
         ).catch(() => {
         });
       }
+    }
+    if (validated.status === "UNAVAILABLE") {
+      await createNotification({
+        userId: req.user.id,
+        type: "ITEM_UNAVAILABLE",
+        title: "Listing Marked Unavailable \u{1F512}",
+        body: `"${result.rows[0]?.title || "Item"}" is now marked unavailable and paused from rental listings.`,
+        referenceId: id,
+        referenceType: "ITEM"
+      });
+    } else if (validated.status === "AVAILABLE") {
+      await createNotification({
+        userId: req.user.id,
+        type: "ITEM_AVAILABLE",
+        title: "Listing Marked Available \u2728",
+        body: `"${result.rows[0]?.title || "Item"}" is active and available for rent on the marketplace.`,
+        referenceId: id,
+        referenceType: "ITEM"
+      });
     }
     return sendSuccess(res, result.rows[0], "Listing updated successfully");
   } catch (error) {
@@ -54880,6 +55017,28 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         [booking.id, borrowerId, item.owner_id, validated.message]
       );
     }
+    const borrowerUserRes = await query("SELECT name FROM users WHERE id = $1", [borrowerId]);
+    const borrowerName = borrowerUserRes.rows[0]?.name || "A community member";
+    await createNotification({
+      userId: item.owner_id,
+      senderId: borrowerId,
+      bookingId: booking.id,
+      referenceId: booking.id,
+      referenceType: "BOOKING",
+      type: "BOOKING_PROPOSAL",
+      title: "New Rental Proposal \u{1F4C5}",
+      body: `${borrowerName} requested to rent "${item.title}" for ${validated.start_date} \u2192 ${finalEndDate}. Please review and accept or decline.`
+    });
+    await createNotification({
+      userId: borrowerId,
+      senderId: item.owner_id,
+      bookingId: booking.id,
+      referenceId: booking.id,
+      referenceType: "BOOKING",
+      type: "BOOKING_PENDING",
+      title: "Proposal Sent \u23F3",
+      body: `Your rental proposal for "${item.title}" (${validated.start_date} \u2192 ${finalEndDate}) was sent to the owner. Status is currently Pending.`
+    });
     return sendSuccess(res, booking, "Proposal sent to lender! You will be notified when they accept.", 201);
   } catch (error) {
     next(error);
@@ -54937,7 +55096,10 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const { status } = updateStatusSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        JOIN users lender ON i.owner_id = lender.id
@@ -54973,6 +55135,8 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
        RETURNING *`,
       [status, pickupCode, id]
     );
+    const sDate = booking.start_date_str || booking.start_date;
+    const eDate = booking.end_date_str || booking.end_date;
     if (status === "ACCEPTED") {
       await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
       await query(
@@ -54980,8 +55144,79 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
          VALUES ($1, $2, $3, '\u{1F389} Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
         [id, booking.lender_id, booking.borrower_id]
       );
-    } else if (status === "COMPLETED" || status === "CANCELLED" || status === "REJECTED") {
+      await createNotification({
+        userId: booking.borrower_id,
+        senderId: booking.lender_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_ACCEPTED",
+        title: "Rental Proposal Accepted! \u{1F91D}",
+        body: `Great news! ${booking.lender_name} accepted your booking for "${booking.item_title}" (${sDate} \u2192 ${eDate}). Pickup code: ${pickupCode}.`
+      });
+      await createNotification({
+        userId: booking.lender_id,
+        senderId: booking.borrower_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_ACCEPTED",
+        title: "Rental Accepted \u2014 Meetup Scheduled \u{1F4C5}",
+        body: `You accepted ${booking.borrower_name}'s proposal for "${booking.item_title}" (${sDate} \u2192 ${eDate}). Scheduled on your calendar.`
+      });
+      await createNotification({
+        userId: booking.lender_id,
+        senderId: booking.borrower_id,
+        bookingId: id,
+        referenceId: booking.item_id,
+        referenceType: "ITEM",
+        type: "ITEM_UNAVAILABLE",
+        title: "Gear Reserved & Unavailable \u{1F512}",
+        body: `"${booking.item_title}" is now marked unavailable/rented for ${sDate} to ${eDate}.`
+      });
+    } else if (status === "REJECTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await createNotification({
+        userId: booking.borrower_id,
+        senderId: booking.lender_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_REJECTED",
+        title: "Rental Proposal Declined \u274C",
+        body: `Your rental proposal for "${booking.item_title}" (${sDate} \u2192 ${eDate}) was declined by the owner.`
+      });
+      await createNotification({
+        userId: booking.lender_id,
+        senderId: booking.borrower_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_REJECTED",
+        title: "Proposal Declined \u274C",
+        body: `You declined the rental proposal for "${booking.item_title}" (${sDate} \u2192 ${eDate}).`
+      });
+      await createNotification({
+        userId: booking.lender_id,
+        referenceId: booking.item_id,
+        referenceType: "ITEM",
+        type: "ITEM_AVAILABLE",
+        title: "Gear Available \u2728",
+        body: `"${booking.item_title}" remains live and available on the marketplace.`
+      });
+    } else if (status === "CANCELLED") {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
+      await createNotification({
+        userId: otherPartyId,
+        senderId: userId,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_CANCELLED",
+        title: "Rental Cancelled \u{1F6AB}",
+        body: `The rental proposal for "${booking.item_title}" (${sDate} \u2192 ${eDate}) was cancelled.`
+      });
     }
     return sendSuccess(res, updateRes.rows[0], `Proposal updated to ${status}`);
   } catch (error) {
@@ -54994,9 +55229,14 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     const { code } = verifyCodeSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
        JOIN items i ON b.item_id = i.id
+       JOIN users lender ON i.owner_id = lender.id
+       JOIN users borrower ON b.borrower_id = borrower.id
        WHERE b.id = $1`,
       [id]
     );
@@ -55033,6 +55273,28 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
        VALUES ($1, $2, $3, '\u{1F91D} Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
+    const sDate = booking.start_date_str || booking.start_date;
+    const eDate = booking.end_date_str || booking.end_date;
+    await createNotification({
+      userId: booking.borrower_id,
+      senderId: booking.lender_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_RECEIVED",
+      title: "Gear Received (In Use) \u{1F4E6}",
+      body: `Handover verified! You have received "${booking.item_title}". Rental is active until ${eDate}. Return code has been generated.`
+    });
+    await createNotification({
+      userId: booking.lender_id,
+      senderId: booking.borrower_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_HANDED_OVER",
+      title: "Gear Handed Over \u{1F91D}",
+      body: `Handover verified! ${booking.borrower_name || "Renter"} received "${booking.item_title}". Active rental until ${eDate}.`
+    });
     return sendSuccess(res, updateRes.rows[0], "Product accepted & handed over successfully! Rental is now in use.");
   } catch (error) {
     next(error);
@@ -55044,9 +55306,14 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     const { code } = verifyCodeSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
        JOIN items i ON b.item_id = i.id
+       JOIN users lender ON i.owner_id = lender.id
+       JOIN users borrower ON b.borrower_id = borrower.id
        WHERE b.id = $1`,
       [id]
     );
@@ -55081,6 +55348,34 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
        VALUES ($1, $2, $3, '\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
+    await createNotification({
+      userId: booking.lender_id,
+      senderId: booking.borrower_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_RETURNED",
+      title: "Gear Received Back \u2705",
+      body: `Return code verified! You received "${booking.item_title}" back safely. The rental is completed. Please leave a review!`
+    });
+    await createNotification({
+      userId: booking.lender_id,
+      referenceId: booking.item_id,
+      referenceType: "ITEM",
+      type: "ITEM_AVAILABLE",
+      title: "Gear Available Again \u2728",
+      body: `"${booking.item_title}" has been returned and is available again on the marketplace.`
+    });
+    await createNotification({
+      userId: booking.borrower_id,
+      senderId: booking.lender_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_COMPLETED",
+      title: "Rental Completed \u{1F389}",
+      body: `Return confirmed! Thank you for taking good care of "${booking.item_title}". Please leave a review!`
+    });
     return sendSuccess(res, updateRes.rows[0], "Product returned successfully! You can now leave a review.");
   } catch (error) {
     next(error);
@@ -55144,6 +55439,18 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
        WHERE id = $1`,
       [revieweeId]
     ).catch(() => {
+    });
+    const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [userId]);
+    const reviewerName = reviewerRes.rows[0]?.name || "Your rental partner";
+    await createNotification({
+      userId: revieweeId,
+      senderId: userId,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_REVIEW",
+      title: "New Review & Rating Received \u2B50",
+      body: `${reviewerName} left a ${rating}-star review for the "${booking.item_title}" rental!`
     });
     return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
   } catch (error) {
@@ -66097,6 +66404,9 @@ var router10 = (0, import_express10.Router)();
 router10.get("/", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
+    await checkAndGenerateReminders(userId).catch((err) => {
+      console.warn("Notification reminder check error:", err);
+    });
     const result = await query(
       `SELECT 
         n.id, 
@@ -66105,9 +66415,12 @@ router10.get("/", authMiddleware, async (req, res, next) => {
         n.title, 
         n.body, 
         n.sender_id, 
+        n.booking_id,
+        n.message_id,
         n.reference_id, 
         n.reference_type, 
         n.read_at, 
+        (n.read_at IS NOT NULL) AS is_read,
         n.created_at,
         u.name AS sender_name,
         u.avatar_url AS sender_avatar

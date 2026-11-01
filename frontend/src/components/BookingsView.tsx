@@ -77,6 +77,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status } : b))
       );
+      window.dispatchEvent(new Event('rentu:notifications-updated'));
       if (status === 'ACCEPTED') {
         confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
         // Automatically switch to Accepted tab so owner sees the next step
@@ -104,6 +105,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'HANDED_OVER' } : b))
       );
+      window.dispatchEvent(new Event('rentu:notifications-updated'));
       // Advance to stage 3
       setActiveTab('receiving');
     } catch (err: any) {
@@ -130,6 +132,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'COMPLETED' } : b))
       );
+      window.dispatchEvent(new Event('rentu:notifications-updated'));
       // Advance to stage 4 & prompt review
       setActiveTab('completed');
       setReviewBooking(updated);
