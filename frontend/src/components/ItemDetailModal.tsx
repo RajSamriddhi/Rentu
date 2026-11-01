@@ -14,7 +14,9 @@ import {
   Navigation,
   Loader2,
   Calendar,
-  Clock
+  Clock,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
@@ -30,6 +32,8 @@ interface ItemDetailModalProps {
   onOpenAuth: () => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
   onOpenUserProfile?: (userId: string) => void;
+  onEditItem?: (item: Item) => void;
+  onDeleteItem?: (itemId: string) => void;
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
@@ -39,16 +43,44 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onOpenAuth,
   onOpenChatWithBooking,
   onOpenUserProfile,
+  onEditItem,
+  onDeleteItem,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [rentType, setRentType] = useState<'Rent' | 'Borrow'>('Rent');
   const [isLiked, setIsLiked] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Available for borrowing state
-  // Available for Borrowing status (set by owner during listing/editing)
+  // Available for borrowing status (set by owner during listing/editing)
   const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
+
+  // Owner detection: checks user id or firebase_uid against item.owner_id
+  const isOwner = Boolean(
+    user?.id && item?.owner_id && (user.id === item.owner_id || (user as any).firebase_uid === item.owner_id)
+  );
+
+  const handleDeleteListing = async () => {
+    if (!item) return;
+    if (!window.confirm(`Are you sure you want to permanently delete "${item.title}"? This cannot be undone.`)) {
+      return;
+    }
+    setIsDeleting(true);
+    setErrorMsg('');
+    try {
+      await api.deleteItem(item.id);
+      if (onDeleteItem) {
+        onDeleteItem(item.id);
+      } else {
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to delete listing.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Booked Calendar Dates state
   const [bookedDates, setBookedDates] = useState<any[]>(item?.booked_dates || []);
@@ -215,14 +247,45 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             <span>{item.category}</span>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
             <span className="font-bold text-ink truncate">{item.title}</span>
+            {isOwner && (
+              <span className="ml-2 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-soft text-brand border border-brand/20">
+                Owner Preview
+              </span>
+            )}
           </nav>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-canvas text-ink transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isOwner && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onEditItem?.(item)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-canvas hover:bg-brand-soft hover:text-brand border border-divider hover:border-brand/40 text-ink transition-colors cursor-pointer shadow-xs"
+                  title="Edit listing details"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-brand" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteListing}
+                  disabled={isDeleting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition-colors cursor-pointer shadow-xs"
+                  title="Delete listing permanently"
+                >
+                  {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  <span>Delete</span>
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-canvas text-ink transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body: Left gallery + details, Right booking card */}
@@ -722,20 +785,50 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       </div>
                     )}
 
-                    {/* Hot Pink CTA Button */}
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="btn-primary w-full py-3.5 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
-                    >
-                      <span>
-                        {isSubmitting
-                          ? 'Sending Request...'
-                          : rentType === 'Borrow'
-                          ? 'Request to Borrow (Free)'
-                          : `Request to Rent (₹${totalCost})`}
-                      </span>
-                    </button>
+                    {/* Hot Pink CTA Button for Renters / Action Buttons for Owner */}
+                    {isOwner ? (
+                      <div className="space-y-2 mt-3 pt-3 border-t border-divider">
+                        <div className="p-3 rounded-2xl bg-brand-soft/40 border border-brand/20 text-center">
+                          <div className="text-xs font-bold text-ink">👀 Product Preview Mode</div>
+                          <p className="text-[11px] text-ink-secondary mt-0.5">
+                            This preview matches exactly what other users see when viewing your listed gear.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEditItem?.(item)}
+                            className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-canvas hover:bg-surface border border-divider hover:border-brand/40 text-ink hover:text-brand transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-brand" />
+                            <span>Edit Listing</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDeleteListing}
+                            disabled={isDeleting}
+                            className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            <span>Delete Listing</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="btn-primary w-full py-3.5 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
+                      >
+                        <span>
+                          {isSubmitting
+                            ? 'Sending Request...'
+                            : rentType === 'Borrow'
+                            ? 'Request to Borrow (Free)'
+                            : `Request to Rent (₹${totalCost})`}
+                        </span>
+                      </button>
+                    )}
 
                     {/* Trust Perks */}
                     <div className="pt-4 border-t border-divider space-y-2 text-xs text-ink-secondary font-medium">

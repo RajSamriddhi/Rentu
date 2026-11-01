@@ -8,6 +8,7 @@ import { BookingsView } from './components/BookingsView';
 import { ProfileView } from './components/ProfileView';
 import { HustleHub } from './components/HustleHub';
 import { ItemDetailModal } from './components/ItemDetailModal';
+import { EditItemModal } from './components/EditItemModal';
 import { DropGearModal } from './components/DropGearModal';
 import { DropWishModal } from './components/DropWishModal';
 import { MessagesView } from './components/MessagesView';
@@ -102,6 +103,7 @@ export const App: React.FC = () => {
 
   // Modals
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isDropGearOpen, setIsDropGearOpen] = useState(false);
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
@@ -334,14 +336,38 @@ export const App: React.FC = () => {
           onOpenAuth={() => setIsAuthOpen(true)}
           onOpenChatWithBooking={handleOpenChatWithBooking}
           onOpenUserProfile={handleOpenUserProfile}
+          onEditItem={(itemToEdit) => {
+            setSelectedItem(null);
+            setEditingItem(itemToEdit);
+          }}
+          onDeleteItem={() => {
+            setSelectedItem(null);
+            loadFeed();
+          }}
         />
       )}
+
+      {/* Edit Gear Listing Modal */}
+      <EditItemModal
+        item={editingItem}
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSuccess={() => {
+          setEditingItem(null);
+          loadFeed();
+        }}
+      />
 
       {/* Screen 5: List an Item Modal */}
       <DropGearModal
         isOpen={isDropGearOpen}
         onClose={() => setIsDropGearOpen(false)}
-        onSuccess={() => loadFeed()}
+        onSuccess={(createdItem) => {
+          loadFeed();
+          if (createdItem) {
+            setSelectedItem(createdItem);
+          }
+        }}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 

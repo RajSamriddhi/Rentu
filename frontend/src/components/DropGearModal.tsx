@@ -16,11 +16,12 @@ import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
 import { detectCurrentLocation } from '../lib/location';
+import { Item } from '../lib/types';
 
 interface DropGearModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newItem?: Item) => void;
   onOpenAuth: () => void;
 }
 
@@ -225,7 +226,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
     setErrorMsg('');
 
     try {
-      await api.createItem({
+      const createdItem = await api.createItem({
         title: title.trim(),
         description: description.trim(),
         category,
@@ -247,7 +248,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         origin: { y: 0.6 },
       });
 
-      onSuccess();
+      onSuccess(createdItem);
       onClose();
     } catch (err: any) {
       console.error('Failed to list item:', err);

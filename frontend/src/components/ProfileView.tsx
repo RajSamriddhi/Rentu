@@ -26,6 +26,7 @@ import { ItemCard } from './ItemCard';
 import { EditProfileModal } from './EditProfileModal';
 import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
+import { ItemDetailModal } from './ItemDetailModal';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
@@ -49,6 +50,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [previewItem, setPreviewItem] = useState<Item | null>(null);
   const [editingRequest, setEditingRequest] = useState<CommunityRequest | null>(null);
 
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -369,6 +371,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }}
       />
 
+      {/* Product Detail Preview Modal (Owner Preview as seen by other users) */}
+      {previewItem && (
+        <ItemDetailModal
+          item={previewItem}
+          onClose={() => setPreviewItem(null)}
+          onBookingSuccess={() => loadData()}
+          onOpenAuth={() => {}}
+          onEditItem={(itemToEdit) => {
+            setPreviewItem(null);
+            setEditingItem(itemToEdit);
+          }}
+          onDeleteItem={async () => {
+            setPreviewItem(null);
+            await loadData();
+          }}
+        />
+      )}
+
       {/* Edit Gear Listing Modal */}
       <EditItemModal
         item={editingItem}
@@ -476,7 +496,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <ItemCard
                     key={item.id}
                     item={item}
-                    onClick={() => setEditingItem(item)}
+                    onClick={() => setPreviewItem(item)}
                   />
                 ))}
               </div>
