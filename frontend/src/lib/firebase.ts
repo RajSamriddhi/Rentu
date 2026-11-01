@@ -12,7 +12,7 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB6ah1Pz0RdCilzVhUvra-6Yl0TIeDmFtY",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "rentu-732b7.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "rentu-732b7",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "rentu-732b7.firebasestorage.app",
@@ -21,12 +21,30 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-GCD80T1NWM"
 };
 
-// Initialize or reuse Firebase App instance
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Initialize or reuse Firebase App instance safely
+let app: any;
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+} catch (err) {
+  console.warn('Firebase initializeApp error:', err);
+}
 
-export const auth = getAuth(app);
+let authInstance: any = null;
+try {
+  if (app) {
+    authInstance = getAuth(app);
+  }
+} catch (err) {
+  console.warn('Firebase getAuth error:', err);
+}
+
+export const auth = authInstance;
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
+try {
+  googleProvider.setCustomParameters({ prompt: 'select_account' });
+} catch {
+  // Ignore fallback
+}
 
 export type { FirebaseUser };
 export { 

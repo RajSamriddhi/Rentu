@@ -109,23 +109,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Listen to Firebase Auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      setFirebaseUser(fbUser);
-      if (fbUser) {
-        await syncFirebaseUser(fbUser);
+    if (!auth) {
+      const localToken = localStorage.getItem('borrowflex_token');
+      if (localToken && !localToken.startsWith('fb_')) {
+        fetchProfile();
       } else {
-        // If not logged into Firebase, check if local demo token is active
-        const localToken = localStorage.getItem('borrowflex_token');
-        if (localToken && !localToken.startsWith('fb_')) {
-          fetchProfile();
-        } else {
-          setUser(null);
-          setIsLoading(false);
-        }
+        setUser(null);
+        setIsLoading(false);
       }
-    });
+      return;
+    }
 
-    return () => unsubscribe();
+    try {
+      const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+        setFirebaseUser(fbUser);
+        if (fbUser) {
+          await syncFirebaseUser(fbUser);
+        } else {
+          // If not logged into Firebase, check if local demo token is active
+          const localToken = localStorage.getItem('borrowflex_token');
+          if (localToken && !localToken.startsWith('fb_')) {
+            fetchProfile();
+          } else {
+            setUser(null);
+            setIsLoading(false);
+          }
+        }
+      }, (err) => {
+        console.warn('Firebase onAuthStateChanged error:', err);
+        setIsLoading(false);
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Firebase listener registration error:', err);
+      setIsLoading(false);
+    }
   }, []);
 
   // Google Sign-In with popup
@@ -220,7 +239,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setFirebaseUser(null);
     try {
-      await fbSignOut(auth);
+      if (auth) {
+        await fbSignOut(auth);
+      }
     } catch (err) {
       console.error('Firebase signOut error:', err);
     }
