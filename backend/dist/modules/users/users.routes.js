@@ -17,6 +17,7 @@ const updateProfileSchema = zod_1.z.object({
     pincode: zod_1.z.string().optional(),
     latitude: zod_1.z.number().optional(),
     longitude: zod_1.z.number().optional(),
+    notify_nearby_requests_5km: zod_1.z.boolean().optional(),
 });
 // Curated community champions to guarantee vibrant, full top-10 lists across all categories
 const SEED_COMMUNITY_CHAMPIONS = [
@@ -566,9 +567,32 @@ const getChampionSyntheticData = (champ) => {
     return { mockItems, mockRequests, mockReviews };
 };
 // Public User Profile & Gear Closet (Supports Database Users & Curated Community Champions)
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     try {
         const { id } = req.params;
+        const currentUserId = req.user?.id;
+        // Check relationship if viewer is authenticated
+        let isFollowing = false;
+        let isBlocked = false;
+        let isBlockedBy = false;
+        if (currentUserId && currentUserId !== id) {
+            const [fRes, bRes, bbRes] = await Promise.all([
+                (0, db_1.query)(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, id]),
+                (0, db_1.query)(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, id]),
+                (0, db_1.query)(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [id, currentUserId]),
+            ]);
+            isFollowing = fRes.rows.length > 0;
+            isBlocked = bRes.rows.length > 0;
+            isBlockedBy = bbRes.rows.length > 0;
+        }
+        // Follower & following counts
+        const countsRes = await (0, db_1.query)(`
+      SELECT 
+        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
+        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
+    `, [id]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
+        const followersCount = countsRes.rows[0]?.followers_count || 0;
+        const followingCount = countsRes.rows[0]?.following_count || 0;
         // Check if champion
         const champ = SEED_COMMUNITY_CHAMPIONS.find(c => c.id === id);
         if (champ) {
@@ -584,12 +608,17 @@ router.get('/:id', async (req, res, next) => {
                 rating: champ.rating,
                 trust_score: champ.trust_score,
                 created_at: '2024-01-15T00:00:00.000Z',
-                items: mockItems,
-                requests: mockRequests,
+                is_following: isFollowing,
+                is_blocked: isBlocked,
+                is_blocked_by: isBlockedBy,
+                followers_count: followersCount || 12,
+                following_count: followingCount || 4,
+                items: (isBlocked || isBlockedBy) ? [] : mockItems,
+                requests: (isBlocked || isBlockedBy) ? [] : mockRequests,
                 reviews: mockReviews,
                 stats: {
-                    listings_count: champ.items_count,
-                    requests_count: champ.requests_count,
+                    listings_count: (isBlocked || isBlockedBy) ? 0 : champ.items_count,
+                    requests_count: (isBlocked || isBlockedBy) ? 0 : champ.requests_count,
                     completed_lent: champ.lent_count,
                     completed_borrowed: champ.borrowed_count,
                     reviews_count: champ.reviews_count,
@@ -606,20 +635,26 @@ router.get('/:id', async (req, res, next) => {
         bio, 
         COALESCE(trust_score, 98)::int AS trust_score, 
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
         created_at
        FROM users WHERE id = $1`, [id]);
         if (userRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
         }
         const user = userRes.rows[0];
-        // User's active listings
-        const itemsRes = await (0, db_1.query)(`SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
-       FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
-       ORDER BY created_at DESC`, [id]);
-        // User's active requests
-        const requestsRes = await (0, db_1.query)(`SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-       FROM requests WHERE seeker_id = $1
-       ORDER BY created_at DESC`, [id]);
+        // If blocked or blocked by, hide active listings & requests
+        let userItems = [];
+        let userRequests = [];
+        if (!isBlocked && !isBlockedBy) {
+            const itemsRes = await (0, db_1.query)(`SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+         FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
+         ORDER BY created_at DESC`, [id]);
+            userItems = itemsRes.rows;
+            const requestsRes = await (0, db_1.query)(`SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
+         FROM requests WHERE seeker_id = $1
+         ORDER BY created_at DESC`, [id]);
+            userRequests = requestsRes.rows;
+        }
         // User's reviews received
         const reviewsRes = await (0, db_1.query)(`SELECT 
         r.id, 
@@ -674,12 +709,18 @@ router.get('/:id', async (req, res, next) => {
             trust_score: parseInt(user.trust_score, 10) || 98,
             rating: parseFloat(user.rating) || 5.0,
             created_at: user.created_at,
-            items: itemsRes.rows,
-            requests: requestsRes.rows,
+            notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+            is_following: isFollowing,
+            is_blocked: isBlocked,
+            is_blocked_by: isBlockedBy,
+            followers_count: followersCount,
+            following_count: followingCount,
+            items: userItems,
+            requests: userRequests,
             reviews: reviewsList,
             stats: {
-                listings_count: parseInt(stats.listings_count, 10) || itemsRes.rows.length,
-                requests_count: parseInt(stats.requests_count, 10) || requestsRes.rows.length,
+                listings_count: parseInt(stats.listings_count, 10) || userItems.length,
+                requests_count: parseInt(stats.requests_count, 10) || userRequests.length,
                 completed_lent: parseInt(stats.completed_lent, 10) || 0,
                 completed_borrowed: parseInt(stats.completed_borrowed, 10) || 0,
                 reviews_count: Math.max(parseInt(stats.reviews_count, 10) || 0, reviewsList.length),
@@ -743,6 +784,10 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
             values.push(validated.longitude);
             fields.push(`longitude = $${values.length}`);
         }
+        if (validated.notify_nearby_requests_5km !== undefined) {
+            values.push(validated.notify_nearby_requests_5km);
+            fields.push(`notify_nearby_requests_5km = $${values.length}`);
+        }
         if (fields.length === 0) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'No fields to update', 400);
         }
@@ -751,11 +796,77 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
     `;
         const result = await (0, db_1.query)(updateSql, values);
         const updatedUser = result.rows[0];
         return (0, response_1.sendSuccess)(res, updatedUser, 'Profile updated successfully ✨');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// Follow a user
+router.post('/:id/follow', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.id;
+        if (followerId === followingId) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot follow yourself', 400);
+        }
+        // Check block
+        const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`, [followerId, followingId]);
+        if (blockCheck.rows.length > 0) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Cannot follow a blocked user', 403);
+        }
+        await (0, db_1.query)(`INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [followerId, followingId]);
+        // Notify the followed user
+        await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body)
+       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower 🎉', $3)`, [followingId, followerId, `${req.user.name || 'A neighbor'} started following your gear listings.`]).catch(() => { });
+        const countRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+        return (0, response_1.sendSuccess)(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, 'Followed neighbor');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// Unfollow a user
+router.post('/:id/unfollow', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.id;
+        await (0, db_1.query)(`DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [followerId, followingId]);
+        const countRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+        return (0, response_1.sendSuccess)(res, { is_following: false, followers_count: countRes.rows[0]?.count || 0 }, 'Unfollowed neighbor');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// Block a user
+router.post('/:id/block', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const blockerId = req.user.id;
+        const blockedId = req.params.id;
+        if (blockerId === blockedId) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot block yourself', 400);
+        }
+        await (0, db_1.query)(`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [blockerId, blockedId]);
+        // Clean up any follow ties between them
+        await (0, db_1.query)(`DELETE FROM user_follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`, [blockerId, blockedId]);
+        return (0, response_1.sendSuccess)(res, { is_blocked: true }, 'User blocked successfully. You will not see their listings, requests, or messages.');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// Unblock a user
+router.post('/:id/unblock', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const blockerId = req.user.id;
+        const blockedId = req.params.id;
+        await (0, db_1.query)(`DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [blockerId, blockedId]);
+        return (0, response_1.sendSuccess)(res, { is_blocked: false }, 'User unblocked successfully');
     }
     catch (error) {
         next(error);

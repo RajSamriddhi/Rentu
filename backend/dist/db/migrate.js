@@ -327,6 +327,30 @@ const runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
     `);
+        // 4.6. USER FOLLOWS & BLOCKS
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS user_follows (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(follower_id, following_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
+      CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows(following_id);
+
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(blocker_id, blocked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id);
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+    `);
         // Clean up unnecessary helper views to maintain clean database tables
         await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
         // 4.7. RELATIONAL FOREIGN KEY CONSTRAINTS (SCHEMA.md Full Relational Integrity)

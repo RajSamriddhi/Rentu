@@ -163,6 +163,11 @@ export const App: React.FC = () => {
     setActiveTab('messages');
   };
 
+  const handleOpenChatWithUser = (_targetUserId: string, _targetUserName: string) => {
+    handleCloseUserProfile();
+    setActiveTab('messages');
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-canvas font-sans">
       
@@ -191,6 +196,7 @@ export const App: React.FC = () => {
             onClaimRequest={handleClaimRequest}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenChatWithBooking={handleOpenChatWithBooking}
+            onOpenChatWithUser={handleOpenChatWithUser}
           />
         ) : (
           <>

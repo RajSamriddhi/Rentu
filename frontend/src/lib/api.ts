@@ -441,6 +441,59 @@ export const api = {
     return handleResponse(res);
   },
 
+  async followUser(userId: string): Promise<{ is_following: boolean; followers_count: number }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/follow`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async unfollowUser(userId: string): Promise<{ is_following: boolean; followers_count: number }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/unfollow`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async blockUser(userId: string): Promise<{ is_blocked: boolean }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/block`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async unblockUser(userId: string): Promise<{ is_blocked: boolean }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/unblock`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getNotifications(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/notifications`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async markNotificationRead(id: string): Promise<void> {
+    await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
+      method: 'PUT',
+      headers: getHeaders(),
+    });
+  },
+
+  async markAllNotificationsRead(): Promise<void> {
+    await fetch(`${API_BASE}/notifications/read-all`, {
+      method: 'PUT',
+      headers: getHeaders(),
+    });
+  },
+
   // Rentu AI Assistant
   async sendAiChatMessage(
     messages: { role: 'user' | 'assistant'; content: string }[],

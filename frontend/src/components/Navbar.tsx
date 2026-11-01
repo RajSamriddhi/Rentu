@@ -67,10 +67,37 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
+  // Live Notifications State
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+
   const postMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const mobileSearchBoxRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = async () => {
+    if (!isAuthenticated) return;
+    setIsLoadingNotifications(true);
+    try {
+      const data = await api.getNotifications();
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   // Debounced user search
   useEffect(() => {
@@ -107,6 +134,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setShowUserMenu(false);
       }
+      if (notifRef.current && !notifRef.current.contains(target)) {
+        setShowNotifications(false);
+      }
       if (
         searchBoxRef.current && !searchBoxRef.current.contains(target) &&
         mobileSearchBoxRef.current && !mobileSearchBoxRef.current.contains(target)
@@ -117,6 +147,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const handleNotificationClick = async (notif: any) => {
+    if (!notif.is_read) {
+      await api.markNotificationRead(notif.id).catch(() => {});
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+    }
+    setShowNotifications(false);
+    if (notif.reference_type === 'REQUEST') {
+      setActiveTab('requests');
+    } else if (notif.sender_id && onOpenUserProfile) {
+      onOpenUserProfile(notif.sender_id);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    await api.markAllNotificationsRead().catch(() => {});
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 dark:bg-[#111218]/95 backdrop-blur-md border-b border-divider transition-colors">
@@ -321,15 +371,86 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* AUTHENTICATED: Notifications, Chat, Post CTA, User Profile */}
             {isAuthenticated ? (
               <>
-                {/* Notification Bell (Hidden on small screens, accessible via hamburger) */}
-                <button
-                  onClick={() => setActiveTab('bookings')}
-                  className="relative p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer hidden md:flex"
-                  title="Notifications & Bookings"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand" />
-                </button>
+                {/* Notification Bell Dropdown */}
+                <div className="relative" ref={notifRef}>
+                  <button
+                    onClick={() => {
+                      setShowNotifications(!showNotifications);
+                      if (!showNotifications) fetchNotifications();
+                    }}
+                    className={`relative p-2 rounded-full transition-colors cursor-pointer hidden md:flex ${
+                      showNotifications
+                        ? 'bg-brand/10 text-brand'
+                        : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink'
+                    }`}
+                    title="Announcements & Alerts"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-brand text-[10px] font-black text-white flex items-center justify-center leading-none shadow-sm">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface border border-divider rounded-2xl shadow-2xl overflow-hidden z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-4 py-3 border-b border-divider flex items-center justify-between bg-canvas/40">
+                        <div className="flex items-center gap-1.5 font-bold text-ink">
+                          <Bell className="w-3.5 h-3.5 text-brand" />
+                          <span>Announcements & Alerts</span>
+                        </div>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={handleMarkAllRead}
+                            className="text-[11px] text-brand hover:underline font-bold cursor-pointer"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-80 overflow-y-auto divide-y divide-divider/50">
+                        {isLoadingNotifications && notifications.length === 0 ? (
+                          <div className="py-8 text-center text-ink-secondary text-xs">
+                            Loading updates...
+                          </div>
+                        ) : notifications.length === 0 ? (
+                          <div className="py-8 text-center text-ink-secondary text-xs px-4">
+                            <p className="font-bold text-ink mb-1">All caught up! 🎉</p>
+                            <p className="text-[11px]">When people you follow or neighbors within 5 km post a wish, you'll see alerts here.</p>
+                          </div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => handleNotificationClick(n)}
+                              className={`p-3.5 hover:bg-canvas transition-colors cursor-pointer flex items-start gap-2.5 ${
+                                !n.is_read ? 'bg-brand/5 dark:bg-brand/10' : ''
+                              }`}
+                            >
+                              <div className="w-7 h-7 rounded-full bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5 text-xs">
+                                {n.type === 'NEARBY_REQUEST_ANNOUNCEMENT' ? '📍' : n.type === 'NEW_FOLLOWER' ? '🎉' : '⚡'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-1 mb-0.5">
+                                  <span className="font-bold text-ink truncate">{n.title}</span>
+                                  {!n.is_read && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                                  )}
+                                </div>
+                                <p className="text-ink-secondary line-clamp-2 leading-relaxed text-[11px]">{n.body}</p>
+                                <span className="text-[10px] text-ink-muted mt-1 block">
+                                  {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Messages Icon (Hidden on small screens, accessible via hamburger) */}
                 <button

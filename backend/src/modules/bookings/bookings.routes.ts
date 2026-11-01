@@ -55,6 +55,17 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       return sendError(res, 'BAD_REQUEST', 'You cannot borrow your own gear 😉', 400);
     }
 
+    // Block check: borrower cannot book from owner if either has blocked the other
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [borrowerId, item.owner_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, 'FORBIDDEN', 'Cannot rent from this user due to a block.', 403);
+    }
+
     // Determine concrete end date for rental period
     let finalEndDate = validated.end_date;
     if (!finalEndDate) {

@@ -15,6 +15,7 @@ export interface User {
   bio?: string;
   trust_score?: number;
   role: 'USER' | 'ADMIN';
+  notify_nearby_requests_5km?: boolean;
   created_at: string;
 }
 
@@ -234,6 +235,11 @@ export interface PublicUserProfile {
   trust_score: number;
   rating: number;
   created_at?: string;
+  is_following?: boolean;
+  is_blocked?: boolean;
+  is_blocked_by?: boolean;
+  followers_count?: number;
+  following_count?: number;
   items: Item[];
   requests: CommunityRequest[];
   reviews: UserReview[];
@@ -244,6 +250,19 @@ export interface PublicUserProfile {
     completed_borrowed: number;
     reviews_count: number;
   };
+}
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  sender_id?: string;
+  type: string;
+  title: string;
+  body: string;
+  reference_id?: string;
+  reference_type?: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface UserSearchResult {

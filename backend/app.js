@@ -18095,17 +18095,17 @@ var require_router = __commonJS({
     var toString = Object.prototype.toString;
     var proto = module2.exports = function(options) {
       var opts = options || {};
-      function router10(req, res, next) {
-        router10.handle(req, res, next);
+      function router11(req, res, next) {
+        router11.handle(req, res, next);
       }
-      setPrototypeOf(router10, proto);
-      router10.params = {};
-      router10._params = [];
-      router10.caseSensitive = opts.caseSensitive;
-      router10.mergeParams = opts.mergeParams;
-      router10.strict = opts.strict;
-      router10.stack = [];
-      return router10;
+      setPrototypeOf(router11, proto);
+      router11.params = {};
+      router11._params = [];
+      router11.caseSensitive = opts.caseSensitive;
+      router11.mergeParams = opts.mergeParams;
+      router11.strict = opts.strict;
+      router11.stack = [];
+      return router11;
     };
     proto.param = function param(name, fn) {
       if (typeof name === "function") {
@@ -20714,7 +20714,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router10 = require_router();
+    var Router11 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query2 = require_query();
@@ -20779,7 +20779,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router10({
+        this._router = new Router11({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -20788,17 +20788,17 @@ var require_application = __commonJS({
       }
     };
     app2.handle = function handle(req, res, callback) {
-      var router10 = this._router;
+      var router11 = this._router;
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
-      if (!router10) {
+      if (!router11) {
         debug("no routes defined on app");
         done();
         return;
       }
-      router10.handle(req, res, done);
+      router11.handle(req, res, done);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -20818,15 +20818,15 @@ var require_application = __commonJS({
         throw new TypeError("app.use() requires a middleware function");
       }
       this.lazyrouter();
-      var router10 = this._router;
+      var router11 = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router10.use(path2, fn2);
+          return router11.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router10.use(path2, function mounted_app(req, res, next) {
+        router11.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -22643,7 +22643,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router10 = require_router();
+    var Router11 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -22666,7 +22666,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router10;
+    exports2.Router = Router11;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -48217,7 +48217,7 @@ __export(serverless_exports, {
 module.exports = __toCommonJS(serverless_exports);
 
 // backend/src/app.ts
-var import_express10 = __toESM(require_express2());
+var import_express11 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // backend/src/modules/auth/auth.routes.ts
@@ -52826,6 +52826,15 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
       params.push(`%${search}%`);
       sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
     }
+    const currentViewerId = req.user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND i.owner_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
     if (radar === "true" || radar === "100m") {
       sql += ` ORDER BY distance_meters ASC, i.created_at DESC`;
     } else {
@@ -52857,6 +52866,18 @@ router2.get("/:id", async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Item not found", 404);
     }
     const item = result.rows[0];
+    const currentViewerId = req.user?.id;
+    if (currentViewerId && item.owner_id && currentViewerId !== item.owner_id) {
+      const blockCheck = await query(
+        `SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [currentViewerId, item.owner_id]
+      );
+      if (blockCheck.rows.length > 0) {
+        return sendError(res, "FORBIDDEN", "This item is not available", 403);
+      }
+    }
     const bookedRes = await query(
       `SELECT 
         id, 
@@ -53199,6 +53220,15 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
     }
+    const currentViewerId = req.user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND r.seeker_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
     sql += ` ORDER BY r.created_at DESC`;
     const result = await query(sql, params);
     return sendSuccess(res, result.rows);
@@ -53284,6 +53314,88 @@ router3.post("/", authMiddleware, async (req, res, next) => {
       ]
     );
     const createdRequest = result.rows[0];
+    const seekerId = req.user.id;
+    const seekerName = req.user.name || "A neighbor";
+    try {
+      const followersRes = await query(
+        `SELECT uf.follower_id FROM user_follows uf
+         WHERE uf.following_id = $1
+         AND uf.follower_id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+      const notifiedUserIds = /* @__PURE__ */ new Set();
+      notifiedUserIds.add(seekerId);
+      for (const f of followersRes.rows) {
+        notifiedUserIds.add(f.follower_id);
+        await query(
+          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+           VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+          [
+            f.follower_id,
+            seekerId,
+            `\u{1F4E2} New Request from ${seekerName}`,
+            `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: \u20B9${validated.offered_amount})`,
+            createdRequest.id
+          ]
+        ).catch(() => {
+        });
+      }
+      const nearbyUsersRes = await query(
+        `SELECT id, locality, latitude, longitude FROM users
+         WHERE id != $1
+         AND COALESCE(notify_nearby_requests_5km, TRUE) = TRUE
+         AND id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+      const seekerLat = validated.latitude;
+      const seekerLon = validated.longitude;
+      for (const u of nearbyUsersRes.rows) {
+        if (notifiedUserIds.has(u.id)) continue;
+        let isWithin5Km = false;
+        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+          const R = 6371;
+          const dLat = (u.latitude - seekerLat) * Math.PI / 180;
+          const dLon = (u.longitude - seekerLon) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(seekerLat * Math.PI / 180) * Math.cos(u.latitude * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distKm = R * c;
+          if (distKm <= 5) {
+            isWithin5Km = true;
+          }
+        } else if (finalLocality && u.locality) {
+          const sCity = extractCity(finalLocality)?.toLowerCase();
+          const uCity = extractCity(u.locality)?.toLowerCase();
+          if (sCity && uCity && sCity === uCity) {
+            isWithin5Km = true;
+          }
+        }
+        if (isWithin5Km) {
+          notifiedUserIds.add(u.id);
+          await query(
+            `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+             VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+            [
+              u.id,
+              seekerId,
+              `\u{1F4CD} Nearby Gear Request (within 5 km)`,
+              `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || "nearby"})`,
+              createdRequest.id
+            ]
+          ).catch(() => {
+          });
+        }
+      }
+    } catch (announcementErr) {
+      console.warn("Failed to dispatch request announcements:", announcementErr);
+    }
     return sendSuccess(res, createdRequest, "Wish dropped to community feed! \u{1F3AF} Nearby owners will see your bounty.", 201);
   } catch (error) {
     next(error);
@@ -53450,6 +53562,15 @@ router4.post("/", authMiddleware, async (req, res, next) => {
     const item = itemRes.rows[0];
     if (item.owner_id === borrowerId) {
       return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear \u{1F609}", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [borrowerId, item.owner_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot rent from this user due to a block.", 403);
     }
     let finalEndDate = validated.end_date;
     if (!finalEndDate) {
@@ -53889,7 +54010,8 @@ var updateProfileSchema = external_exports.object({
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional()
+  longitude: external_exports.number().optional(),
+  notify_nearby_requests_5km: external_exports.boolean().optional()
 });
 var SEED_COMMUNITY_CHAMPIONS = [
   {
@@ -54382,9 +54504,30 @@ var getChampionSyntheticData = (champ) => {
   ];
   return { mockItems, mockRequests, mockReviews };
 };
-router6.get("/:id", async (req, res, next) => {
+router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
+    const currentUserId = req.user?.id;
+    let isFollowing = false;
+    let isBlocked = false;
+    let isBlockedBy = false;
+    if (currentUserId && currentUserId !== id) {
+      const [fRes, bRes, bbRes] = await Promise.all([
+        query(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, id]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, id]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [id, currentUserId])
+      ]);
+      isFollowing = fRes.rows.length > 0;
+      isBlocked = bRes.rows.length > 0;
+      isBlockedBy = bbRes.rows.length > 0;
+    }
+    const countsRes = await query(`
+      SELECT 
+        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
+        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
+    `, [id]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
+    const followersCount = countsRes.rows[0]?.followers_count || 0;
+    const followingCount = countsRes.rows[0]?.following_count || 0;
     const champ = SEED_COMMUNITY_CHAMPIONS.find((c) => c.id === id);
     if (champ) {
       const { mockItems, mockRequests, mockReviews } = getChampionSyntheticData(champ);
@@ -54399,12 +54542,17 @@ router6.get("/:id", async (req, res, next) => {
         rating: champ.rating,
         trust_score: champ.trust_score,
         created_at: "2024-01-15T00:00:00.000Z",
-        items: mockItems,
-        requests: mockRequests,
+        is_following: isFollowing,
+        is_blocked: isBlocked,
+        is_blocked_by: isBlockedBy,
+        followers_count: followersCount || 12,
+        following_count: followingCount || 4,
+        items: isBlocked || isBlockedBy ? [] : mockItems,
+        requests: isBlocked || isBlockedBy ? [] : mockRequests,
         reviews: mockReviews,
         stats: {
-          listings_count: champ.items_count,
-          requests_count: champ.requests_count,
+          listings_count: isBlocked || isBlockedBy ? 0 : champ.items_count,
+          requests_count: isBlocked || isBlockedBy ? 0 : champ.requests_count,
           completed_lent: champ.lent_count,
           completed_borrowed: champ.borrowed_count,
           reviews_count: champ.reviews_count
@@ -54421,6 +54569,7 @@ router6.get("/:id", async (req, res, next) => {
         bio, 
         COALESCE(trust_score, 98)::int AS trust_score, 
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
         created_at
        FROM users WHERE id = $1`,
       [id]
@@ -54429,18 +54578,24 @@ router6.get("/:id", async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "User not found", 404);
     }
     const user = userRes.rows[0];
-    const itemsRes = await query(
-      `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
-       FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
-       ORDER BY created_at DESC`,
-      [id]
-    );
-    const requestsRes = await query(
-      `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-       FROM requests WHERE seeker_id = $1
-       ORDER BY created_at DESC`,
-      [id]
-    );
+    let userItems = [];
+    let userRequests = [];
+    if (!isBlocked && !isBlockedBy) {
+      const itemsRes = await query(
+        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+         FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
+         ORDER BY created_at DESC`,
+        [id]
+      );
+      userItems = itemsRes.rows;
+      const requestsRes = await query(
+        `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
+         FROM requests WHERE seeker_id = $1
+         ORDER BY created_at DESC`,
+        [id]
+      );
+      userRequests = requestsRes.rows;
+    }
     const reviewsRes = await query(
       `SELECT 
         r.id, 
@@ -54499,12 +54654,18 @@ router6.get("/:id", async (req, res, next) => {
       trust_score: parseInt(user.trust_score, 10) || 98,
       rating: parseFloat(user.rating) || 5,
       created_at: user.created_at,
-      items: itemsRes.rows,
-      requests: requestsRes.rows,
+      notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+      is_following: isFollowing,
+      is_blocked: isBlocked,
+      is_blocked_by: isBlockedBy,
+      followers_count: followersCount,
+      following_count: followingCount,
+      items: userItems,
+      requests: userRequests,
       reviews: reviewsList,
       stats: {
-        listings_count: parseInt(stats.listings_count, 10) || itemsRes.rows.length,
-        requests_count: parseInt(stats.requests_count, 10) || requestsRes.rows.length,
+        listings_count: parseInt(stats.listings_count, 10) || userItems.length,
+        requests_count: parseInt(stats.requests_count, 10) || userRequests.length,
         completed_lent: parseInt(stats.completed_lent, 10) || 0,
         completed_borrowed: parseInt(stats.completed_borrowed, 10) || 0,
         reviews_count: Math.max(parseInt(stats.reviews_count, 10) || 0, reviewsList.length)
@@ -54569,6 +54730,10 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       values.push(validated.longitude);
       fields.push(`longitude = $${values.length}`);
     }
+    if (validated.notify_nearby_requests_5km !== void 0) {
+      values.push(validated.notify_nearby_requests_5km);
+      fields.push(`notify_nearby_requests_5km = $${values.length}`);
+    }
     if (fields.length === 0) {
       return sendError(res, "BAD_REQUEST", "No fields to update", 400);
     }
@@ -54577,11 +54742,88 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
     return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/follow", authMiddleware, async (req, res, next) => {
+  try {
+    const followerId = req.user.id;
+    const followingId = req.params.id;
+    if (followerId === followingId) {
+      return sendError(res, "BAD_REQUEST", "You cannot follow yourself", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`,
+      [followerId, followingId]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot follow a blocked user", 403);
+    }
+    await query(
+      `INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [followerId, followingId]
+    );
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body)
+       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower \u{1F389}', $3)`,
+      [followingId, followerId, `${req.user.name || "A neighbor"} started following your gear listings.`]
+    ).catch(() => {
+    });
+    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+    return sendSuccess(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, "Followed neighbor");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/unfollow", authMiddleware, async (req, res, next) => {
+  try {
+    const followerId = req.user.id;
+    const followingId = req.params.id;
+    await query(
+      `DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2`,
+      [followerId, followingId]
+    );
+    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+    return sendSuccess(res, { is_following: false, followers_count: countRes.rows[0]?.count || 0 }, "Unfollowed neighbor");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/block", authMiddleware, async (req, res, next) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = req.params.id;
+    if (blockerId === blockedId) {
+      return sendError(res, "BAD_REQUEST", "You cannot block yourself", 400);
+    }
+    await query(
+      `INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [blockerId, blockedId]
+    );
+    await query(
+      `DELETE FROM user_follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`,
+      [blockerId, blockedId]
+    );
+    return sendSuccess(res, { is_blocked: true }, "User blocked successfully. You will not see their listings, requests, or messages.");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/unblock", authMiddleware, async (req, res, next) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = req.params.id;
+    await query(
+      `DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+      [blockerId, blockedId]
+    );
+    return sendSuccess(res, { is_blocked: false }, "User unblocked successfully");
   } catch (error) {
     next(error);
   }
@@ -54627,6 +54869,11 @@ router7.get("/conversations", authMiddleware, async (req, res, next) => {
           ORDER BY created_at DESC LIMIT 1
         ) m ON true
         WHERE (b.borrower_id = $1 OR b.lender_id = $1 OR i.owner_id = $1)
+          AND NOT EXISTS (
+            SELECT 1 FROM user_blocks ub
+            WHERE (ub.blocker_id = $1 AND (ub.blocked_id = b.borrower_id OR ub.blocked_id = b.lender_id OR ub.blocked_id = i.owner_id))
+               OR (ub.blocked_id = $1 AND (ub.blocker_id = b.borrower_id OR ub.blocker_id = b.lender_id OR ub.blocker_id = i.owner_id))
+          )
         ORDER BY b.id, m.created_at DESC NULLS LAST
       ) convs
       ORDER BY COALESCE(convs.last_message_at, convs.booking_created_at) DESC`,
@@ -54688,6 +54935,17 @@ router7.post("/", authMiddleware, async (req, res, next) => {
       return sendError(res, "FORBIDDEN", "Cannot send message to this booking", 403);
     }
     const targetReceiver = validated.receiver_id || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
+    if (targetReceiver) {
+      const blockCheck = await query(
+        `SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [senderId, targetReceiver]
+      );
+      if (blockCheck.rows.length > 0) {
+        return sendError(res, "FORBIDDEN", "Cannot send message. Communication between these users is blocked.", 403);
+      }
+    }
     const result = await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, $4)
@@ -64203,6 +64461,72 @@ router9.get("/tools/alternatives", async (req, res, next) => {
 });
 var ai_routes_default = router9;
 
+// backend/src/modules/notifications/notifications.routes.ts
+var import_express10 = __toESM(require_express2());
+var router10 = (0, import_express10.Router)();
+router10.get("/", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const result = await query(
+      `SELECT 
+        n.id, 
+        n.user_id, 
+        n.type, 
+        n.title, 
+        n.body, 
+        n.sender_id, 
+        n.reference_id, 
+        n.reference_type, 
+        n.read_at, 
+        n.created_at,
+        u.name AS sender_name,
+        u.avatar_url AS sender_avatar
+       FROM notifications n
+       LEFT JOIN users u ON n.sender_id = u.id
+       WHERE n.user_id = $1
+       ORDER BY n.created_at DESC
+       LIMIT 50`,
+      [userId]
+    );
+    const unreadCountRes = await query(
+      `SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
+      [userId]
+    );
+    return sendSuccess(res, {
+      notifications: result.rows,
+      unread_count: unreadCountRes.rows[0]?.unread || 0
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router10.put("/:id/read", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    await query(
+      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    return sendSuccess(res, { success: true }, "Notification marked as read");
+  } catch (error) {
+    next(error);
+  }
+});
+router10.put("/read-all", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    await query(
+      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL`,
+      [userId]
+    );
+    return sendSuccess(res, { success: true }, "All notifications marked as read");
+  } catch (error) {
+    next(error);
+  }
+});
+var notifications_routes_default = router10;
+
 // backend/src/middleware/error.ts
 var errorHandler = (err, req, res, next) => {
   if (err instanceof ZodError) {
@@ -64223,10 +64547,10 @@ var errorHandler = (err, req, res, next) => {
 
 // backend/src/app.ts
 var createApp = () => {
-  const app2 = (0, import_express10.default)();
+  const app2 = (0, import_express11.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
-  app2.use(import_express10.default.json({ limit: "10mb" }));
-  app2.use(import_express10.default.urlencoded({ extended: true }));
+  app2.use(import_express11.default.json({ limit: "10mb" }));
+  app2.use(import_express11.default.urlencoded({ extended: true }));
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -64259,6 +64583,7 @@ var createApp = () => {
   app2.use(["/api/users", "/users"], users_routes_default);
   app2.use(["/api/messages", "/messages"], messages_routes_default);
   app2.use(["/api/upload", "/upload"], upload_routes_default);
+  app2.use(["/api/notifications", "/notifications"], notifications_routes_default);
   app2.use(["/api/ai", "/ai"], ai_routes_default);
   app2.use((req, res) => {
     return sendError(res, "ROUTE_NOT_FOUND", `Cannot ${req.method} ${req.originalUrl}`, 404);

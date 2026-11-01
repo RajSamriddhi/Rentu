@@ -11,7 +11,8 @@ import {
   Camera, 
   ImageIcon,
   Sparkles,
-  Navigation
+  Navigation,
+  Bell
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -84,6 +85,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [bannerUrl, setBannerUrl] = useState(
     user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
   );
+  const [notifyNearby5km, setNotifyNearby5km] = useState<boolean>(user?.notify_nearby_requests_5km ?? true);
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadStatus, setAvatarUploadStatus] = useState('');
@@ -113,6 +115,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setBannerUrl(
         user.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
       );
+      setNotifyNearby5km(user.notify_nearby_requests_5km ?? true);
     }
   }, [user]);
 
@@ -222,6 +225,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         pincode: pincode.trim() || undefined,
         latitude,
         longitude,
+        notify_nearby_requests_5km: notifyNearby5km,
         avatar_url: avatarUrl || undefined,
         banner_url: bannerUrl || undefined,
       });
@@ -560,6 +564,33 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
+              </div>
+
+              {/* 5 km Radius Nearby Gear Request Alerts */}
+              <div className="p-4 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-brand" />
+                    <span className="text-xs font-bold text-ink">5 km Nearby Request Alerts</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-brand/10 text-brand">RADAR</span>
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    Get an instant notification whenever someone within 5 km posts a gear wish. Turn off anytime.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotifyNearby5km(!notifyNearby5km)}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                    notifyNearby5km ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-700'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform absolute top-0.5 ${
+                      notifyNearby5km ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
           </div>

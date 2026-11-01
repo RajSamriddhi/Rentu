@@ -151,6 +151,17 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
     }
 
+    // Exclude items from blocked users
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND i.owner_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
+
     if (radar === 'true' || radar === '100m') {
       sql += ` ORDER BY distance_meters ASC, i.created_at DESC`;
     } else {
@@ -189,6 +200,20 @@ router.get('/:id', async (req: Request, res: Response, next) => {
     }
 
     const item = result.rows[0];
+
+    // Block check: if viewer and owner have a block relationship, hide item
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+    if (currentViewerId && item.owner_id && currentViewerId !== item.owner_id) {
+      const blockCheck = await query(
+        `SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [currentViewerId, item.owner_id]
+      );
+      if (blockCheck.rows.length > 0) {
+        return sendError(res, 'FORBIDDEN', 'This item is not available', 403);
+      }
+    }
 
     // Fetch booked calendar dates for this item (Active / Confirmed rentals)
     const bookedRes = await query(

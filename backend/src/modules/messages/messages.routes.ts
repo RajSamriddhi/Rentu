@@ -17,7 +17,7 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
   try {
     const userId = req.user!.id;
 
-    // Get bookings that have messages involving user
+    // Get bookings that have messages involving user (excluding blocked relationships)
     const result = await query(
       `SELECT * FROM (
         SELECT DISTINCT ON (b.id)
@@ -46,6 +46,11 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
           ORDER BY created_at DESC LIMIT 1
         ) m ON true
         WHERE (b.borrower_id = $1 OR b.lender_id = $1 OR i.owner_id = $1)
+          AND NOT EXISTS (
+            SELECT 1 FROM user_blocks ub
+            WHERE (ub.blocker_id = $1 AND (ub.blocked_id = b.borrower_id OR ub.blocked_id = b.lender_id OR ub.blocked_id = i.owner_id))
+               OR (ub.blocked_id = $1 AND (ub.blocker_id = b.borrower_id OR ub.blocker_id = b.lender_id OR ub.blocker_id = i.owner_id))
+          )
         ORDER BY b.id, m.created_at DESC NULLS LAST
       ) convs
       ORDER BY COALESCE(convs.last_message_at, convs.booking_created_at) DESC`,
@@ -123,6 +128,19 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     // 3NF: Automatically deduce receiver_id from the two booking parties if not supplied
     const targetReceiver = validated.receiver_id || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
+
+    // BLOCK CHECK: Prevent messages between users if either has blocked the other
+    if (targetReceiver) {
+      const blockCheck = await query(
+        `SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [senderId, targetReceiver]
+      );
+      if (blockCheck.rows.length > 0) {
+        return sendError(res, 'FORBIDDEN', 'Cannot send message. Communication between these users is blocked.', 403);
+      }
+    }
 
     const result = await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
