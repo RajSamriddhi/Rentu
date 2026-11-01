@@ -486,11 +486,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   bookedDates={bookedDates}
                   startDate={startDate}
                   endDate={endDate}
+                  startTime={startTime}
+                  endTime={endTime}
                   onSelectRange={(start, end) => {
                     setStartDate(start);
                     setEndDate(end);
                     setErrorMsg('');
                   }}
+                  onSelectStartTime={(t) => setStartTime(t)}
+                  onSelectEndTime={(t) => setEndTime(t)}
                 />
               </div>
 
@@ -560,83 +564,41 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 ) : (
                   <form onSubmit={handleBookingSubmit} className="space-y-4">
                     
-                    {/* Selected Dates from Calendar */}
-                    <div className="p-3 rounded-2xl bg-surface border border-divider space-y-1.5">
+                    {/* Chosen Rental Schedule (synced live from the calendar & time selectors on the left) */}
+                    <div className="p-3.5 rounded-2xl bg-surface border border-divider space-y-2.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-extrabold text-ink flex items-center gap-1.5">
+                        <span className="font-extrabold text-ink flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                           <Calendar className="w-3.5 h-3.5 text-brand" />
-                          <span>Chosen Dates (from Calendar)</span>
+                          <span>Rental Schedule</span>
                         </span>
-                        <span className="font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20 text-[10px]">
+                        <span className="font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20 text-[10px]">
                           {durationDays} {durationDays === 1 ? 'Day' : 'Days'}
                         </span>
                       </div>
-                      <div className="text-xs font-black text-ink font-display">
-                        {startDate} &rarr; {endDate}
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-canvas border border-divider">
+                          <div className="text-[10px] text-ink-secondary font-bold uppercase">Pickup Handover</div>
+                          <div className="font-black text-ink mt-0.5">{startDate}</div>
+                          <div className="text-[11px] text-brand font-extrabold flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            <span>{startTime}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-canvas border border-divider">
+                          <div className="text-[10px] text-ink-secondary font-bold uppercase">Return Handover</div>
+                          <div className="font-black text-ink mt-0.5">{endDate}</div>
+                          <div className="text-[11px] text-brand font-extrabold flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            <span>{endTime}</span>
+                          </div>
+                        </div>
                       </div>
+
                       <p className="text-[10px] text-ink-secondary">
-                        Click any free dates on the product calendar to change this booking window.
+                        Dates and times selected directly from the calendar on the left.
                       </p>
-                    </div>
-
-                    {/* Date Details & Times */}
-                    <div className="space-y-2.5 pt-1">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-brand" />
-                          <span>Rental Dates & Times</span>
-                        </label>
-                        <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
-                          {durationDays} {durationDays === 1 ? 'Day' : 'Days'}
-                        </span>
-                      </div>
-
-                      {/* Start Date & Time */}
-                      <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-7">
-                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">Start Date *</label>
-                          <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
-                            required
-                          />
-                        </div>
-                        <div className="col-span-5">
-                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">Start Time</label>
-                          <input
-                            type="time"
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            className="w-full bg-surface border border-divider rounded-xl px-2 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
-                          />
-                        </div>
-                      </div>
-
-                      {/* End Date & Time */}
-                      <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-7">
-                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">End / Return Date *</label>
-                          <input
-                            type="date"
-                            min={startDate}
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
-                            required
-                          />
-                        </div>
-                        <div className="col-span-5">
-                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">End Time</label>
-                          <input
-                            type="time"
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            className="w-full bg-surface border border-divider rounded-xl px-2 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
-                          />
-                        </div>
-                      </div>
                     </div>
 
                     {/* Section: Handover & Delivery Options */}

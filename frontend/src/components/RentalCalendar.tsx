@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, AlertCircle, Clock } from 'lucide-react';
 
 export interface BookedDateRange {
   id?: string;
@@ -12,7 +12,11 @@ interface RentalCalendarProps {
   bookedDates: BookedDateRange[];
   startDate: string; // 'YYYY-MM-DD'
   endDate: string;   // 'YYYY-MM-DD'
+  startTime?: string;
+  endTime?: string;
   onSelectRange: (start: string, end: string) => void;
+  onSelectStartTime?: (time: string) => void;
+  onSelectEndTime?: (time: string) => void;
   minDate?: string;
 }
 
@@ -34,7 +38,11 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   bookedDates = [],
   startDate,
   endDate,
+  startTime = '10:00',
+  endTime = '18:00',
   onSelectRange,
+  onSelectStartTime,
+  onSelectEndTime,
   minDate,
 }) => {
   const today = useMemo(() => {
@@ -305,6 +313,37 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
           </span>
         )}
       </div>
+
+      {/* Handover & Return Times Section directly inside Calendar */}
+      {(onSelectStartTime || onSelectEndTime) && (
+        <div className="mt-3.5 pt-3 border-t border-divider grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="p-2.5 rounded-xl bg-canvas border border-divider">
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary mb-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-brand" />
+              <span>Pickup / Start Time</span>
+            </label>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => onSelectStartTime?.(e.target.value)}
+              className="w-full bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer"
+            />
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-canvas border border-divider">
+            <label className="block text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary mb-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-brand" />
+              <span>Return / End Time</span>
+            </label>
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => onSelectEndTime?.(e.target.value)}
+              className="w-full bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Booked ranges notice banner if any rentals exist */}
       {normalizedBookedRanges.length > 0 && (
