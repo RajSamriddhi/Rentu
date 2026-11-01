@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   role: 'USER' | 'ADMIN';
   name: string;
+  avatar_url?: string;
 }
 
 export interface AuthenticatedRequest extends Request {

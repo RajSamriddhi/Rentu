@@ -268,7 +268,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     return sendSuccess(res, {
       ...inserted,
       sender_name: req.user!.name || 'You',
-      sender_avatar: req.user!.avatar_url,
+      sender_avatar: (req.user as any)?.avatar_url || null,
     }, 'Message sent');
   } catch (error) {
     next(error);

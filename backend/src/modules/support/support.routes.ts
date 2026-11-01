@@ -185,3 +185,4 @@ router.put('/admin/:id', authMiddleware, async (req: AuthenticatedRequest, res: 
 });
 
 export default router;
+

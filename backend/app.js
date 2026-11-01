@@ -55063,7 +55063,7 @@ router7.post("/", authMiddleware, async (req, res, next) => {
     return sendSuccess(res, {
       ...inserted,
       sender_name: req.user.name || "You",
-      sender_avatar: req.user.avatar_url
+      sender_avatar: req.user?.avatar_url || null
     }, "Message sent");
   } catch (error) {
     next(error);

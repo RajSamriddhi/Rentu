@@ -505,3 +505,4 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+
