@@ -91,17 +91,21 @@ router.post('/login', async (req, res, next) => {
 router.post('/demo-login', async (req, res, next) => {
     try {
         const { role = 'lender' } = req.body;
-        let targetEmail = 'rohit@lens.com'; // default lender
+        let targetEmail = 'falaksadiqua786@gmail.com'; // default lender (Sadiqua)
         if (role === 'borrower')
-            targetEmail = 'ananya@studio.com';
+            targetEmail = 'goyalgeetansh@gmail.com'; // borrower (Geetansh)
         if (role === 'admin')
-            targetEmail = 'admin@borrowflex.com';
+            targetEmail = 'falaksadiqua786@gmail.com';
         if (role === 'creator')
-            targetEmail = 'kabir@vibes.com';
-        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+            targetEmail = 'goyalgeetansh@gmail.com';
+        let result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
        FROM users WHERE email = $1`, [targetEmail]);
         if (result.rows.length === 0) {
-            return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'Demo user not seeded yet', 404);
+            result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+         FROM users ORDER BY created_at ASC LIMIT 1`);
+        }
+        if (result.rows.length === 0) {
+            return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'No demo users found', 404);
         }
         const user = result.rows[0];
         const token = generateToken(user);

@@ -56,9 +56,15 @@ export interface CommunityRequest {
   category: string;
   start_date: string;
   start_time?: string;
+  end_date?: string;
+  end_time?: string;
   duration_days: number;
   offered_amount: number | string;
   locality: string;
+  pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  pickup_locality?: string;
+  return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  return_locality?: string;
   image_url?: string | null;
   status: 'OPEN' | 'FULFILLED' | 'CANCELLED';
   created_at: string;
@@ -77,8 +83,14 @@ export interface Booking {
   lender_id: string;
   start_date: string;
   start_time?: string;
+  end_date?: string;
+  end_time?: string;
   duration_days: number;
   total_price: number | string;
+  pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  pickup_locality?: string;
+  return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+  return_locality?: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
   message?: string;
   created_at: string;
@@ -142,6 +154,84 @@ export interface CategoryStat {
   category: string;
   count: number;
   avg_rate: number;
+}
+
+export interface CommunityLeaderboardMember {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  bio?: string;
+  rating: number;
+  trust_score: number;
+  reviews_count: number;
+  highlight_review?: string;
+  rank: number;
+  category_type: 'top_rated' | 'top_lenders' | 'top_borrowers' | 'top_sharers';
+  metric_label: string;
+  metric_value: string;
+  badges: string[];
+  items_count?: number;
+  free_items_count?: number;
+  lent_count?: number;
+  borrowed_count?: number;
+  requests_count?: number;
+}
+
+export interface CommunityLeaderboardData {
+  top_rated: CommunityLeaderboardMember[];
+  top_lenders: CommunityLeaderboardMember[];
+  top_borrowers: CommunityLeaderboardMember[];
+  top_sharers: CommunityLeaderboardMember[];
+  total_community_members: number;
+}
+
+export interface UserReview {
+  id: string;
+  reviewer_name: string;
+  reviewer_avatar?: string;
+  reviewer_locality?: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  banner_url?: string;
+  bio?: string;
+  trust_score: number;
+  rating: number;
+  created_at?: string;
+  items: Item[];
+  requests: CommunityRequest[];
+  reviews: UserReview[];
+  stats: {
+    listings_count: number;
+    requests_count: number;
+    completed_lent: number;
+    completed_borrowed: number;
+    reviews_count: number;
+  };
+}
+
+export interface UserSearchResult {
+  id: string;
+  name: string;
+  email?: string;
+  locality?: string;
+  avatar_url?: string;
+  bio?: string;
+  rating: number;
+  trust_score: number;
+  items_count: number;
+  requests_count: number;
+  reviews_count: number;
 }
 
 export interface AiChatMessage {

@@ -7,6 +7,9 @@ import {
   Conversation, 
   CommunityPulse, 
   CategoryStat,
+  CommunityLeaderboardData,
+  PublicUserProfile,
+  UserSearchResult,
   AiChatResponse,
   AiChatContext
 } from './types';
@@ -224,9 +227,15 @@ export const api = {
     category: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
     offered_amount: number;
     locality: string;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    pickup_locality?: string;
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
     image_url?: string;
   }): Promise<CommunityRequest> {
     const res = await fetch(`${API_BASE}/requests`, {
@@ -271,7 +280,14 @@ export const api = {
     item_id: string;
     start_date: string;
     start_time?: string;
+    end_date?: string;
+    end_time?: string;
     duration_days: number;
+    total_price?: number;
+    pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    pickup_locality?: string;
+    return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
+    return_locality?: string;
     message?: string;
   }): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings`, {
@@ -340,6 +356,27 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {
+    const res = await fetch(`${API_BASE}/users/leaderboard`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getUserProfile(userId: string): Promise<PublicUserProfile> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async searchUsers(query: string): Promise<UserSearchResult[]> {
+    const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },

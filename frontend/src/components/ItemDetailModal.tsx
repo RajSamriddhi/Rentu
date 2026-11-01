@@ -10,12 +10,17 @@ import {
   Lock, 
   Check, 
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Navigation,
+  Loader2,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
+import { detectCurrentLocation } from '../lib/location';
 
 interface ItemDetailModalProps {
   item: Item | null;
@@ -23,6 +28,7 @@ interface ItemDetailModalProps {
   onBookingSuccess: () => void;
   onOpenAuth: () => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
@@ -31,6 +37,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onBookingSuccess,
   onOpenAuth,
   onOpenChatWithBooking,
+  onOpenUserProfile,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -48,14 +55,66 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const defaultEndDate = dayAfter.toISOString().split('T')[0];
 
   const [startDate, setStartDate] = useState(defaultStartDate);
-  const [startTime, setStartTime] = useState('10:00 AM');
+  const [startTime, setStartTime] = useState('10:00');
   const [endDate, setEndDate] = useState(defaultEndDate);
-  const [endTime, setEndTime] = useState('10:00 AM');
-  const [durationDays, setDurationDays] = useState(2);
+  const [endTime, setEndTime] = useState('18:00');
+
+  // Logistics states
+  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [pickupLocality, setPickupLocality] = useState('');
+  const [borrowerLocality, setBorrowerLocality] = useState(user?.locality || '');
+
+  const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
+  const [returnLocality, setReturnLocality] = useState('');
+
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isDetectingPickupLoc, setIsDetectingPickupLoc] = useState(false);
+  const [isDetectingReturnLoc, setIsDetectingReturnLoc] = useState(false);
+
   const [proposalMessage, setProposalMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedBookingId, setSubmittedBookingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Automatically calculate duration from calendar dates
+  const durationDays = React.useMemo(() => {
+    if (!startDate || !endDate) return 1;
+    try {
+      const [sY, sM, sD] = startDate.split('-').map(Number);
+      const [eY, eM, eD] = endDate.split('-').map(Number);
+      if (!sY || !sM || !sD || !eY || !eM || !eD) return 1;
+      const sUtc = Date.UTC(sY, sM - 1, sD);
+      const eUtc = Date.UTC(eY, eM - 1, eD);
+      const diffDays = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
+      return Math.max(1, diffDays);
+    } catch {
+      return 1;
+    }
+  }, [startDate, endDate]);
+
+  const handleDetectLocation = async (target: 'main' | 'pickup' | 'return' = 'main') => {
+    if (target === 'return') setIsDetectingReturnLoc(true);
+    else if (target === 'pickup') setIsDetectingPickupLoc(true);
+    else setIsDetectingLocation(true);
+    setErrorMsg('');
+
+    try {
+      const loc = await detectCurrentLocation();
+      if (target === 'return') {
+        setReturnLocality(loc.locality);
+      } else if (target === 'pickup') {
+        setPickupLocality(loc.locality);
+      } else {
+        setBorrowerLocality(loc.locality);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not detect GPS location.');
+    } finally {
+      if (target === 'return') setIsDetectingReturnLoc(false);
+      else if (target === 'pickup') setIsDetectingPickupLoc(false);
+      else setIsDetectingLocation(false);
+    }
+  };
 
   if (!item) return null;
 
@@ -81,15 +140,59 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
+    if (new Date(endDate) < new Date(startDate)) {
+      setErrorMsg('Return date cannot be earlier than start date.');
+      return;
+    }
+
+    if (pickupType === 'CUSTOM_LOCATION' && !pickupLocality.trim()) {
+      setErrorMsg('Please specify the custom pickup meetup spot or landmark.');
+      return;
+    }
+
+    if (pickupType === 'MY_LOCATION' && !borrowerLocality.trim()) {
+      setErrorMsg('Please specify your current delivery address.');
+      return;
+    }
+
+    if (returnType === 'CUSTOM_LOCATION' && !returnLocality.trim()) {
+      setErrorMsg('Please specify the return meetup spot or landmark.');
+      return;
+    }
+
+    if (returnType === 'MY_LOCATION' && !returnLocality.trim() && !borrowerLocality.trim()) {
+      setErrorMsg('Please specify your return collection address.');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
 
     try {
+      const finalPickupLoc = pickupType === 'MY_LOCATION'
+        ? borrowerLocality.trim()
+        : pickupType === 'CUSTOM_LOCATION'
+        ? pickupLocality.trim()
+        : (item.locality || 'Lender Location');
+
+      const finalReturnLoc = returnType === 'MY_LOCATION'
+        ? (returnLocality.trim() || borrowerLocality.trim())
+        : returnType === 'CUSTOM_LOCATION'
+        ? returnLocality.trim()
+        : (item.locality || 'Lender Location');
+
       const booking = await api.createBooking({
         item_id: item.id,
         start_date: startDate,
         start_time: startTime,
+        end_date: endDate,
+        end_time: endTime,
         duration_days: durationDays,
+        total_price: totalCost,
+        pickup_type: pickupType,
+        pickup_locality: finalPickupLoc,
+        return_type: returnType,
+        return_locality: finalReturnLoc,
         message: proposalMessage || `Hey! I'd love to ${rentType.toLowerCase()} your ${item.title} for ${durationDays} days.`,
       });
 
@@ -220,21 +323,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               </div>
 
               {/* Owner Profile Card matching Screen 3 */}
-              <div className="bg-canvas border border-divider rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div 
+                onClick={() => {
+                  if (onOpenUserProfile && item.owner_id) {
+                    onClose();
+                    onOpenUserProfile(item.owner_id);
+                  }
+                }}
+                className="bg-canvas border border-divider hover:border-brand/40 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors group"
+                title={`View ${item.owner_name || 'Owner'}'s community profile`}
+              >
                 <div className="flex items-center gap-3">
                   <img
                     src={item.owner_avatar || (item.owner_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(item.owner_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                     alt={item.owner_name || 'Owner'}
-                    className="w-12 h-12 rounded-full object-cover border border-zinc-200"
+                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform"
                   />
                   <div>
-                    <h4 className="text-sm font-extrabold text-ink">{item.owner_name || 'Verified Owner'}</h4>
-                    <p className="text-xs text-ink-secondary font-medium">Verified Lender</p>
+                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors">{item.owner_name || 'Verified Owner'}</h4>
+                    <p className="text-xs text-ink-secondary font-medium">Verified Lender • Click to view profile</p>
                   </div>
                 </div>
 
                 <button
-                  className="px-3.5 py-1.5 rounded-full border border-divider bg-canvas hover:bg-surface-hover text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onOpenUserProfile && item.owner_id) {
+                      onClose();
+                      onOpenUserProfile(item.owner_id);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
                 >
                   View profile
                 </button>
@@ -318,66 +438,275 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 ) : (
                   <form onSubmit={handleBookingSubmit} className="space-y-4">
                     
-                    {/* Start Date & Time */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-ink-secondary mb-1">Start date</label>
-                        <input
-                          type="date"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
-                          required
-                        />
+                    {/* Calendar Dates & Times */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-extrabold text-ink uppercase tracking-wider flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-brand" />
+                          <span>Rental Dates & Times</span>
+                        </label>
+                        <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
+                          {durationDays} {durationDays === 1 ? 'Day' : 'Days'}
+                        </span>
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-ink-secondary mb-1">Start time</label>
-                        <input
-                          type="text"
-                          value={startTime}
-                          onChange={(e) => setStartTime(e.target.value)}
-                          className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
-                        />
+
+                      {/* Start Date & Time */}
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-7">
+                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">Start Date *</label>
+                          <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                            required
+                          />
+                        </div>
+                        <div className="col-span-5">
+                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">Start Time</label>
+                          <input
+                            type="time"
+                            value={startTime}
+                            onChange={(e) => setStartTime(e.target.value)}
+                            className="w-full bg-surface border border-divider rounded-xl px-2 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                          />
+                        </div>
+                      </div>
+
+                      {/* End Date & Time */}
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-7">
+                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">End / Return Date *</label>
+                          <input
+                            type="date"
+                            min={startDate}
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                            required
+                          />
+                        </div>
+                        <div className="col-span-5">
+                          <label className="block text-[10px] font-extrabold uppercase text-ink-secondary mb-1">End Time</label>
+                          <input
+                            type="time"
+                            value={endTime}
+                            onChange={(e) => setEndTime(e.target.value)}
+                            className="w-full bg-surface border border-divider rounded-xl px-2 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    {/* End Date & Time */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-ink-secondary mb-1">End date</label>
-                        <input
-                          type="date"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
-                          required
-                        />
+                    {/* Section: Pickup Logistics */}
+                    <div className="space-y-2 pt-2 border-t border-divider">
+                      <label className="block text-xs font-extrabold text-ink uppercase tracking-wider">
+                        Pickup Handover: Where will you receive it?
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setPickupType('LENDER_LOCATION')}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            pickupType === 'LENDER_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">🚶 To Lender</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Pick up at owner's place
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPickupType('MY_LOCATION');
+                            if (!borrowerLocality && user?.locality) setBorrowerLocality(user.locality);
+                          }}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            pickupType === 'MY_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">📍 My Location</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Deliver to your live spot
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setPickupType('CUSTOM_LOCATION')}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            pickupType === 'CUSTOM_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">🤝 Custom Spot</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Mutual station or spot
+                          </div>
+                        </button>
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-ink-secondary mb-1">End time</label>
-                        <input
-                          type="text"
-                          value={endTime}
-                          onChange={(e) => setEndTime(e.target.value)}
-                          className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
-                        />
-                      </div>
+
+                      {/* Pickup conditional inputs */}
+                      {pickupType === 'CUSTOM_LOCATION' && (
+                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-ink">
+                              Custom Pickup Meetup Spot *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleDetectLocation('pickup')}
+                              disabled={isDetectingPickupLoc}
+                              className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Navigation className="w-2.5 h-2.5 text-brand" />
+                              <span>{isDetectingPickupLoc ? '...' : 'GPS'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={pickupLocality}
+                            onChange={(e) => setPickupLocality(e.target.value)}
+                            placeholder="e.g. Indiranagar Metro Station Gate 1"
+                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                            required
+                          />
+                        </div>
+                      )}
+
+                      {pickupType === 'MY_LOCATION' && (
+                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-ink">
+                              Your Current Delivery Address *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleDetectLocation('main')}
+                              disabled={isDetectingLocation}
+                              className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Navigation className="w-2.5 h-2.5 text-brand" />
+                              <span>{isDetectingLocation ? '...' : 'Use Current GPS 📍'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={borrowerLocality}
+                            onChange={(e) => setBorrowerLocality(e.target.value)}
+                            placeholder="e.g. Room 402 or Flat address"
+                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {/* Duration selector */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-ink-secondary mb-1">Duration</label>
-                      <select
-                        value={durationDays}
-                        onChange={(e) => setDurationDays(Number(e.target.value))}
-                        className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none cursor-pointer"
-                      >
-                        <option value={1}>1 day</option>
-                        <option value={2}>2 days</option>
-                        <option value={3}>3 days</option>
-                        <option value={5}>5 days</option>
-                        <option value={7}>7 days (1 week)</option>
-                      </select>
+                    {/* Section: Return Logistics */}
+                    <div className="space-y-2 pt-2 border-t border-divider">
+                      <label className="block text-xs font-extrabold text-ink uppercase tracking-wider">
+                        Return Handover: How will you return it?
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setReturnType('LENDER_LOCATION')}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            returnType === 'LENDER_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">🚶 To Lender</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Return back to lender
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReturnType('MY_LOCATION');
+                            if (!returnLocality && borrowerLocality) setReturnLocality(borrowerLocality);
+                          }}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            returnType === 'MY_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">🏠 Collect at Mine</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Lender collects from you
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setReturnType('CUSTOM_LOCATION')}
+                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                            returnType === 'CUSTOM_LOCATION'
+                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
+                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          <div className="font-black text-ink text-xs">🤝 Custom Spot</div>
+                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
+                            Mutual station or spot
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Return conditional inputs */}
+                      {(returnType === 'CUSTOM_LOCATION' || returnType === 'MY_LOCATION') && (
+                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-ink">
+                              {returnType === 'CUSTOM_LOCATION' ? 'Return Meetup Landmark *' : 'Collection Address *'}
+                            </label>
+                            <div className="flex items-center gap-2">
+                              {((pickupType === 'CUSTOM_LOCATION' && pickupLocality) || borrowerLocality) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (returnType === 'CUSTOM_LOCATION' && pickupType === 'CUSTOM_LOCATION' && pickupLocality) {
+                                      setReturnLocality(pickupLocality);
+                                    } else if (borrowerLocality) {
+                                      setReturnLocality(borrowerLocality);
+                                    }
+                                  }}
+                                  className="text-[10px] font-bold text-brand hover:underline cursor-pointer"
+                                >
+                                  Same as pickup
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDetectLocation('return')}
+                                disabled={isDetectingReturnLoc}
+                                className="text-[10px] font-bold text-brand hover:underline cursor-pointer"
+                              >
+                                {isDetectingReturnLoc ? '...' : 'GPS'}
+                              </button>
+                            </div>
+                          </div>
+                          <input
+                            type="text"
+                            value={returnLocality}
+                            onChange={(e) => setReturnLocality(e.target.value)}
+                            placeholder={returnType === 'CUSTOM_LOCATION' ? 'e.g. Indiranagar Metro Station Gate 1' : 'e.g. Room 402 or your address'}
+                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Note message */}
@@ -387,19 +716,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         type="text"
                         value={proposalMessage}
                         onChange={(e) => setProposalMessage(e.target.value)}
-                        placeholder="e.g. Shooting a college video this weekend..."
-                        className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
+                        placeholder="e.g. Shooting a college project this weekend..."
+                        className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
                       />
                     </div>
 
                     {/* Total cost & info box */}
-                    <div className="pt-2">
+                    <div className="pt-2 border-t border-divider">
                       <div className="flex items-center justify-between text-sm font-extrabold text-ink mb-1">
-                        <span>Total cost</span>
-                        <span className="text-lg font-black text-ink font-display">₹{totalCost}</span>
+                        <span>Total cost ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
+                        <span className="text-lg font-black text-ink font-display">
+                          {rentType === 'Borrow' ? 'Free (Borrow)' : `₹${totalCost}`}
+                        </span>
                       </div>
                       <p className="text-[11px] text-ink-secondary leading-snug">
-                        This is an estimated rental cost. No payment is processed on Rentu. You'll coordinate directly with the owner.
+                        {rentType === 'Borrow'
+                          ? 'Zero rental fee proposal. The owner will review and coordinate handover directly.'
+                          : `Estimated at ₹${item.price_per_day}/day for ${durationDays} days. Coordinate directly with the owner.`}
                       </p>
                     </div>
 
@@ -415,22 +748,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       disabled={isSubmitting}
                       className="btn-primary w-full py-3.5 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
                     >
-                      <span>{isSubmitting ? 'Sending Request...' : 'Request to Rent'}</span>
+                      <span>
+                        {isSubmitting
+                          ? 'Sending Request...'
+                          : rentType === 'Borrow'
+                          ? 'Request to Borrow (Free)'
+                          : `Request to Rent (₹${totalCost})`}
+                      </span>
                     </button>
 
-                    {/* Trust Perks from Screen 3 */}
+                    {/* Trust Perks */}
                     <div className="pt-4 border-t border-divider space-y-2 text-xs text-ink-secondary font-medium">
                       <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Up to 5 days max</span>
+                        <Clock className="w-4 h-4 text-brand shrink-0" />
+                        <span>{durationDays} {durationDays === 1 ? 'day' : 'days'} custom duration requested</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Package className="w-4 h-4 text-zinc-500 shrink-0" />
-                        <span>Delivery not available</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-brand shrink-0" />
-                        <span>Self pickup ({item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby'})</span>
+                        <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Pickup: {pickupType === 'MY_LOCATION' ? 'Delivered to you' : pickupType === 'CUSTOM_LOCATION' ? (pickupLocality || 'Custom Meetup') : `Lender's Area (${item.locality || 'Nearby'})`}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Lock className="w-4 h-4 text-emerald-600 shrink-0" />

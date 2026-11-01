@@ -7,6 +7,7 @@ import bookingsRoutes from './modules/bookings/bookings.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import usersRoutes from './modules/users/users.routes';
 import messagesRoutes from './modules/messages/messages.routes';
+import uploadRoutes from './modules/upload/upload.routes';
 import aiRoutes from './modules/ai/ai.routes';
 import { errorHandler } from './middleware/error';
 import { sendError, sendSuccess } from './middleware/response';
@@ -56,6 +57,7 @@ export const createApp = () => {
   app.use(['/api/analytics', '/analytics'], analyticsRoutes);
   app.use(['/api/users', '/users'], usersRoutes);
   app.use(['/api/messages', '/messages'], messagesRoutes);
+  app.use(['/api/upload', '/upload'], uploadRoutes);
   app.use(['/api/ai', '/ai'], aiRoutes);
 
   // 404 handler
