@@ -22,6 +22,7 @@ import { api } from '../lib/api';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { ReviewModal } from './ReviewModal';
+import { BookingScheduleCalendar, formatDisplayDate, cleanYMD } from './BookingScheduleCalendar';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
@@ -30,6 +31,10 @@ interface BookingsViewProps {
 export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
   const { user } = useAuth();
   
+  // View mode switcher: 'stages' (4-stage lifecycle cards) vs 'calendar' (interactive monthly calendar)
+  const [viewMode, setViewMode] = useState<'stages' | 'calendar'>('stages');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | undefined>(undefined);
+
   // 4 Lifecycle stages matching exact requirements:
   // 1. Rental Requests (PENDING)
   // 2. Accepted the Product (ACCEPTED - awaiting meetup / pickup verification)
@@ -175,85 +180,137 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-150">
       
-      {/* Header Bar */}
-      <div className="pb-6 border-b border-divider">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display">
-          Rental Lifecycle & Handoffs
-        </h1>
-        <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-0.5">
-          Four-stage secure peer-to-peer exchange with live 6-digit codes and 3-day reviews
-        </p>
+      {/* Header Bar with View Mode Switcher */}
+      <div className="pb-6 border-b border-divider flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display">
+            Rental Lifecycle & Handoffs
+          </h1>
+          <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-0.5">
+            Four-stage secure peer-to-peer exchange with live 6-digit codes and interactive schedule calendar
+          </p>
+        </div>
+
+        {/* View Switcher: 4 Stages vs Schedule Calendar */}
+        <div className="flex items-center gap-1.5 bg-canvas p-1 rounded-2xl border border-divider self-start md:self-auto shrink-0 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode('stages')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'stages'
+                ? 'bg-brand text-white shadow-xs'
+                : 'text-ink-secondary hover:text-ink'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>4 Stages ({bookings.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('calendar')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'calendar'
+                ? 'bg-brand text-white shadow-xs'
+                : 'text-ink-secondary hover:text-ink'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Schedule Calendar</span>
+          </button>
+        </div>
       </div>
 
-      {/* 4 STAGES TABS ROW */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-6 pb-6">
-        {[
-          { 
-            key: 'requests', 
-            stepNum: '1', 
-            label: 'Rental Requests', 
-            desc: 'Proposals & Pending',
-            count: requestsList.length 
-          },
-          { 
-            key: 'accepted', 
-            stepNum: '2', 
-            label: 'Accepted Meetup', 
-            desc: 'Agreed time & place',
-            count: acceptedList.length 
-          },
-          { 
-            key: 'receiving', 
-            stepNum: '3', 
-            label: 'Receiving (In Use)', 
-            desc: 'Code verified & active',
-            count: receivingList.length 
-          },
-          { 
-            key: 'completed', 
-            stepNum: '4', 
-            label: 'Received Back', 
-            desc: 'Returned & 3-Day Reviews',
-            count: completedList.length 
-          },
-        ].map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer border relative overflow-hidden ${
-                isActive
-                  ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
-                  : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
-                  isActive ? 'bg-brand text-white' : 'bg-surface text-ink-secondary border border-divider'
-                }`}>
-                  Stage {tab.stepNum}
-                </span>
+      {/* CALENDAR VIEW */}
+      {viewMode === 'calendar' ? (
+        <div className="pt-6">
+          <BookingScheduleCalendar
+            bookings={bookings}
+            onOpenChat={onOpenChat}
+            onStatusUpdate={handleStatusUpdate}
+            onVerifyPickup={async (id, code) => {
+              pickupCodeInput[id] = code;
+              await handleVerifyPickup(id);
+            }}
+            onVerifyReturn={async (id, code) => {
+              returnCodeInput[id] = code;
+              await handleVerifyReturn(id);
+            }}
+            onOpenReview={(b) => setReviewBooking(b)}
+            initialDate={selectedCalendarDate}
+          />
+        </div>
+      ) : (
+        <>
+          {/* 4 STAGES TABS ROW */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-6 pb-6">
+            {[
+              { 
+                key: 'requests', 
+                stepNum: '1', 
+                label: 'Rental Requests', 
+                desc: 'Proposals & Pending',
+                count: requestsList.length 
+              },
+              { 
+                key: 'accepted', 
+                stepNum: '2', 
+                label: 'Accepted Meetup', 
+                desc: 'Agreed time & place',
+                count: acceptedList.length 
+              },
+              { 
+                key: 'receiving', 
+                stepNum: '3', 
+                label: 'Receiving (In Use)', 
+                desc: 'Code verified & active',
+                count: receivingList.length 
+              },
+              { 
+                key: 'completed', 
+                stepNum: '4', 
+                label: 'Received Back', 
+                desc: 'Returned & 3-Day Reviews',
+                count: completedList.length 
+              },
+            ].map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer border relative overflow-hidden ${
+                    isActive
+                      ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
+                      : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                      isActive ? 'bg-brand text-white' : 'bg-surface text-ink-secondary border border-divider'
+                    }`}>
+                      Stage {tab.stepNum}
+                    </span>
 
-                {tab.count > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                    isActive ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
-                  }`}>
-                    {tab.count}
-                  </span>
-                )}
-              </div>
+                    {tab.count > 0 && (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        isActive ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </div>
 
-              <div className="font-extrabold text-xs sm:text-sm text-ink mt-2">
-                {tab.label}
-              </div>
-              <div className="text-[10px] text-ink-secondary truncate font-medium">
-                {tab.desc}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                  <div className="font-extrabold text-xs sm:text-sm text-ink mt-2">
+                    {tab.label}
+                  </div>
+                  <div className="text-[10px] text-ink-secondary truncate font-medium">
+                    {tab.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
       {/* Bookings List */}
       {isLoading ? (
@@ -327,7 +384,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-secondary">
                         <span className="flex items-center gap-1 text-ink">
                           <Calendar className="w-3.5 h-3.5 text-brand" />
-                          <span>{booking.start_date} → {booking.end_date || booking.start_date} ({booking.duration_days} days)</span>
+                          <span>{formatDisplayDate(cleanYMD(booking.start_date))} → {formatDisplayDate(cleanYMD(booking.end_date || booking.start_date))} ({booking.duration_days} days)</span>
                         </span>
                         <span>•</span>
                         <span className="font-extrabold text-ink font-display">
@@ -342,9 +399,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                     </div>
                   </div>
 
-                  {/* Quick Chat button */}
-                  <div className="shrink-0 w-full sm:w-auto flex sm:flex-col items-end gap-2">
+                  {/* Actions: Quick Chat and Calendar View buttons */}
+                  <div className="shrink-0 w-full sm:w-auto flex flex-row sm:flex-col items-center sm:items-end gap-2">
                     <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCalendarDate(cleanYMD(booking.start_date));
+                        setViewMode('calendar');
+                      }}
+                      className="btn-secondary text-xs px-3 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 w-full sm:w-auto justify-center hover:border-brand hover:text-brand transition-colors"
+                      title="View on Schedule Calendar"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-brand" />
+                      <span>View on Calendar</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onOpenChat(booking.id)}
                       className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 w-full sm:w-auto justify-center hover:border-brand hover:text-brand transition-colors"
                     >
@@ -675,6 +745,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
             );
           })}
         </div>
+      )}
+        </>
       )}
 
       {/* Review Modal */}

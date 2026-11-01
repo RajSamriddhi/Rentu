@@ -257,7 +257,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Live Search Flyout Dropdown */}
             {showUserDropdown && searchQuery.trim().length >= 2 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-surface/98 backdrop-blur-xl border border-divider rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-divider">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#171821] border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-[0_16px_48px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-zinc-100 dark:divide-zinc-800/80">
                 {/* Community Members section */}
                 <div>
                   <div className="flex items-center justify-between px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-ink-muted">
@@ -291,13 +291,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                             }
                             setShowUserDropdown(false);
                           }}
-                          className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors group"
+                          className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/70 text-left cursor-pointer transition-colors group"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
                               src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                               alt={u.name}
-                              className="w-8 h-8 rounded-full object-cover border border-divider group-hover:border-brand shrink-0"
+                              className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 group-hover:border-brand shrink-0"
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -643,7 +643,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile User Search Dropdown */}
             {showUserDropdown && searchQuery.trim().length >= 2 && (
-              <div className="mt-2 bg-surface border border-divider rounded-2xl shadow-xl p-2.5 z-50 divide-y divide-divider max-h-72 overflow-y-auto">
+              <div className="mt-2 bg-white dark:bg-[#171821] border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-xl p-2.5 z-50 divide-y divide-zinc-100 dark:divide-zinc-800 max-h-72 overflow-y-auto">
                 <div className="flex items-center justify-between px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
                   <span className="flex items-center gap-1">
                     <Users className="w-3 h-3 text-brand" />
@@ -673,13 +673,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                           setShowUserDropdown(false);
                           setShowMobileSearch(false);
                         }}
-                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors"
+                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/70 text-left cursor-pointer transition-colors"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
                             src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                             alt={u.name}
-                            className="w-7 h-7 rounded-full object-cover border border-divider shrink-0"
+                            className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0"
                           />
                           <div className="min-w-0">
                             <div className="text-xs font-bold text-ink truncate">{u.name}</div>
@@ -704,7 +704,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div className="md:hidden border-t border-divider/60 bg-surface/95 dark:bg-[#111218]/95 backdrop-blur-md px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
+          <div className="md:hidden border-t border-divider/60 bg-white dark:bg-[#111218] px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
 
             {/* Navigation Links */}
             <div className="space-y-1">

@@ -16168,6 +16168,17 @@ var require_utils = __commonJS({
     var setMaxIndex = function setMaxIndex2(obj, maxIndex) {
       overflowChannel.set(obj, maxIndex);
     };
+    var conflictChannel = getSideChannel();
+    var markConflict = function markConflict2(obj, maxIndex) {
+      conflictChannel.set(obj, maxIndex);
+      return obj;
+    };
+    var isConflict = function isConflict2(obj) {
+      return conflictChannel.has(obj);
+    };
+    var getConflictIndex = function getConflictIndex2(obj) {
+      return conflictChannel.get(obj);
+    };
     var hexTable = (function() {
       var array = [];
       for (var i = 0; i < 256; ++i) {
@@ -16211,6 +16222,27 @@ var require_utils = __commonJS({
         obj[key] = value;
       }
     };
+    var maxNumericIndex = function maxNumericIndex2(obj, min) {
+      var max = min;
+      var keys = Object.keys(obj);
+      for (var i = 0; i < keys.length; ++i) {
+        var num = parseInt(keys[i], 10);
+        if (String(num) === keys[i] && num > max) {
+          max = num;
+        }
+      }
+      return max;
+    };
+    var limitedPair = function limitedPair2(first, second, options) {
+      var pair = [first, second];
+      if (options && typeof options.arrayLimit === "number" && pair.length > options.arrayLimit) {
+        if (options.throwOnLimitExceeded) {
+          throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+        }
+        return markOverflow(arrayToObject(pair, options), 1);
+      }
+      return pair;
+    };
     var merge = function merge2(target, source, options) {
       if (!source) {
         return target;
@@ -16230,13 +16262,21 @@ var require_utils = __commonJS({
             var newIndex = getMaxIndex(target) + 1;
             target[newIndex] = source;
             setMaxIndex(target, newIndex);
+          } else if (options && options.strictMerge && isConflict(target)) {
+            var nextConflict = getConflictIndex(target) + 1;
+            if (options.throwOnLimitExceeded && typeof options.arrayLimit === "number" && nextConflict >= options.arrayLimit) {
+              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
+            }
+            target[nextConflict] = source;
+            markConflict(target, nextConflict);
           } else if (options && options.strictMerge) {
-            return [target, source];
+            var conflict = limitedPair(target, source, options);
+            return isArray(conflict) ? markConflict(conflict, 1) : conflict;
           } else if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
             target[source] = true;
           }
         } else {
-          return [target, source];
+          return limitedPair(target, source, options);
         }
         return target;
       }
@@ -16262,6 +16302,9 @@ var require_utils = __commonJS({
       var mergeTarget = target;
       if (isArray(target) && !isArray(source)) {
         mergeTarget = arrayToObject(target, options);
+        if (isConflict(target)) {
+          markConflict(mergeTarget, target.length - 1);
+        }
       }
       if (isArray(target) && isArray(source)) {
         source.forEach(function(item, i) {
@@ -16292,12 +16335,18 @@ var require_utils = __commonJS({
           setProperty(acc, key, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
-          markOverflow(acc, getMaxIndex(source));
+          markOverflow(acc, maxNumericIndex(acc, getMaxIndex(source)));
         }
         if (isOverflow(acc)) {
           var keyNum = parseInt(key, 10);
           if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
             setMaxIndex(acc, keyNum);
+          }
+        }
+        if (isConflict(acc)) {
+          var conflictKey = parseInt(key, 10);
+          if (String(conflictKey) === key && conflictKey > getConflictIndex(acc)) {
+            markConflict(acc, conflictKey);
           }
         }
         return acc;
@@ -16310,6 +16359,9 @@ var require_utils = __commonJS({
       }, target);
     };
     var decode = function(str, defaultDecoder, charset) {
+      if (typeof str === "string" && str.indexOf("%") === -1) {
+        return str.indexOf("+") === -1 ? str : str.replace(/\+/g, " ");
+      }
       var strWithoutPlus = str.replace(/\+/g, " ");
       if (charset === "iso-8859-1") {
         return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
@@ -16320,6 +16372,52 @@ var require_utils = __commonJS({
         return strWithoutPlus;
       }
     };
+    var hasToPrimitive = typeof Symbol === "function" && typeof Symbol.toPrimitive === "symbol";
+    var arrayJoin = Array.prototype.join;
+    var arrayToString = Array.prototype.toString;
+    var objectToString = Object.prototype.toString;
+    var toCoercible = function toCoercible2(value, joining) {
+      if (!value || typeof value !== "object" && typeof value !== "function") {
+        return value;
+      }
+      if (hasToPrimitive && value[Symbol.toPrimitive] != null) {
+        return value;
+      }
+      if (isArray(value) && value.toString === arrayToString && value.join === arrayJoin) {
+        var ancestors = joining || getSideChannel();
+        if (ancestors.has(value)) {
+          return "";
+        }
+        ancestors.set(value, true);
+        var copy;
+        for (var i = 0; i < value.length; i += 1) {
+          var item = value[i];
+          var coerced = toCoercible2(item, ancestors);
+          if (!copy && coerced !== item) {
+            copy = [];
+            for (var j = 0; j < i; j += 1) {
+              copy[j] = value[j];
+            }
+          }
+          if (copy) {
+            copy[i] = coerced;
+          }
+        }
+        ancestors["delete"](value);
+        return copy || value;
+      }
+      if (typeof value.toString === "function") {
+        return value;
+      }
+      var valueOf = value.valueOf;
+      if (typeof valueOf === "function") {
+        var primitive = valueOf.call(value);
+        if (!primitive || typeof primitive !== "object" && typeof primitive !== "function") {
+          return String(primitive);
+        }
+      }
+      return objectToString.call(value);
+    };
     var limit = 1024;
     var encode = function encode2(str, defaultEncoder, charset, kind, format) {
       if (str.length === 0) {
@@ -16329,12 +16427,12 @@ var require_utils = __commonJS({
       if (typeof str === "symbol") {
         string = Symbol.prototype.toString.call(str);
       } else if (typeof str !== "string") {
-        string = String(str);
+        string = String(toCoercible(str));
       }
       if (charset === "iso-8859-1") {
         return escape(string).replace(/%u[0-9a-f]{4}/gi, function($0) {
           return "%26%23" + parseInt($0.slice(2), 16) + "%3B";
-        });
+        }).replace(/\+/g, "%2B");
       }
       var out = "";
       for (var j = 0; j < string.length; j += limit) {
@@ -16446,7 +16544,8 @@ var require_utils = __commonJS({
       isRegExp,
       markOverflow,
       maybeMap,
-      merge
+      merge,
+      toCoercible
     };
   }
 });
@@ -16561,17 +16660,17 @@ var require_stringify = __commonJS({
       if (generateArrayPrefix === "comma" && isArray(obj)) {
         if (encodeValuesOnly && encoder) {
           obj = utils.maybeMap(obj, function(v) {
-            return v == null ? v : encoder(v);
+            return v == null ? v : encoder(v, defaults2.encoder, charset, "value", format);
           });
         }
-        objKeys = [{ value: obj.length > 0 ? obj.join(",") || null : void 0 }];
+        objKeys = [{ value: obj.length > 0 ? utils.toCoercible(obj).join(",") || null : void 0 }];
       } else if (isArray(filter)) {
         objKeys = filter;
       } else {
         var keys = Object.keys(obj);
         objKeys = sort ? keys.sort(sort) : keys;
       }
-      var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
+      var encodedPrefix = String(prefix);
       var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
       if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
         return adjustedPrefix + "[]";
@@ -16642,7 +16741,7 @@ var require_stringify = __commonJS({
         filter = opts.filter;
       }
       var arrayFormat;
-      if (opts.arrayFormat in arrayPrefixGenerators) {
+      if (has.call(arrayPrefixGenerators, opts.arrayFormat)) {
         arrayFormat = opts.arrayFormat;
       } else if ("indices" in opts) {
         arrayFormat = opts.indices ? "indices" : "repeat";
@@ -16752,9 +16851,53 @@ var require_stringify = __commonJS({
 var require_parse = __commonJS({
   "../node_modules/qs/lib/parse.js"(exports2, module2) {
     "use strict";
+    var getSideChannel = require_side_channel();
     var utils = require_utils();
     var has = Object.prototype.hasOwnProperty;
     var isArray = Array.isArray;
+    var getPrototypeOf = Object.getPrototypeOf;
+    var isPlainContainer = function isPlainContainer2(value) {
+      if (!value || typeof value !== "object") {
+        return false;
+      }
+      if (isArray(value)) {
+        return true;
+      }
+      var proto = getPrototypeOf(value);
+      return proto === Object.prototype || proto === null;
+    };
+    var emptyCopyOf = function emptyCopyOf2(value) {
+      if (isArray(value)) {
+        var arr = [];
+        arr.length = value.length;
+        return arr;
+      }
+      return getPrototypeOf(value) === null ? { __proto__: null } : {};
+    };
+    var copyInput = function copyInput2(input) {
+      var copies = getSideChannel();
+      var result = {};
+      var queue = [{ source: input, target: result }];
+      for (var i = 0; i < queue.length; ++i) {
+        var source = queue[i].source;
+        var target = queue[i].target;
+        var keys = Object.keys(source);
+        for (var j = 0; j < keys.length; ++j) {
+          var value = source[keys[j]];
+          if (isPlainContainer(value)) {
+            if (!copies.has(value)) {
+              var copy = emptyCopyOf(value);
+              copies.set(value, copy);
+              queue[queue.length] = { source: value, target: copy };
+            }
+            target[keys[j]] = copies.get(value);
+          } else {
+            target[keys[j]] = value;
+          }
+        }
+      }
+      return result;
+    };
     var defaults2 = {
       allowDots: false,
       allowEmptyArrays: false,
@@ -16841,6 +16984,7 @@ var require_parse = __commonJS({
         var part = parts[i];
         var bracketEqualsPos = part.indexOf("]=");
         var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
+        var isEmptyBracketKey = pos > 1 && part.slice(pos - 2, pos) === "[]";
         var key;
         var val;
         if (pos === -1) {
@@ -16864,7 +17008,7 @@ var require_parse = __commonJS({
         if (val && options.interpretNumericEntities && charset === "iso-8859-1") {
           val = interpretNumericEntities(String(val));
         }
-        if (part.indexOf("[]=") > -1) {
+        if (isEmptyBracketKey) {
           val = isArray(val) ? [val] : val;
         }
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
@@ -16872,7 +17016,7 @@ var require_parse = __commonJS({
         }
         if (key !== null) {
           var existing = has.call(obj, key);
-          if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
+          if (existing && (options.duplicates === "combine" || isEmptyBracketKey)) {
             obj[key] = utils.combine(
               obj[key],
               val,
@@ -16933,8 +17077,35 @@ var require_parse = __commonJS({
       }
       return leaf;
     };
+    var topLevelDotsToBrackets = function topLevelDotsToBrackets2(key) {
+      var result = "";
+      var depth = 0;
+      for (var i = 0; i < key.length; i += 1) {
+        var cu = key.charCodeAt(i);
+        if (cu === 91) {
+          depth += 1;
+          result += "[";
+        } else if (cu === 93) {
+          if (depth > 0) {
+            depth -= 1;
+          }
+          result += "]";
+        } else if (cu === 46 && depth === 0 && i + 1 < key.length && key.charCodeAt(i + 1) !== 46 && key.charCodeAt(i + 1) !== 91) {
+          var start = i + 1;
+          var j = start;
+          while (j < key.length && key.charCodeAt(j) !== 46 && key.charCodeAt(j) !== 91) {
+            j += 1;
+          }
+          result += "[" + key.slice(start, j) + "]";
+          i = j - 1;
+        } else {
+          result += key.charAt(i);
+        }
+      }
+      return result;
+    };
     var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
-      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
+      var key = options.allowDots ? topLevelDotsToBrackets(originalKey) : originalKey;
       if (options.depth <= 0) {
         if (!options.plainObjects && has.call(Object.prototype, key)) {
           if (!options.allowPrototypes) {
@@ -17060,7 +17231,7 @@ var require_parse = __commonJS({
       if (str === "" || str === null || typeof str === "undefined") {
         return options.plainObjects ? { __proto__: null } : {};
       }
-      var tempObj = typeof str === "string" ? parseValues(str, options) : str;
+      var tempObj = typeof str === "string" ? parseValues(str, options) : copyInput(str);
       var obj = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i = 0; i < keys.length; ++i) {
@@ -35380,7 +35551,7 @@ var require_version = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.version = void 0;
-    exports2.version = "2.117.3";
+    exports2.version = "2.118.0";
   }
 });
 
@@ -39621,7 +39792,7 @@ var require_version2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.version = void 0;
-    exports2.version = "2.117.3";
+    exports2.version = "2.118.0";
   }
 });
 
@@ -48209,6 +48380,1027 @@ var require_main4 = __commonJS({
   }
 });
 
+// ../node_modules/@google/generative-ai/dist/index.js
+var require_dist2 = __commonJS({
+  "../node_modules/@google/generative-ai/dist/index.js"(exports2) {
+    "use strict";
+    exports2.SchemaType = void 0;
+    (function(SchemaType) {
+      SchemaType["STRING"] = "string";
+      SchemaType["NUMBER"] = "number";
+      SchemaType["INTEGER"] = "integer";
+      SchemaType["BOOLEAN"] = "boolean";
+      SchemaType["ARRAY"] = "array";
+      SchemaType["OBJECT"] = "object";
+    })(exports2.SchemaType || (exports2.SchemaType = {}));
+    exports2.ExecutableCodeLanguage = void 0;
+    (function(ExecutableCodeLanguage) {
+      ExecutableCodeLanguage["LANGUAGE_UNSPECIFIED"] = "language_unspecified";
+      ExecutableCodeLanguage["PYTHON"] = "python";
+    })(exports2.ExecutableCodeLanguage || (exports2.ExecutableCodeLanguage = {}));
+    exports2.Outcome = void 0;
+    (function(Outcome) {
+      Outcome["OUTCOME_UNSPECIFIED"] = "outcome_unspecified";
+      Outcome["OUTCOME_OK"] = "outcome_ok";
+      Outcome["OUTCOME_FAILED"] = "outcome_failed";
+      Outcome["OUTCOME_DEADLINE_EXCEEDED"] = "outcome_deadline_exceeded";
+    })(exports2.Outcome || (exports2.Outcome = {}));
+    var POSSIBLE_ROLES = ["user", "model", "function", "system"];
+    exports2.HarmCategory = void 0;
+    (function(HarmCategory) {
+      HarmCategory["HARM_CATEGORY_UNSPECIFIED"] = "HARM_CATEGORY_UNSPECIFIED";
+      HarmCategory["HARM_CATEGORY_HATE_SPEECH"] = "HARM_CATEGORY_HATE_SPEECH";
+      HarmCategory["HARM_CATEGORY_SEXUALLY_EXPLICIT"] = "HARM_CATEGORY_SEXUALLY_EXPLICIT";
+      HarmCategory["HARM_CATEGORY_HARASSMENT"] = "HARM_CATEGORY_HARASSMENT";
+      HarmCategory["HARM_CATEGORY_DANGEROUS_CONTENT"] = "HARM_CATEGORY_DANGEROUS_CONTENT";
+      HarmCategory["HARM_CATEGORY_CIVIC_INTEGRITY"] = "HARM_CATEGORY_CIVIC_INTEGRITY";
+    })(exports2.HarmCategory || (exports2.HarmCategory = {}));
+    exports2.HarmBlockThreshold = void 0;
+    (function(HarmBlockThreshold) {
+      HarmBlockThreshold["HARM_BLOCK_THRESHOLD_UNSPECIFIED"] = "HARM_BLOCK_THRESHOLD_UNSPECIFIED";
+      HarmBlockThreshold["BLOCK_LOW_AND_ABOVE"] = "BLOCK_LOW_AND_ABOVE";
+      HarmBlockThreshold["BLOCK_MEDIUM_AND_ABOVE"] = "BLOCK_MEDIUM_AND_ABOVE";
+      HarmBlockThreshold["BLOCK_ONLY_HIGH"] = "BLOCK_ONLY_HIGH";
+      HarmBlockThreshold["BLOCK_NONE"] = "BLOCK_NONE";
+    })(exports2.HarmBlockThreshold || (exports2.HarmBlockThreshold = {}));
+    exports2.HarmProbability = void 0;
+    (function(HarmProbability) {
+      HarmProbability["HARM_PROBABILITY_UNSPECIFIED"] = "HARM_PROBABILITY_UNSPECIFIED";
+      HarmProbability["NEGLIGIBLE"] = "NEGLIGIBLE";
+      HarmProbability["LOW"] = "LOW";
+      HarmProbability["MEDIUM"] = "MEDIUM";
+      HarmProbability["HIGH"] = "HIGH";
+    })(exports2.HarmProbability || (exports2.HarmProbability = {}));
+    exports2.BlockReason = void 0;
+    (function(BlockReason) {
+      BlockReason["BLOCKED_REASON_UNSPECIFIED"] = "BLOCKED_REASON_UNSPECIFIED";
+      BlockReason["SAFETY"] = "SAFETY";
+      BlockReason["OTHER"] = "OTHER";
+    })(exports2.BlockReason || (exports2.BlockReason = {}));
+    exports2.FinishReason = void 0;
+    (function(FinishReason) {
+      FinishReason["FINISH_REASON_UNSPECIFIED"] = "FINISH_REASON_UNSPECIFIED";
+      FinishReason["STOP"] = "STOP";
+      FinishReason["MAX_TOKENS"] = "MAX_TOKENS";
+      FinishReason["SAFETY"] = "SAFETY";
+      FinishReason["RECITATION"] = "RECITATION";
+      FinishReason["LANGUAGE"] = "LANGUAGE";
+      FinishReason["BLOCKLIST"] = "BLOCKLIST";
+      FinishReason["PROHIBITED_CONTENT"] = "PROHIBITED_CONTENT";
+      FinishReason["SPII"] = "SPII";
+      FinishReason["MALFORMED_FUNCTION_CALL"] = "MALFORMED_FUNCTION_CALL";
+      FinishReason["OTHER"] = "OTHER";
+    })(exports2.FinishReason || (exports2.FinishReason = {}));
+    exports2.TaskType = void 0;
+    (function(TaskType) {
+      TaskType["TASK_TYPE_UNSPECIFIED"] = "TASK_TYPE_UNSPECIFIED";
+      TaskType["RETRIEVAL_QUERY"] = "RETRIEVAL_QUERY";
+      TaskType["RETRIEVAL_DOCUMENT"] = "RETRIEVAL_DOCUMENT";
+      TaskType["SEMANTIC_SIMILARITY"] = "SEMANTIC_SIMILARITY";
+      TaskType["CLASSIFICATION"] = "CLASSIFICATION";
+      TaskType["CLUSTERING"] = "CLUSTERING";
+    })(exports2.TaskType || (exports2.TaskType = {}));
+    exports2.FunctionCallingMode = void 0;
+    (function(FunctionCallingMode) {
+      FunctionCallingMode["MODE_UNSPECIFIED"] = "MODE_UNSPECIFIED";
+      FunctionCallingMode["AUTO"] = "AUTO";
+      FunctionCallingMode["ANY"] = "ANY";
+      FunctionCallingMode["NONE"] = "NONE";
+    })(exports2.FunctionCallingMode || (exports2.FunctionCallingMode = {}));
+    exports2.DynamicRetrievalMode = void 0;
+    (function(DynamicRetrievalMode) {
+      DynamicRetrievalMode["MODE_UNSPECIFIED"] = "MODE_UNSPECIFIED";
+      DynamicRetrievalMode["MODE_DYNAMIC"] = "MODE_DYNAMIC";
+    })(exports2.DynamicRetrievalMode || (exports2.DynamicRetrievalMode = {}));
+    var GoogleGenerativeAIError = class extends Error {
+      constructor(message) {
+        super(`[GoogleGenerativeAI Error]: ${message}`);
+      }
+    };
+    var GoogleGenerativeAIResponseError = class extends GoogleGenerativeAIError {
+      constructor(message, response) {
+        super(message);
+        this.response = response;
+      }
+    };
+    var GoogleGenerativeAIFetchError = class extends GoogleGenerativeAIError {
+      constructor(message, status, statusText, errorDetails) {
+        super(message);
+        this.status = status;
+        this.statusText = statusText;
+        this.errorDetails = errorDetails;
+      }
+    };
+    var GoogleGenerativeAIRequestInputError = class extends GoogleGenerativeAIError {
+    };
+    var GoogleGenerativeAIAbortError = class extends GoogleGenerativeAIError {
+    };
+    var DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
+    var DEFAULT_API_VERSION = "v1beta";
+    var PACKAGE_VERSION = "0.24.1";
+    var PACKAGE_LOG_HEADER = "genai-js";
+    var Task;
+    (function(Task2) {
+      Task2["GENERATE_CONTENT"] = "generateContent";
+      Task2["STREAM_GENERATE_CONTENT"] = "streamGenerateContent";
+      Task2["COUNT_TOKENS"] = "countTokens";
+      Task2["EMBED_CONTENT"] = "embedContent";
+      Task2["BATCH_EMBED_CONTENTS"] = "batchEmbedContents";
+    })(Task || (Task = {}));
+    var RequestUrl = class {
+      constructor(model, task, apiKey, stream, requestOptions) {
+        this.model = model;
+        this.task = task;
+        this.apiKey = apiKey;
+        this.stream = stream;
+        this.requestOptions = requestOptions;
+      }
+      toString() {
+        var _a, _b;
+        const apiVersion = ((_a = this.requestOptions) === null || _a === void 0 ? void 0 : _a.apiVersion) || DEFAULT_API_VERSION;
+        const baseUrl = ((_b = this.requestOptions) === null || _b === void 0 ? void 0 : _b.baseUrl) || DEFAULT_BASE_URL;
+        let url = `${baseUrl}/${apiVersion}/${this.model}:${this.task}`;
+        if (this.stream) {
+          url += "?alt=sse";
+        }
+        return url;
+      }
+    };
+    function getClientHeaders(requestOptions) {
+      const clientHeaders = [];
+      if (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.apiClient) {
+        clientHeaders.push(requestOptions.apiClient);
+      }
+      clientHeaders.push(`${PACKAGE_LOG_HEADER}/${PACKAGE_VERSION}`);
+      return clientHeaders.join(" ");
+    }
+    async function getHeaders(url) {
+      var _a;
+      const headers = new Headers();
+      headers.append("Content-Type", "application/json");
+      headers.append("x-goog-api-client", getClientHeaders(url.requestOptions));
+      headers.append("x-goog-api-key", url.apiKey);
+      let customHeaders = (_a = url.requestOptions) === null || _a === void 0 ? void 0 : _a.customHeaders;
+      if (customHeaders) {
+        if (!(customHeaders instanceof Headers)) {
+          try {
+            customHeaders = new Headers(customHeaders);
+          } catch (e) {
+            throw new GoogleGenerativeAIRequestInputError(`unable to convert customHeaders value ${JSON.stringify(customHeaders)} to Headers: ${e.message}`);
+          }
+        }
+        for (const [headerName, headerValue] of customHeaders.entries()) {
+          if (headerName === "x-goog-api-key") {
+            throw new GoogleGenerativeAIRequestInputError(`Cannot set reserved header name ${headerName}`);
+          } else if (headerName === "x-goog-api-client") {
+            throw new GoogleGenerativeAIRequestInputError(`Header name ${headerName} can only be set using the apiClient field`);
+          }
+          headers.append(headerName, headerValue);
+        }
+      }
+      return headers;
+    }
+    async function constructModelRequest(model, task, apiKey, stream, body, requestOptions) {
+      const url = new RequestUrl(model, task, apiKey, stream, requestOptions);
+      return {
+        url: url.toString(),
+        fetchOptions: Object.assign(Object.assign({}, buildFetchOptions(requestOptions)), { method: "POST", headers: await getHeaders(url), body })
+      };
+    }
+    async function makeModelRequest(model, task, apiKey, stream, body, requestOptions = {}, fetchFn = fetch) {
+      const { url, fetchOptions } = await constructModelRequest(model, task, apiKey, stream, body, requestOptions);
+      return makeRequest(url, fetchOptions, fetchFn);
+    }
+    async function makeRequest(url, fetchOptions, fetchFn = fetch) {
+      let response;
+      try {
+        response = await fetchFn(url, fetchOptions);
+      } catch (e) {
+        handleResponseError(e, url);
+      }
+      if (!response.ok) {
+        await handleResponseNotOk(response, url);
+      }
+      return response;
+    }
+    function handleResponseError(e, url) {
+      let err = e;
+      if (err.name === "AbortError") {
+        err = new GoogleGenerativeAIAbortError(`Request aborted when fetching ${url.toString()}: ${e.message}`);
+        err.stack = e.stack;
+      } else if (!(e instanceof GoogleGenerativeAIFetchError || e instanceof GoogleGenerativeAIRequestInputError)) {
+        err = new GoogleGenerativeAIError(`Error fetching from ${url.toString()}: ${e.message}`);
+        err.stack = e.stack;
+      }
+      throw err;
+    }
+    async function handleResponseNotOk(response, url) {
+      let message = "";
+      let errorDetails;
+      try {
+        const json = await response.json();
+        message = json.error.message;
+        if (json.error.details) {
+          message += ` ${JSON.stringify(json.error.details)}`;
+          errorDetails = json.error.details;
+        }
+      } catch (e) {
+      }
+      throw new GoogleGenerativeAIFetchError(`Error fetching from ${url.toString()}: [${response.status} ${response.statusText}] ${message}`, response.status, response.statusText, errorDetails);
+    }
+    function buildFetchOptions(requestOptions) {
+      const fetchOptions = {};
+      if ((requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.signal) !== void 0 || (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.timeout) >= 0) {
+        const controller = new AbortController();
+        if ((requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.timeout) >= 0) {
+          setTimeout(() => controller.abort(), requestOptions.timeout);
+        }
+        if (requestOptions === null || requestOptions === void 0 ? void 0 : requestOptions.signal) {
+          requestOptions.signal.addEventListener("abort", () => {
+            controller.abort();
+          });
+        }
+        fetchOptions.signal = controller.signal;
+      }
+      return fetchOptions;
+    }
+    function addHelpers(response) {
+      response.text = () => {
+        if (response.candidates && response.candidates.length > 0) {
+          if (response.candidates.length > 1) {
+            console.warn(`This response had ${response.candidates.length} candidates. Returning text from the first candidate only. Access response.candidates directly to use the other candidates.`);
+          }
+          if (hadBadFinishReason(response.candidates[0])) {
+            throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+          }
+          return getText(response);
+        } else if (response.promptFeedback) {
+          throw new GoogleGenerativeAIResponseError(`Text not available. ${formatBlockErrorMessage(response)}`, response);
+        }
+        return "";
+      };
+      response.functionCall = () => {
+        if (response.candidates && response.candidates.length > 0) {
+          if (response.candidates.length > 1) {
+            console.warn(`This response had ${response.candidates.length} candidates. Returning function calls from the first candidate only. Access response.candidates directly to use the other candidates.`);
+          }
+          if (hadBadFinishReason(response.candidates[0])) {
+            throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+          }
+          console.warn(`response.functionCall() is deprecated. Use response.functionCalls() instead.`);
+          return getFunctionCalls(response)[0];
+        } else if (response.promptFeedback) {
+          throw new GoogleGenerativeAIResponseError(`Function call not available. ${formatBlockErrorMessage(response)}`, response);
+        }
+        return void 0;
+      };
+      response.functionCalls = () => {
+        if (response.candidates && response.candidates.length > 0) {
+          if (response.candidates.length > 1) {
+            console.warn(`This response had ${response.candidates.length} candidates. Returning function calls from the first candidate only. Access response.candidates directly to use the other candidates.`);
+          }
+          if (hadBadFinishReason(response.candidates[0])) {
+            throw new GoogleGenerativeAIResponseError(`${formatBlockErrorMessage(response)}`, response);
+          }
+          return getFunctionCalls(response);
+        } else if (response.promptFeedback) {
+          throw new GoogleGenerativeAIResponseError(`Function call not available. ${formatBlockErrorMessage(response)}`, response);
+        }
+        return void 0;
+      };
+      return response;
+    }
+    function getText(response) {
+      var _a, _b, _c, _d;
+      const textStrings = [];
+      if ((_b = (_a = response.candidates) === null || _a === void 0 ? void 0 : _a[0].content) === null || _b === void 0 ? void 0 : _b.parts) {
+        for (const part of (_d = (_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0].content) === null || _d === void 0 ? void 0 : _d.parts) {
+          if (part.text) {
+            textStrings.push(part.text);
+          }
+          if (part.executableCode) {
+            textStrings.push("\n```" + part.executableCode.language + "\n" + part.executableCode.code + "\n```\n");
+          }
+          if (part.codeExecutionResult) {
+            textStrings.push("\n```\n" + part.codeExecutionResult.output + "\n```\n");
+          }
+        }
+      }
+      if (textStrings.length > 0) {
+        return textStrings.join("");
+      } else {
+        return "";
+      }
+    }
+    function getFunctionCalls(response) {
+      var _a, _b, _c, _d;
+      const functionCalls = [];
+      if ((_b = (_a = response.candidates) === null || _a === void 0 ? void 0 : _a[0].content) === null || _b === void 0 ? void 0 : _b.parts) {
+        for (const part of (_d = (_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0].content) === null || _d === void 0 ? void 0 : _d.parts) {
+          if (part.functionCall) {
+            functionCalls.push(part.functionCall);
+          }
+        }
+      }
+      if (functionCalls.length > 0) {
+        return functionCalls;
+      } else {
+        return void 0;
+      }
+    }
+    var badFinishReasons = [
+      exports2.FinishReason.RECITATION,
+      exports2.FinishReason.SAFETY,
+      exports2.FinishReason.LANGUAGE
+    ];
+    function hadBadFinishReason(candidate) {
+      return !!candidate.finishReason && badFinishReasons.includes(candidate.finishReason);
+    }
+    function formatBlockErrorMessage(response) {
+      var _a, _b, _c;
+      let message = "";
+      if ((!response.candidates || response.candidates.length === 0) && response.promptFeedback) {
+        message += "Response was blocked";
+        if ((_a = response.promptFeedback) === null || _a === void 0 ? void 0 : _a.blockReason) {
+          message += ` due to ${response.promptFeedback.blockReason}`;
+        }
+        if ((_b = response.promptFeedback) === null || _b === void 0 ? void 0 : _b.blockReasonMessage) {
+          message += `: ${response.promptFeedback.blockReasonMessage}`;
+        }
+      } else if ((_c = response.candidates) === null || _c === void 0 ? void 0 : _c[0]) {
+        const firstCandidate = response.candidates[0];
+        if (hadBadFinishReason(firstCandidate)) {
+          message += `Candidate was blocked due to ${firstCandidate.finishReason}`;
+          if (firstCandidate.finishMessage) {
+            message += `: ${firstCandidate.finishMessage}`;
+          }
+        }
+      }
+      return message;
+    }
+    function __await2(v) {
+      return this instanceof __await2 ? (this.v = v, this) : new __await2(v);
+    }
+    function __asyncGenerator2(thisArg, _arguments, generator) {
+      if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+      var g = generator.apply(thisArg, _arguments || []), i, q = [];
+      return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function() {
+        return this;
+      }, i;
+      function verb(n) {
+        if (g[n]) i[n] = function(v) {
+          return new Promise(function(a, b) {
+            q.push([n, v, a, b]) > 1 || resume(n, v);
+          });
+        };
+      }
+      function resume(n, v) {
+        try {
+          step(g[n](v));
+        } catch (e) {
+          settle(q[0][3], e);
+        }
+      }
+      function step(r) {
+        r.value instanceof __await2 ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);
+      }
+      function fulfill(value) {
+        resume("next", value);
+      }
+      function reject(value) {
+        resume("throw", value);
+      }
+      function settle(f, v) {
+        if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]);
+      }
+    }
+    var responseLineRE = /^data\: (.*)(?:\n\n|\r\r|\r\n\r\n)/;
+    function processStream(response) {
+      const inputStream = response.body.pipeThrough(new TextDecoderStream("utf8", { fatal: true }));
+      const responseStream = getResponseStream(inputStream);
+      const [stream1, stream2] = responseStream.tee();
+      return {
+        stream: generateResponseSequence(stream1),
+        response: getResponsePromise(stream2)
+      };
+    }
+    async function getResponsePromise(stream) {
+      const allResponses = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          return addHelpers(aggregateResponses(allResponses));
+        }
+        allResponses.push(value);
+      }
+    }
+    function generateResponseSequence(stream) {
+      return __asyncGenerator2(this, arguments, function* generateResponseSequence_1() {
+        const reader = stream.getReader();
+        while (true) {
+          const { value, done } = yield __await2(reader.read());
+          if (done) {
+            break;
+          }
+          yield yield __await2(addHelpers(value));
+        }
+      });
+    }
+    function getResponseStream(inputStream) {
+      const reader = inputStream.getReader();
+      const stream = new ReadableStream({
+        start(controller) {
+          let currentText = "";
+          return pump();
+          function pump() {
+            return reader.read().then(({ value, done }) => {
+              if (done) {
+                if (currentText.trim()) {
+                  controller.error(new GoogleGenerativeAIError("Failed to parse stream"));
+                  return;
+                }
+                controller.close();
+                return;
+              }
+              currentText += value;
+              let match = currentText.match(responseLineRE);
+              let parsedResponse;
+              while (match) {
+                try {
+                  parsedResponse = JSON.parse(match[1]);
+                } catch (e) {
+                  controller.error(new GoogleGenerativeAIError(`Error parsing JSON response: "${match[1]}"`));
+                  return;
+                }
+                controller.enqueue(parsedResponse);
+                currentText = currentText.substring(match[0].length);
+                match = currentText.match(responseLineRE);
+              }
+              return pump();
+            }).catch((e) => {
+              let err = e;
+              err.stack = e.stack;
+              if (err.name === "AbortError") {
+                err = new GoogleGenerativeAIAbortError("Request aborted when reading from the stream");
+              } else {
+                err = new GoogleGenerativeAIError("Error reading from the stream");
+              }
+              throw err;
+            });
+          }
+        }
+      });
+      return stream;
+    }
+    function aggregateResponses(responses) {
+      const lastResponse = responses[responses.length - 1];
+      const aggregatedResponse = {
+        promptFeedback: lastResponse === null || lastResponse === void 0 ? void 0 : lastResponse.promptFeedback
+      };
+      for (const response of responses) {
+        if (response.candidates) {
+          let candidateIndex = 0;
+          for (const candidate of response.candidates) {
+            if (!aggregatedResponse.candidates) {
+              aggregatedResponse.candidates = [];
+            }
+            if (!aggregatedResponse.candidates[candidateIndex]) {
+              aggregatedResponse.candidates[candidateIndex] = {
+                index: candidateIndex
+              };
+            }
+            aggregatedResponse.candidates[candidateIndex].citationMetadata = candidate.citationMetadata;
+            aggregatedResponse.candidates[candidateIndex].groundingMetadata = candidate.groundingMetadata;
+            aggregatedResponse.candidates[candidateIndex].finishReason = candidate.finishReason;
+            aggregatedResponse.candidates[candidateIndex].finishMessage = candidate.finishMessage;
+            aggregatedResponse.candidates[candidateIndex].safetyRatings = candidate.safetyRatings;
+            if (candidate.content && candidate.content.parts) {
+              if (!aggregatedResponse.candidates[candidateIndex].content) {
+                aggregatedResponse.candidates[candidateIndex].content = {
+                  role: candidate.content.role || "user",
+                  parts: []
+                };
+              }
+              const newPart = {};
+              for (const part of candidate.content.parts) {
+                if (part.text) {
+                  newPart.text = part.text;
+                }
+                if (part.functionCall) {
+                  newPart.functionCall = part.functionCall;
+                }
+                if (part.executableCode) {
+                  newPart.executableCode = part.executableCode;
+                }
+                if (part.codeExecutionResult) {
+                  newPart.codeExecutionResult = part.codeExecutionResult;
+                }
+                if (Object.keys(newPart).length === 0) {
+                  newPart.text = "";
+                }
+                aggregatedResponse.candidates[candidateIndex].content.parts.push(newPart);
+              }
+            }
+          }
+          candidateIndex++;
+        }
+        if (response.usageMetadata) {
+          aggregatedResponse.usageMetadata = response.usageMetadata;
+        }
+      }
+      return aggregatedResponse;
+    }
+    async function generateContentStream(apiKey, model, params, requestOptions) {
+      const response = await makeModelRequest(
+        model,
+        Task.STREAM_GENERATE_CONTENT,
+        apiKey,
+        /* stream */
+        true,
+        JSON.stringify(params),
+        requestOptions
+      );
+      return processStream(response);
+    }
+    async function generateContent(apiKey, model, params, requestOptions) {
+      const response = await makeModelRequest(
+        model,
+        Task.GENERATE_CONTENT,
+        apiKey,
+        /* stream */
+        false,
+        JSON.stringify(params),
+        requestOptions
+      );
+      const responseJson = await response.json();
+      const enhancedResponse = addHelpers(responseJson);
+      return {
+        response: enhancedResponse
+      };
+    }
+    function formatSystemInstruction(input) {
+      if (input == null) {
+        return void 0;
+      } else if (typeof input === "string") {
+        return { role: "system", parts: [{ text: input }] };
+      } else if (input.text) {
+        return { role: "system", parts: [input] };
+      } else if (input.parts) {
+        if (!input.role) {
+          return { role: "system", parts: input.parts };
+        } else {
+          return input;
+        }
+      }
+    }
+    function formatNewContent(request) {
+      let newParts = [];
+      if (typeof request === "string") {
+        newParts = [{ text: request }];
+      } else {
+        for (const partOrString of request) {
+          if (typeof partOrString === "string") {
+            newParts.push({ text: partOrString });
+          } else {
+            newParts.push(partOrString);
+          }
+        }
+      }
+      return assignRoleToPartsAndValidateSendMessageRequest(newParts);
+    }
+    function assignRoleToPartsAndValidateSendMessageRequest(parts) {
+      const userContent = { role: "user", parts: [] };
+      const functionContent = { role: "function", parts: [] };
+      let hasUserContent = false;
+      let hasFunctionContent = false;
+      for (const part of parts) {
+        if ("functionResponse" in part) {
+          functionContent.parts.push(part);
+          hasFunctionContent = true;
+        } else {
+          userContent.parts.push(part);
+          hasUserContent = true;
+        }
+      }
+      if (hasUserContent && hasFunctionContent) {
+        throw new GoogleGenerativeAIError("Within a single message, FunctionResponse cannot be mixed with other type of part in the request for sending chat message.");
+      }
+      if (!hasUserContent && !hasFunctionContent) {
+        throw new GoogleGenerativeAIError("No content is provided for sending chat message.");
+      }
+      if (hasUserContent) {
+        return userContent;
+      }
+      return functionContent;
+    }
+    function formatCountTokensInput(params, modelParams) {
+      var _a;
+      let formattedGenerateContentRequest = {
+        model: modelParams === null || modelParams === void 0 ? void 0 : modelParams.model,
+        generationConfig: modelParams === null || modelParams === void 0 ? void 0 : modelParams.generationConfig,
+        safetySettings: modelParams === null || modelParams === void 0 ? void 0 : modelParams.safetySettings,
+        tools: modelParams === null || modelParams === void 0 ? void 0 : modelParams.tools,
+        toolConfig: modelParams === null || modelParams === void 0 ? void 0 : modelParams.toolConfig,
+        systemInstruction: modelParams === null || modelParams === void 0 ? void 0 : modelParams.systemInstruction,
+        cachedContent: (_a = modelParams === null || modelParams === void 0 ? void 0 : modelParams.cachedContent) === null || _a === void 0 ? void 0 : _a.name,
+        contents: []
+      };
+      const containsGenerateContentRequest = params.generateContentRequest != null;
+      if (params.contents) {
+        if (containsGenerateContentRequest) {
+          throw new GoogleGenerativeAIRequestInputError("CountTokensRequest must have one of contents or generateContentRequest, not both.");
+        }
+        formattedGenerateContentRequest.contents = params.contents;
+      } else if (containsGenerateContentRequest) {
+        formattedGenerateContentRequest = Object.assign(Object.assign({}, formattedGenerateContentRequest), params.generateContentRequest);
+      } else {
+        const content = formatNewContent(params);
+        formattedGenerateContentRequest.contents = [content];
+      }
+      return { generateContentRequest: formattedGenerateContentRequest };
+    }
+    function formatGenerateContentInput(params) {
+      let formattedRequest;
+      if (params.contents) {
+        formattedRequest = params;
+      } else {
+        const content = formatNewContent(params);
+        formattedRequest = { contents: [content] };
+      }
+      if (params.systemInstruction) {
+        formattedRequest.systemInstruction = formatSystemInstruction(params.systemInstruction);
+      }
+      return formattedRequest;
+    }
+    function formatEmbedContentInput(params) {
+      if (typeof params === "string" || Array.isArray(params)) {
+        const content = formatNewContent(params);
+        return { content };
+      }
+      return params;
+    }
+    var VALID_PART_FIELDS = [
+      "text",
+      "inlineData",
+      "functionCall",
+      "functionResponse",
+      "executableCode",
+      "codeExecutionResult"
+    ];
+    var VALID_PARTS_PER_ROLE = {
+      user: ["text", "inlineData"],
+      function: ["functionResponse"],
+      model: ["text", "functionCall", "executableCode", "codeExecutionResult"],
+      // System instructions shouldn't be in history anyway.
+      system: ["text"]
+    };
+    function validateChatHistory(history) {
+      let prevContent = false;
+      for (const currContent of history) {
+        const { role, parts } = currContent;
+        if (!prevContent && role !== "user") {
+          throw new GoogleGenerativeAIError(`First content should be with role 'user', got ${role}`);
+        }
+        if (!POSSIBLE_ROLES.includes(role)) {
+          throw new GoogleGenerativeAIError(`Each item should include role field. Got ${role} but valid roles are: ${JSON.stringify(POSSIBLE_ROLES)}`);
+        }
+        if (!Array.isArray(parts)) {
+          throw new GoogleGenerativeAIError("Content should have 'parts' property with an array of Parts");
+        }
+        if (parts.length === 0) {
+          throw new GoogleGenerativeAIError("Each Content should have at least one part");
+        }
+        const countFields = {
+          text: 0,
+          inlineData: 0,
+          functionCall: 0,
+          functionResponse: 0,
+          fileData: 0,
+          executableCode: 0,
+          codeExecutionResult: 0
+        };
+        for (const part of parts) {
+          for (const key of VALID_PART_FIELDS) {
+            if (key in part) {
+              countFields[key] += 1;
+            }
+          }
+        }
+        const validParts = VALID_PARTS_PER_ROLE[role];
+        for (const key of VALID_PART_FIELDS) {
+          if (!validParts.includes(key) && countFields[key] > 0) {
+            throw new GoogleGenerativeAIError(`Content with role '${role}' can't contain '${key}' part`);
+          }
+        }
+        prevContent = true;
+      }
+    }
+    function isValidResponse(response) {
+      var _a;
+      if (response.candidates === void 0 || response.candidates.length === 0) {
+        return false;
+      }
+      const content = (_a = response.candidates[0]) === null || _a === void 0 ? void 0 : _a.content;
+      if (content === void 0) {
+        return false;
+      }
+      if (content.parts === void 0 || content.parts.length === 0) {
+        return false;
+      }
+      for (const part of content.parts) {
+        if (part === void 0 || Object.keys(part).length === 0) {
+          return false;
+        }
+        if (part.text !== void 0 && part.text === "") {
+          return false;
+        }
+      }
+      return true;
+    }
+    var SILENT_ERROR = "SILENT_ERROR";
+    var ChatSession = class {
+      constructor(apiKey, model, params, _requestOptions = {}) {
+        this.model = model;
+        this.params = params;
+        this._requestOptions = _requestOptions;
+        this._history = [];
+        this._sendPromise = Promise.resolve();
+        this._apiKey = apiKey;
+        if (params === null || params === void 0 ? void 0 : params.history) {
+          validateChatHistory(params.history);
+          this._history = params.history;
+        }
+      }
+      /**
+       * Gets the chat history so far. Blocked prompts are not added to history.
+       * Blocked candidates are not added to history, nor are the prompts that
+       * generated them.
+       */
+      async getHistory() {
+        await this._sendPromise;
+        return this._history;
+      }
+      /**
+       * Sends a chat message and receives a non-streaming
+       * {@link GenerateContentResult}.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async sendMessage(request, requestOptions = {}) {
+        var _a, _b, _c, _d, _e, _f;
+        await this._sendPromise;
+        const newContent = formatNewContent(request);
+        const generateContentRequest = {
+          safetySettings: (_a = this.params) === null || _a === void 0 ? void 0 : _a.safetySettings,
+          generationConfig: (_b = this.params) === null || _b === void 0 ? void 0 : _b.generationConfig,
+          tools: (_c = this.params) === null || _c === void 0 ? void 0 : _c.tools,
+          toolConfig: (_d = this.params) === null || _d === void 0 ? void 0 : _d.toolConfig,
+          systemInstruction: (_e = this.params) === null || _e === void 0 ? void 0 : _e.systemInstruction,
+          cachedContent: (_f = this.params) === null || _f === void 0 ? void 0 : _f.cachedContent,
+          contents: [...this._history, newContent]
+        };
+        const chatSessionRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        let finalResult;
+        this._sendPromise = this._sendPromise.then(() => generateContent(this._apiKey, this.model, generateContentRequest, chatSessionRequestOptions)).then((result) => {
+          var _a2;
+          if (isValidResponse(result.response)) {
+            this._history.push(newContent);
+            const responseContent = Object.assign({
+              parts: [],
+              // Response seems to come back without a role set.
+              role: "model"
+            }, (_a2 = result.response.candidates) === null || _a2 === void 0 ? void 0 : _a2[0].content);
+            this._history.push(responseContent);
+          } else {
+            const blockErrorMessage = formatBlockErrorMessage(result.response);
+            if (blockErrorMessage) {
+              console.warn(`sendMessage() was unsuccessful. ${blockErrorMessage}. Inspect response object for details.`);
+            }
+          }
+          finalResult = result;
+        }).catch((e) => {
+          this._sendPromise = Promise.resolve();
+          throw e;
+        });
+        await this._sendPromise;
+        return finalResult;
+      }
+      /**
+       * Sends a chat message and receives the response as a
+       * {@link GenerateContentStreamResult} containing an iterable stream
+       * and a response promise.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async sendMessageStream(request, requestOptions = {}) {
+        var _a, _b, _c, _d, _e, _f;
+        await this._sendPromise;
+        const newContent = formatNewContent(request);
+        const generateContentRequest = {
+          safetySettings: (_a = this.params) === null || _a === void 0 ? void 0 : _a.safetySettings,
+          generationConfig: (_b = this.params) === null || _b === void 0 ? void 0 : _b.generationConfig,
+          tools: (_c = this.params) === null || _c === void 0 ? void 0 : _c.tools,
+          toolConfig: (_d = this.params) === null || _d === void 0 ? void 0 : _d.toolConfig,
+          systemInstruction: (_e = this.params) === null || _e === void 0 ? void 0 : _e.systemInstruction,
+          cachedContent: (_f = this.params) === null || _f === void 0 ? void 0 : _f.cachedContent,
+          contents: [...this._history, newContent]
+        };
+        const chatSessionRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        const streamPromise = generateContentStream(this._apiKey, this.model, generateContentRequest, chatSessionRequestOptions);
+        this._sendPromise = this._sendPromise.then(() => streamPromise).catch((_ignored) => {
+          throw new Error(SILENT_ERROR);
+        }).then((streamResult) => streamResult.response).then((response) => {
+          if (isValidResponse(response)) {
+            this._history.push(newContent);
+            const responseContent = Object.assign({}, response.candidates[0].content);
+            if (!responseContent.role) {
+              responseContent.role = "model";
+            }
+            this._history.push(responseContent);
+          } else {
+            const blockErrorMessage = formatBlockErrorMessage(response);
+            if (blockErrorMessage) {
+              console.warn(`sendMessageStream() was unsuccessful. ${blockErrorMessage}. Inspect response object for details.`);
+            }
+          }
+        }).catch((e) => {
+          if (e.message !== SILENT_ERROR) {
+            console.error(e);
+          }
+        });
+        return streamPromise;
+      }
+    };
+    async function countTokens(apiKey, model, params, singleRequestOptions) {
+      const response = await makeModelRequest(model, Task.COUNT_TOKENS, apiKey, false, JSON.stringify(params), singleRequestOptions);
+      return response.json();
+    }
+    async function embedContent(apiKey, model, params, requestOptions) {
+      const response = await makeModelRequest(model, Task.EMBED_CONTENT, apiKey, false, JSON.stringify(params), requestOptions);
+      return response.json();
+    }
+    async function batchEmbedContents(apiKey, model, params, requestOptions) {
+      const requestsWithModel = params.requests.map((request) => {
+        return Object.assign(Object.assign({}, request), { model });
+      });
+      const response = await makeModelRequest(model, Task.BATCH_EMBED_CONTENTS, apiKey, false, JSON.stringify({ requests: requestsWithModel }), requestOptions);
+      return response.json();
+    }
+    var GenerativeModel = class {
+      constructor(apiKey, modelParams, _requestOptions = {}) {
+        this.apiKey = apiKey;
+        this._requestOptions = _requestOptions;
+        if (modelParams.model.includes("/")) {
+          this.model = modelParams.model;
+        } else {
+          this.model = `models/${modelParams.model}`;
+        }
+        this.generationConfig = modelParams.generationConfig || {};
+        this.safetySettings = modelParams.safetySettings || [];
+        this.tools = modelParams.tools;
+        this.toolConfig = modelParams.toolConfig;
+        this.systemInstruction = formatSystemInstruction(modelParams.systemInstruction);
+        this.cachedContent = modelParams.cachedContent;
+      }
+      /**
+       * Makes a single non-streaming call to the model
+       * and returns an object containing a single {@link GenerateContentResponse}.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async generateContent(request, requestOptions = {}) {
+        var _a;
+        const formattedParams = formatGenerateContentInput(request);
+        const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        return generateContent(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, formattedParams), generativeModelRequestOptions);
+      }
+      /**
+       * Makes a single streaming call to the model and returns an object
+       * containing an iterable stream that iterates over all chunks in the
+       * streaming response as well as a promise that returns the final
+       * aggregated response.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async generateContentStream(request, requestOptions = {}) {
+        var _a;
+        const formattedParams = formatGenerateContentInput(request);
+        const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        return generateContentStream(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, formattedParams), generativeModelRequestOptions);
+      }
+      /**
+       * Gets a new {@link ChatSession} instance which can be used for
+       * multi-turn chats.
+       */
+      startChat(startChatParams) {
+        var _a;
+        return new ChatSession(this.apiKey, this.model, Object.assign({ generationConfig: this.generationConfig, safetySettings: this.safetySettings, tools: this.tools, toolConfig: this.toolConfig, systemInstruction: this.systemInstruction, cachedContent: (_a = this.cachedContent) === null || _a === void 0 ? void 0 : _a.name }, startChatParams), this._requestOptions);
+      }
+      /**
+       * Counts the tokens in the provided request.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async countTokens(request, requestOptions = {}) {
+        const formattedParams = formatCountTokensInput(request, {
+          model: this.model,
+          generationConfig: this.generationConfig,
+          safetySettings: this.safetySettings,
+          tools: this.tools,
+          toolConfig: this.toolConfig,
+          systemInstruction: this.systemInstruction,
+          cachedContent: this.cachedContent
+        });
+        const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        return countTokens(this.apiKey, this.model, formattedParams, generativeModelRequestOptions);
+      }
+      /**
+       * Embeds the provided content.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async embedContent(request, requestOptions = {}) {
+        const formattedParams = formatEmbedContentInput(request);
+        const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        return embedContent(this.apiKey, this.model, formattedParams, generativeModelRequestOptions);
+      }
+      /**
+       * Embeds an array of {@link EmbedContentRequest}s.
+       *
+       * Fields set in the optional {@link SingleRequestOptions} parameter will
+       * take precedence over the {@link RequestOptions} values provided to
+       * {@link GoogleGenerativeAI.getGenerativeModel }.
+       */
+      async batchEmbedContents(batchEmbedContentRequest, requestOptions = {}) {
+        const generativeModelRequestOptions = Object.assign(Object.assign({}, this._requestOptions), requestOptions);
+        return batchEmbedContents(this.apiKey, this.model, batchEmbedContentRequest, generativeModelRequestOptions);
+      }
+    };
+    var GoogleGenerativeAI2 = class {
+      constructor(apiKey) {
+        this.apiKey = apiKey;
+      }
+      /**
+       * Gets a {@link GenerativeModel} instance for the provided model name.
+       */
+      getGenerativeModel(modelParams, requestOptions) {
+        if (!modelParams.model) {
+          throw new GoogleGenerativeAIError(`Must provide a model name. Example: genai.getGenerativeModel({ model: 'my-model-name' })`);
+        }
+        return new GenerativeModel(this.apiKey, modelParams, requestOptions);
+      }
+      /**
+       * Creates a {@link GenerativeModel} instance from provided content cache.
+       */
+      getGenerativeModelFromCachedContent(cachedContent, modelParams, requestOptions) {
+        if (!cachedContent.name) {
+          throw new GoogleGenerativeAIRequestInputError("Cached content must contain a `name` field.");
+        }
+        if (!cachedContent.model) {
+          throw new GoogleGenerativeAIRequestInputError("Cached content must contain a `model` field.");
+        }
+        const disallowedDuplicates = ["model", "systemInstruction"];
+        for (const key of disallowedDuplicates) {
+          if ((modelParams === null || modelParams === void 0 ? void 0 : modelParams[key]) && cachedContent[key] && (modelParams === null || modelParams === void 0 ? void 0 : modelParams[key]) !== cachedContent[key]) {
+            if (key === "model") {
+              const modelParamsComp = modelParams.model.startsWith("models/") ? modelParams.model.replace("models/", "") : modelParams.model;
+              const cachedContentComp = cachedContent.model.startsWith("models/") ? cachedContent.model.replace("models/", "") : cachedContent.model;
+              if (modelParamsComp === cachedContentComp) {
+                continue;
+              }
+            }
+            throw new GoogleGenerativeAIRequestInputError(`Different value for "${key}" specified in modelParams (${modelParams[key]}) and cachedContent (${cachedContent[key]})`);
+          }
+        }
+        const modelParamsFromCache = Object.assign(Object.assign({}, modelParams), { model: cachedContent.model, tools: cachedContent.tools, toolConfig: cachedContent.toolConfig, systemInstruction: cachedContent.systemInstruction, cachedContent });
+        return new GenerativeModel(this.apiKey, modelParamsFromCache, requestOptions);
+      }
+    };
+    exports2.ChatSession = ChatSession;
+    exports2.GenerativeModel = GenerativeModel;
+    exports2.GoogleGenerativeAI = GoogleGenerativeAI2;
+    exports2.GoogleGenerativeAIAbortError = GoogleGenerativeAIAbortError;
+    exports2.GoogleGenerativeAIError = GoogleGenerativeAIError;
+    exports2.GoogleGenerativeAIFetchError = GoogleGenerativeAIFetchError;
+    exports2.GoogleGenerativeAIRequestInputError = GoogleGenerativeAIRequestInputError;
+    exports2.GoogleGenerativeAIResponseError = GoogleGenerativeAIResponseError;
+    exports2.POSSIBLE_ROLES = POSSIBLE_ROLES;
+  }
+});
+
 // src/serverless.ts
 var serverless_exports = {};
 __export(serverless_exports, {
@@ -53700,7 +54892,11 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
-        b.start_date, b.start_time, b.end_date, b.end_time, b.duration_days,
+        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
+        b.start_time, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        b.end_time, 
+        b.duration_days,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
@@ -60243,6 +61439,7 @@ var StorageFileApi = class extends BaseApiClient {
         body = fileBody;
         headers["cache-control"] = `max-age=${options.cacheControl}`;
         headers["content-type"] = options.contentType;
+        if (options.contentEncoding) headers["content-encoding"] = options.contentEncoding;
         if (metadata) headers["x-metadata"] = _this.toBase64(_this.encodeMetadata(metadata));
         if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
       }
@@ -60264,7 +61461,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions Optional file upload options including cacheControl, contentType, upsert, and metadata.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, contentEncoding, upsert, and metadata.
   * @returns Promise with response containing file path, id, and fullPath or error
   *
   * @example Upload file
@@ -60335,7 +61532,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
   * @param token The token generated from `createSignedUploadUrl`
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions HTTP headers (cacheControl, contentType, etc.).
+  * @param fileOptions HTTP headers (cacheControl, contentType, contentEncoding, etc.).
   * **Note:** The `upsert` option has no effect here. To enable upsert behavior,
   * pass `{ upsert: true }` when calling `createSignedUploadUrl()` instead.
   * @returns Promise with response containing file path and fullPath or error
@@ -60381,6 +61578,7 @@ var StorageFileApi = class extends BaseApiClient {
         body = fileBody;
         headers["cache-control"] = `max-age=${options.cacheControl}`;
         headers["content-type"] = options.contentType;
+        if (options.contentEncoding) headers["content-encoding"] = options.contentEncoding;
         if (metadata) headers["x-metadata"] = _this3.toBase64(_this3.encodeMetadata(metadata));
         if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
       }
@@ -60452,7 +61650,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to update.
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions Optional file upload options including cacheControl, contentType, and metadata.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, contentEncoding, and metadata.
   * **Note:** The `upsert` option has no effect here. `update()` always replaces the
   * file at the given path, so the `x-upsert` header is not sent. To control upsert
   * behavior, use `upload()` instead.
@@ -60557,8 +61755,10 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
   * @param toPath The new file path, including the new file name. For example `folder/image-copy.png`.
-  * @param options The destination options.
+  * @param options The destination and metadata options.
   * @param options.sourceVersionId The version id of the source object to copy.
+  * @param options.copyMetadata Whether to copy the source metadata. Defaults to true. Set to false to apply metadata overrides; custom user metadata is not copied when false.
+  * @param options.metadata File metadata overrides, applied only when copyMetadata is false. Unspecified fields retain their source values.
   * @returns Promise with response containing copied file path or error
   *
   * @example Copy file
@@ -60579,6 +61779,18 @@ var StorageFileApi = class extends BaseApiClient {
   * }
   * ```
   *
+  * @example Copy file with content encoding
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('documents')
+  *   .copy('source.txt.gz', 'copy.txt.gz', {
+  *     copyMetadata: false,
+  *     metadata: { contentEncoding: 'gzip' },
+  *   })
+  * ```
+  * The source must already contain gzip-encoded bytes. Copying changes metadata only.
+  *
   * @remarks
   * - RLS policy permissions required:
   *   - `buckets` table permissions: none
@@ -60588,12 +61800,15 @@ var StorageFileApi = class extends BaseApiClient {
   async copy(fromPath, toPath, options) {
     var _this7 = this;
     return _this7.handleOperation(async () => {
+      const copyOptions = options;
       return { path: (await post(_this7.fetch, `${_this7.url}/object/copy`, {
         bucketId: _this7.bucketId,
         sourceKey: fromPath,
         destinationKey: toPath,
         destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
-        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
+        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId,
+        copyMetadata: typeof (copyOptions === null || copyOptions === void 0 ? void 0 : copyOptions.copyMetadata) === "boolean" ? copyOptions.copyMetadata : void 0,
+        metadata: (copyOptions === null || copyOptions === void 0 ? void 0 : copyOptions.copyMetadata) === false ? copyOptions.metadata : void 0
       }, { headers: _this7.headers })).Key };
     });
   }
@@ -61219,6 +62434,7 @@ var StorageFileApi = class extends BaseApiClient {
     else files.push(["", fileBody]);
     if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
     if (options.metadata && !body.has("metadata")) body.append("metadata", this.encodeMetadata(options.metadata));
+    if (options.contentEncoding && !body.has("contentEncoding")) body.append("contentEncoding", options.contentEncoding);
     for (const [name, file] of files) body.append(name, file);
     return body;
   }
@@ -61245,7 +62461,7 @@ var StorageFileApi = class extends BaseApiClient {
     return query2;
   }
 };
-var version = "2.117.3";
+var version = "2.118.0";
 var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version}` };
 var StorageBucketApi = class extends BaseApiClient {
   constructor(url, headers = {}, fetch$1, opts) {
@@ -62806,7 +64022,7 @@ var StorageClient = class extends StorageBucketApi {
 var import_auth_js = __toESM(require_main4(), 1);
 __reExport(dist_exports, __toESM(require_main3(), 1));
 __reExport(dist_exports, __toESM(require_main4(), 1));
-var version2 = "2.117.3";
+var version2 = "2.118.0";
 var JS_ENV = "";
 var JS_RUNTIME_VERSION;
 if (typeof Deno !== "undefined") {
@@ -64047,7 +65263,7 @@ var geminiToolDeclarations = [
 // src/modules/ai/ai.service.ts
 var GoogleGenerativeAI;
 try {
-  GoogleGenerativeAI = require("@google/generative-ai").GoogleGenerativeAI;
+  GoogleGenerativeAI = require_dist2().GoogleGenerativeAI;
 } catch {
 }
 var CANDIDATE_MODELS = [
@@ -65730,6 +66946,24 @@ bcryptjs/dist/bcrypt.js:
    * @license bcrypt.js (c) 2013 Daniel Wirtz <dcode@dcode.io>
    * Released under the Apache License, Version 2.0
    * see: https://github.com/dcodeIO/bcrypt.js for details
+   *)
+
+@google/generative-ai/dist/index.js:
+  (**
+   * @license
+   * Copyright 2024 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
    *)
 */
 module.exports = serverless_default; module.exports.default = serverless_default;
