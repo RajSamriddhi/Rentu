@@ -107,6 +107,7 @@ export const App: React.FC = () => {
   const [isDropGearOpen, setIsDropGearOpen] = useState(false);
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
+  const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
 
@@ -159,11 +160,14 @@ export const App: React.FC = () => {
   };
 
   const handleOpenChatWithBooking = (bookingId: string) => {
+    setChatPartner(null);
     setChatBookingId(bookingId);
     setActiveTab('messages');
   };
 
-  const handleOpenChatWithUser = (_targetUserId: string, _targetUserName: string) => {
+  const handleOpenChatWithUser = (targetUserId: string, targetUserName: string, avatarUrl?: string) => {
+    setChatBookingId(null);
+    setChatPartner({ id: targetUserId, name: targetUserName, avatar: avatarUrl });
     handleCloseUserProfile();
     setActiveTab('messages');
   };
@@ -299,6 +303,7 @@ export const App: React.FC = () => {
             {activeTab === 'messages' && (
               <MessagesView
                 initialBookingId={chatBookingId}
+                initialPartner={chatPartner}
                 onOpenAuth={() => setIsAuthOpen(true)}
                 onNavigateHome={() => setActiveTab('explore')}
               />

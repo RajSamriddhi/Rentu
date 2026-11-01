@@ -138,7 +138,7 @@ export interface Booking {
 
 export interface Message {
   id: string;
-  booking_id: string;
+  booking_id?: string | null;
   sender_id: string;
   receiver_id: string;
   content: string;
@@ -148,14 +148,15 @@ export interface Message {
 }
 
 export interface Conversation {
-  booking_id: string;
+  conversation_id?: string;
+  booking_id: string | null;
   booking_status: string;
-  start_date: string;
-  duration_days: number;
+  start_date?: string;
+  duration_days?: number;
   total_price: number | string;
   item_title: string;
   item_images: string[];
-  item_locality: string;
+  item_locality?: string;
   partner_id: string;
   partner_name: string;
   partner_avatar?: string;

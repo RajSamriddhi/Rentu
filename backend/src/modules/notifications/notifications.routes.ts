@@ -80,3 +80,4 @@ router.put('/read-all', authMiddleware, async (req: AuthenticatedRequest, res: R
 });
 
 export default router;
+

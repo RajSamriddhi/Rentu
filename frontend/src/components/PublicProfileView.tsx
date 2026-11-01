@@ -35,7 +35,7 @@ interface PublicProfileViewProps {
   onSelectItem: (item: Item) => void;
   onClaimRequest?: (request: CommunityRequest) => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
-  onOpenChatWithUser?: (userId: string, userName: string) => void;
+  onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
   onOpenAuth?: () => void;
 }
 
@@ -234,7 +234,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     } else if (isBlocked) {
                       alert('Communication is unavailable because this user is blocked.');
                     } else if (onOpenChatWithUser) {
-                      onOpenChatWithUser(profile.id, profile.name);
+                      onOpenChatWithUser(profile.id, profile.name, profile.avatar_url);
                     }
                   }}
                   disabled={isBlocked}

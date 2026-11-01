@@ -9,22 +9,29 @@ import { Conversation, Message } from '../lib/types';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
+  initialPartner?: { id: string; name: string; avatar?: string } | null;
   onOpenAuth: () => void;
   onNavigateHome?: () => void;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
   initialBookingId,
+  initialPartner,
   onOpenAuth,
   onNavigateHome,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
+  const initialConvId = initialPartner
+    ? `dm_${initialPartner.id}`
+    : (initialBookingId || null);
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(initialBookingId || null);
-  const [showMobileThread, setShowMobileThread] = useState<boolean>(!!initialBookingId);
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(initialConvId);
+  const [showMobileThread, setShowMobileThread] = useState<boolean>(!!initialConvId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeBookingData, setActiveBookingData] = useState<any>(null);
+  const [activePartnerData, setActivePartnerData] = useState<any>(initialPartner || null);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
@@ -52,20 +59,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (initialBookingId) {
-      setSelectedBookingId(initialBookingId);
+    if (initialPartner) {
+      const dmId = `dm_${initialPartner.id}`;
+      setSelectedConvId(dmId);
+      setActivePartnerData(initialPartner);
+      setShowMobileThread(true);
+    } else if (initialBookingId) {
+      setSelectedConvId(initialBookingId);
       setShowMobileThread(true);
     }
-  }, [initialBookingId]);
+  }, [initialPartner, initialBookingId]);
 
   useEffect(() => {
-    if (selectedBookingId) {
-      loadMessages(selectedBookingId);
+    if (selectedConvId) {
+      loadMessages(selectedConvId);
     } else {
       setMessages([]);
       setActiveBookingData(null);
     }
-  }, [selectedBookingId]);
+  }, [selectedConvId]);
 
   useEffect(() => {
     scrollToBottom(false);
@@ -73,10 +85,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Live polling every 3.5 seconds
   useEffect(() => {
-    if (!isAuthenticated || !selectedBookingId) return;
+    if (!isAuthenticated || !selectedConvId) return;
 
     const interval = setInterval(() => {
-      api.getMessages(selectedBookingId)
+      api.getMessages(selectedConvId)
         .then((data) => {
           if (data?.messages && Array.isArray(data.messages)) {
             setMessages((prev) => {
@@ -94,16 +106,42 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, selectedBookingId]);
+  }, [isAuthenticated, selectedConvId]);
 
   const loadConversations = async () => {
     setIsLoadingConversations(true);
     try {
       const data = await api.getConversations();
-      const list = Array.isArray(data) ? data : [];
+      let list: Conversation[] = Array.isArray(data) ? data : [];
+
+      // If initialPartner was passed and not in list, prepend synthetic DM entry
+      if (initialPartner) {
+        const dmKey = `dm_${initialPartner.id}`;
+        const exists = list.some(c => 
+          (c.conversation_id === dmKey) || 
+          (c.partner_id === initialPartner.id && (!c.booking_id || c.booking_status === 'DIRECT_DM'))
+        );
+        if (!exists) {
+          const synth: Conversation = {
+            conversation_id: dmKey,
+            booking_id: null,
+            booking_status: 'DIRECT_DM',
+            item_title: 'Direct Message',
+            item_images: [],
+            total_price: 0,
+            partner_id: initialPartner.id,
+            partner_name: initialPartner.name,
+            partner_avatar: initialPartner.avatar,
+            last_message: 'Start a direct chat...',
+            last_message_at: new Date().toISOString(),
+          };
+          list = [synth, ...list];
+        }
+      }
+
       setConversations(list);
-      if (list.length > 0 && !selectedBookingId) {
-        setSelectedBookingId(list[0].booking_id);
+      if (list.length > 0 && !selectedConvId) {
+        setSelectedConvId(list[0].conversation_id || list[0].booking_id || `dm_${list[0].partner_id}`);
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
@@ -113,12 +151,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const loadMessages = async (bookingId: string) => {
+  const loadMessages = async (convId: string) => {
     setIsLoadingMessages(true);
     try {
-      const data = await api.getMessages(bookingId);
+      const data = await api.getMessages(convId);
       if (data?.booking) {
         setActiveBookingData(data.booking);
+      } else {
+        setActiveBookingData(null);
+      }
+      if (data?.partner) {
+        setActivePartnerData(data.partner);
       }
       if (data?.messages && Array.isArray(data.messages)) {
         setMessages(data.messages);
@@ -134,8 +177,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const activeConversation: Conversation | null =
-    conversations.find((c) => c.booking_id === selectedBookingId) ||
-    (activeBookingData
+    conversations.find((c) =>
+      c.conversation_id === selectedConvId ||
+      c.booking_id === selectedConvId ||
+      `dm_${c.partner_id}` === selectedConvId
+    ) ||
+    (activePartnerData
+      ? {
+          conversation_id: `dm_${activePartnerData.id}`,
+          booking_id: null,
+          booking_status: 'DIRECT_DM',
+          total_price: 0,
+          item_title: 'Direct Message',
+          item_images: [],
+          partner_id: activePartnerData.id,
+          partner_name: activePartnerData.name || 'Neighbor',
+          partner_avatar: activePartnerData.avatar_url || activePartnerData.avatar,
+        }
+      : activeBookingData
       ? {
           booking_id: activeBookingData.id,
           booking_status: activeBookingData.status,
@@ -163,16 +222,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const textToSend = inputText.trim();
-    if (!textToSend || !selectedBookingId || isSending) return;
+    if (!textToSend || !selectedConvId || isSending) return;
 
     setSendError(null);
     const tempId = `temp-${Date.now()}`;
+    const receiverId = activeConversation?.partner_id || (selectedConvId.startsWith('dm_') ? selectedConvId.replace('dm_', '') : '');
+
     const optimisticMsg: Message = {
       id: tempId,
-      booking_id: selectedBookingId,
+      booking_id: activeConversation?.booking_id || undefined,
       sender_id: user?.id || 'me',
       sender_name: user?.name || 'You',
-      receiver_id: activeConversation?.partner_id || '',
+      receiver_id: receiverId,
       content: textToSend,
       created_at: new Date().toISOString(),
     };
@@ -183,8 +244,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     try {
       const serverMsg = await api.sendMessage(
-        selectedBookingId,
-        activeConversation?.partner_id || '',
+        activeConversation?.booking_id || null,
+        receiverId,
         textToSend
       );
 
@@ -197,11 +258,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
 
       setConversations((prev) =>
-        prev.map((c) =>
-          c.booking_id === selectedBookingId
+        prev.map((c) => {
+          const match =
+            c.conversation_id === selectedConvId ||
+            c.booking_id === selectedConvId ||
+            `dm_${c.partner_id}` === selectedConvId;
+          return match
             ? { ...c, last_message: textToSend, last_message_at: new Date().toISOString() }
-            : c
-        )
+            : c;
+        })
       );
 
       inputRef.current?.focus();
@@ -319,18 +384,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 </div>
               ) : (
                 filteredConversations.map((chat) => {
-                  const isSelected = chat.booking_id === selectedBookingId;
+                  const chatKey = chat.conversation_id || chat.booking_id || `dm_${chat.partner_id}`;
+                  const isSelected =
+                    chatKey === selectedConvId ||
+                    chat.booking_id === selectedConvId ||
+                    `dm_${chat.partner_id}` === selectedConvId;
                   const partnerAvatar =
                     chat.partner_avatar ||
                     (chat.partner_name
                       ? `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.partner_name)}&background=0F172A&color=fff&bold=true`
                       : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu');
 
+                  const isDirect = chat.booking_status === 'DIRECT_DM' || !chat.booking_id;
+
                   return (
                     <div
-                      key={chat.booking_id}
+                      key={chatKey}
                       onClick={() => {
-                        setSelectedBookingId(chat.booking_id);
+                        setSelectedConvId(chatKey);
                         setShowMobileThread(true);
                       }}
                       className={`p-3.5 sm:p-4 flex items-start gap-3 cursor-pointer transition-all ${
@@ -354,11 +425,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-ink-secondary truncate font-medium">
-                          {chat.last_message || `Rental request for ${chat.item_title}`}
+                          {chat.last_message || (isDirect ? 'Direct conversation' : `Rental request for ${chat.item_title}`)}
                         </p>
                         <div className="flex items-center gap-1.5 mt-1.5">
-                          <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                            {chat.item_title}
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                            isDirect 
+                              ? 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20' 
+                              : 'text-brand bg-brand-soft border-brand/20'
+                          }`}>
+                            {isDirect ? 'Direct Message' : chat.item_title}
                           </span>
                         </div>
                       </div>
@@ -397,27 +472,46 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     />
 
                     <div className="min-w-0">
-                      <h2 className="text-sm sm:text-base font-black text-ink truncate font-display">
-                        {activeConversation.partner_name || 'Neighbor'}
+                      <h2 className="text-sm sm:text-base font-black text-ink truncate font-display flex items-center gap-1.5">
+                        <span>{activeConversation.partner_name || 'Neighbor'}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Active Member" />
                       </h2>
                       <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 truncate">
-                        <span className="font-bold text-ink truncate">{activeConversation.item_title}</span>
-                        <span>•</span>
-                        <span className="font-extrabold text-brand uppercase tracking-wider text-[10px]">
-                          {activeConversation.booking_status}
-                        </span>
+                        {activeConversation.booking_status === 'DIRECT_DM' || !activeConversation.booking_id ? (
+                          <>
+                            <span className="font-bold text-purple-600 dark:text-purple-400">Direct Chat</span>
+                            <span>•</span>
+                            <span>Rentu Community Member</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold text-ink truncate">{activeConversation.item_title}</span>
+                            <span>•</span>
+                            <span className="font-extrabold text-brand uppercase tracking-wider text-[10px]">
+                              {activeConversation.booking_status}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0 pl-2">
-                    <span className="font-black text-ink text-sm sm:text-base font-display block">
-                      ₹{Number(activeConversation.total_price)}
-                    </span>
-                    <span className="text-[10px] font-bold text-ink-secondary block">
-                      {activeConversation.duration_days} {activeConversation.duration_days === 1 ? 'day' : 'days'}
-                    </span>
-                  </div>
+                  {activeConversation.booking_id && Number(activeConversation.total_price) > 0 ? (
+                    <div className="text-right shrink-0 pl-2">
+                      <span className="font-black text-ink text-sm sm:text-base font-display block">
+                        ₹{Number(activeConversation.total_price)}
+                      </span>
+                      <span className="text-[10px] font-bold text-ink-secondary block">
+                        {activeConversation.duration_days} {activeConversation.duration_days === 1 ? 'day' : 'days'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="shrink-0 pl-2">
+                      <span className="text-[11px] font-bold text-ink-secondary px-3 py-1 rounded-full bg-canvas border border-divider">
+                        Direct DM 💬
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Error Banner */}

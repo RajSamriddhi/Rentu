@@ -387,18 +387,18 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getMessages(bookingId: string): Promise<{ booking: Booking; messages: Message[] }> {
-    const res = await fetch(`${API_BASE}/messages/${bookingId}`, {
+  async getMessages(conversationId: string): Promise<{ booking?: Booking | null; partner?: any; messages: Message[] }> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}`, {
       headers: getHeaders(),
     });
     return handleResponse(res);
   },
 
-  async sendMessage(booking_id: string, receiver_id: string, content: string): Promise<Message> {
+  async sendMessage(booking_id: string | null | undefined, receiver_id: string, content: string): Promise<Message> {
     const res = await fetch(`${API_BASE}/messages`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ booking_id, receiver_id, content }),
+      body: JSON.stringify({ booking_id: booking_id || undefined, receiver_id, content }),
     });
     return handleResponse(res);
   },
