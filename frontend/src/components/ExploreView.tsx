@@ -22,7 +22,7 @@ import { Item, CommunityRequest, UserSearchResult } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { getReachDistance } from '../lib/distance';
+import { getReachDistance, getReachDistanceKm } from '../lib/distance';
 
 interface ExploreViewProps {
   items: Item[];
@@ -123,6 +123,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     if (selectedType === 'Rent' && Number(item.price_per_day) <= 0) return false;
     if (selectedType === 'Borrow' && Number(item.price_per_day) > 0) return false;
     if (selectedCondition !== 'Any' && item.condition && item.condition !== selectedCondition) return false;
+    const distanceKm = getReachDistanceKm(item, user);
+    if (radiusKm && distanceKm > radiusKm) return false;
     return true;
   });
 

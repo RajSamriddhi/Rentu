@@ -402,6 +402,18 @@ const runMigrations = async () => {
                 await client.query(c.sql);
             }
         }
+        // Align Bangalore/Bengaluru items and users away from Delhi default (28.5355)
+        await client.query(`
+      UPDATE items 
+      SET latitude = 12.9255, longitude = 77.5355 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      UPDATE users 
+      SET latitude = 12.9240, longitude = 77.5340 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+    `);
         await client.query('COMMIT');
         console.log('Database migrations completed successfully!');
     }
