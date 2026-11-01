@@ -34,7 +34,8 @@ import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 
 export const HustleHub: React.FC = () => {
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
+  const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
   const [activeSidebar, setActiveSidebar] = useState('Overview');
   const [analytics, setAnalytics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -394,7 +395,7 @@ export const HustleHub: React.FC = () => {
     { name: 'Settings', icon: <Settings className="w-4 h-4" /> },
   ];
 
-  if (!isAuthorizedAdmin(user?.email)) {
+  if (!isAuthorizedAdmin(currentUserEmail)) {
     return (
       <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-150">
         <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">

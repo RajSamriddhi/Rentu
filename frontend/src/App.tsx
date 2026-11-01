@@ -52,7 +52,9 @@ const getTabFromUrl = (): TabType => {
 };
 
 export const App: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, firebaseUser, isAuthenticated } = useAuth();
+  const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
+  const isUserAdmin = isAuthorizedAdmin(currentUserEmail);
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
@@ -326,7 +328,7 @@ export const App: React.FC = () => {
 
             {/* VIEW 10: ADMIN DASHBOARD (Protected to falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com) */}
             {activeTab === 'hustle' && (
-              isAuthorizedAdmin(user?.email) ? (
+              isUserAdmin ? (
                 <HustleHub />
               ) : (
                 <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-200">
@@ -335,7 +337,7 @@ export const App: React.FC = () => {
                   </div>
                   <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
                   <p className="text-xs text-ink-secondary leading-relaxed">
-                    This management console is restricted exclusively to authorized platform administrators.
+                    This management console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
                   </p>
                   <button
                     onClick={() => setActiveTab('explore')}

@@ -57,8 +57,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUserProfile,
   onOpenHelpSupport,
 }) => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, firebaseUser, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  
+  const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
+  const isUserAdmin = isAuthorizedAdmin(currentUserEmail);
   
   const [showPostMenu, setShowPostMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -548,7 +551,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Bookings</span>
                       </button>
 
-                      {isAuthorizedAdmin(user?.email) && (
+                      {isUserAdmin && (
                         <button
                           onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
                           className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
