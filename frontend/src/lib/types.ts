@@ -286,6 +286,16 @@ export interface SupportTicket {
   updated_at: string;
 }
 
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'falaksadiqua786@gmail.com',
+  'rajsamriddhi60@gmail.com',
+];
+
+export const isAuthorizedAdmin = (email?: string | null): boolean => {
+  if (!email) return false;
+  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+
 export interface UserSearchResult {
   id: string;
   name: string;

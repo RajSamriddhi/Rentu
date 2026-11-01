@@ -22,7 +22,7 @@ import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
-import { Item, CommunityRequest } from './lib/types';
+import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
@@ -322,9 +322,27 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 10: ADMIN DASHBOARD (Screen 10 in Mockup) */}
+            {/* VIEW 10: ADMIN DASHBOARD (Protected to falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com) */}
             {activeTab === 'hustle' && (
-              <HustleHub />
+              isAuthorizedAdmin(user?.email) ? (
+                <HustleHub />
+              ) : (
+                <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-200">
+                  <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
+                    🔒
+                  </div>
+                  <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
+                  <p className="text-xs text-ink-secondary leading-relaxed">
+                    This management console is restricted exclusively to authorized platform administrators.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('explore')}
+                    className="btn-primary text-xs px-6 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>Back to Marketplace</span>
+                  </button>
+                </div>
+              )
             )}
 
             {/* VIEW 11: COMMUNITY & TOP 10 LEADERBOARD (Replaces How It Works) */}

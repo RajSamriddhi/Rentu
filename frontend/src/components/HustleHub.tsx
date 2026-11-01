@@ -21,9 +21,11 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { SupportTicket } from '../lib/types';
+import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
+import { useAuth } from '../lib/authContext';
 
 export const HustleHub: React.FC = () => {
+  const { user } = useAuth();
   const [activeSidebar, setActiveSidebar] = useState('Overview');
   const [analytics, setAnalytics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -112,6 +114,20 @@ export const HustleHub: React.FC = () => {
     { name: 'Reports', icon: <FileText className="w-4 h-4" /> },
     { name: 'Settings', icon: <Settings className="w-4 h-4" /> },
   ];
+
+  if (!isAuthorizedAdmin(user?.email)) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-150">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
+          🔒
+        </div>
+        <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
+        <p className="text-xs text-ink-secondary leading-relaxed">
+          The Admin console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-150">

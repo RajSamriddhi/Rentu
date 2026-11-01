@@ -52476,6 +52476,34 @@ var optionalAuthMiddleware = async (req, res, next) => {
   }
   next();
 };
+var AUTHORIZED_ADMIN_EMAILS = [
+  "falaksadiqua786@gmail.com",
+  "rajsamriddhi60@gmail.com"
+];
+var isAdminEmail = (email) => {
+  if (!email) return false;
+  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+};
+var adminMiddleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return sendError(res, "UNAUTHORIZED", "Access token required", 401);
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const user = await resolveUserFromToken(token);
+    if (!user) {
+      return sendError(res, "INVALID_TOKEN", "Session expired or token invalid", 401);
+    }
+    req.user = user;
+    if (!isAdminEmail(user.email)) {
+      return sendError(res, "FORBIDDEN", "Access restricted to authorized platform administrators", 403);
+    }
+    next();
+  } catch (err) {
+    return sendError(res, "INVALID_TOKEN", "Session expired or token invalid", 401);
+  }
+};
 
 // backend/src/modules/auth/auth.routes.ts
 var router = (0, import_express.Router)();
@@ -64707,7 +64735,7 @@ router11.get("/my", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-router11.get("/admin", authMiddleware, async (req, res, next) => {
+router11.get("/admin", adminMiddleware, async (req, res, next) => {
   try {
     const { status, type, category } = req.query;
     const params = [];
@@ -64736,7 +64764,7 @@ router11.get("/admin", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-router11.put("/admin/:id", authMiddleware, async (req, res, next) => {
+router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
     const validated = updateTicketSchema.parse(req.body);

@@ -26,7 +26,7 @@ import {
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 import { api } from '../lib/api';
-import { UserSearchResult } from '../lib/types';
+import { UserSearchResult, isAuthorizedAdmin } from '../lib/types';
 
 interface NavbarProps {
   activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
@@ -548,13 +548,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Bookings</span>
                       </button>
 
-                      <button
-                        onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
-                      >
-                        <BarChart3 className="w-4 h-4 text-ink-secondary" />
-                        <span>Admin Dashboard</span>
-                      </button>
+                      {isAuthorizedAdmin(user?.email) && (
+                        <button
+                          onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        >
+                          <BarChart3 className="w-4 h-4 text-ink-secondary" />
+                          <span>Admin Dashboard</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={() => { onOpenHelpSupport?.(); setShowUserMenu(false); }}

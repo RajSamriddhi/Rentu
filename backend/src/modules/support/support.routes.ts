@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
-import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest, adminMiddleware } from '../../middleware/auth';
 
 const router = Router();
 
@@ -81,8 +81,8 @@ router.get('/my', authMiddleware, async (req: AuthenticatedRequest, res: Respons
   }
 });
 
-// 3. Admin: Get All Concerns & Feedback
-router.get('/admin', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+// 3. Admin: Get All Concerns & Feedback (Restricted to Authorized Admins)
+router.get('/admin', adminMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { status, type, category } = req.query;
     const params: any[] = [];
@@ -117,8 +117,8 @@ router.get('/admin', authMiddleware, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-// 4. Admin: Update Ticket Status & Admin Resolution Notes
-router.put('/admin/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+// 4. Admin: Update Ticket Status & Admin Resolution Notes (Restricted to Authorized Admins)
+router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { id } = req.params;
     const validated = updateTicketSchema.parse(req.body);
