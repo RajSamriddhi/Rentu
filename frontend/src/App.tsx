@@ -212,19 +212,17 @@ export const App: React.FC = () => {
             {/* VIEW 1: HOMEPAGE / LANDING (Screen 1 in Mockup) */}
             {activeTab === 'home' && (
               <div>
-                {/* Screen 1: Cream Blush Hero Section with Scrapbook Collage */}
+                {/* Minimalist Chic Hero Section */}
                 <HeroSection
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                  onSearch={handleSearch}
                   onGetStarted={() => setActiveTab('explore')}
                   onOpenDropGear={() => setIsDropGearOpen(true)}
+                  onOpenDropWish={() => setIsDropWishOpen(true)}
                   itemsCount={(items || []).length}
                   requestsCount={(requests || []).length}
                   onOpenUserProfile={handleOpenUserProfile}
                 />
 
-                {/* Screen 1: 8 Soft Pastel Category Tiles Container */}
+                {/* 8 Soft Pastel Category Tiles Container */}
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <CategoryTiles
                     selectedCategory={selectedCategory}
@@ -235,7 +233,17 @@ export const App: React.FC = () => {
                   />
                 </div>
 
-                {/* Popular / Trending Gear */}
+                {/* How Rentu⁺ Works Section (Placed Above Popular Gear) */}
+                <HowItWorksSection
+                  onExploreGear={() => setActiveTab('explore')}
+                  onOpenDropGear={() => setIsDropGearOpen(true)}
+                  onOpenDropWish={() => setIsDropWishOpen(true)}
+                  onOpenAuth={() => setIsAuthOpen(true)}
+                  onViewCommunity={() => setActiveTab('community')}
+                  showCommunityLink={true}
+                />
+
+                {/* Popular Gear Near You (Placed Below How Rentu Works) */}
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
@@ -265,16 +273,6 @@ export const App: React.FC = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* How Rentu⁺ Works Section on the Main Page */}
-                <HowItWorksSection
-                  onExploreGear={() => setActiveTab('explore')}
-                  onOpenDropGear={() => setIsDropGearOpen(true)}
-                  onOpenDropWish={() => setIsDropWishOpen(true)}
-                  onOpenAuth={() => setIsAuthOpen(true)}
-                  onViewCommunity={() => setActiveTab('community')}
-                  showCommunityLink={true}
-                />
               </div>
             )}
 
