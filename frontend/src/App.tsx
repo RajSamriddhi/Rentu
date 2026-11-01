@@ -17,6 +17,7 @@ import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { AiAssistantModal } from './components/AiAssistantModal';
+import { HelpSupportModal } from './components/HelpSupportModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
@@ -110,6 +111,7 @@ export const App: React.FC = () => {
   const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -188,6 +190,7 @@ export const App: React.FC = () => {
         onOpenChat={() => setActiveTab('messages')}
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
+        onOpenHelpSupport={() => setIsHelpOpen(true)}
       />
 
       {/* Main View Router */}
@@ -417,6 +420,12 @@ export const App: React.FC = () => {
           itemId: selectedItem?.id || null,
           locality: selectedItem?.locality || null,
         }}
+      />
+
+      {/* Help & Community Support Modal */}
+      <HelpSupportModal
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
       />
 
     </div>

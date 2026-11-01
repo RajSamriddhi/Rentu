@@ -367,6 +367,29 @@ export const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
     `);
 
+    // 4.8. SUPPORT TICKETS, CONCERNS & USER FEEDBACK
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        user_email TEXT,
+        type TEXT NOT NULL, -- 'CONCERN' | 'FEEDBACK'
+        category TEXT NOT NULL, -- 'BOOKING' | 'ITEM_QUALITY' | 'PAYMENT' | 'USER_BEHAVIOR' | 'FEATURE_REQUEST' | 'BUG' | 'GENERAL'
+        subject TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'OPEN', -- 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED'
+        priority TEXT DEFAULT 'NORMAL', -- 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+        admin_notes TEXT,
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+    `);
+
     // Clean up unnecessary helper views to maintain clean database tables
     await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
 

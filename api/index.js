@@ -18095,17 +18095,17 @@ var require_router = __commonJS({
     var toString = Object.prototype.toString;
     var proto = module2.exports = function(options) {
       var opts = options || {};
-      function router11(req, res, next) {
-        router11.handle(req, res, next);
+      function router12(req, res, next) {
+        router12.handle(req, res, next);
       }
-      setPrototypeOf(router11, proto);
-      router11.params = {};
-      router11._params = [];
-      router11.caseSensitive = opts.caseSensitive;
-      router11.mergeParams = opts.mergeParams;
-      router11.strict = opts.strict;
-      router11.stack = [];
-      return router11;
+      setPrototypeOf(router12, proto);
+      router12.params = {};
+      router12._params = [];
+      router12.caseSensitive = opts.caseSensitive;
+      router12.mergeParams = opts.mergeParams;
+      router12.strict = opts.strict;
+      router12.stack = [];
+      return router12;
     };
     proto.param = function param(name, fn) {
       if (typeof name === "function") {
@@ -20714,7 +20714,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router11 = require_router();
+    var Router12 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query2 = require_query();
@@ -20779,7 +20779,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router11({
+        this._router = new Router12({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -20788,17 +20788,17 @@ var require_application = __commonJS({
       }
     };
     app2.handle = function handle(req, res, callback) {
-      var router11 = this._router;
+      var router12 = this._router;
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
-      if (!router11) {
+      if (!router12) {
         debug("no routes defined on app");
         done();
         return;
       }
-      router11.handle(req, res, done);
+      router12.handle(req, res, done);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -20818,15 +20818,15 @@ var require_application = __commonJS({
         throw new TypeError("app.use() requires a middleware function");
       }
       this.lazyrouter();
-      var router11 = this._router;
+      var router12 = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router11.use(path2, fn2);
+          return router12.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router11.use(path2, function mounted_app(req, res, next) {
+        router12.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -22643,7 +22643,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router11 = require_router();
+    var Router12 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -22666,7 +22666,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router11;
+    exports2.Router = Router12;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -48217,7 +48217,7 @@ __export(serverless_exports, {
 module.exports = __toCommonJS(serverless_exports);
 
 // backend/src/app.ts
-var import_express11 = __toESM(require_express2());
+var import_express12 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // backend/src/modules/auth/auth.routes.ts
@@ -64639,6 +64639,160 @@ router10.put("/read-all", authMiddleware, async (req, res, next) => {
 });
 var notifications_routes_default = router10;
 
+// backend/src/modules/support/support.routes.ts
+var import_express11 = __toESM(require_express2());
+var router11 = (0, import_express11.Router)();
+var createTicketSchema = external_exports.object({
+  type: external_exports.enum(["CONCERN", "FEEDBACK"]),
+  category: external_exports.string().min(1, "Category is required"),
+  subject: external_exports.string().min(3, "Subject must be at least 3 characters"),
+  description: external_exports.string().min(10, "Please describe your concern or feedback in at least 10 characters"),
+  priority: external_exports.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional().default("NORMAL"),
+  user_email: external_exports.string().email().optional()
+});
+var updateTicketSchema = external_exports.object({
+  status: external_exports.enum(["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"]).optional(),
+  priority: external_exports.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional(),
+  admin_notes: external_exports.string().optional()
+});
+router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const validated = createTicketSchema.parse(req.body);
+    const userId = req.user?.id || null;
+    const userName = req.user?.name || "Community Member";
+    const userEmail = validated.user_email || req.user?.email || "unregistered@rentu.in";
+    const insertRes = await query(
+      `INSERT INTO support_tickets (user_id, user_name, user_email, type, category, subject, description, priority, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN')
+       RETURNING *`,
+      [
+        userId,
+        userName,
+        userEmail,
+        validated.type,
+        validated.category,
+        validated.subject,
+        validated.description,
+        validated.priority
+      ]
+    );
+    const ticket = insertRes.rows[0];
+    if (userId) {
+      await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+         VALUES ($1, NULL, 'SUPPORT_TICKET_RECEIVED', $2, $3, $4, 'SUPPORT')`,
+        [
+          userId,
+          validated.type === "CONCERN" ? "Concern Received \u{1F6E1}\uFE0F" : "Feedback Received \u{1F4A1}",
+          `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
+          ticket.id
+        ]
+      ).catch(() => {
+      });
+    }
+    return sendSuccess(res, ticket, "Your submission has been sent directly to the Rentu Admin Team.", 201);
+  } catch (error) {
+    next(error);
+  }
+});
+router11.get("/my", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const result = await query(
+      `SELECT * FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId]
+    );
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router11.get("/admin", authMiddleware, async (req, res, next) => {
+  try {
+    const { status, type, category } = req.query;
+    const params = [];
+    let sql = `
+      SELECT st.*, u.avatar_url AS user_avatar, u.phone AS user_phone, u.locality AS user_locality
+      FROM support_tickets st
+      LEFT JOIN users u ON st.user_id = u.id
+      WHERE 1=1
+    `;
+    if (status && status !== "ALL") {
+      params.push(status);
+      sql += ` AND st.status = $${params.length}`;
+    }
+    if (type && type !== "ALL") {
+      params.push(type);
+      sql += ` AND st.type = $${params.length}`;
+    }
+    if (category && category !== "ALL") {
+      params.push(category);
+      sql += ` AND st.category = $${params.length}`;
+    }
+    sql += ` ORDER BY CASE WHEN st.status = 'OPEN' THEN 1 WHEN st.status = 'IN_REVIEW' THEN 2 ELSE 3 END, st.created_at DESC`;
+    const result = await query(sql, params);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router11.put("/admin/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const validated = updateTicketSchema.parse(req.body);
+    const ticketRes = await query(`SELECT * FROM support_tickets WHERE id = $1`, [id]);
+    if (ticketRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Support ticket not found", 404);
+    }
+    const currentTicket = ticketRes.rows[0];
+    const fields = [];
+    const values = [];
+    if (validated.status !== void 0) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+      if (validated.status === "RESOLVED") {
+        fields.push(`resolved_at = CURRENT_TIMESTAMP`);
+      }
+    }
+    if (validated.priority !== void 0) {
+      values.push(validated.priority);
+      fields.push(`priority = $${values.length}`);
+    }
+    if (validated.admin_notes !== void 0) {
+      values.push(validated.admin_notes);
+      fields.push(`admin_notes = $${values.length}`);
+    }
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    const updateSql = `
+      UPDATE support_tickets
+      SET ${fields.join(", ")}
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    const result = await query(updateSql, values);
+    const updated = result.rows[0];
+    if (currentTicket.user_id && (validated.status === "RESOLVED" || validated.admin_notes)) {
+      const noteSnippet = validated.admin_notes ? `: "${validated.admin_notes}"` : "";
+      await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+         VALUES ($1, NULL, 'SUPPORT_TICKET_RESOLVED', $2, $3, $4, 'SUPPORT')`,
+        [
+          currentTicket.user_id,
+          validated.status === "RESOLVED" ? "Concern Resolved \u2705" : "Support Update \u{1F4AC}",
+          `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
+          updated.id
+        ]
+      ).catch(() => {
+      });
+    }
+    return sendSuccess(res, updated, "Ticket updated successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+var support_routes_default = router11;
+
 // backend/src/middleware/error.ts
 var errorHandler = (err, req, res, next) => {
   if (err instanceof ZodError) {
@@ -64659,10 +64813,10 @@ var errorHandler = (err, req, res, next) => {
 
 // backend/src/app.ts
 var createApp = () => {
-  const app2 = (0, import_express11.default)();
+  const app2 = (0, import_express12.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
-  app2.use(import_express11.default.json({ limit: "10mb" }));
-  app2.use(import_express11.default.urlencoded({ extended: true }));
+  app2.use(import_express12.default.json({ limit: "10mb" }));
+  app2.use(import_express12.default.urlencoded({ extended: true }));
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -64696,6 +64850,7 @@ var createApp = () => {
   app2.use(["/api/messages", "/messages"], messages_routes_default);
   app2.use(["/api/upload", "/upload"], upload_routes_default);
   app2.use(["/api/notifications", "/notifications"], notifications_routes_default);
+  app2.use(["/api/support", "/support"], support_routes_default);
   app2.use(["/api/ai", "/ai"], ai_routes_default);
   app2.use((req, res) => {
     return sendError(res, "ROUTE_NOT_FOUND", `Cannot ${req.method} ${req.originalUrl}`, 404);

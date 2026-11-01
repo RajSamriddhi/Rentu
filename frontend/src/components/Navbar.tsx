@@ -20,7 +20,8 @@ import {
   Users,
   ShieldCheck,
   Star,
-  ArrowRight
+  ArrowRight,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -39,6 +40,7 @@ interface NavbarProps {
   onOpenChat: () => void;
   onOpenHowItWorks?: () => void;
   onOpenUserProfile?: (userId: string) => void;
+  onOpenHelpSupport?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -53,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenChat,
   onOpenHowItWorks,
   onOpenUserProfile,
+  onOpenHelpSupport,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -553,6 +556,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Admin Dashboard</span>
                       </button>
 
+                      <button
+                        onClick={() => { onOpenHelpSupport?.(); setShowUserMenu(false); }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                      >
+                        <HelpCircle className="w-4 h-4 text-brand" />
+                        <span>Help & Raise Concern</span>
+                      </button>
+
                       {/* Sign Out */}
                       <div className="pt-1.5 border-t border-divider">
                         <button
@@ -747,6 +758,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <Calendar className="w-4 h-4 text-ink-secondary" />
                   <span>Bookings & Activity</span>
+                </button>
+
+                <button
+                  onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  <HelpCircle className="w-4 h-4 text-brand" />
+                  <span>Help & Raise Concern</span>
                 </button>
 
                 <button

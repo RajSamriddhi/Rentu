@@ -494,6 +494,55 @@ export const api = {
     });
   },
 
+  // Support & Concerns (Community Care)
+  async submitSupportTicket(data: {
+    type: 'CONCERN' | 'FEEDBACK';
+    category: string;
+    subject: string;
+    description: string;
+    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    user_email?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/support`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getMySupportTickets(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/support/my`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminSupportTickets(filters?: { status?: string; type?: string; category?: string }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.type && filters.type !== 'ALL') params.append('type', filters.type);
+    if (filters?.category && filters.category !== 'ALL') params.append('category', filters.category);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/support/admin${qs}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminSupportTicket(id: string, data: {
+    status?: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    admin_notes?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/support/admin/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
   // Rentu AI Assistant
   async sendAiChatMessage(
     messages: { role: 'user' | 'assistant'; content: string }[],

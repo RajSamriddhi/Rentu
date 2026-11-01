@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Lock,
   Phone,
+  HelpCircle,
   Mail
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -37,6 +38,7 @@ import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest, UserReview } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { EditProfileModal } from './EditProfileModal';
+import { HelpSupportModal } from './HelpSupportModal';
 import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
@@ -63,6 +65,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [receivedReviews, setReceivedReviews] = useState<UserReview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [previewItem, setPreviewItem] = useState<Item | null>(null);
   const [editingRequest, setEditingRequest] = useState<CommunityRequest | null>(null);
@@ -474,14 +477,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Action Buttons (Cleanly positioned on card surface) */}
-            <div className="flex items-center gap-2.5 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end">
+            <div className="flex items-center gap-2 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
               <button 
                 id="edit-profile-btn"
                 onClick={() => setIsEditModalOpen(true)}
-                className="btn-secondary text-xs px-4 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
+                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Edit Profile</span>
+              </button>
+
+              <button 
+                onClick={() => setIsHelpModalOpen(true)}
+                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-amber-500 hover:text-amber-500 transition-all flex-1 sm:flex-initial"
+                title="Raise a Concern or Feedback to Admin"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+                <span>Help & Concerns</span>
               </button>
 
               <button
@@ -606,6 +618,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           refreshUser();
           loadData();
         }}
+      />
+
+      {/* Help & Support Modal */}
+      <HelpSupportModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
       />
 
       {/* Product Detail Preview Modal (Owner Preview as seen by other users) */}

@@ -266,6 +266,26 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface SupportTicket {
+  id: string;
+  user_id?: string | null;
+  user_name?: string;
+  user_email?: string;
+  user_avatar?: string;
+  user_phone?: string;
+  user_locality?: string;
+  type: 'CONCERN' | 'FEEDBACK';
+  category: string;
+  subject: string;
+  description: string;
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  admin_notes?: string;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserSearchResult {
   id: string;
   name: string;
