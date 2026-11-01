@@ -42,6 +42,7 @@ import { HelpSupportModal } from './HelpSupportModal';
 import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
+import { BookingScheduleCalendar } from './BookingScheduleCalendar';
 import { getReachDistance } from '../lib/distance';
 
 interface ProfileViewProps {
@@ -344,6 +345,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handleNextMonth = () => {
     setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
+  };
+
+  const handleBookingStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED') => {
+    try {
+      const updated = await api.updateBookingStatus(bookingId, status);
+      setMyBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status } : b))
+      );
+      if (status === 'ACCEPTED') {
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update booking status.');
+    }
+  };
+
+  const handleVerifyPickup = async (bookingId: string, code: string) => {
+    try {
+      const updated = await api.verifyPickup(bookingId, code);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+      setMyBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'HANDED_OVER' } : b))
+      );
+    } catch (err: any) {
+      alert(err.message || 'Incorrect verification code.');
+    }
+  };
+
+  const handleVerifyReturn = async (bookingId: string, code: string) => {
+    try {
+      const updated = await api.verifyReturn(bookingId, code);
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
+      setMyBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'COMPLETED' } : b))
+      );
+    } catch (err: any) {
+      alert(err.message || 'Incorrect return code.');
+    }
   };
 
   // Handle Review Submission for completed booking
@@ -864,299 +903,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Bookings & Handoffs Tab: Full Interactive Schedule Calendar & Details */}
         {activeTab === 'bookings' && (
-          <div className="space-y-6">
-            
-            {/* Calendar Card */}
-            <div className="bg-surface border border-divider rounded-3xl p-5 sm:p-6 shadow-xs">
-              
-              {/* Calendar Month Navigation Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-divider">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-lg font-black text-ink font-display">
-                      {monthNames[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
-                    </h3>
-                    <p className="text-xs text-ink-secondary">
-                      Ongoing bookings, handoff deadlines, deliveries & returns
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    type="button"
-                    onClick={handlePrevMonth}
-                    className="p-2 rounded-xl border border-divider hover:bg-canvas text-ink transition-colors cursor-pointer"
-                    aria-label="Previous month"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCalendarMonth(new Date());
-                      setSelectedCalendarDate(formatYMD(new Date()));
-                    }}
-                    className="px-3 py-1.5 rounded-xl border border-divider hover:bg-canvas text-xs font-bold text-ink transition-colors cursor-pointer"
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextMonth}
-                    className="p-2 rounded-xl border border-divider hover:bg-canvas text-ink transition-colors cursor-pointer"
-                    aria-label="Next month"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Event Tags Legend */}
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] font-bold text-ink-secondary mb-4 pb-3 border-b border-divider/60">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                  <span>🚗 Deliveries</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span>🚶 Pickups</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                  <span>🔄 Return Collections</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand" />
-                  <span>🔒 Active Rentals</span>
-                </div>
-              </div>
-
-              {/* Calendar Weekday Labels */}
-              <div className="grid grid-cols-7 gap-1 text-center mb-1">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((w, idx) => (
-                  <div key={idx} className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-ink-secondary py-1">
-                    {w}
-                  </div>
-                ))}
-              </div>
-
-              {/* Calendar Grid */}
-              <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {calendarDays.map((d, index) => {
-                  if (!d.isCurrentMonth) {
-                    return <div key={index} className="min-h-[70px] sm:min-h-[90px] rounded-2xl bg-canvas/40 opacity-30" />;
-                  }
-
-                  const hasEvents = d.events.length > 0;
-
-                  return (
-                    <div
-                      key={d.dateStr}
-                      onClick={() => setSelectedCalendarDate(d.dateStr)}
-                      className={`min-h-[70px] sm:min-h-[90px] p-1.5 sm:p-2 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                        d.isSelected
-                          ? 'border-brand bg-brand-soft/20 shadow-xs ring-1 ring-brand'
-                          : d.isToday
-                          ? 'border-ink bg-canvas'
-                          : 'border-divider bg-canvas/70 hover:border-zinc-400 dark:hover:border-zinc-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-black ${d.isToday ? 'text-brand font-black' : 'text-ink'}`}>
-                          {d.dayNum}
-                        </span>
-                        {d.isToday && (
-                          <span className="text-[9px] font-black uppercase text-brand">Today</span>
-                        )}
-                      </div>
-
-                      {/* Event Chips */}
-                      <div className="space-y-1 mt-1 overflow-hidden">
-                        {d.events.slice(0, 2).map((ev, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedBooking(ev.booking);
-                            }}
-                            className={`w-full text-left truncate px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold border ${ev.badgeColor} hover:brightness-110 cursor-pointer block`}
-                            title={ev.label}
-                          >
-                            {ev.label}
-                          </button>
-                        ))}
-                        {d.events.length > 2 && (
-                          <span className="text-[9px] font-extrabold text-brand block">
-                            +{d.events.length - 2} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
-
-            {/* Selected Date or Upcoming Handoffs List */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <div>
-                  <h4 className="text-sm font-extrabold text-ink font-display flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-brand" />
-                    <span>Handoffs for {selectedCalendarDate}</span>
-                  </h4>
-                  <p className="text-xs text-ink-secondary">
-                    Click any booking to view deadlines, counterparty info, and payment status
-                  </p>
-                </div>
-              </div>
-
-              {(() => {
-                // Bookings that touch the selected date or active
-                const dateBookings = myBookings.filter((b) => {
-                  const bStart = b.start_date?.slice(0, 10);
-                  const bEnd = (b.end_date || b.start_date)?.slice(0, 10);
-                  return bStart && bEnd && selectedCalendarDate >= bStart && selectedCalendarDate <= bEnd;
-                });
-
-                const displayBookings = dateBookings.length > 0 ? dateBookings : myBookings;
-
-                if (displayBookings.length === 0) {
-                  return (
-                    <div className="p-8 text-center bg-surface border border-divider rounded-2xl space-y-2">
-                      <p className="text-xs font-bold text-ink">No handoffs scheduled on {selectedCalendarDate}</p>
-                      <p className="text-xs text-ink-secondary">
-                        When someone rents your gear or you borrow from a neighbor, the schedule will show here.
-                      </p>
-                    </div>
-                  );
-                }
-
-                return displayBookings.map((b) => {
-                  const isLender = b.lender_id === user.id || (user as any).firebase_uid === b.lender_id;
-                  const counterpartyName = isLender ? (b.borrower_name || 'Renter') : (b.lender_name || 'Owner');
-                  const counterpartyAvatar = isLender ? b.borrower_avatar : b.lender_avatar;
-                  const itemImage = b.item_images?.[0] || '';
-
-                  // Action task summary
-                  let taskSummary = '';
-                  if (b.status === 'ACCEPTED' || b.status === 'PENDING') {
-                    if (isLender) {
-                      taskSummary = b.requires_delivery
-                        ? `🚗 You will deliver this product to ${counterpartyName}`
-                        : `🚶 ${counterpartyName} will come to your locality to pick up`;
-                    } else {
-                      taskSummary = b.requires_delivery
-                        ? `🚗 ${counterpartyName} will deliver this product to you`
-                        : `🚶 You will pick up this product from ${counterpartyName}`;
-                    }
-                  } else if (b.status === 'HANDED_OVER') {
-                    if (isLender) {
-                      taskSummary = b.requires_pickup
-                        ? `🔄 You will collect this product from ${counterpartyName} on return`
-                        : `📥 ${counterpartyName} will return this product back to you`;
-                    } else {
-                      taskSummary = b.requires_pickup
-                        ? `🔄 ${counterpartyName} will collect this product from you on return`
-                        : `🚶 You must return this product back to ${counterpartyName}`;
-                    }
-                  } else if (b.status === 'COMPLETED') {
-                    taskSummary = '🎉 Completed & returned. Review window open.';
-                  }
-
-                  return (
-                    <div
-                      key={b.id}
-                      onClick={() => setSelectedBooking(b)}
-                      className="p-4 sm:p-5 bg-surface border border-divider hover:border-brand/40 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-start gap-3.5">
-                        {/* Item Photo or No Image */}
-                        <div className="w-16 h-16 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0 flex flex-col items-center justify-center text-ink-secondary">
-                          {itemImage ? (
-                            <img src={itemImage} alt={b.item_title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                          ) : (
-                            <Package className="w-6 h-6 text-ink-secondary/60" />
-                          )}
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-extrabold text-ink text-sm sm:text-base group-hover:text-brand transition-colors">
-                              {b.item_title || 'Rental Item'}
-                            </h4>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-brand-soft text-brand border border-brand/20">
-                              {b.status}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-canvas text-ink-secondary border border-divider">
-                              {isLender ? 'You are Lending' : 'You are Renting'}
-                            </span>
-                          </div>
-
-                          {/* Counterparty & Dates */}
-                          <div className="flex items-center gap-3 text-xs text-ink-secondary flex-wrap">
-                            <div className="flex items-center gap-1.5 font-bold text-ink">
-                              <img
-                                src={counterpartyAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(counterpartyName)}&background=0F172A&color=fff&bold=true`}
-                                alt={counterpartyName}
-                                className="w-4 h-4 rounded-full object-cover"
-                              />
-                              <span>{isLender ? `Renter: ${counterpartyName}` : `Owner: ${counterpartyName}`}</span>
-                            </div>
-                            <span>•</span>
-                            <span>{b.start_date} → {b.end_date}</span>
-                            <span>•</span>
-                            <span className="font-bold text-ink">{b.duration_days} days</span>
-                            <span>•</span>
-                            <span className="font-bold text-brand">
-                              {Number(b.total_price) === 0 ? 'Free Borrowing' : `Paid: ₹${b.total_price}`}
-                            </span>
-                          </div>
-
-                          {/* Task Highlight Banner */}
-                          {taskSummary && (
-                            <div className="text-xs font-semibold text-ink pt-0.5 flex items-center gap-1.5">
-                              <span>{taskSummary}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBooking(b);
-                          }}
-                          className="px-3 py-1.5 rounded-xl border border-divider hover:bg-canvas text-xs font-bold text-ink transition-colors cursor-pointer"
-                        >
-                          Details
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenChatWithBooking(b.id);
-                          }}
-                          className="btn-primary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-pink"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Chat</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-
+          <div className="pt-2">
+            <BookingScheduleCalendar
+              bookings={myBookings}
+              onOpenChat={onOpenChatWithBooking}
+              onStatusUpdate={handleBookingStatusUpdate}
+              onVerifyPickup={handleVerifyPickup}
+              onVerifyReturn={handleVerifyReturn}
+              onOpenReview={(b) => setReviewingBooking(b)}
+            />
           </div>
         )}
 

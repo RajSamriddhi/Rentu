@@ -54892,7 +54892,11 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
-        b.start_date, b.start_time, b.end_date, b.end_time, b.duration_days,
+        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
+        b.start_time, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        b.end_time, 
+        b.duration_days,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
