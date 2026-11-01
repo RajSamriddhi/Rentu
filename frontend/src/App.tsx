@@ -15,6 +15,7 @@ import { CommunityView } from './components/CommunityView';
 import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
+import { AiAssistantModal } from './components/AiAssistantModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
@@ -105,6 +106,7 @@ export const App: React.FC = () => {
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -366,6 +368,18 @@ export const App: React.FC = () => {
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenChat={() => setActiveTab('messages')}
         onOpenAuth={() => setIsAuthOpen(true)}
+      />
+
+      {/* Rentu AI Assistant Modal & Floating Launcher */}
+      <AiAssistantModal
+        isOpen={isAiOpen}
+        onOpen={() => setIsAiOpen(true)}
+        onClose={() => setIsAiOpen(false)}
+        onSelectItem={(item) => setSelectedItem(item)}
+        context={{
+          itemId: selectedItem?.id || null,
+          locality: selectedItem?.locality || null,
+        }}
       />
 
     </div>

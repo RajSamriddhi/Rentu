@@ -9,7 +9,9 @@ import {
   CategoryStat,
   CommunityLeaderboardData,
   PublicUserProfile,
-  UserSearchResult 
+  UserSearchResult,
+  AiChatResponse,
+  AiChatContext
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL 
@@ -375,6 +377,19 @@ export const api = {
   async searchUsers(query: string): Promise<UserSearchResult[]> {
     const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
       headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  // Rentu AI Assistant
+  async sendAiChatMessage(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    context?: AiChatContext
+  ): Promise<AiChatResponse> {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ messages, context }),
     });
     return handleResponse(res);
   },
