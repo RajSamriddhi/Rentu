@@ -136,12 +136,40 @@ export interface Booking {
   lender_email?: string;
 }
 
+export interface MessageProposalData {
+  type: 'LISTING' | 'REQUEST';
+  title: string;
+  description?: string;
+  category?: string;
+  price_per_day?: number;
+  total_price: number;
+  duration_days: number;
+  start_date: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  delivery_option?: 'SELF' | 'LENDER_DELIVERY';
+  delivery_fee?: number;
+  collection_option?: 'SELF' | 'LENDER_COLLECT';
+  collection_fee?: number;
+  delivery_location?: string;
+  return_location?: string;
+  notes?: string;
+  image_url?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  booking_id?: string;
+  item_id?: string;
+  accepted_at?: string;
+}
+
 export interface Message {
   id: string;
   booking_id?: string | null;
   sender_id: string;
   receiver_id: string;
   content: string;
+  message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
+  proposal_data?: MessageProposalData | any;
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;

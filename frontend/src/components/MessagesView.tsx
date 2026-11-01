@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageSquare, Send, Search, ArrowLeft, Check, AlertCircle, 
-  Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight 
+  Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
+  Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle 
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { Conversation, Message } from '../lib/types';
+import { Conversation, Message, MessageProposalData } from '../lib/types';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
   initialPartner?: { id: string; name: string; avatar?: string } | null;
   onOpenAuth: () => void;
   onNavigateHome?: () => void;
+  onOpenUserProfile?: (userId: string) => void;
+  onOpenBookings?: () => void;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
@@ -19,6 +22,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   initialPartner,
   onOpenAuth,
   onNavigateHome,
+  onOpenUserProfile,
+  onOpenBookings,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -38,6 +43,44 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // Custom Listing & Request Proposal Modal State
+  const [isCreateProposalOpen, setIsCreateProposalOpen] = useState(false);
+  const [proposalType, setProposalType] = useState<'LISTING' | 'REQUEST'>('LISTING');
+  const [proposalTitle, setProposalTitle] = useState('');
+  const [proposalCategory, setProposalCategory] = useState('Electronics & Tech');
+  const [proposalRate, setProposalRate] = useState<number>(300);
+  const [proposalDays, setProposalDays] = useState<number>(2);
+  const [proposalStartDate, setProposalStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  });
+  const [proposalStartTime, setProposalStartTime] = useState('10:00');
+  const [proposalEndTime, setProposalEndTime] = useState('18:00');
+  const [proposalDeliveryOption, setProposalDeliveryOption] = useState<'SELF' | 'LENDER_DELIVERY'>('SELF');
+  const [proposalDeliveryFee, setProposalDeliveryFee] = useState<number>(100);
+  const [proposalCollectionOption, setProposalCollectionOption] = useState<'SELF' | 'LENDER_COLLECT'>('SELF');
+  const [proposalCollectionFee, setProposalCollectionFee] = useState<number>(65);
+  const [proposalLocation, setProposalLocation] = useState('');
+  const [proposalNotes, setProposalNotes] = useState('');
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
+  const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
+
+  const getCalculatedEndDate = (startDate: string, durationDays: number): string => {
+    try {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + Number(durationDays));
+      return d.toISOString().split('T')[0];
+    } catch {
+      return startDate;
+    }
+  };
+
+  const calculatedRentalCost = Math.max(0, Number(proposalRate) || 0) * Math.max(1, Number(proposalDays) || 1);
+  const calculatedDeliveryFee = proposalDeliveryOption === 'LENDER_DELIVERY' ? Math.max(0, Number(proposalDeliveryFee) || 0) : 0;
+  const calculatedCollectionFee = proposalCollectionOption === 'LENDER_COLLECT' ? Math.max(0, Number(proposalCollectionFee) || 0) : 0;
+  const calculatedTotalDealCost = calculatedRentalCost + calculatedDeliveryFee + calculatedCollectionFee;
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +323,144 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
+  const handleAcceptProposal = async (messageId: string) => {
+    if (!messageId || isAcceptingProposal) return;
+    setIsAcceptingProposal(messageId);
+    try {
+      const res = await api.acceptProposal(messageId);
+      if (res && res.proposal_data) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  proposal_data: res.proposal_data,
+                  booking_id: res.booking?.id || m.booking_id,
+                }
+              : m
+          )
+        );
+
+        if (res.booking?.id) {
+          setActiveBookingData((prev: any) => ({
+            ...(prev || {}),
+            id: res.booking.id,
+            status: 'ACCEPTED',
+          }));
+        }
+
+        if (selectedConvId) {
+          loadMessages(selectedConvId);
+        }
+        loadConversations();
+      }
+    } catch (err: any) {
+      console.error('Failed to accept proposal:', err);
+      alert(err.message || 'Failed to accept agreement. Please try again.');
+    } finally {
+      setIsAcceptingProposal(null);
+    }
+  };
+
+  const handleDeclineProposal = async (messageId: string) => {
+    if (!messageId || isAcceptingProposal) return;
+    try {
+      const res = await api.declineProposal(messageId);
+      if (res && res.proposal_data) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, proposal_data: res.proposal_data }
+              : m
+          )
+        );
+      }
+    } catch (err: any) {
+      console.error('Failed to decline proposal:', err);
+    }
+  };
+
+  const handleCreateProposalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proposalTitle.trim() || !selectedConvId || isSubmittingProposal) return;
+
+    const receiverId = activeConversation?.partner_id || (selectedConvId.startsWith('dm_') ? selectedConvId.replace('dm_', '') : '');
+    if (!receiverId) return;
+
+    setIsSubmittingProposal(true);
+    setSendError(null);
+
+    const calculatedEnd = getCalculatedEndDate(proposalStartDate, proposalDays);
+
+    const proposalPayload: MessageProposalData = {
+      type: proposalType,
+      title: proposalTitle.trim(),
+      category: proposalCategory,
+      price_per_day: Number(proposalRate) || 0,
+      total_price: calculatedTotalDealCost,
+      duration_days: Math.max(1, Number(proposalDays) || 1),
+      start_date: proposalStartDate,
+      end_date: calculatedEnd,
+      start_time: proposalStartTime,
+      end_time: proposalEndTime,
+      delivery_option: proposalDeliveryOption,
+      delivery_fee: calculatedDeliveryFee,
+      collection_option: proposalCollectionOption,
+      collection_fee: calculatedCollectionFee,
+      delivery_location: proposalLocation.trim(),
+      notes: proposalNotes.trim(),
+      status: 'PENDING',
+    };
+
+    const summaryText = `📦 ${proposalType === 'LISTING' ? 'Personal Gear Offer' : 'Custom Borrow Request'}: ${proposalTitle.trim()} (₹${calculatedTotalDealCost} for ${proposalDays} days)`;
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      booking_id: activeConversation?.booking_id || undefined,
+      sender_id: user?.id || 'me',
+      sender_name: user?.name || 'You',
+      receiver_id: receiverId,
+      content: summaryText,
+      message_type: 'PROPOSAL',
+      proposal_data: proposalPayload,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setIsCreateProposalOpen(false);
+
+    try {
+      const serverMsg = await api.sendMessage(
+        activeConversation?.booking_id || null,
+        receiverId,
+        summaryText,
+        'PROPOSAL',
+        proposalPayload
+      );
+
+      if (serverMsg && serverMsg.id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...serverMsg, sender_name: user?.name || 'You' } : m
+          )
+        );
+      }
+
+      setProposalTitle('');
+      setProposalNotes('');
+      setProposalLocation('');
+
+      loadConversations();
+    } catch (err: any) {
+      console.error('Failed to create proposal:', err);
+      setSendError(err.message || 'Failed to send custom proposal.');
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
   // Not signed in state
   if (!isAuthenticated) {
     return (
@@ -468,12 +649,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
                       }
                       alt={activeConversation.partner_name || 'Member'}
-                      className="w-10 h-10 rounded-full object-cover border border-divider shrink-0"
+                      onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
+                      className="w-10 h-10 rounded-full object-cover border border-divider shrink-0 cursor-pointer hover:ring-2 hover:ring-brand hover:scale-105 transition-all"
+                      title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
                     />
 
                     <div className="min-w-0">
-                      <h2 className="text-sm sm:text-base font-black text-ink truncate font-display flex items-center gap-1.5">
-                        <span>{activeConversation.partner_name || 'Neighbor'}</span>
+                      <h2 
+                        onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
+                        className="text-sm sm:text-base font-black text-ink truncate font-display flex items-center gap-1.5 cursor-pointer hover:text-brand transition-colors"
+                        title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
+                      >
+                        <span className="hover:underline">{activeConversation.partner_name || 'Neighbor'}</span>
                         <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Active Member" />
                       </h2>
                       <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 truncate">
@@ -481,7 +668,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           <>
                             <span className="font-bold text-purple-600 dark:text-purple-400">Direct Chat</span>
                             <span>•</span>
-                            <span>Rentu Community Member</span>
+                            <button
+                              type="button"
+                              onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
+                              className="text-brand font-bold hover:underline cursor-pointer"
+                            >
+                              View Profile
+                            </button>
                           </>
                         ) : (
                           <>
@@ -490,28 +683,49 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             <span className="font-extrabold text-brand uppercase tracking-wider text-[10px]">
                               {activeConversation.booking_status}
                             </span>
+                            <span>•</span>
+                            <button
+                              type="button"
+                              onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
+                              className="text-brand font-bold hover:underline cursor-pointer"
+                            >
+                              Profile
+                            </button>
                           </>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {activeConversation.booking_id && Number(activeConversation.total_price) > 0 ? (
-                    <div className="text-right shrink-0 pl-2">
-                      <span className="font-black text-ink text-sm sm:text-base font-display block">
-                        ₹{Number(activeConversation.total_price)}
-                      </span>
-                      <span className="text-[10px] font-bold text-ink-secondary block">
-                        {activeConversation.duration_days} {activeConversation.duration_days === 1 ? 'day' : 'days'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="shrink-0 pl-2">
-                      <span className="text-[11px] font-bold text-ink-secondary px-3 py-1 rounded-full bg-canvas border border-divider">
-                        Direct DM 💬
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Launch Personal Listing / Request Proposal Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateProposalOpen(true)}
+                      className="btn-primary text-[11px] px-3 py-1.5 font-bold shadow-pink rounded-full inline-flex items-center gap-1 cursor-pointer transition-transform hover:scale-105"
+                      title="Release a personal listing or custom request for this neighbor"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span className="hidden sm:inline">Custom Deal</span>
+                    </button>
+
+                    {activeConversation.booking_id && Number(activeConversation.total_price) > 0 ? (
+                      <div className="text-right shrink-0 pl-1">
+                        <span className="font-black text-ink text-sm sm:text-base font-display block">
+                          ₹{Number(activeConversation.total_price)}
+                        </span>
+                        <span className="text-[10px] font-bold text-ink-secondary block">
+                          {activeConversation.duration_days} {activeConversation.duration_days === 1 ? 'day' : 'days'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="shrink-0 pl-1 hidden sm:block">
+                        <span className="text-[11px] font-bold text-ink-secondary px-3 py-1 rounded-full bg-canvas border border-divider">
+                          Direct DM 💬
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Error Banner */}
@@ -544,7 +758,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       </div>
                       <p className="text-sm font-bold text-ink">Start Your Coordination</p>
                       <p className="text-xs max-w-sm mx-auto text-ink-secondary">
-                        Discuss handover logistics, pickup timing, or any questions about the item.
+                        Discuss handover logistics, pickup timing, or click the <span className="text-brand font-bold">+ button</span> below to release a custom listing deal.
                       </p>
                     </div>
                   ) : (
@@ -558,6 +772,193 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                         : 'Just now';
 
+                      // 1. SYSTEM Announcement Messages (Deal confirmation, milestones)
+                      if (m.message_type === 'SYSTEM') {
+                        return (
+                          <div key={m.id} className="flex justify-center my-3">
+                            <div className="max-w-md bg-surface/90 border border-emerald-500/30 rounded-2xl px-4 py-2 text-center text-xs text-ink shadow-xs">
+                              <span className="font-semibold text-ink leading-relaxed">{m.content}</span>
+                              <span className="block text-[10px] text-ink-secondary mt-0.5">{formattedTime}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 2. PROPOSAL Messages (Personal Listing or Custom Request Deal Card)
+                      if (m.message_type === 'PROPOSAL' && m.proposal_data) {
+                        const pData = typeof m.proposal_data === 'string' ? JSON.parse(m.proposal_data) : m.proposal_data;
+                        const isPending = !pData.status || pData.status === 'PENDING';
+                        const isAccepted = pData.status === 'ACCEPTED';
+                        const isDeclined = pData.status === 'DECLINED';
+
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-2 ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            <div className={`w-full max-w-sm sm:max-w-md rounded-3xl border p-4 shadow-sm transition-all overflow-hidden ${
+                              isAccepted
+                                ? 'bg-surface border-emerald-500/40 text-ink ring-1 ring-emerald-500/20'
+                                : isMe
+                                ? 'bg-surface border-brand/40 text-ink shadow-xs'
+                                : 'bg-surface border-divider text-ink'
+                            }`}>
+                              {/* Proposal Header */}
+                              <div className="flex items-center justify-between gap-2 pb-3 border-b border-divider/60">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                                    <Package className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-brand block">
+                                      {pData.type === 'LISTING' ? 'Personal Gear Offer' : 'Custom Gear Request'}
+                                    </span>
+                                    <span className="text-[11px] font-bold text-ink-secondary truncate block">
+                                      Direct Agreement Proposal
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 ${
+                                  isAccepted
+                                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                    : isDeclined
+                                    ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                    : 'bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse'
+                                }`}>
+                                  {isAccepted ? '✓ Accepted & Booked' : isDeclined ? 'Declined' : 'Pending Review'}
+                                </span>
+                              </div>
+
+                              {/* Title & Terms */}
+                              <div className="py-3 space-y-2.5">
+                                <h3 className="text-sm font-black text-ink font-display leading-tight">
+                                  {pData.title || 'Personal Deal Item'}
+                                </h3>
+
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
+                                    <span className="text-[10px] text-ink-secondary block font-semibold">Agreed Price</span>
+                                    <span className="font-black text-ink text-sm sm:text-base font-display">
+                                      ₹{pData.total_price || 0}
+                                    </span>
+                                    <span className="text-[10px] text-ink-secondary block">
+                                      ₹{pData.price_per_day || 0}/day • {pData.duration_days} {pData.duration_days === 1 ? 'day' : 'days'}
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
+                                    <span className="text-[10px] text-ink-secondary block font-semibold">Rental Schedule</span>
+                                    <span className="font-bold text-ink text-[11px] block">{pData.start_date}</span>
+                                    <span className="text-[10px] text-ink-secondary block">to {pData.end_date || 'End Date'}</span>
+                                  </div>
+                                </div>
+
+                                {/* Handover Info */}
+                                <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 bg-canvas/60 px-3 py-1.5 rounded-xl border border-divider/40">
+                                  <Truck className="w-3.5 h-3.5 text-brand shrink-0" />
+                                  <span className="truncate">
+                                    {pData.delivery_option === 'LENDER_DELIVERY' 
+                                      ? `Owner Delivery (+₹${pData.delivery_fee || 0})` 
+                                      : 'Borrower Self Pickup & Return'}
+                                    {pData.delivery_location ? ` • ${pData.delivery_location}` : ''}
+                                  </span>
+                                </div>
+
+                                {/* Custom Notes */}
+                                {pData.notes && (
+                                  <div className="text-[11px] text-ink bg-canvas/40 p-2.5 rounded-xl border border-divider/40 leading-relaxed italic">
+                                    "{pData.notes}"
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Card Action Footer */}
+                              <div className="pt-2 border-t border-divider/60">
+                                {isAccepted ? (
+                                  <div className="flex items-center justify-between gap-2 py-1">
+                                    <span className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      <span>Scheduled in Bookings</span>
+                                    </span>
+                                    {onOpenBookings && (
+                                      <button
+                                        type="button"
+                                        onClick={onOpenBookings}
+                                        className="text-[11px] font-bold text-brand hover:underline cursor-pointer"
+                                      >
+                                        View Calendar →
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : isDeclined ? (
+                                  <div className="text-[11px] text-ink-secondary py-1 italic">
+                                    This agreement proposal was declined.
+                                  </div>
+                                ) : (
+                                  // PENDING STATE
+                                  <div>
+                                    {!isMe ? (
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAcceptProposal(m.id)}
+                                          disabled={isAcceptingProposal === m.id}
+                                          className="flex-1 btn-primary py-2 px-3 text-xs font-bold rounded-xl shadow-pink cursor-pointer flex items-center justify-center gap-1.5"
+                                        >
+                                          {isAcceptingProposal === m.id ? (
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                          ) : (
+                                            <>
+                                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                              <span>Accept Agreement & Book</span>
+                                            </>
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeclineProposal(m.id)}
+                                          disabled={isAcceptingProposal === m.id}
+                                          className="px-3 py-2 text-xs font-bold text-ink-secondary hover:text-red-500 hover:bg-red-500/10 rounded-xl border border-divider transition-colors cursor-pointer"
+                                        >
+                                          Decline
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 py-1 font-medium">
+                                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                        <span>Waiting for {activeConversation.partner_name || 'neighbor'} to review and accept</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="text-[9px] mt-1.5 flex items-center justify-end gap-1 text-ink-secondary">
+                                <span>{formattedTime}</span>
+                                {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 3. STANDARD CHAT TEXT MESSAGE
                       return (
                         <div
                           key={m.id}
@@ -572,7 +973,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
                               }
                               alt={m.sender_name || 'Member'}
-                              className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1"
+                              onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                              className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                              title={`View ${m.sender_name || 'Member'}'s public profile`}
                             />
                           )}
 
@@ -584,7 +987,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             }`}
                           >
                             {!isMe && m.sender_name && (
-                              <div className="text-[10px] font-black text-brand mb-0.5">
+                              <div 
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="text-[10px] font-black text-brand mb-0.5 cursor-pointer hover:underline"
+                                title={`View ${m.sender_name}'s public profile`}
+                              >
                                 {m.sender_name}
                               </div>
                             )}
@@ -606,17 +1013,27 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   )}
                 </div>
 
-                {/* Reply Input Bar */}
+                {/* Reply Input Bar with + Button */}
                 <form
                   onSubmit={handleSendMessage}
                   className="shrink-0 p-3 sm:p-4 border-t border-divider bg-surface flex items-center gap-2 sm:gap-3"
                 >
+                  {/* Plus button to launch personal listing / request */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateProposalOpen(true)}
+                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-canvas hover:bg-brand-soft border border-divider hover:border-brand text-ink-secondary hover:text-brand flex items-center justify-center shrink-0 transition-all cursor-pointer group shadow-xs"
+                    title="Release a personal listing or request agreement for this neighbor (+)"
+                  >
+                    <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-200" />
+                  </button>
+
                   <input
                     ref={inputRef}
                     type="text"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Type a message to your neighbor..."
+                    placeholder={`Message ${activeConversation.partner_name || 'neighbor'}...`}
                     className="flex-1 bg-canvas border border-divider rounded-full px-4 sm:px-5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/30 transition-all"
                   />
                   <button
@@ -650,6 +1067,274 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
 
       </div>
+
+      {/* Modal: Create Personal Listing / Borrow Request Agreement */}
+      {isCreateProposalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden my-8">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-divider flex items-center justify-between bg-surface">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-ink font-display">
+                    {proposalType === 'LISTING' ? 'Personal Gear Listing Offer' : 'Personal Borrow Request'}
+                  </h3>
+                  <p className="text-xs text-ink-secondary">
+                    Custom deal specifically for {activeConversation?.partner_name || 'this neighbor'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateProposalOpen(false)}
+                className="w-8 h-8 rounded-full bg-canvas hover:bg-divider/60 text-ink-secondary flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Proposal Form */}
+            <form onSubmit={handleCreateProposalSubmit} className="p-5 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Type Switcher */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-canvas rounded-2xl border border-divider">
+                <button
+                  type="button"
+                  onClick={() => setProposalType('LISTING')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    proposalType === 'LISTING'
+                      ? 'bg-brand text-white shadow-xs'
+                      : 'text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  📦 Offer to Lend (My Gear)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProposalType('REQUEST')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    proposalType === 'REQUEST'
+                      ? 'bg-brand text-white shadow-xs'
+                      : 'text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  🎯 Request to Borrow
+                </button>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1.5">
+                  {proposalType === 'LISTING' ? 'Gear / Equipment Title *' : 'Item Needed *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={proposalTitle}
+                  onChange={(e) => setProposalTitle(e.target.value)}
+                  placeholder={proposalType === 'LISTING' ? 'e.g. Sony Alpha 7 IV + 24-70mm Lens' : 'e.g. 4-Person Camping Tent with Sleeping Bags'}
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/30 font-semibold"
+                />
+              </div>
+
+              {/* Category & Rate */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1.5">Category</label>
+                  <select
+                    value={proposalCategory}
+                    onChange={(e) => setProposalCategory(e.target.value)}
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand font-semibold cursor-pointer"
+                  >
+                    <option value="Electronics & Tech">Electronics & Tech</option>
+                    <option value="Photography & Video">Photography & Video</option>
+                    <option value="Outdoor & Camping">Outdoor & Camping</option>
+                    <option value="Gaming & VR">Gaming & VR</option>
+                    <option value="Tools & DIY">Tools & DIY</option>
+                    <option value="Music & Audio">Music & Audio</option>
+                    <option value="Party & Events">Party & Events</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1.5">
+                    Rate (₹/day)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={proposalRate}
+                      onChange={(e) => setProposalRate(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-canvas border border-divider rounded-xl pl-7 pr-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand font-bold"
+                      placeholder="300"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule: Start Date & Duration */}
+              <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-brand" />
+                    <span>Rental Schedule</span>
+                  </span>
+                  <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
+                    {proposalDays} {proposalDays === 1 ? 'Day' : 'Days'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold text-ink-secondary mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={proposalStartDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setProposalStartDate(e.target.value)}
+                      className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs text-ink outline-none focus:border-brand font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-ink-secondary mb-1">Duration (Days)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      required
+                      value={proposalDays}
+                      onChange={(e) => setProposalDays(Math.max(1, Number(e.target.value)))}
+                      className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs text-ink outline-none focus:border-brand font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-ink-secondary flex items-center justify-between pt-1 border-t border-divider/40">
+                  <span>Scheduled Return Date:</span>
+                  <span className="font-bold text-ink">{getCalculatedEndDate(proposalStartDate, proposalDays)}</span>
+                </div>
+              </div>
+
+              {/* Handover & Delivery Options */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-ink">Handover & Delivery</label>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProposalDeliveryOption('SELF')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      proposalDeliveryOption === 'SELF'
+                        ? 'border-brand bg-brand-soft/30 text-ink'
+                        : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block">Self Pickup</span>
+                    <span className="text-[10px] text-ink-secondary block">Borrower collects</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProposalDeliveryOption('LENDER_DELIVERY')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      proposalDeliveryOption === 'LENDER_DELIVERY'
+                        ? 'border-brand bg-brand-soft/30 text-ink'
+                        : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block">Lender Delivers</span>
+                    <span className="text-[10px] text-brand font-bold block">+₹{proposalDeliveryFee} fee</span>
+                  </button>
+                </div>
+
+                {proposalDeliveryOption === 'LENDER_DELIVERY' && (
+                  <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-150">
+                    <span className="text-[11px] font-bold text-ink-secondary shrink-0">Delivery Fee (₹):</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={proposalDeliveryFee}
+                      onChange={(e) => setProposalDeliveryFee(Math.max(0, Number(e.target.value)))}
+                      className="w-24 bg-canvas border border-divider rounded-lg px-2 py-1 text-xs text-ink font-bold"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <input
+                    type="text"
+                    value={proposalLocation}
+                    onChange={(e) => setProposalLocation(e.target.value)}
+                    placeholder="Handover address or locality (e.g. Indiranagar, Gate 2)"
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs text-ink outline-none focus:border-brand font-medium placeholder:text-ink-muted mt-1"
+                  />
+                </div>
+              </div>
+
+              {/* Custom Agreement Notes */}
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1.5">
+                  Agreed Specifications & Inclusions
+                </label>
+                <textarea
+                  rows={2}
+                  value={proposalNotes}
+                  onChange={(e) => setProposalNotes(e.target.value)}
+                  placeholder="e.g. Includes 2 extra batteries, charger, and 128GB high-speed memory card. Return charged."
+                  className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs text-ink outline-none focus:border-brand font-medium resize-none placeholder:text-ink-muted"
+                />
+              </div>
+
+              {/* Cost Summary Banner */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-brand/10 to-brand/5 border border-brand/20 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-ink-secondary block font-medium">Total Deal Value</span>
+                  <span className="text-xs font-black text-ink font-display">
+                    {proposalDays} days @ ₹{proposalRate}/day
+                    {proposalDeliveryOption === 'LENDER_DELIVERY' && ` + ₹${proposalDeliveryFee} delivery`}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-base sm:text-lg font-black text-brand font-display block">
+                    ₹{calculatedTotalDealCost}
+                  </span>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateProposalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-divider text-ink font-bold text-xs hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!proposalTitle.trim() || isSubmittingProposal}
+                  className="flex-1 btn-primary py-2.5 px-4 rounded-xl text-xs font-extrabold shadow-pink flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                >
+                  {isSubmittingProposal ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Agreement</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

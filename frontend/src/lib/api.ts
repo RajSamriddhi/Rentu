@@ -394,11 +394,39 @@ export const api = {
     return handleResponse(res);
   },
 
-  async sendMessage(booking_id: string | null | undefined, receiver_id: string, content: string): Promise<Message> {
+  async sendMessage(
+    booking_id: string | null | undefined, 
+    receiver_id: string, 
+    content: string,
+    message_type?: string,
+    proposal_data?: any
+  ): Promise<Message> {
     const res = await fetch(`${API_BASE}/messages`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ booking_id: booking_id || undefined, receiver_id, content }),
+      body: JSON.stringify({ 
+        booking_id: booking_id || undefined, 
+        receiver_id, 
+        content,
+        message_type: message_type || 'TEXT',
+        proposal_data,
+      }),
+    });
+    return handleResponse(res);
+  },
+
+  async acceptProposal(messageId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/proposal/${encodeURIComponent(messageId)}/accept`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async declineProposal(messageId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/proposal/${encodeURIComponent(messageId)}/decline`, {
+      method: 'POST',
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },

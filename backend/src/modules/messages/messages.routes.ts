@@ -10,6 +10,8 @@ const sendMessageSchema = z.object({
   booking_id: z.string().optional().nullable(),
   receiver_id: z.string().min(1, 'Receiver is required'),
   content: z.string().min(1, 'Message cannot be empty'),
+  message_type: z.string().optional(),
+  proposal_data: z.any().optional(),
 });
 
 const isUuid = (val: string): boolean => {
@@ -144,12 +146,11 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       // Fetch direct messages between them
       const messagesRes = await query(
         `SELECT 
-          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.created_at,
+          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
          FROM messages m
          LEFT JOIN users u ON m.sender_id = u.id
-         WHERE (m.booking_id IS NULL)
-           AND ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
+         WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
          ORDER BY m.created_at ASC`,
         [userId, partnerId]
       );
@@ -177,12 +178,11 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
         const partner = userRes.rows[0];
         const messagesRes = await query(
           `SELECT 
-            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.created_at,
+            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
             COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
            FROM messages m
            LEFT JOIN users u ON m.sender_id = u.id
-           WHERE (m.booking_id IS NULL)
-             AND ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
+           WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
            ORDER BY m.created_at ASC`,
           [userId, partner.id]
         );
@@ -197,7 +197,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
 
     const messagesRes = await query(
       `SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.created_at,
+        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
         COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
        FROM messages m
        LEFT JOIN users u ON m.sender_id = u.id
@@ -257,10 +257,17 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     }
 
     const result = await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [targetBookingId, senderId, targetReceiverId, validated.content]
+      [
+        targetBookingId,
+        senderId,
+        targetReceiverId,
+        validated.content,
+        validated.message_type || 'TEXT',
+        validated.proposal_data ? JSON.stringify(validated.proposal_data) : null,
+      ]
     );
 
     const inserted = result.rows[0];
@@ -270,6 +277,183 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       sender_name: req.user!.name || 'You',
       sender_avatar: (req.user as any)?.avatar_url || null,
     }, 'Message sent');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 4. Accept a Personal Listing / Request Proposal
+router.post('/proposal/:messageId/accept', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { messageId } = req.params;
+    const currentUserId = req.user!.id;
+
+    // Fetch the proposal message
+    const msgRes = await query(
+      `SELECT * FROM messages WHERE id = $1`,
+      [messageId]
+    );
+    if (msgRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
+    }
+
+    const message = msgRes.rows[0];
+    if (message.receiver_id !== currentUserId) {
+      return sendError(res, 'FORBIDDEN', 'Only the intended recipient can accept this agreement', 403);
+    }
+
+    const proposal = typeof message.proposal_data === 'string'
+      ? JSON.parse(message.proposal_data)
+      : (message.proposal_data || {});
+
+    if (proposal.status === 'ACCEPTED') {
+      return sendError(res, 'BAD_REQUEST', 'This agreement has already been accepted', 400);
+    }
+
+    // Determine lender and borrower based on proposal type:
+    // If proposal was created as LISTING: creator is lender, recipient is borrower.
+    // If proposal was created as REQUEST: creator is borrower, recipient is lender.
+    const isOffer = proposal.type === 'LISTING';
+    const lenderId = isOffer ? message.sender_id : currentUserId;
+    const borrowerId = isOffer ? currentUserId : message.sender_id;
+
+    // Fetch lender details for locality
+    const lenderUserRes = await query(`SELECT locality, address_text FROM users WHERE id = $1`, [lenderId]);
+    const lenderInfo = lenderUserRes.rows[0] || {};
+
+    const startDate = proposal.start_date || new Date().toISOString().split('T')[0];
+    const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
+    const pricePerDay = Number(proposal.price_per_day) || (Number(proposal.total_price) / durationDays) || 0;
+    const totalPrice = Number(proposal.total_price) || (pricePerDay * durationDays);
+
+    // 1. Create the item record for this custom listing so it shows in My Listings, reviews, calendar
+    const itemTitle = proposal.title || 'Personal Agreement Item';
+    const itemRes = await query(
+      `INSERT INTO items (
+        owner_id, title, description, category, price_per_day, max_duration_days, 
+        image_urls, locality, address_text, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'RENTED')
+      RETURNING *`,
+      [
+        lenderId,
+        itemTitle,
+        proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
+        proposal.category || 'Other',
+        pricePerDay,
+        Math.max(durationDays, 3),
+        proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
+        lenderInfo.locality || 'Bangalore',
+        lenderInfo.address_text || 'Local pickup',
+      ]
+    );
+    const createdItem = itemRes.rows[0];
+
+    // Calculate end date
+    const sDate = new Date(startDate);
+    const eDate = new Date(sDate);
+    eDate.setDate(sDate.getDate() + durationDays);
+    const endDateStr = proposal.end_date || eDate.toISOString().split('T')[0];
+
+    // 2. Generate handover security codes (6 digits)
+    const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const returnCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 3. Create the booking with status 'ACCEPTED'
+    const bookingRes = await query(
+      `INSERT INTO bookings (
+        item_id, borrower_id, lender_id, start_date, duration_days, total_price,
+        status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
+        return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
+        pickup_code, return_code
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      RETURNING *`,
+      [
+        createdItem.id,
+        borrowerId,
+        lenderId,
+        startDate,
+        durationDays,
+        totalPrice,
+        `Agreed personal deal in DM: ${proposal.notes || ''}`,
+        endDateStr,
+        proposal.start_time || '10:00:00',
+        proposal.end_time || '18:00',
+        proposal.delivery_option === 'LENDER_DELIVERY' ? 'OWNER_DELIVERY' : 'LENDER_LOCATION',
+        proposal.delivery_location || lenderInfo.locality || 'Handover location',
+        proposal.collection_option === 'LENDER_COLLECT' ? 'OWNER_COLLECT' : 'LENDER_LOCATION',
+        proposal.return_location || lenderInfo.locality || 'Return location',
+        !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
+        Number(proposal.delivery_fee) || 0,
+        !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
+        Number(proposal.collection_fee) || 0,
+        pickupCode,
+        returnCode,
+      ]
+    );
+    const createdBooking = bookingRes.rows[0];
+
+    // 4. Update the proposal message
+    const updatedProposal = {
+      ...proposal,
+      status: 'ACCEPTED',
+      booking_id: createdBooking.id,
+      item_id: createdItem.id,
+      accepted_at: new Date().toISOString(),
+    };
+
+    await query(
+      `UPDATE messages 
+       SET proposal_data = $1, booking_id = $2
+       WHERE id = $3`,
+      [JSON.stringify(updatedProposal), createdBooking.id, messageId]
+    );
+
+    // 5. Insert system confirmation message into the chat
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+      [
+        createdBooking.id,
+        currentUserId,
+        message.sender_id,
+        `🎉 Agreement Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`,
+      ]
+    );
+
+    return sendSuccess(res, {
+      booking: createdBooking,
+      item: createdItem,
+      message_id: messageId,
+      proposal_data: updatedProposal,
+    }, 'Agreement accepted and booking created');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 5. Decline a Personal Listing / Request Proposal
+router.post('/proposal/:messageId/decline', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { messageId } = req.params;
+    const currentUserId = req.user!.id;
+
+    const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [messageId]);
+    if (msgRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
+    }
+    const message = msgRes.rows[0];
+    if (message.receiver_id !== currentUserId && message.sender_id !== currentUserId) {
+      return sendError(res, 'FORBIDDEN', 'Access denied', 403);
+    }
+
+    const proposal = typeof message.proposal_data === 'string'
+      ? JSON.parse(message.proposal_data)
+      : (message.proposal_data || {});
+
+    const updatedProposal = { ...proposal, status: 'DECLINED' };
+    await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
+
+    return sendSuccess(res, { proposal_data: updatedProposal }, 'Proposal declined');
   } catch (error) {
     next(error);
   }

@@ -213,6 +213,8 @@ export const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
       ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
     `);
 
     // 4. NORMALIZATION TABLES (1NF & 3NF Compliance)

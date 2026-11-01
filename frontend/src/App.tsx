@@ -309,6 +309,8 @@ export const App: React.FC = () => {
                 initialPartner={chatPartner}
                 onOpenAuth={() => setIsAuthOpen(true)}
                 onNavigateHome={() => setActiveTab('explore')}
+                onOpenUserProfile={handleOpenUserProfile}
+                onOpenBookings={() => setActiveTab('bookings')}
               />
             )}
 
