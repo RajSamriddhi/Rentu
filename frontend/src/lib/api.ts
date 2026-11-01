@@ -571,6 +571,101 @@ export const api = {
     return handleResponse(res);
   },
 
+  // Admin Operations (Protected to Authorized Administrators)
+  async getAdminUsers(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminUser(id: string, data: { role?: 'USER' | 'ADMIN'; trust_score?: number; rating?: number }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminListings(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/listings`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminListingStatus(id: string, status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE'): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/listings/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteAdminListing(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/listings/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminRequests(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/requests`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteAdminRequest(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/requests/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminBookings(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/bookings`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdminBookingStatus(id: string, status: 'ACCEPTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/bookings/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminLocalities(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/admin/localities`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async addAdminLocality(data: { pincode: string; locality: string; city?: string; state?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/localities`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdminReports(): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/reports`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   // Rentu AI Assistant
   async sendAiChatMessage(
     messages: { role: 'user' | 'assistant'; content: string }[],

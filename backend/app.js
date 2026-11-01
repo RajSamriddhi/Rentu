@@ -18095,17 +18095,17 @@ var require_router = __commonJS({
     var toString = Object.prototype.toString;
     var proto = module2.exports = function(options) {
       var opts = options || {};
-      function router12(req, res, next) {
-        router12.handle(req, res, next);
+      function router13(req, res, next) {
+        router13.handle(req, res, next);
       }
-      setPrototypeOf(router12, proto);
-      router12.params = {};
-      router12._params = [];
-      router12.caseSensitive = opts.caseSensitive;
-      router12.mergeParams = opts.mergeParams;
-      router12.strict = opts.strict;
-      router12.stack = [];
-      return router12;
+      setPrototypeOf(router13, proto);
+      router13.params = {};
+      router13._params = [];
+      router13.caseSensitive = opts.caseSensitive;
+      router13.mergeParams = opts.mergeParams;
+      router13.strict = opts.strict;
+      router13.stack = [];
+      return router13;
     };
     proto.param = function param(name, fn) {
       if (typeof name === "function") {
@@ -20714,7 +20714,7 @@ var require_application = __commonJS({
   "../node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router12 = require_router();
+    var Router13 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query2 = require_query();
@@ -20779,7 +20779,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router12({
+        this._router = new Router13({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -20788,17 +20788,17 @@ var require_application = __commonJS({
       }
     };
     app2.handle = function handle(req, res, callback) {
-      var router12 = this._router;
+      var router13 = this._router;
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
-      if (!router12) {
+      if (!router13) {
         debug("no routes defined on app");
         done();
         return;
       }
-      router12.handle(req, res, done);
+      router13.handle(req, res, done);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -20818,15 +20818,15 @@ var require_application = __commonJS({
         throw new TypeError("app.use() requires a middleware function");
       }
       this.lazyrouter();
-      var router12 = this._router;
+      var router13 = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router12.use(path2, fn2);
+          return router13.use(path2, fn2);
         }
         debug(".use app under %s", path2);
         fn2.mountpath = path2;
         fn2.parent = this;
-        router12.use(path2, function mounted_app(req, res, next) {
+        router13.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -22643,7 +22643,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router12 = require_router();
+    var Router13 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -22666,7 +22666,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router12;
+    exports2.Router = Router13;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -48217,7 +48217,7 @@ __export(serverless_exports, {
 module.exports = __toCommonJS(serverless_exports);
 
 // src/app.ts
-var import_express12 = __toESM(require_express2());
+var import_express13 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // src/modules/auth/auth.routes.ts
@@ -64967,6 +64967,251 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
 });
 var support_routes_default = router11;
 
+// src/modules/admin/admin.routes.ts
+var import_express12 = __toESM(require_express2());
+var router12 = (0, import_express12.Router)();
+router12.use(adminMiddleware);
+router12.get("/users", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        u.id, 
+        u.name, 
+        u.email, 
+        u.phone, 
+        u.role, 
+        u.locality, 
+        u.avatar_url,
+        u.trust_score, 
+        u.rating, 
+        u.created_at,
+        (SELECT COUNT(*) FROM items i WHERE i.owner_id = u.id)::int AS items_count,
+        (SELECT COUNT(*) FROM requests r WHERE r.seeker_id = u.id)::int AS requests_count,
+        (SELECT COUNT(*) FROM bookings b WHERE b.borrower_id = u.id OR b.lender_id = u.id)::int AS bookings_count
+      FROM users u
+      ORDER BY u.created_at DESC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router12.put("/users/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { role, trust_score, rating } = req.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (role && (role === "USER" || role === "ADMIN")) {
+      updates.push(`role = $${idx++}`);
+      values.push(role);
+    }
+    if (typeof trust_score === "number") {
+      updates.push(`trust_score = $${idx++}`);
+      values.push(Math.min(100, Math.max(0, trust_score)));
+    }
+    if (typeof rating === "number") {
+      updates.push(`rating = $${idx++}`);
+      values.push(Math.min(5, Math.max(1, rating)));
+    }
+    if (updates.length === 0) {
+      return sendError(res, "BAD_REQUEST", "No valid fields provided for update", 400);
+    }
+    values.push(id);
+    const result = await query(
+      `UPDATE users SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    return sendSuccess(res, result.rows[0], "User updated successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.get("/listings", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        i.*, 
+        COALESCE(u.name, 'Lender') AS owner_name, 
+        u.email AS owner_email,
+        u.avatar_url AS owner_avatar
+      FROM items i
+      LEFT JOIN users u ON i.owner_id = u.id
+      ORDER BY i.created_at DESC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router12.patch("/listings/:id/status", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!["AVAILABLE", "RENTED", "UNAVAILABLE"].includes(status)) {
+      return sendError(res, "BAD_REQUEST", "Invalid item status", 400);
+    }
+    const result = await query(
+      `UPDATE items SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    if (result.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Listing not found", 404);
+    }
+    return sendSuccess(res, result.rows[0], "Listing status updated");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.delete("/listings/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await query(`DELETE FROM items WHERE id = $1`, [id]);
+    return sendSuccess(res, { id }, "Listing removed by administrator");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.get("/requests", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        r.*,
+        COALESCE(u.name, 'Seeker') AS seeker_name,
+        u.email AS seeker_email,
+        u.avatar_url AS seeker_avatar
+      FROM requests r
+      LEFT JOIN users u ON r.seeker_id = u.id
+      ORDER BY r.created_at DESC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router12.delete("/requests/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await query(`DELETE FROM requests WHERE id = $1`, [id]);
+    return sendSuccess(res, { id }, "Request removed");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.get("/bookings", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        b.*,
+        i.title AS item_title,
+        i.image_urls AS item_images,
+        i.price_per_day AS item_rate,
+        COALESCE(borrower.name, 'Borrower') AS borrower_name,
+        borrower.email AS borrower_email,
+        borrower.avatar_url AS borrower_avatar,
+        COALESCE(lender.name, 'Lender') AS lender_name,
+        lender.email AS lender_email,
+        lender.avatar_url AS lender_avatar
+      FROM bookings b
+      JOIN items i ON b.item_id = i.id
+      LEFT JOIN users borrower ON b.borrower_id = borrower.id
+      LEFT JOIN users lender ON b.lender_id = lender.id
+      ORDER BY b.created_at DESC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router12.patch("/bookings/:id/status", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!["PENDING", "ACCEPTED", "HANDED_OVER", "COMPLETED", "CANCELLED"].includes(status)) {
+      return sendError(res, "BAD_REQUEST", "Invalid booking status", 400);
+    }
+    const result = await query(
+      `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    if (result.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    return sendSuccess(res, result.rows[0], "Booking status updated by admin");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.get("/localities", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        p.pincode, 
+        p.locality, 
+        p.city, 
+        p.state,
+        COUNT(DISTINCT u.id)::int AS users_count,
+        COUNT(DISTINCT i.id)::int AS items_count
+      FROM postal_codes p
+      LEFT JOIN users u ON p.pincode = u.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(u.locality))
+      LEFT JOIN items i ON p.pincode = i.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(i.locality))
+      GROUP BY p.pincode, p.locality, p.city, p.state
+      ORDER BY users_count DESC, items_count DESC, p.locality ASC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router12.post("/localities", async (req, res, next) => {
+  try {
+    const { pincode, locality, city, state } = req.body;
+    if (!pincode || !locality) {
+      return sendError(res, "BAD_REQUEST", "Pincode and locality are required", 400);
+    }
+    const result = await query(`
+      INSERT INTO postal_codes (pincode, locality, city, state)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (pincode) DO UPDATE SET locality = EXCLUDED.locality, city = EXCLUDED.city, state = EXCLUDED.state
+      RETURNING *
+    `, [pincode.trim(), locality.trim(), city?.trim() || "Bangalore", state?.trim() || "Karnataka"]);
+    return sendSuccess(res, result.rows[0], "Locality zone saved");
+  } catch (error) {
+    next(error);
+  }
+});
+router12.get("/reports", async (req, res, next) => {
+  try {
+    const statsRes = await query(`
+      SELECT 
+        (SELECT COUNT(*) FROM users)::int AS total_users,
+        (SELECT COUNT(*) FROM items)::int AS total_items,
+        (SELECT COUNT(*) FROM bookings)::int AS total_bookings,
+        (SELECT COUNT(*) FROM bookings WHERE status = 'COMPLETED')::int AS completed_bookings,
+        (SELECT COUNT(*) FROM support_tickets)::int AS total_support_tickets,
+        (SELECT COUNT(*) FROM support_tickets WHERE status = 'RESOLVED')::int AS resolved_support_tickets,
+        (SELECT COALESCE(SUM(total_price), 0) FROM bookings)::numeric AS total_volume_handled
+    `);
+    return sendSuccess(res, {
+      stats: statsRes.rows[0],
+      server_health: {
+        database: "connected",
+        platform: "Rentu\u207A Admin Infrastructure",
+        version: "1.0.0",
+        uptime_seconds: process.uptime(),
+        admins: ["falaksadiqua786@gmail.com", "rajsamriddhi60@gmail.com"]
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+var admin_routes_default = router12;
+
 // src/middleware/error.ts
 var errorHandler = (err, req, res, next) => {
   if (err instanceof ZodError) {
@@ -64987,10 +65232,10 @@ var errorHandler = (err, req, res, next) => {
 
 // src/app.ts
 var createApp = () => {
-  const app2 = (0, import_express12.default)();
+  const app2 = (0, import_express13.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
-  app2.use(import_express12.default.json({ limit: "10mb" }));
-  app2.use(import_express12.default.urlencoded({ extended: true }));
+  app2.use(import_express13.default.json({ limit: "10mb" }));
+  app2.use(import_express13.default.urlencoded({ extended: true }));
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -65025,6 +65270,7 @@ var createApp = () => {
   app2.use(["/api/upload", "/upload"], upload_routes_default);
   app2.use(["/api/notifications", "/notifications"], notifications_routes_default);
   app2.use(["/api/support", "/support"], support_routes_default);
+  app2.use(["/api/admin", "/admin"], admin_routes_default);
   app2.use(["/api/ai", "/ai"], ai_routes_default);
   app2.use((req, res) => {
     return sendError(res, "ROUTE_NOT_FOUND", `Cannot ${req.method} ${req.originalUrl}`, 404);

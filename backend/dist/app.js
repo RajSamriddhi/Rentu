@@ -17,6 +17,7 @@ const upload_routes_1 = __importDefault(require("./modules/upload/upload.routes"
 const ai_routes_1 = __importDefault(require("./modules/ai/ai.routes"));
 const notifications_routes_1 = __importDefault(require("./modules/notifications/notifications.routes"));
 const support_routes_1 = __importDefault(require("./modules/support/support.routes"));
+const admin_routes_1 = __importDefault(require("./modules/admin/admin.routes"));
 const error_1 = require("./middleware/error");
 const response_1 = require("./middleware/response");
 const db_1 = require("./config/db");
@@ -64,6 +65,7 @@ const createApp = () => {
     app.use(['/api/upload', '/upload'], upload_routes_1.default);
     app.use(['/api/notifications', '/notifications'], notifications_routes_1.default);
     app.use(['/api/support', '/support'], support_routes_1.default);
+    app.use(['/api/admin', '/admin'], admin_routes_1.default);
     app.use(['/api/ai', '/ai'], ai_routes_1.default);
     // 404 handler
     app.use((req, res) => {
