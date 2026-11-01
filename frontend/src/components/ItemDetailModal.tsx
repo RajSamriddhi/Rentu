@@ -47,18 +47,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [isLiked, setIsLiked] = useState(false);
 
   // Available for borrowing state
-  const [isAvailableForBorrowing, setIsAvailableForBorrowing] = useState<boolean>(
-    Boolean(item?.available_for_borrowing)
-  );
-  const [isTogglingBorrowing, setIsTogglingBorrowing] = useState(false);
-  const [borrowingSuccessMsg, setBorrowingSuccessMsg] = useState('');
+  // Available for Borrowing status (set by owner during listing/editing)
+  const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
 
   // Booked Calendar Dates state
   const [bookedDates, setBookedDates] = useState<any[]>(item?.booked_dates || []);
 
   React.useEffect(() => {
     if (item) {
-      setIsAvailableForBorrowing(Boolean(item.available_for_borrowing));
+      if (!item.available_for_borrowing) {
+        setRentType('Rent');
+      }
       if (item.booked_dates && item.booked_dates.length > 0) {
         setBookedDates(item.booked_dates);
       } else {
@@ -68,29 +67,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       }
     }
   }, [item]);
-
-  const isOwner = Boolean(user?.id && item?.owner_id && user.id === item.owner_id);
-
-  const handleToggleBorrowing = async () => {
-    if (!item) return;
-    setIsTogglingBorrowing(true);
-    setBorrowingSuccessMsg('');
-    try {
-      const nextState = !isAvailableForBorrowing;
-      await api.toggleItemBorrowing(item.id, nextState);
-      setIsAvailableForBorrowing(nextState);
-      setBorrowingSuccessMsg(
-        nextState
-          ? '🎉 Everyone can now see this gear is also available for borrowing!'
-          : 'Listing updated to rental only.'
-      );
-      setTimeout(() => setBorrowingSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to toggle borrowing option.');
-    } finally {
-      setIsTogglingBorrowing(false);
-    }
-  };
 
   // Booking Form State
   const tomorrow = new Date();
@@ -343,13 +319,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       ₹{Number(item.price_per_day)} <span className="text-xs font-normal text-ink-secondary">/ day</span>
                     </span>
 
-                    {isAvailableForBorrowing ? (
+                    {isAvailableForBorrowing && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
-                        🎁 Available for Free Borrowing
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary bg-canvas px-2.5 py-1 rounded-full border border-divider">
-                        💰 Rental Only
+                        🤝 Also Available for Free Borrowing
                       </span>
                     )}
                   </div>
@@ -430,55 +402,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* Owner Action: Option to click a button and tell everyone it is also for borrowing */}
-              {isOwner && (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-pink-500/10 via-brand/10 to-purple-500/10 border border-brand/30 flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-brand" />
-                      <span className="text-xs font-black text-ink font-display">
-                        Lender Action: Borrowing Option
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-ink-secondary">
-                      {isAvailableForBorrowing
-                        ? 'Active: Community members can rent or borrow this item for free.'
-                        : 'Set to rental only. Click to tell everyone it is also available for borrowing.'}
-                    </p>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={handleToggleBorrowing}
-                    disabled={isTogglingBorrowing}
-                    className={`px-3.5 py-2 rounded-full text-xs font-extrabold cursor-pointer transition-all inline-flex items-center gap-1.5 shrink-0 shadow-xs ${
-                      isAvailableForBorrowing
-                        ? 'bg-zinc-200 dark:bg-zinc-800 text-ink hover:bg-zinc-300 dark:hover:bg-zinc-700'
-                        : 'bg-brand text-white hover:bg-brand-hover shadow-pink'
-                    }`}
-                  >
-                    {isTogglingBorrowing ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : isAvailableForBorrowing ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
-                        <span>Available for Borrowing</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Allow Free Borrowing 🤝</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {borrowingSuccessMsg && (
-                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold animate-in fade-in">
-                  {borrowingSuccessMsg}
-                </div>
-              )}
 
               {/* About this item description */}
               <div>
@@ -515,15 +439,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     </p>
                   </div>
 
-                  {isOwner ? (
-                    <span className="text-[11px] font-bold text-brand bg-brand-soft px-2.5 py-1 rounded-full border border-brand/20">
-                      Owner View 👑
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
-                      Pick dates on calendar
-                    </span>
-                  )}
+                  <span className="text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
+                    Pick dates on calendar
+                  </span>
                 </div>
 
                 <RentalCalendar
@@ -545,48 +463,42 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="bg-canvas border border-divider rounded-3xl p-6 shadow-md sticky top-6">
                 
                 <h3 className="text-lg font-extrabold text-ink mb-4 font-display">
-                  Rent this item
+                  {rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
                 </h3>
 
-                {/* Rent | Borrow toggle */}
-                <div className="grid grid-cols-2 p-1 bg-surface rounded-full border border-divider mb-5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRentType('Rent');
-                      setErrorMsg('');
-                    }}
-                    className={`py-1.5 text-xs font-bold rounded-full transition-all cursor-pointer ${
-                      rentType === 'Rent'
-                        ? 'bg-brand text-white shadow-xs'
-                        : 'text-ink-secondary hover:text-ink'
-                    }`}
-                  >
-                    Rent
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isAvailableForBorrowing) {
-                        setErrorMsg('The owner has listed this item for paid rent only. Free borrowing is currently not enabled.');
-                        return;
-                      }
-                      setErrorMsg('');
-                      setRentType('Borrow');
-                    }}
-                    className={`py-1.5 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                      rentType === 'Borrow'
-                        ? 'bg-brand text-white shadow-xs'
-                        : isAvailableForBorrowing
-                        ? 'text-ink-secondary hover:text-ink'
-                        : 'opacity-40 text-ink-secondary cursor-not-allowed'
-                    }`}
-                    title={isAvailableForBorrowing ? 'Request to borrow for free' : 'Owner has not enabled free borrowing'}
-                  >
-                    <span>Borrow (Free)</span>
-                    {!isAvailableForBorrowing && <Lock className="w-3 h-3 ml-0.5" />}
-                  </button>
-                </div>
+                {/* If available for borrowing, show Rent / Borrow choice. If NOT available for borrowing, hide borrow completely! */}
+                {isAvailableForBorrowing && (
+                  <div className="grid grid-cols-2 p-1 bg-surface rounded-full border border-divider mb-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRentType('Rent');
+                        setErrorMsg('');
+                      }}
+                      className={`py-1.5 text-xs font-bold rounded-full transition-all cursor-pointer ${
+                        rentType === 'Rent'
+                          ? 'bg-brand text-white shadow-xs'
+                          : 'text-ink-secondary hover:text-ink'
+                      }`}
+                    >
+                      Rent
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRentType('Borrow');
+                        setErrorMsg('');
+                      }}
+                      className={`py-1.5 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        rentType === 'Borrow'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-ink-secondary hover:text-ink'
+                      }`}
+                    >
+                      <span>🤝 Borrow (Free)</span>
+                    </button>
+                  </div>
+                )}
 
                 {submittedBookingId ? (
                   <div className="py-8 text-center space-y-4">
