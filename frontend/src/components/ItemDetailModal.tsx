@@ -148,17 +148,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   if (!item) return null;
 
-  const rawImages = Array.isArray(item.image_urls) && item.image_urls.length > 0
-    ? item.image_urls
+  // Only use real images provided by the item; fall back to 1 clean placeholder if empty
+  const images = Array.isArray(item.image_urls) && item.image_urls.filter(Boolean).length > 0
+    ? item.image_urls.filter(Boolean)
     : ['https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=1000&q=80'];
-
-  // Add dummy secondary angles if only 1 photo exists to match Screen 3 vertical gallery
-  const images = rawImages.length >= 3 ? rawImages : [
-    rawImages[0],
-    'https://images.unsplash.com/photo-1502920917128-1aa500764cbd?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1512790182412-b19e6d62bc39?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1508873696983-2df5293cb395?auto=format&fit=crop&w=600&q=80',
-  ];
 
   const baseCost = rentType === 'Borrow' ? 0 : Number(item.price_per_day) * durationDays;
   const deliveryCost = (item.offers_delivery && optForDelivery) ? Number(item.delivery_fee || 0) : 0;
@@ -295,27 +288,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             {/* Left 7 Columns: Gallery + Item Details */}
             <div className="lg:col-span-7 space-y-6">
               
-              {/* Gallery Layout from Screen 3 */}
+              {/* Gallery Layout */}
               <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
-                {/* Thumbnails */}
-                <div className="flex sm:flex-col gap-2 overflow-x-auto sm:overflow-visible shrink-0 pb-1 sm:pb-0 scrollbar-none">
-                  {images.slice(0, 4).map((img, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setActiveImageIndex(idx)}
-                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
-                        activeImageIndex === idx ? 'border-brand ring-2 ring-brand/30' : 'border-zinc-200 hover:border-zinc-400'
-                      }`}
-                    >
-                      <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
+                {/* Thumbnails only if multiple real photos exist */}
+                {images.length > 1 && (
+                  <div className="flex sm:flex-col gap-2 overflow-x-auto sm:overflow-visible shrink-0 pb-1 sm:pb-0 scrollbar-none">
+                    {images.map((img, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActiveImageIndex(idx)}
+                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
+                          activeImageIndex === idx ? 'border-brand ring-2 ring-brand/30' : 'border-divider hover:border-brand/40'
+                        }`}
+                      >
+                        <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Large Main Photo */}
-                <div className="flex-1 aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200 relative">
+                <div className="flex-1 aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-900 border border-divider relative">
                   <img
-                    src={images[activeImageIndex]}
+                    src={images[activeImageIndex] || images[0]}
                     alt={item.title}
                     className="w-full h-full object-cover"
                   />
@@ -323,7 +318,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               </div>
 
               {/* Title & Share / Heart row */}
-              <div className="flex items-start justify-between gap-4 pt-2">
+              <div className="flex items-start justify-between gap-4 pt-1">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display">
                     {item.title}
@@ -335,48 +330,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     </span>
 
                     {isAvailableForBorrowing && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
-                        🤝 Also Available for Free Borrowing
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                        🤝 Free Borrowing
                       </span>
                     )}
                   </div>
 
-                  {/* Delivery & Pickup Offering Badges */}
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    {item.offers_delivery ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/30">
-                        🚗 Lender Delivers ({Number(item.delivery_fee) > 0 ? `₹${Number(item.delivery_fee)} fee` : 'FREE'})
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
-                        🚶 No Delivery (Self pickup)
-                      </span>
-                    )}
-
-                    {item.offers_pickup ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/30">
-                        🔄 Lender Collects ({Number(item.pickup_fee) > 0 ? `₹${Number(item.pickup_fee)} fee` : 'FREE'})
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
-                        🚶 Renter Returns to Lender
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-2.5 flex items-center gap-3 text-xs font-semibold text-ink-secondary">
+                  <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary">
                     {item.owner_rating ? (
                       <>
-                        <div className="flex items-center gap-1 text-ink">
+                        <div className="flex items-center gap-1 text-ink font-bold">
                           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          <span>{Number(item.owner_rating).toFixed(1)} Lender Rating</span>
+                          <span>{Number(item.owner_rating).toFixed(1)}</span>
                         </div>
                         <span>•</span>
                       </>
                     ) : null}
                     <div className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-brand" />
-                      <span>{item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby'}</span>
+                      <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                      <span>{item.locality || (item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby')}</span>
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -386,7 +358,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => navigator.clipboard?.writeText(window.location.href)}
-                    className="w-9 h-9 rounded-full border border-divider hover:bg-zinc-50 flex items-center justify-center text-ink transition-colors cursor-pointer"
+                    className="w-9 h-9 rounded-full border border-divider hover:bg-canvas flex items-center justify-center text-ink transition-colors cursor-pointer"
                     title="Share item"
                   >
                     <Share2 className="w-4 h-4" />
@@ -394,7 +366,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
                   <button
                     onClick={() => setIsLiked(!isLiked)}
-                    className="w-9 h-9 rounded-full border border-divider hover:bg-zinc-50 flex items-center justify-center text-ink transition-colors cursor-pointer"
+                    className="w-9 h-9 rounded-full border border-divider hover:bg-canvas flex items-center justify-center text-ink transition-colors cursor-pointer"
                     title="Save to favorites"
                   >
                     <Heart className={`w-4 h-4 ${isLiked ? 'fill-brand text-brand' : 'text-zinc-500'}`} />
@@ -565,138 +537,112 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   <form onSubmit={handleBookingSubmit} className="space-y-4">
                     
                     {/* Chosen Rental Schedule (synced live from the calendar & time selectors on the left) */}
-                    <div className="p-3.5 rounded-2xl bg-surface border border-divider space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-extrabold text-ink flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-                          <Calendar className="w-3.5 h-3.5 text-brand" />
-                          <span>Rental Schedule</span>
-                        </span>
-                        <span className="font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20 text-[10px]">
-                          {durationDays} {durationDays === 1 ? 'Day' : 'Days'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="p-2.5 rounded-xl bg-canvas border border-divider">
-                          <div className="text-[10px] text-ink-secondary font-bold uppercase">Pickup Handover</div>
-                          <div className="font-black text-ink mt-0.5">{startDate}</div>
-                          <div className="text-[11px] text-brand font-extrabold flex items-center gap-1 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            <span>{startTime}</span>
-                          </div>
+                    <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                          <Calendar className="w-4 h-4" />
                         </div>
-
-                        <div className="p-2.5 rounded-xl bg-canvas border border-divider">
-                          <div className="text-[10px] text-ink-secondary font-bold uppercase">Return Handover</div>
-                          <div className="font-black text-ink mt-0.5">{endDate}</div>
-                          <div className="text-[11px] text-brand font-extrabold flex items-center gap-1 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            <span>{endTime}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-ink flex items-center gap-1.5 truncate">
+                            <span>{startDate}</span>
+                            <span className="text-brand font-bold text-[11px]">{startTime}</span>
+                            <span className="text-ink-secondary font-normal">→</span>
+                            <span>{endDate}</span>
+                            <span className="text-brand font-bold text-[11px]">{endTime}</span>
                           </div>
+                          <div className="text-[10px] text-ink-secondary">Selected on calendar</div>
                         </div>
                       </div>
-
-                      <p className="text-[10px] text-ink-secondary">
-                        Dates and times selected directly from the calendar on the left.
-                      </p>
+                      <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2.5 py-1 rounded-full border border-brand/20 shrink-0">
+                        {durationDays} {durationDays === 1 ? 'day' : 'days'}
+                      </span>
                     </div>
 
                     {/* Section: Handover & Delivery Options */}
-                    <div className="space-y-2.5 pt-2 border-t border-divider">
-                      <label className="block text-xs font-extrabold text-ink uppercase tracking-wider">
-                        Handover & Delivery
-                      </label>
+                    {(item.offers_delivery || item.offers_pickup) ? (
+                      <div className="space-y-2 pt-2 border-t border-divider">
+                        <label className="block text-[11px] font-extrabold text-ink-secondary uppercase tracking-wider">
+                          Handover Preferences
+                        </label>
 
-                      {/* Drop-off / Delivery at start */}
-                      {item.offers_delivery ? (
-                        <div className="p-3 rounded-2xl bg-surface border border-divider space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                        {/* Drop-off / Delivery toggle */}
+                        {item.offers_delivery && (
+                          <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
                               <span className="text-base">🚗</span>
                               <div>
                                 <div className="text-xs font-bold text-ink flex items-center gap-1.5">
-                                  <span>Lender Offers Delivery</span>
+                                  <span>Lender Delivery</span>
                                   <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
                                     {Number(item.delivery_fee) > 0 ? `+₹${Number(item.delivery_fee)}` : 'FREE'}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-ink-secondary">
-                                  {optForDelivery
-                                    ? `Lender will deliver to you (${Number(item.delivery_fee) > 0 ? `₹${Number(item.delivery_fee)} fee` : 'free'})`
-                                    : `You will pick up from lender in ${item.locality || 'nearby'}`}
-                                </p>
+                                <div className="text-[11px] text-ink-secondary">
+                                  {optForDelivery ? 'Deliver to your location' : 'You will pick up'}
+                                </div>
                               </div>
                             </div>
+
                             <button
                               type="button"
                               onClick={() => setOptForDelivery(!optForDelivery)}
-                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                                optForDelivery
-                                  ? 'bg-brand text-white shadow-xs'
-                                  : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                optForDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
                               }`}
+                              role="switch"
+                              aria-checked={optForDelivery}
                             >
-                              {optForDelivery ? 'Deliver to me ✓' : 'Pick up myself'}
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                  optForDelivery ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-2xl bg-canvas border border-divider flex items-center gap-2.5">
-                          <span className="text-base">🚶</span>
-                          <div className="text-xs">
-                            <span className="font-bold text-ink">No Delivery Offered</span>
-                            <p className="text-[11px] text-ink-secondary">
-                              You will pick up the gear from the lender ({item.locality || 'Lender locality'}).
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Collection / Pickup at return */}
-                      {item.offers_pickup ? (
-                        <div className="p-3 rounded-2xl bg-surface border border-divider space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                        {/* Collection / Pickup toggle */}
+                        {item.offers_pickup && (
+                          <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
                               <span className="text-base">🔄</span>
                               <div>
                                 <div className="text-xs font-bold text-ink flex items-center gap-1.5">
-                                  <span>Lender Will Collect on Return</span>
+                                  <span>Return Pickup</span>
                                   <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
                                     {Number(item.pickup_fee) > 0 ? `+₹${Number(item.pickup_fee)}` : 'FREE'}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-ink-secondary">
-                                  {optForPickup
-                                    ? `Lender will collect from you (${Number(item.pickup_fee) > 0 ? `₹${Number(item.pickup_fee)} fee` : 'free'})`
-                                    : `You will return the gear back to lender`}
-                                </p>
+                                <div className="text-[11px] text-ink-secondary">
+                                  {optForPickup ? 'Owner collects from you' : 'You will return gear'}
+                                </div>
                               </div>
                             </div>
+
                             <button
                               type="button"
                               onClick={() => setOptForPickup(!optForPickup)}
-                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                                optForPickup
-                                  ? 'bg-brand text-white shadow-xs'
-                                  : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                optForPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
                               }`}
+                              role="switch"
+                              aria-checked={optForPickup}
                             >
-                              {optForPickup ? 'Owner collects ✓' : 'I will return it'}
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                  optForPickup ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-2xl bg-canvas border border-divider flex items-center gap-2.5">
-                          <span className="text-base">🚶</span>
-                          <div className="text-xs">
-                            <span className="font-bold text-ink">Renter Returns Gear</span>
-                            <p className="text-[11px] text-ink-secondary">
-                              You will return the gear back to the lender ({item.locality || 'Lender locality'}).
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
+                        <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                        <span>Self pickup & return in {item.locality || 'nearby'}</span>
+                      </div>
+                    )}
 
                     {/* Note message */}
                     <div>
@@ -706,12 +652,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         value={proposalMessage}
                         onChange={(e) => setProposalMessage(e.target.value)}
                         placeholder="e.g. Shooting a college project this weekend..."
-                        className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none"
+                        className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-medium text-ink outline-none focus:border-brand"
                       />
                     </div>
 
                     {/* Total cost & breakdown info box */}
-                    <div className="pt-2 border-t border-divider space-y-1.5">
+                    <div className="pt-2 border-t border-divider space-y-1">
                       <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
                         <span>Rental ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
                         <span>{rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
@@ -728,21 +674,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <span>+₹{Number(item.pickup_fee)}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between text-sm font-extrabold text-ink pt-1 border-t border-divider/50">
+                      <div className="flex items-center justify-between text-sm font-extrabold text-ink pt-1.5 border-t border-divider/60">
                         <span>Total cost</span>
-                        <span className="text-lg font-black text-ink font-display">
+                        <span className="text-xl font-black text-ink font-display">
                           {totalCost === 0 ? 'Free' : `₹${totalCost}`}
                         </span>
                       </div>
-                      <p className="text-[11px] text-ink-secondary leading-snug">
-                        {rentType === 'Borrow' && deliveryCost === 0 && pickupCost === 0
-                          ? 'Zero rental fee proposal. The owner will review and coordinate handover directly.'
-                          : `Estimated at ₹${item.price_per_day}/day. Coordinate handover directly with the owner.`}
-                      </p>
                     </div>
 
                     {errorMsg && (
-                      <div className="p-2.5 rounded-xl bg-red-50 text-red-700 text-xs font-bold">
+                      <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold">
                         {errorMsg}
                       </div>
                     )}
@@ -780,7 +721,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="btn-primary w-full py-3.5 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
+                        className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink"
                       >
                         <span>
                           {isSubmitting
@@ -792,24 +733,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       </button>
                     )}
 
-                    {/* Trust Perks */}
-                    <div className="pt-4 border-t border-divider space-y-2 text-xs text-ink-secondary font-medium">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-brand shrink-0" />
-                        <span>{durationDays} {durationDays === 1 ? 'day' : 'days'} custom duration requested</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>
-                          {item.offers_delivery && optForDelivery
-                            ? 'Delivery: Delivered to you by owner'
-                            : `Pickup: Collect from lender in ${item.locality || 'nearby'}`}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Security deposit not required</span>
-                      </div>
+                    {/* Trust Perk */}
+                    <div className="pt-3 border-t border-divider flex items-center justify-center gap-1.5 text-[11px] text-ink-secondary">
+                      <ShieldCheck className="w-3.5 h-3.5 text-brand shrink-0" />
+                      <span>Verified handover with secure 6-digit codes</span>
                     </div>
 
                   </form>
