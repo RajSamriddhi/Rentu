@@ -42,6 +42,7 @@ import { HelpSupportModal } from './HelpSupportModal';
 import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
+import { getReachDistance } from '../lib/distance';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
@@ -838,12 +839,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
                           </>
                         ) : null}
-                        {req.locality ? (
-                          <>
-                            <span>•</span>
-                            <span>{req.locality}</span>
-                          </>
-                        ) : null}
+                        <span>•</span>
+                        <span>{getReachDistance(req, user)}</span>
                       </p>
                       {req.description && (
                         <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">

@@ -67,41 +67,51 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     let distanceField = 'NULL AS distance_meters';
     let distanceFilter = '';
 
-    if (latitude && longitude) {
-      const latNum = parseFloat(String(latitude));
-      const lonNum = parseFloat(String(longitude));
-      if (!isNaN(latNum) && !isNaN(lonNum)) {
-        params.push(latNum);
-        const latIdx = params.length;
-        params.push(lonNum);
-        const lonIdx = params.length;
+    let userLat = latitude ? parseFloat(String(latitude)) : NaN;
+    let userLon = longitude ? parseFloat(String(longitude)) : NaN;
 
-        // Exact Haversine formula from SCHEMA.md
-        distanceField = `
-          ROUND(
-            6371000 * acos(
-              LEAST(1.0, GREATEST(-1.0, 
-                cos(radians($${latIdx})) * cos(radians(i.latitude)) *
-                cos(radians(i.longitude) - radians($${lonIdx})) +
-                sin(radians($${latIdx})) * sin(radians(i.latitude))
-              ))
-            )
-          ) AS distance_meters
-        `;
+    if ((isNaN(userLat) || isNaN(userLon)) && (req as any).user?.id) {
+      const uRes = await query(
+        `SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+        [(req as any).user.id]
+      );
+      if (uRes.rows.length > 0 && uRes.rows[0].latitude && uRes.rows[0].longitude) {
+        userLat = parseFloat(uRes.rows[0].latitude);
+        userLon = parseFloat(uRes.rows[0].longitude);
+      }
+    }
 
-        if (radar === 'true' || radar === '100m' || max_distance) {
-          const limitMeters = max_distance ? parseFloat(String(max_distance)) : 100;
-          params.push(limitMeters);
-          distanceFilter = ` AND (
-            6371000 * acos(
-              LEAST(1.0, GREATEST(-1.0, 
-                cos(radians($${latIdx})) * cos(radians(i.latitude)) *
-                cos(radians(i.longitude) - radians($${lonIdx})) +
-                sin(radians($${latIdx})) * sin(radians(i.latitude))
-              ))
-            )
-          ) <= $${params.length}`;
-        }
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+      params.push(userLat);
+      const latIdx = params.length;
+      params.push(userLon);
+      const lonIdx = params.length;
+
+      // Exact Haversine formula from SCHEMA.md
+      distanceField = `
+        ROUND(
+          6371000 * acos(
+            LEAST(1.0, GREATEST(-1.0, 
+              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
+              cos(radians(i.longitude) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(i.latitude))
+            ))
+          )
+        ) AS distance_meters
+      `;
+
+      if (radar === 'true' || radar === '100m' || max_distance) {
+        const limitMeters = max_distance ? parseFloat(String(max_distance)) : 100;
+        params.push(limitMeters);
+        distanceFilter = ` AND (
+          6371000 * acos(
+            LEAST(1.0, GREATEST(-1.0, 
+              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
+              cos(radians(i.longitude) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(i.latitude))
+            ))
+          )
+        ) <= $${params.length}`;
       }
     }
 

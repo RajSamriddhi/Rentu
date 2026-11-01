@@ -22,6 +22,7 @@ import { Item, CommunityRequest, UserSearchResult } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
+import { getReachDistance } from '../lib/distance';
 
 interface ExploreViewProps {
   items: Item[];
@@ -661,7 +662,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             <span>•</span>
                             <span className="flex items-center gap-0.5">
                               <MapPin className="w-3 h-3 text-brand" />
-                              <span>{req.locality || 'Nearby'}</span>
+                              <span>{getReachDistance(req, user)}</span>
                             </span>
                           </div>
                         </div>

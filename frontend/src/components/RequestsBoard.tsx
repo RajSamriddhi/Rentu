@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { getReachDistance } from '../lib/distance';
 
 interface RequestsBoardProps {
   requests: CommunityRequest[];
@@ -222,7 +223,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                         <span>•</span>
                         <span className="flex items-center gap-0.5">
                           <MapPin className="w-3 h-3 text-brand" />
-                          <span>{req.locality || 'Nearby'}</span>
+                          <span>{getReachDistance(req, user)}</span>
                         </span>
                       </div>
                     </div>

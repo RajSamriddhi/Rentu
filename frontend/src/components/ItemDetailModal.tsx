@@ -24,6 +24,7 @@ import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { detectCurrentLocation } from '../lib/location';
 import { RentalCalendar } from './RentalCalendar';
+import { getReachDistance } from '../lib/distance';
 
 interface ItemDetailModalProps {
   item: Item | null;
@@ -55,6 +56,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   // Available for borrowing status (set by owner during listing/editing)
   const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
+  const reachDistanceText = item ? getReachDistance(item, user) : 'Nearby';
 
   // Owner detection: checks user id or firebase_uid against item.owner_id
   const isOwner = Boolean(
@@ -390,7 +392,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : null}
                     <div className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                      <span>{item.locality || (item.distance_meters ? `${(item.distance_meters / 1000).toFixed(1)} km away` : 'Nearby')}</span>
+                      <span>{reachDistanceText}</span>
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -621,7 +623,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner (${item.locality || 'nearby'})`}
+                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -686,7 +688,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner (${item.locality || 'nearby'})`}
+                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -751,7 +753,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : (
                       <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
                         <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                        <span>Self pickup & return in {item.locality || 'nearby'}</span>
+                        <span>Self pickup & return ({reachDistanceText})</span>
                       </div>
                     )}
 

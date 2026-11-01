@@ -1,6 +1,7 @@
 import React from 'react';
 import { Target, Calendar, Clock, MapPin, CheckCircle2, User, Zap } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
+import { getReachDistance } from '../lib/distance';
 
 interface BountyCardProps {
   bounty: CommunityRequest;
@@ -58,7 +59,7 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
           </div>
           <div className="col-span-2 flex items-center gap-1.5 text-ink-secondary truncate">
             <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-            <span className="text-ink truncate">Locality: {bounty.locality || 'Nearby'}</span>
+            <span className="text-ink truncate">{getReachDistance(bounty)}</span>
           </div>
           {(bounty.pickup_type || bounty.return_type) && (
             <div className="col-span-2 pt-2 border-t border-divider/60 text-[11px] font-semibold text-ink-secondary flex flex-wrap gap-x-2 gap-y-0.5">
