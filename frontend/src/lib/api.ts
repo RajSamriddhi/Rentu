@@ -177,6 +177,10 @@ export const api = {
     sticker_badge: string;
     locality: string;
     available_for_borrowing?: boolean;
+    offers_delivery?: boolean;
+    delivery_fee?: number;
+    offers_pickup?: boolean;
+    pickup_fee?: number;
   }): Promise<Item> {
     const res = await fetch(`${API_BASE}/items`, {
       method: 'POST',
@@ -313,6 +317,10 @@ export const api = {
     pickup_locality?: string;
     return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
     return_locality?: string;
+    requires_delivery?: boolean;
+    delivery_fee?: number;
+    requires_pickup?: boolean;
+    pickup_fee?: number;
     message?: string;
   }): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings`, {

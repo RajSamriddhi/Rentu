@@ -2,7 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeDeterministicFallback = executeDeterministicFallback;
 exports.processAiChat = processAiChat;
-const generative_ai_1 = require("@google/generative-ai");
+// Dynamically resolve @google/generative-ai with safe fallback
+let GoogleGenerativeAI;
+try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
+}
+catch {
+    // Graceful fallback
+}
 const env_1 = require("../../config/env");
 const ai_tools_1 = require("./ai.tools");
 /**
@@ -104,7 +112,7 @@ async function callGemini(messages, context) {
     if (!apiKey || apiKey.trim() === '' || apiKey.includes('your_key_here')) {
         return { success: false, reason: 'missing_key', errorCategory: 'Key Unconfigured' };
     }
-    const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
+    const genAI = new GoogleGenerativeAI(apiKey);
     const tools = [
         {
             functionDeclarations: ai_tools_1.geminiToolDeclarations.map((decl) => ({

@@ -36,6 +36,10 @@ export interface Item {
   distance_meters?: number | null;
   status: 'AVAILABLE' | 'RENTED' | 'UNAVAILABLE';
   available_for_borrowing?: boolean;
+  offers_delivery?: boolean;
+  delivery_fee?: number;
+  offers_pickup?: boolean;
+  pickup_fee?: number;
   booked_dates?: Array<{
     id?: string;
     start_date: string;
@@ -101,6 +105,10 @@ export interface Booking {
   pickup_locality?: string;
   return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
   return_locality?: string;
+  requires_delivery?: boolean;
+  delivery_fee?: number;
+  requires_pickup?: boolean;
+  pickup_fee?: number;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED';
   pickup_code?: string;
   return_code?: string;

@@ -52709,7 +52709,11 @@ var createItemSchema = external_exports.object({
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
   longitude: external_exports.number().optional(),
-  available_for_borrowing: external_exports.boolean().optional().default(false)
+  available_for_borrowing: external_exports.boolean().optional().default(false),
+  offers_delivery: external_exports.boolean().optional().default(false),
+  delivery_fee: external_exports.number().min(0).optional().default(0),
+  offers_pickup: external_exports.boolean().optional().default(false),
+  pickup_fee: external_exports.number().min(0).optional().default(0)
 });
 var updateItemSchema = external_exports.object({
   title: external_exports.string().min(3).optional(),
@@ -52725,7 +52729,11 @@ var updateItemSchema = external_exports.object({
   latitude: external_exports.number().optional(),
   longitude: external_exports.number().optional(),
   status: external_exports.enum(["AVAILABLE", "RENTED", "UNAVAILABLE"]).optional(),
-  available_for_borrowing: external_exports.boolean().optional()
+  available_for_borrowing: external_exports.boolean().optional(),
+  offers_delivery: external_exports.boolean().optional(),
+  delivery_fee: external_exports.number().min(0).optional(),
+  offers_pickup: external_exports.boolean().optional(),
+  pickup_fee: external_exports.number().min(0).optional()
 });
 router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
@@ -52781,7 +52789,8 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing, i.created_at,
+        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
@@ -52835,7 +52844,7 @@ router2.get("/:id", async (req, res, next) => {
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.available_for_borrowing, i.created_at,
+        i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
         u.email AS owner_email, u.phone AS owner_phone
@@ -52864,7 +52873,7 @@ router2.get("/:id", async (req, res, next) => {
     );
     const itemCity = extractCity(item.locality);
     const relatedResult = await query(
-      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing
+      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee
        FROM items
        WHERE category = $1 AND id != $2 AND status != 'UNAVAILABLE' AND locality ILIKE $3
        LIMIT 4`,
@@ -52955,9 +52964,9 @@ router2.post("/", authMiddleware, async (req, res, next) => {
     }
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing)
+        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14)
+        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14, $15, $16, $17, $18)
        RETURNING *`,
       [
         req.user.id,
@@ -52973,7 +52982,11 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         cleanPincode,
         validated.latitude ?? null,
         validated.longitude ?? null,
-        validated.available_for_borrowing ?? false
+        validated.available_for_borrowing ?? false,
+        validated.offers_delivery ?? false,
+        validated.delivery_fee ?? 0,
+        validated.offers_pickup ?? false,
+        validated.pickup_fee ?? 0
       ]
     );
     const createdItem = result.rows[0];
@@ -53043,6 +53056,22 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
     if (validated.available_for_borrowing !== void 0) {
       values.push(validated.available_for_borrowing);
       fields.push(`available_for_borrowing = $${values.length}`);
+    }
+    if (validated.offers_delivery !== void 0) {
+      values.push(validated.offers_delivery);
+      fields.push(`offers_delivery = $${values.length}`);
+    }
+    if (validated.delivery_fee !== void 0) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
+    }
+    if (validated.offers_pickup !== void 0) {
+      values.push(validated.offers_pickup);
+      fields.push(`offers_pickup = $${values.length}`);
+    }
+    if (validated.pickup_fee !== void 0) {
+      values.push(validated.pickup_fee);
+      fields.push(`pickup_fee = $${values.length}`);
     }
     if (fields.length === 0) {
       return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
@@ -53394,6 +53423,10 @@ var createBookingSchema = external_exports.object({
   pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional().default("LENDER_LOCATION"),
   return_locality: external_exports.string().optional(),
+  requires_delivery: external_exports.boolean().optional().default(false),
+  delivery_fee: external_exports.number().min(0).optional().default(0),
+  requires_pickup: external_exports.boolean().optional().default(false),
+  pickup_fee: external_exports.number().min(0).optional().default(0),
   message: external_exports.string().optional()
 });
 var updateStatusSchema = external_exports.object({
@@ -53464,9 +53497,9 @@ router4.post("/", authMiddleware, async (req, res, next) => {
     const pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
     const bookingRes = await query(
       `INSERT INTO bookings
-        (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, status, message, pickup_code)
+        (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDING', $14, $15)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
        RETURNING *`,
       [
         item.id,
@@ -53482,6 +53515,10 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         validated.pickup_locality || null,
         validated.return_type || "LENDER_LOCATION",
         validated.return_locality || null,
+        validated.requires_delivery ?? false,
+        validated.delivery_fee ?? 0,
+        validated.requires_pickup ?? false,
+        validated.pickup_fee ?? 0,
         validated.message || `Hey! Would love to rent your ${item.title}.`,
         pickupCode
       ]
@@ -53508,6 +53545,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
         b.start_date, b.start_time, b.end_date, b.end_time, b.duration_days,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
+        b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
         b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.completed_at, b.created_at,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
@@ -62877,9 +62915,6 @@ var upload_routes_default = router8;
 // backend/src/modules/ai/ai.routes.ts
 var import_express9 = __toESM(require_express2());
 
-// backend/src/modules/ai/ai.service.ts
-var import_generative_ai = require("@google/generative-ai");
-
 // backend/src/modules/ai/ai.tools.ts
 function formatItemRow(row) {
   let images = [];
@@ -63338,6 +63373,11 @@ var geminiToolDeclarations = [
 ];
 
 // backend/src/modules/ai/ai.service.ts
+var GoogleGenerativeAI;
+try {
+  GoogleGenerativeAI = require("@google/generative-ai").GoogleGenerativeAI;
+} catch {
+}
 var CANDIDATE_MODELS = [
   "gemini-3.1-flash-lite",
   "gemini-3-flash-preview",
@@ -63420,7 +63460,7 @@ async function callGemini(messages, context) {
   if (!apiKey || apiKey.trim() === "" || apiKey.includes("your_key_here")) {
     return { success: false, reason: "missing_key", errorCategory: "Key Unconfigured" };
   }
-  const genAI = new import_generative_ai.GoogleGenerativeAI(apiKey);
+  const genAI = new GoogleGenerativeAI(apiKey);
   const tools = [
     {
       functionDeclarations: geminiToolDeclarations.map((decl) => ({

@@ -21,6 +21,10 @@ const createItemSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   available_for_borrowing: z.boolean().optional().default(false),
+  offers_delivery: z.boolean().optional().default(false),
+  delivery_fee: z.number().min(0).optional().default(0),
+  offers_pickup: z.boolean().optional().default(false),
+  pickup_fee: z.number().min(0).optional().default(0),
 });
 
 const updateItemSchema = z.object({
@@ -38,6 +42,10 @@ const updateItemSchema = z.object({
   longitude: z.number().optional(),
   status: z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
   available_for_borrowing: z.boolean().optional(),
+  offers_delivery: z.boolean().optional(),
+  delivery_fee: z.number().min(0).optional(),
+  offers_pickup: z.boolean().optional(),
+  pickup_fee: z.number().min(0).optional(),
 });
 
 // Browse Items (Includes 100-Meter Proximity Radar)
@@ -101,7 +109,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing, i.created_at,
+        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
@@ -165,7 +174,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.available_for_borrowing, i.created_at,
+        i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
         u.email AS owner_email, u.phone AS owner_phone
@@ -200,7 +209,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
     // Fetch related items in same category and city
     const itemCity = extractCity(item.locality);
     const relatedResult = await query(
-      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing
+      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee
        FROM items
        WHERE category = $1 AND id != $2 AND status != 'UNAVAILABLE' AND locality ILIKE $3
        LIMIT 4`,
@@ -309,9 +318,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing)
+        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14)
+        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14, $15, $16, $17, $18)
        RETURNING *`,
       [
         req.user!.id,
@@ -328,6 +337,10 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.latitude ?? null,
         validated.longitude ?? null,
         validated.available_for_borrowing ?? false,
+        validated.offers_delivery ?? false,
+        validated.delivery_fee ?? 0,
+        validated.offers_pickup ?? false,
+        validated.pickup_fee ?? 0,
       ]);
     const createdItem = result.rows[0];
 
@@ -405,6 +418,22 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.available_for_borrowing !== undefined) {
       values.push(validated.available_for_borrowing);
       fields.push(`available_for_borrowing = $${values.length}`);
+    }
+    if (validated.offers_delivery !== undefined) {
+      values.push(validated.offers_delivery);
+      fields.push(`offers_delivery = $${values.length}`);
+    }
+    if (validated.delivery_fee !== undefined) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
+    }
+    if (validated.offers_pickup !== undefined) {
+      values.push(validated.offers_pickup);
+      fields.push(`offers_pickup = $${values.length}`);
+    }
+    if (validated.pickup_fee !== undefined) {
+      values.push(validated.pickup_fee);
+      fields.push(`pickup_fee = $${values.length}`);
     }
 
     if (fields.length === 0) {

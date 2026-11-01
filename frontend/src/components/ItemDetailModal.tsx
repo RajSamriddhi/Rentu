@@ -82,17 +82,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [endTime, setEndTime] = useState('18:00');
 
-  // Logistics states
-  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
-  const [pickupLocality, setPickupLocality] = useState('');
-  const [borrowerLocality, setBorrowerLocality] = useState(user?.locality || '');
+  // Delivery & Return Collection options based on lender listing
+  const [optForDelivery, setOptForDelivery] = useState(Boolean(item?.offers_delivery));
+  const [optForPickup, setOptForPickup] = useState(Boolean(item?.offers_pickup));
 
-  const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
-  const [returnLocality, setReturnLocality] = useState('');
-
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
-  const [isDetectingPickupLoc, setIsDetectingPickupLoc] = useState(false);
-  const [isDetectingReturnLoc, setIsDetectingReturnLoc] = useState(false);
+  React.useEffect(() => {
+    if (item) {
+      setOptForDelivery(Boolean(item.offers_delivery));
+      setOptForPickup(Boolean(item.offers_pickup));
+    }
+  }, [item]);
 
   const [proposalMessage, setProposalMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,30 +114,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     }
   }, [startDate, endDate]);
 
-  const handleDetectLocation = async (target: 'main' | 'pickup' | 'return' = 'main') => {
-    if (target === 'return') setIsDetectingReturnLoc(true);
-    else if (target === 'pickup') setIsDetectingPickupLoc(true);
-    else setIsDetectingLocation(true);
-    setErrorMsg('');
-
-    try {
-      const loc = await detectCurrentLocation();
-      if (target === 'return') {
-        setReturnLocality(loc.locality);
-      } else if (target === 'pickup') {
-        setPickupLocality(loc.locality);
-      } else {
-        setBorrowerLocality(loc.locality);
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Could not detect GPS location.');
-    } finally {
-      if (target === 'return') setIsDetectingReturnLoc(false);
-      else if (target === 'pickup') setIsDetectingPickupLoc(false);
-      else setIsDetectingLocation(false);
-    }
-  };
-
   if (!item) return null;
 
   const rawImages = Array.isArray(item.image_urls) && item.image_urls.length > 0
@@ -153,8 +128,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     'https://images.unsplash.com/photo-1508873696983-2df5293cb395?auto=format&fit=crop&w=600&q=80',
   ];
 
-  const pricePerDay = rentType === 'Borrow' ? 0 : Number(item.price_per_day);
-  const totalCost = pricePerDay * durationDays;
+  const baseCost = rentType === 'Borrow' ? 0 : Number(item.price_per_day) * durationDays;
+  const deliveryCost = (item.offers_delivery && optForDelivery) ? Number(item.delivery_fee || 0) : 0;
+  const pickupCost = (item.offers_pickup && optForPickup) ? Number(item.pickup_fee || 0) : 0;
+  const totalCost = baseCost + deliveryCost + pickupCost;
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,41 +162,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
-    if (pickupType === 'CUSTOM_LOCATION' && !pickupLocality.trim()) {
-      setErrorMsg('Please specify the custom pickup meetup spot or landmark.');
-      return;
-    }
-
-    if (pickupType === 'MY_LOCATION' && !borrowerLocality.trim()) {
-      setErrorMsg('Please specify your current delivery address.');
-      return;
-    }
-
-    if (returnType === 'CUSTOM_LOCATION' && !returnLocality.trim()) {
-      setErrorMsg('Please specify the return meetup spot or landmark.');
-      return;
-    }
-
-    if (returnType === 'MY_LOCATION' && !returnLocality.trim() && !borrowerLocality.trim()) {
-      setErrorMsg('Please specify your return collection address.');
-      return;
-    }
-
     setIsSubmitting(true);
     setErrorMsg('');
 
     try {
-      const finalPickupLoc = pickupType === 'MY_LOCATION'
-        ? borrowerLocality.trim()
-        : pickupType === 'CUSTOM_LOCATION'
-        ? pickupLocality.trim()
-        : (item.locality || 'Lender Location');
-
-      const finalReturnLoc = returnType === 'MY_LOCATION'
-        ? (returnLocality.trim() || borrowerLocality.trim())
-        : returnType === 'CUSTOM_LOCATION'
-        ? returnLocality.trim()
-        : (item.locality || 'Lender Location');
+      const isDeliveredByLender = Boolean(item.offers_delivery && optForDelivery);
+      const isCollectedByLender = Boolean(item.offers_pickup && optForPickup);
 
       const booking = await api.createBooking({
         item_id: item.id,
@@ -229,10 +177,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         end_time: endTime,
         duration_days: durationDays,
         total_price: totalCost,
-        pickup_type: pickupType,
-        pickup_locality: finalPickupLoc,
-        return_type: returnType,
-        return_locality: finalReturnLoc,
+        requires_delivery: isDeliveredByLender,
+        delivery_fee: deliveryCost,
+        requires_pickup: isCollectedByLender,
+        pickup_fee: pickupCost,
+        pickup_type: isDeliveredByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
+        pickup_locality: isDeliveredByLender ? (user?.locality || 'Renter Address') : (item.locality || 'Lender Locality'),
+        return_type: isCollectedByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
+        return_locality: isCollectedByLender ? (user?.locality || 'Renter Address') : (item.locality || 'Lender Locality'),
         message: proposalMessage || `Hey! I'd love to ${rentType.toLowerCase()} your ${item.title} for ${durationDays} days.`,
       });
 
@@ -322,6 +274,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     {isAvailableForBorrowing && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
                         🤝 Also Available for Free Borrowing
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Delivery & Pickup Offering Badges */}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {item.offers_delivery ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/30">
+                        🚗 Lender Delivers ({Number(item.delivery_fee) > 0 ? `₹${Number(item.delivery_fee)} fee` : 'FREE'})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
+                        🚶 No Delivery (Self pickup)
+                      </span>
+                    )}
+
+                    {item.offers_pickup ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/30">
+                        🔄 Lender Collects ({Number(item.pickup_fee) > 0 ? `₹${Number(item.pickup_fee)} fee` : 'FREE'})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary bg-surface px-2.5 py-1 rounded-full border border-divider">
+                        🚶 Renter Returns to Lender
                       </span>
                     )}
                   </div>
@@ -601,213 +576,99 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Section: Pickup Logistics */}
-                    <div className="space-y-2 pt-2 border-t border-divider">
+                    {/* Section: Handover & Delivery Options */}
+                    <div className="space-y-2.5 pt-2 border-t border-divider">
                       <label className="block text-xs font-extrabold text-ink uppercase tracking-wider">
-                        Pickup Handover: Where will you receive it?
+                        Handover & Delivery
                       </label>
-                      <div className="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
-                        <button
-                          type="button"
-                          onClick={() => setPickupType('LENDER_LOCATION')}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            pickupType === 'LENDER_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">🚶 To Lender</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Pick up at owner's place
-                          </div>
-                        </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPickupType('MY_LOCATION');
-                            if (!borrowerLocality && user?.locality) setBorrowerLocality(user.locality);
-                          }}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            pickupType === 'MY_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">📍 My Location</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Deliver to your live spot
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setPickupType('CUSTOM_LOCATION')}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            pickupType === 'CUSTOM_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">🤝 Custom Spot</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Mutual station or spot
-                          </div>
-                        </button>
-                      </div>
-
-                      {/* Pickup conditional inputs */}
-                      {pickupType === 'CUSTOM_LOCATION' && (
-                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
+                      {/* Drop-off / Delivery at start */}
+                      {item.offers_delivery ? (
+                        <div className="p-3 rounded-2xl bg-surface border border-divider space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-bold text-ink">
-                              Custom Pickup Meetup Spot *
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleDetectLocation('pickup')}
-                              disabled={isDetectingPickupLoc}
-                              className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Navigation className="w-2.5 h-2.5 text-brand" />
-                              <span>{isDetectingPickupLoc ? '...' : 'GPS'}</span>
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            value={pickupLocality}
-                            onChange={(e) => setPickupLocality(e.target.value)}
-                            placeholder="e.g. Indiranagar Metro Station Gate 1"
-                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                            required
-                          />
-                        </div>
-                      )}
-
-                      {pickupType === 'MY_LOCATION' && (
-                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-bold text-ink">
-                              Your Current Delivery Address *
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleDetectLocation('main')}
-                              disabled={isDetectingLocation}
-                              className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Navigation className="w-2.5 h-2.5 text-brand" />
-                              <span>{isDetectingLocation ? '...' : 'Use Current GPS 📍'}</span>
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            value={borrowerLocality}
-                            onChange={(e) => setBorrowerLocality(e.target.value)}
-                            placeholder="e.g. Room 402 or Flat address"
-                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                            required
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Section: Return Logistics */}
-                    <div className="space-y-2 pt-2 border-t border-divider">
-                      <label className="block text-xs font-extrabold text-ink uppercase tracking-wider">
-                        Return Handover: How will you return it?
-                      </label>
-                      <div className="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
-                        <button
-                          type="button"
-                          onClick={() => setReturnType('LENDER_LOCATION')}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            returnType === 'LENDER_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">🚶 To Lender</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Return back to lender
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReturnType('MY_LOCATION');
-                            if (!returnLocality && borrowerLocality) setReturnLocality(borrowerLocality);
-                          }}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            returnType === 'MY_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">🏠 Collect at Mine</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Lender collects from you
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setReturnType('CUSTOM_LOCATION')}
-                          className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
-                            returnType === 'CUSTOM_LOCATION'
-                              ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand shadow-xs'
-                              : 'border-divider bg-surface text-ink-secondary hover:text-ink'
-                          }`}
-                        >
-                          <div className="font-black text-ink text-xs">🤝 Custom Spot</div>
-                          <div className="text-[10px] text-ink-secondary font-normal mt-0.5 leading-tight">
-                            Mutual station or spot
-                          </div>
-                        </button>
-                      </div>
-
-                      {/* Return conditional inputs */}
-                      {(returnType === 'CUSTOM_LOCATION' || returnType === 'MY_LOCATION') && (
-                        <div className="p-2.5 rounded-xl bg-surface border border-divider space-y-1.5 animate-in fade-in">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-bold text-ink">
-                              {returnType === 'CUSTOM_LOCATION' ? 'Return Meetup Landmark *' : 'Collection Address *'}
-                            </label>
                             <div className="flex items-center gap-2">
-                              {((pickupType === 'CUSTOM_LOCATION' && pickupLocality) || borrowerLocality) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (returnType === 'CUSTOM_LOCATION' && pickupType === 'CUSTOM_LOCATION' && pickupLocality) {
-                                      setReturnLocality(pickupLocality);
-                                    } else if (borrowerLocality) {
-                                      setReturnLocality(borrowerLocality);
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-brand hover:underline cursor-pointer"
-                                >
-                                  Same as pickup
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDetectLocation('return')}
-                                disabled={isDetectingReturnLoc}
-                                className="text-[10px] font-bold text-brand hover:underline cursor-pointer"
-                              >
-                                {isDetectingReturnLoc ? '...' : 'GPS'}
-                              </button>
+                              <span className="text-base">🚗</span>
+                              <div>
+                                <div className="text-xs font-bold text-ink flex items-center gap-1.5">
+                                  <span>Lender Offers Delivery</span>
+                                  <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                                    {Number(item.delivery_fee) > 0 ? `+₹${Number(item.delivery_fee)}` : 'FREE'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-ink-secondary">
+                                  {optForDelivery
+                                    ? `Lender will deliver to you (${Number(item.delivery_fee) > 0 ? `₹${Number(item.delivery_fee)} fee` : 'free'})`
+                                    : `You will pick up from lender in ${item.locality || 'nearby'}`}
+                                </p>
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setOptForDelivery(!optForDelivery)}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                optForDelivery
+                                  ? 'bg-brand text-white shadow-xs'
+                                  : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                              }`}
+                            >
+                              {optForDelivery ? 'Deliver to me ✓' : 'Pick up myself'}
+                            </button>
                           </div>
-                          <input
-                            type="text"
-                            value={returnLocality}
-                            onChange={(e) => setReturnLocality(e.target.value)}
-                            placeholder={returnType === 'CUSTOM_LOCATION' ? 'e.g. Indiranagar Metro Station Gate 1' : 'e.g. Room 402 or your address'}
-                            className="w-full bg-canvas border border-divider rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                            required
-                          />
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-canvas border border-divider flex items-center gap-2.5">
+                          <span className="text-base">🚶</span>
+                          <div className="text-xs">
+                            <span className="font-bold text-ink">No Delivery Offered</span>
+                            <p className="text-[11px] text-ink-secondary">
+                              You will pick up the gear from the lender ({item.locality || 'Lender locality'}).
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Collection / Pickup at return */}
+                      {item.offers_pickup ? (
+                        <div className="p-3 rounded-2xl bg-surface border border-divider space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">🔄</span>
+                              <div>
+                                <div className="text-xs font-bold text-ink flex items-center gap-1.5">
+                                  <span>Lender Will Collect on Return</span>
+                                  <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                                    {Number(item.pickup_fee) > 0 ? `+₹${Number(item.pickup_fee)}` : 'FREE'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-ink-secondary">
+                                  {optForPickup
+                                    ? `Lender will collect from you (${Number(item.pickup_fee) > 0 ? `₹${Number(item.pickup_fee)} fee` : 'free'})`
+                                    : `You will return the gear back to lender`}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setOptForPickup(!optForPickup)}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                optForPickup
+                                  ? 'bg-brand text-white shadow-xs'
+                                  : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                              }`}
+                            >
+                              {optForPickup ? 'Owner collects ✓' : 'I will return it'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-canvas border border-divider flex items-center gap-2.5">
+                          <span className="text-base">🚶</span>
+                          <div className="text-xs">
+                            <span className="font-bold text-ink">Renter Returns Gear</span>
+                            <p className="text-[11px] text-ink-secondary">
+                              You will return the gear back to the lender ({item.locality || 'Lender locality'}).
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -824,18 +685,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       />
                     </div>
 
-                    {/* Total cost & info box */}
-                    <div className="pt-2 border-t border-divider">
-                      <div className="flex items-center justify-between text-sm font-extrabold text-ink mb-1">
-                        <span>Total cost ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
+                    {/* Total cost & breakdown info box */}
+                    <div className="pt-2 border-t border-divider space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
+                        <span>Rental ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
+                        <span>{rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
+                      </div>
+                      {item.offers_delivery && optForDelivery && Number(item.delivery_fee) > 0 && (
+                        <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
+                          <span>Delivery Fee (Lender Drop-off)</span>
+                          <span>+₹{Number(item.delivery_fee)}</span>
+                        </div>
+                      )}
+                      {item.offers_pickup && optForPickup && Number(item.pickup_fee) > 0 && (
+                        <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
+                          <span>Collection Fee (Lender Pickup)</span>
+                          <span>+₹{Number(item.pickup_fee)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-sm font-extrabold text-ink pt-1 border-t border-divider/50">
+                        <span>Total cost</span>
                         <span className="text-lg font-black text-ink font-display">
-                          {rentType === 'Borrow' ? 'Free (Borrow)' : `₹${totalCost}`}
+                          {totalCost === 0 ? 'Free' : `₹${totalCost}`}
                         </span>
                       </div>
                       <p className="text-[11px] text-ink-secondary leading-snug">
-                        {rentType === 'Borrow'
+                        {rentType === 'Borrow' && deliveryCost === 0 && pickupCost === 0
                           ? 'Zero rental fee proposal. The owner will review and coordinate handover directly.'
-                          : `Estimated at ₹${item.price_per_day}/day for ${durationDays} days. Coordinate directly with the owner.`}
+                          : `Estimated at ₹${item.price_per_day}/day. Coordinate handover directly with the owner.`}
                       </p>
                     </div>
 
@@ -868,7 +745,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Pickup: {pickupType === 'MY_LOCATION' ? 'Delivered to you' : pickupType === 'CUSTOM_LOCATION' ? (pickupLocality || 'Custom Meetup') : `Lender's Area (${item.locality || 'Nearby'})`}</span>
+                        <span>
+                          {item.offers_delivery && optForDelivery
+                            ? 'Delivery: Delivered to you by owner'
+                            : `Pickup: Collect from lender in ${item.locality || 'nearby'}`}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Lock className="w-4 h-4 text-emerald-600 shrink-0" />

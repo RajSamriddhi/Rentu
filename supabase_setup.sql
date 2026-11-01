@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS items (
     longitude DOUBLE PRECISION NOT NULL,
     status item_status DEFAULT 'AVAILABLE',
     available_for_borrowing BOOLEAN DEFAULT false,
+    offers_delivery BOOLEAN DEFAULT false,
+    delivery_fee NUMERIC(10, 2) DEFAULT 0,
+    offers_pickup BOOLEAN DEFAULT false,
+    pickup_fee NUMERIC(10, 2) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -142,6 +146,10 @@ CREATE TABLE IF NOT EXISTS bookings (
     return_code VARCHAR(6),
     handed_over_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
+    requires_delivery BOOLEAN DEFAULT false,
+    delivery_fee NUMERIC(10, 2) DEFAULT 0,
+    requires_pickup BOOLEAN DEFAULT false,
+    pickup_fee NUMERIC(10, 2) DEFAULT 0,
     message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
