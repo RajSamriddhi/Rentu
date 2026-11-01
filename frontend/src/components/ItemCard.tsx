@@ -65,11 +65,19 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
             {item.title}
           </h4>
 
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-sm sm:text-base font-extrabold text-ink font-display">
-              ₹{Number(item.price_per_day)}
-            </span>
-            <span className="text-[11px] text-ink-secondary font-medium">/ day</span>
+          <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
+            <div className="flex items-baseline gap-1">
+              <span className="text-sm sm:text-base font-extrabold text-ink font-display">
+                ₹{Number(item.price_per_day)}
+              </span>
+              <span className="text-[11px] text-ink-secondary font-medium">/ day</span>
+            </div>
+
+            {item.available_for_borrowing && (
+              <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                🤝 Can Borrow
+              </span>
+            )}
           </div>
 
           {/* Rating & Distance */}

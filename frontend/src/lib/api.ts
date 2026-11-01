@@ -176,6 +176,7 @@ export const api = {
     image_urls: string[];
     sticker_badge: string;
     locality: string;
+    available_for_borrowing?: boolean;
   }): Promise<Item> {
     const res = await fetch(`${API_BASE}/items`, {
       method: 'POST',
@@ -190,6 +191,30 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  async toggleItemBorrowing(id: string, available_for_borrowing: boolean): Promise<Item> {
+    const res = await fetch(`${API_BASE}/items/${id}/borrowing`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ available_for_borrowing }),
+    });
+    return handleResponse(res);
+  },
+
+  async getItemAvailability(id: string): Promise<Array<{
+    id?: string;
+    start_date: string;
+    end_date: string;
+    start_time?: string;
+    end_time?: string;
+    duration_days?: number;
+    status?: string;
+  }>> {
+    const res = await fetch(`${API_BASE}/items/${id}/availability`, {
+      headers: getHeaders(),
     });
     return handleResponse(res);
   },
@@ -298,11 +323,38 @@ export const api = {
     return handleResponse(res);
   },
 
-  async updateBookingStatus(id: string, status: 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED'): Promise<Booking> {
+  async updateBookingStatus(id: string, status: 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ status }),
+    });
+    return handleResponse(res);
+  },
+
+  async verifyPickup(id: string, code: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/verify-pickup`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code }),
+    });
+    return handleResponse(res);
+  },
+
+  async verifyReturn(id: string, code: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/verify-return`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ code }),
+    });
+    return handleResponse(res);
+  },
+
+  async submitReview(bookingId: string, rating: number, comment?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/bookings/${bookingId}/review`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rating, comment: comment || '' }),
     });
     return handleResponse(res);
   },

@@ -20,13 +20,14 @@ const createItemSchema = z.object({
   pincode: z.string().optional(),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
+  available_for_borrowing: z.boolean().optional().default(false),
 });
 
 const updateItemSchema = z.object({
   title: z.string().min(3).optional(),
   description: z.string().min(10).optional(),
   category: z.string().optional(),
-  price_per_day: z.number().positive().optional(),
+  price_per_day: z.number().min(0).optional(),
   max_duration_days: z.number().int().positive().optional(),
   image_urls: z.array(z.string().min(1, 'Photo URL cannot be empty')).optional(),
   sticker_badge: z.string().optional(),
@@ -36,6 +37,7 @@ const updateItemSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   status: z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
+  available_for_borrowing: z.boolean().optional(),
 });
 
 // Browse Items (Includes 100-Meter Proximity Radar)
@@ -99,7 +101,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.created_at,
+        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
@@ -112,7 +114,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       WHERE 1=1 ${distanceFilter}
     `;
 
-    if (status && status !== 'ALL') {
+    if (status === 'AVAILABLE') {
+      sql += ` AND i.status != 'UNAVAILABLE'`;
+    } else if (status && status !== 'ALL') {
       params.push(status);
       sql += ` AND i.status = $${params.length}`;
     }
@@ -161,7 +165,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.created_at,
+        i.status, i.available_for_borrowing, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
         u.email AS owner_email, u.phone AS owner_phone
@@ -177,20 +181,97 @@ router.get('/:id', async (req: Request, res: Response, next) => {
 
     const item = result.rows[0];
 
+    // Fetch booked calendar dates for this item (Active / Confirmed rentals)
+    const bookedRes = await query(
+      `SELECT 
+        id, 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        start_time,
+        end_time,
+        duration_days,
+        status
+      FROM bookings
+      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      ORDER BY start_date ASC`,
+      [id]
+    );
+
     // Fetch related items in same category and city
     const itemCity = extractCity(item.locality);
     const relatedResult = await query(
-      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status
+      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing
        FROM items
-       WHERE category = $1 AND id != $2 AND status = 'AVAILABLE' AND locality ILIKE $3
+       WHERE category = $1 AND id != $2 AND status != 'UNAVAILABLE' AND locality ILIKE $3
        LIMIT 4`,
       [item.category, item.id, `%${itemCity}%`]
     );
 
     return sendSuccess(res, {
       ...item,
+      booked_dates: bookedRes.rows,
       related_items: relatedResult.rows,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get Availability & Booked Dates for an Item Calendar
+router.get('/:id/availability', async (req: Request, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT 
+        id, 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        start_time,
+        end_time,
+        duration_days,
+        status
+      FROM bookings
+      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      ORDER BY start_date ASC`,
+      [id]
+    );
+
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Toggle Available for Borrowing (Lender 1-Click Action)
+router.patch('/:id/borrowing', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const { available_for_borrowing } = z.object({ available_for_borrowing: z.boolean() }).parse(req.body);
+
+    const check = await query('SELECT owner_id FROM items WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Item not found', 404);
+    }
+
+    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Only the item owner can change borrowing options', 403);
+    }
+
+    const result = await query(
+      `UPDATE items 
+       SET available_for_borrowing = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [available_for_borrowing, id]
+    );
+
+    return sendSuccess(
+      res, 
+      result.rows[0], 
+      available_for_borrowing 
+        ? 'Item is now available for borrowing as well! 🤝' 
+        : 'Item is now set to rental only.'
+    );
   } catch (error) {
     next(error);
   }
@@ -228,9 +309,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status)
+        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE')
+        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14)
        RETURNING *`,
       [
         req.user!.id,
@@ -246,6 +327,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         cleanPincode,
         validated.latitude ?? null,
         validated.longitude ?? null,
+        validated.available_for_borrowing ?? false,
       ]);
     const createdItem = result.rows[0];
 
@@ -319,6 +401,10 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.status !== undefined) {
       values.push(validated.status);
       fields.push(`status = $${values.length}`);
+    }
+    if (validated.available_for_borrowing !== undefined) {
+      values.push(validated.available_for_borrowing);
+      fields.push(`available_for_borrowing = $${values.length}`);
     }
 
     if (fields.length === 0) {

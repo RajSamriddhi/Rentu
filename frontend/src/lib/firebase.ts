@@ -12,7 +12,7 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB6ah1Pz0RdCilzVhUvra-6Yl0TIeDmFtY",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "rentu-732b7.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "rentu-732b7",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "rentu-732b7.firebasestorage.app",

@@ -40,7 +40,9 @@ export const runMigrations = async () => {
     await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
-          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED');
+          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'HANDED_OVER');
+        ELSE
+          ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'HANDED_OVER';
         END IF;
       END $$;
     `);
@@ -101,6 +103,7 @@ export const runMigrations = async () => {
         latitude DOUBLE PRECISION DEFAULT 28.5355,
         longitude DOUBLE PRECISION DEFAULT 77.2167,
         status item_status DEFAULT 'AVAILABLE',
+        available_for_borrowing BOOLEAN DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -109,11 +112,13 @@ export const runMigrations = async () => {
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
 
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
       CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
       CREATE INDEX IF NOT EXISTS idx_items_coords ON items(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_items_borrowing ON items(available_for_borrowing);
     `);
 
     await client.query(`
@@ -175,6 +180,10 @@ export const runMigrations = async () => {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
 
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);

@@ -42,6 +42,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
   const [imageUrl, setImageUrl] = useState('');
+  const [availableForBorrowing, setAvailableForBorrowing] = useState(false);
 
   // States
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -229,6 +230,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         image_urls: [imageUrl],
         sticker_badge: '✨ Available',
         locality: locality.trim() || user?.locality || '',
+        available_for_borrowing: listingType === 'Borrow' ? true : availableForBorrowing,
       });
 
       confetti({
@@ -603,6 +605,39 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* Toggle: Also available for borrowing */}
+            {listingType === 'Rent' && (
+              <div className="p-4 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-ink">Also Available for Borrowing</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                      Option
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    Allow neighbors to also request borrowing this gear for free when you agree.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAvailableForBorrowing(!availableForBorrowing)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    availableForBorrowing ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                  role="switch"
+                  aria-checked={availableForBorrowing}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      availableForBorrowing ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* SECTION 4: Pickup Location */}
