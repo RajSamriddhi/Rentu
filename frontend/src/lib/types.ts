@@ -201,6 +201,10 @@ export interface Message {
   message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
   proposal_data?: MessageProposalData | any;
   is_edited?: boolean;
+  is_delivered?: boolean;
+  delivered_at?: string | null;
+  is_read?: boolean;
+  read_at?: string | null;
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MessageSquare, Send, Search, ArrowLeft, Check, AlertCircle, 
+  MessageSquare, Send, Search, ArrowLeft, Check, CheckCheck, AlertCircle, 
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
   Trash2, Pencil
@@ -67,6 +67,29 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         behavior: smooth ? 'smooth' : 'auto',
       });
     }
+  };
+
+  // Status ticks: 1 tick = sent, 2 ticks = reached recipient (delivered), 2 blue ticks = read
+  const renderMessageTicks = (m: Message, onBubble = true) => {
+    if (m.is_read) {
+      return (
+        <span title="Read" className="inline-flex items-center text-sky-400 drop-shadow-xs">
+          <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+        </span>
+      );
+    }
+    if (m.is_delivered) {
+      return (
+        <span title="Delivered" className={`inline-flex items-center ${onBubble ? 'text-white/75' : 'text-ink-muted'}`}>
+          <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+        </span>
+      );
+    }
+    return (
+      <span title="Sent" className={`inline-flex items-center ${onBubble ? 'text-white/75' : 'text-ink-muted'}`}>
+        <Check className="w-3 h-3 stroke-[2.5]" />
+      </span>
+    );
   };
 
   useEffect(() => {
@@ -136,11 +159,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           .then((data) => {
             if (data?.messages && Array.isArray(data.messages)) {
               setMessages((prev) => {
-                if (
-                  prev.length !== data.messages.length || 
-                  prev[prev.length - 1]?.id !== data.messages[data.messages.length - 1]?.id ||
-                  JSON.stringify(prev.map(m => m.content)) !== JSON.stringify(data.messages.map(m => m.content))
-                ) {
+                const prevSig = prev.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
+                const nextSig = data.messages.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
+                if (prevSig !== nextSig) {
                   return data.messages;
                 }
                 return prev;
@@ -1130,7 +1151,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                               <div className="text-[9px] mt-1.5 flex items-center justify-end gap-1 text-ink-secondary">
                                 <span>{formattedTime}</span>
-                                {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                {isMe && renderMessageTicks(m, false)}
                               </div>
                             </div>
                           </div>
@@ -1246,7 +1267,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     <span className="italic mr-0.5 opacity-80">(edited)</span>
                                   )}
                                   <span>{formattedTime}</span>
-                                  {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                  {isMe && renderMessageTicks(m, true)}
                                 </div>
                               </>
                             )}

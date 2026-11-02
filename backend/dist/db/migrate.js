@@ -215,6 +215,10 @@ const runMigrations = async () => {
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_delivered BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
     `);
         // 4. NORMALIZATION TABLES (1NF & 3NF Compliance)
         // 4.1. POSTAL CODES (3NF: Eliminates transitive dependency pincode -> locality in users, items, requests)

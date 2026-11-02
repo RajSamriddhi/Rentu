@@ -435,6 +435,14 @@ export const api = {
     return handleResponse(res);
   },
 
+  async markConversationRead(conversationId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}/read`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async sendMessage(
     booking_id: string | null | undefined, 
     receiver_id: string, 

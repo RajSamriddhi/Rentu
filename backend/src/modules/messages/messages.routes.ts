@@ -23,6 +23,19 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
   try {
     const userId = req.user!.id;
 
+    // Mark pending incoming messages as delivered to this user
+    await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE (is_delivered = false OR is_delivered IS NULL)
+        AND receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)`,
+      [userId]
+    ).catch(() => {});
+
     // Get bookings & direct messages (excluding blocked relationships)
     const result = await query(
       `WITH me AS (
@@ -180,10 +193,26 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
         return sendError(res, 'FORBIDDEN', 'Communication with this user is blocked.', 403);
       }
 
+      // Mark unread messages sent to me by partner as READ & DELIVERED
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND receiver_id = ANY($1::text[])
+           AND sender_id = ANY($2::text[])`,
+        [myIds, pIds]
+      ).catch(() => {});
+
       // Fetch direct messages between them
       const messagesRes = await query(
         `SELECT 
-          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+          COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+          COALESCE(m.is_read, false) AS is_read, m.read_at,
+          m.created_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
          FROM messages m
          LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -220,9 +249,25 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
         const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
         const pIds = [conversationId, partner.id, partner.firebase_uid].filter(Boolean);
 
+        // Mark unread messages as read
+        await query(
+          `UPDATE messages
+           SET is_read = true,
+               read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+               is_delivered = true,
+               delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+           WHERE (is_read = false OR is_read IS NULL)
+             AND receiver_id = ANY($1::text[])
+             AND sender_id = ANY($2::text[])`,
+          [myIds, pIds]
+        ).catch(() => {});
+
         const messagesRes = await query(
           `SELECT 
-            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+            COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+            COALESCE(m.is_read, false) AS is_read, m.read_at,
+            m.created_at,
             COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
            FROM messages m
            LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -242,9 +287,31 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       return sendError(res, 'NOT_FOUND', 'Conversation not found or access denied', 404);
     }
 
+    // Mark booking messages as read
+    await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $2::text OR firebase_uid = $2::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_read = true,
+          read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+          is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE booking_id::text = $1
+        AND (is_read = false OR is_read IS NULL)
+        AND (
+          receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+          OR (receiver_id IS NULL AND sender_id NOT IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL))
+        )`,
+      [conversationId, userId]
+    ).catch(() => {});
+
     const messagesRes = await query(
       `SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+        COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+        COALESCE(m.is_read, false) AS is_read, m.read_at,
+        m.created_at,
         COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
        FROM messages m
        LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -257,6 +324,56 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       booking: bookingRes.rows[0],
       messages: messagesRes.rows,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 2.1 Mark Conversation Messages as Read Explicitly
+router.post('/:conversationId/read', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user!.id;
+    const isDm = conversationId.startsWith('dm_') || !isUuid(conversationId);
+    const rawPartnerId = isDm ? conversationId.replace(/^dm_/, '') : null;
+
+    if (isDm && rawPartnerId) {
+      const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+      const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+      const pRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+      const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
+
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND receiver_id = ANY($1::text[])
+           AND sender_id = ANY($2::text[])`,
+        [myIds, pIds]
+      );
+    } else {
+      await query(
+        `WITH me AS (
+          SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $2::text OR firebase_uid = $2::text LIMIT 1
+        )
+        UPDATE messages
+        SET is_read = true,
+            read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+            is_delivered = true,
+            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+        WHERE booking_id::text = $1
+          AND (is_read = false OR is_read IS NULL)
+          AND (
+            receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+            OR (receiver_id IS NULL AND sender_id NOT IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL))
+          )`,
+        [conversationId, userId]
+      );
+    }
+    return sendSuccess(res, { marked_read: true });
   } catch (error) {
     next(error);
   }
@@ -304,8 +421,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     }
 
     const result = await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+       VALUES ($1, $2, $3, $4, $5, $6, false, false)
        RETURNING *`,
       [
         targetBookingId,
@@ -321,6 +438,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     return sendSuccess(res, {
       ...inserted,
+      is_delivered: false,
+      is_read: false,
       sender_name: req.user!.name || 'You',
       sender_avatar: (req.user as any)?.avatar_url || null,
     }, 'Message sent');
