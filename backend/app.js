@@ -52633,7 +52633,7 @@ var handleSyncUser = async (req, res, next) => {
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
     const locality = validated.locality || "";
     const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
       [uid, uid, email]
     );
@@ -52646,7 +52646,7 @@ var handleSyncUser = async (req, res, next) => {
              avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
         [uid, validated.name, avatar, existing.rows[0].id]
       );
       user = updated.rows[0];
@@ -52654,7 +52654,7 @@ var handleSyncUser = async (req, res, next) => {
       const created = await query(
         `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
         [
           uid,
           uid,
@@ -52679,7 +52679,7 @@ router.post("/clerk-sync", handleSyncUser);
 router.get("/me", authMiddleware, async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`,
       [req.user.id]
     );
@@ -52783,12 +52783,23 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     let userLon = longitude ? parseFloat(String(longitude)) : NaN;
     if ((isNaN(userLat) || isNaN(userLon)) && req.user?.id) {
       const uRes = await query(
-        `SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+        `SELECT latitude, longitude, locality FROM users WHERE id::text = $1 OR firebase_uid = $1`,
         [req.user.id]
       );
-      if (uRes.rows.length > 0 && uRes.rows[0].latitude && uRes.rows[0].longitude) {
-        userLat = parseFloat(uRes.rows[0].latitude);
-        userLon = parseFloat(uRes.rows[0].longitude);
+      if (uRes.rows.length > 0) {
+        if (uRes.rows[0].latitude && uRes.rows[0].longitude) {
+          userLat = parseFloat(uRes.rows[0].latitude);
+          userLon = parseFloat(uRes.rows[0].longitude);
+        } else if (uRes.rows[0].locality) {
+          const loc = uRes.rows[0].locality.toLowerCase();
+          if (loc.includes("beml")) {
+            userLat = 12.914;
+            userLon = 77.4993;
+          } else if (loc.includes("mylasandra")) {
+            userLat = 12.885;
+            userLon = 77.505;
+          }
+        }
       }
     }
     if (!isNaN(userLat) && !isNaN(userLon)) {
@@ -52802,20 +52813,53 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
             LEAST(1.0, GREATEST(-1.0, 
               cos(radians($${latIdx})) * cos(radians(
                 CASE 
-                  WHEN (i.locality ILIKE '%bengaluru%' OR i.locality ILIKE '%bangalore%' OR i.locality ILIKE '%beml%' OR i.locality ILIKE '%mylasandra%') AND (i.latitude > 20 OR i.latitude IS NULL) THEN 12.9255
-                  ELSE COALESCE(i.latitude, $${latIdx})
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
                 END
               )) *
               cos(radians(
                 CASE 
-                  WHEN (i.locality ILIKE '%bengaluru%' OR i.locality ILIKE '%bangalore%' OR i.locality ILIKE '%beml%' OR i.locality ILIKE '%mylasandra%') AND (i.latitude > 20 OR i.longitude IS NULL) THEN 77.5355
-                  ELSE COALESCE(i.longitude, $${lonIdx})
+                  WHEN i.longitude IS NOT NULL AND i.longitude != 0 THEN i.longitude
+                  WHEN u.longitude IS NOT NULL AND u.longitude != 0 THEN u.longitude
+                  WHEN i.locality ILIKE '%beml%' THEN 77.4993
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 77.5050
+                  WHEN i.locality ILIKE '%kengeri%' THEN 77.4838
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 77.5150
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 77.5838
+                  WHEN i.locality ILIKE '%koramangala%' THEN 77.6245
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 77.6408
+                  WHEN i.locality ILIKE '%hsr%' THEN 77.6446
+                  WHEN i.locality ILIKE '%whitefield%' THEN 77.7500
+                  WHEN i.locality ILIKE '%electronic city%' THEN 77.6602
+                  ELSE $${lonIdx}
                 END
               ) - radians($${lonIdx})) +
               sin(radians($${latIdx})) * sin(radians(
                 CASE 
-                  WHEN (i.locality ILIKE '%bengaluru%' OR i.locality ILIKE '%bangalore%' OR i.locality ILIKE '%beml%' OR i.locality ILIKE '%mylasandra%') AND (i.latitude > 20 OR i.latitude IS NULL) THEN 12.9255
-                  ELSE COALESCE(i.latitude, $${latIdx})
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
                 END
               ))
             ))
@@ -53023,10 +53067,40 @@ router2.post("/", authMiddleware, async (req, res, next) => {
       validated.locality || ""
     ]).catch(() => {
     });
-    const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
+    const userRes = await query("SELECT locality, latitude, longitude FROM users WHERE id = $1", [req.user.id]);
     const userLocality = userRes.rows[0]?.locality || "";
     let finalLocality = validated.locality?.trim() || userLocality;
     const cleanPincode = validated.pincode?.trim() || null;
+    let itemLat = validated.latitude ?? (userRes.rows[0]?.latitude ? parseFloat(userRes.rows[0].latitude) : null);
+    let itemLon = validated.longitude ?? (userRes.rows[0]?.longitude ? parseFloat(userRes.rows[0].longitude) : null);
+    if ((itemLat === null || isNaN(itemLat)) && finalLocality) {
+      const lower = finalLocality.toLowerCase();
+      if (lower.includes("beml")) {
+        itemLat = 12.914;
+        itemLon = 77.4993;
+      } else if (lower.includes("mylasandra")) {
+        itemLat = 12.885;
+        itemLon = 77.505;
+      } else if (lower.includes("kengeri")) {
+        itemLat = 12.9177;
+        itemLon = 77.4838;
+      } else if (lower.includes("rajarajeshwari") || lower.includes("rr nagar")) {
+        itemLat = 12.9275;
+        itemLon = 77.515;
+      } else if (lower.includes("jayanagar")) {
+        itemLat = 12.9308;
+        itemLon = 77.5838;
+      } else if (lower.includes("koramangala")) {
+        itemLat = 12.9352;
+        itemLon = 77.6245;
+      } else if (lower.includes("indiranagar")) {
+        itemLat = 12.9784;
+        itemLon = 77.6408;
+      } else if (lower.includes("hsr")) {
+        itemLat = 12.9121;
+        itemLon = 77.6446;
+      }
+    }
     if (cleanPincode && finalLocality) {
       await query(
         `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
@@ -53052,8 +53126,8 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         finalLocality,
         validated.address_text || finalLocality,
         cleanPincode,
-        validated.latitude ?? null,
-        validated.longitude ?? null,
+        itemLat ?? null,
+        itemLon ?? null,
         validated.available_for_borrowing ?? false,
         validated.offers_delivery ?? false,
         validated.delivery_fee ?? 0,

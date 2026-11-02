@@ -133,7 +133,7 @@ const handleSyncUser = async (req, res, next) => {
         const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
         const locality = validated.locality || '';
         // 1. Look for existing user by firebase_uid, clerk_id or email
-        const existing = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
+        const existing = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
         let user;
         if (existing.rows.length > 0) {
@@ -144,14 +144,14 @@ const handleSyncUser = async (req, res, next) => {
              avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [uid, validated.name, avatar, existing.rows[0].id]);
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [uid, validated.name, avatar, existing.rows[0].id]);
             user = updated.rows[0];
         }
         else {
             // Create new user for this Firebase account
             const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [
                 uid,
                 uid,
                 email,
@@ -175,7 +175,7 @@ router.post('/clerk-sync', handleSyncUser);
 // Get Current Profile
 router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
     try {
-        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`, [req.user.id]);
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'User profile not found', 404);
