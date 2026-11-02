@@ -221,16 +221,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await continueWithEmail(data.email, data.password, data.name);
   };
 
-  const demoLogin = async (role: 'lender' | 'borrower' | 'admin' | 'creator') => {
-    setIsLoading(true);
-    try {
-      const res = await api.demoLogin(role);
-      localStorage.setItem('borrowflex_token', res.token);
-      setToken(res.token);
-      setUser(res.user);
-    } finally {
-      setIsLoading(false);
-    }
+  const demoLogin = async (_role: 'lender' | 'borrower' | 'admin' | 'creator') => {
+    throw new Error('Demo login has been disabled.');
   };
 
   const logout = async () => {

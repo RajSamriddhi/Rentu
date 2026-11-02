@@ -52588,33 +52588,8 @@ router.post("/login", async (req, res, next) => {
     next(error);
   }
 });
-router.post("/demo-login", async (req, res, next) => {
-  try {
-    const { role = "lender" } = req.body;
-    let targetEmail = "falaksadiqua786@gmail.com";
-    if (role === "borrower") targetEmail = "goyalgeetansh@gmail.com";
-    if (role === "admin") targetEmail = "falaksadiqua786@gmail.com";
-    if (role === "creator") targetEmail = "goyalgeetansh@gmail.com";
-    let result = await query(
-      `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
-       FROM users WHERE email = $1`,
-      [targetEmail]
-    );
-    if (result.rows.length === 0) {
-      result = await query(
-        `SELECT id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at
-         FROM users ORDER BY created_at ASC LIMIT 1`
-      );
-    }
-    if (result.rows.length === 0) {
-      return sendError(res, "USER_NOT_FOUND", "No demo users found", 404);
-    }
-    const user = result.rows[0];
-    const token = generateToken(user);
-    return sendSuccess(res, { user, token }, `Demo logged in as ${user.name}`);
-  } catch (error) {
-    next(error);
-  }
+router.post("/demo-login", async (req, res) => {
+  return sendError(res, "FORBIDDEN", "Demo login has been permanently disabled for security.", 403);
 });
 var firebaseSyncSchema = external_exports.object({
   firebaseUid: external_exports.string().optional(),
