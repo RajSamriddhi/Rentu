@@ -261,6 +261,11 @@ export const api = {
     duration_days: number;
     offered_amount: number;
     locality: string;
+    address_text?: string;
+    pincode?: string;
+    will_pickup?: boolean;
+    will_drop_back?: boolean;
+    delivery_fee?: number;
     pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
     pickup_locality?: string;
     return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';

@@ -25,11 +25,19 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   const [endDate, setEndDate] = useState('');
   const [durationDays, setDurationDays] = useState<number | ''>('');
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
+  
+  // Pickup & Drop Toggles & Extra Fee
+  const [willPickup, setWillPickup] = useState<boolean>(true);
+  const [willDropBack, setWillDropBack] = useState<boolean>(true);
+  const [deliveryFee, setDeliveryFee] = useState<number | ''>('');
+
+  // Destination Location Fields
+  const [buildingHouseNo, setBuildingHouseNo] = useState('');
+  const [streetArea, setStreetArea] = useState('');
   const [locality, setLocality] = useState('');
-  const [pickupType, setPickupType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
-  const [pickupLocality, setPickupLocality] = useState('');
-  const [returnType, setReturnType] = useState<'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION'>('LENDER_LOCATION');
-  const [returnLocality, setReturnLocality] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
+
   const [status, setStatus] = useState<'OPEN' | 'FULFILLED' | 'CANCELLED'>('OPEN');
   const [imageUrl, setImageUrl] = useState('');
 
@@ -52,23 +60,49 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setEndDate(endDateVal);
       setDurationDays(request.duration_days || 1);
       setOfferedAmount(Number(request.offered_amount) || '');
+      
+      setWillPickup(request.will_pickup ?? (request.pickup_type !== 'MY_LOCATION'));
+      setWillDropBack(request.will_drop_back ?? (request.return_type !== 'MY_LOCATION'));
+      setDeliveryFee(Number(request.delivery_fee) || '');
+
+      if (request.address_text) {
+        const parts = request.address_text.split(',').map(p => p.trim()).filter(Boolean);
+        if (parts.length > 0) {
+          setBuildingHouseNo(parts[0]);
+          if (parts.length > 1) {
+            setStreetArea(parts.slice(1).join(', '));
+          }
+        } else {
+          setStreetArea(request.address_text);
+        }
+      }
       setLocality(request.locality || '');
-      setPickupType(request.pickup_type || 'LENDER_LOCATION');
-      setPickupLocality(request.pickup_locality || '');
-      setReturnType(request.return_type || 'LENDER_LOCATION');
-      setReturnLocality(request.return_locality || '');
+      setPincode(request.pincode || '');
+
       setStatus(request.status || 'OPEN');
       setImageUrl(request.image_url || '');
       setErrorMsg('');
+      setLocationSuccessMsg('');
     }
   }, [request, isOpen]);
 
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
+    setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      setLocality(loc.locality);
+      if (loc.address_text) {
+        setStreetArea(loc.address_text);
+      }
+      if (loc.locality) {
+        setLocality(loc.locality);
+      }
+      if (loc.pincode) {
+        setPincode(loc.pincode);
+      }
+      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Location detected';
+      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect location.');
     } finally {
@@ -105,9 +139,27 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       return;
     }
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory.');
+      return;
+    }
+    if (!locality.trim()) {
+      setErrorMsg('Locality / Neighborhood is compulsory.');
+      return;
+    }
+
+    if ((!willPickup || !willDropBack) && (deliveryFee === '' || Number(deliveryFee) < 0)) {
+      setErrorMsg('Please write down the extra amount you will pay for someone to pick and drop for you.');
+      return;
+    }
+
     setIsSaving(true);
     setErrorMsg('');
     try {
+      const fullDestinationAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
+      const extraFeeNumber = (!willPickup || !willDropBack) ? Number(deliveryFee || 0) : 0;
+
       await api.updateRequest(request.id, {
         item_name: itemName.trim(),
         description: description.trim(),
@@ -117,10 +169,15 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
         duration_days: Number(durationDays || 1),
         offered_amount: Number(offeredAmount),
         locality: locality.trim(),
-        pickup_type: pickupType,
-        pickup_locality: pickupType === 'CUSTOM_LOCATION' ? (pickupLocality.trim() || undefined) : undefined,
-        return_type: returnType,
-        return_locality: returnLocality.trim() || undefined,
+        address_text: fullDestinationAddress,
+        pincode: pincode.trim() || undefined,
+        will_pickup: willPickup,
+        will_drop_back: willDropBack,
+        delivery_fee: extraFeeNumber,
+        pickup_type: willPickup ? 'LENDER_LOCATION' : 'MY_LOCATION',
+        pickup_locality: willPickup ? 'Lender Location' : fullDestinationAddress,
+        return_type: willDropBack ? 'LENDER_LOCATION' : 'MY_LOCATION',
+        return_locality: willDropBack ? 'Lender Location' : fullDestinationAddress,
         status,
         image_url: imageUrl || null,
       });
@@ -350,108 +407,100 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
             </div>
           </div>
 
-          {/* Pickup Preference */}
-          <div className="space-y-1.5 pt-1">
-            <label className="block text-xs font-bold text-ink">Pickup Handover Choice</label>
-            <div className="grid grid-cols-3 gap-2 text-[11px] font-bold">
-              <button
-                type="button"
-                onClick={() => setPickupType('LENDER_LOCATION')}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  pickupType === 'LENDER_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                🚶 Go to Lender
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickupType('MY_LOCATION')}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  pickupType === 'MY_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                📍 My Location
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickupType('CUSTOM_LOCATION')}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  pickupType === 'CUSTOM_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                🤝 Meetup Spot
-              </button>
+          {/* Transport & Handover Preference Toggles */}
+          <div className="space-y-3 pt-1 border-t border-divider">
+            <label className="block text-xs font-bold text-ink">Transport & Handover Preference</label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Pickup Toggle */}
+              <div className={`p-3 rounded-2xl border transition-all ${
+                willPickup
+                  ? 'bg-emerald-500/5 border-emerald-500/30'
+                  : 'bg-brand/5 border-brand/30'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-ink block">
+                      {willPickup ? '🚶 Pick up myself' : '🚚 Need delivery'}
+                    </span>
+                    <span className="text-[10px] text-ink-secondary block">
+                      {willPickup ? 'Go to lender to collect' : 'Lender delivers to you'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={willPickup}
+                    onClick={() => setWillPickup(!willPickup)}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
+                      willPickup ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span className={`block w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-transform ${
+                      willPickup ? 'translate-x-4.5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Drop / Return Toggle */}
+              <div className={`p-3 rounded-2xl border transition-all ${
+                willDropBack
+                  ? 'bg-emerald-500/5 border-emerald-500/30'
+                  : 'bg-brand/5 border-brand/30'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-ink block">
+                      {willDropBack ? '🔄 Drop back myself' : '📦 Need collection'}
+                    </span>
+                    <span className="text-[10px] text-ink-secondary block">
+                      {willDropBack ? 'Return to lender yourself' : 'Lender collects from you'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={willDropBack}
+                    onClick={() => setWillDropBack(!willDropBack)}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
+                      willDropBack ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span className={`block w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-transform ${
+                      willDropBack ? 'translate-x-4.5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Extra Amount if not picking up or dropping back */}
+            {(!willPickup || !willDropBack) && (
+              <div className="p-3 rounded-2xl bg-brand/5 border border-brand/20 space-y-1.5 animate-in fade-in">
+                <label className="block text-xs font-bold text-ink">
+                  Extra amount you'll pay for transport / delivery service (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-secondary">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 50 or 100"
+                    className="w-full bg-surface border border-divider rounded-xl pl-7 pr-3 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                    required={!willPickup || !willDropBack}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Custom Pickup Landmark if applicable */}
-          {pickupType === 'CUSTOM_LOCATION' && (
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">Pickup Landmark / Meetup Spot *</label>
-              <input
-                type="text"
-                value={pickupLocality}
-                onChange={(e) => setPickupLocality(e.target.value)}
-                placeholder="e.g. Indiranagar Metro Station Gate 1"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                required
-              />
-            </div>
-          )}
-
-          {/* Return Preference */}
-          <div className="space-y-1.5 pt-1">
-            <label className="block text-xs font-bold text-ink">Return Handover Choice</label>
-            <div className="grid grid-cols-3 gap-2 text-[11px] font-bold">
-              <button
-                type="button"
-                onClick={() => setReturnType('LENDER_LOCATION')}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  returnType === 'LENDER_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                🚶 To Lender
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setReturnType('MY_LOCATION');
-                  if (!returnLocality && locality) setReturnLocality(locality);
-                }}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  returnType === 'MY_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                🏠 Collect at Mine
-              </button>
-              <button
-                type="button"
-                onClick={() => setReturnType('CUSTOM_LOCATION')}
-                className={`p-2 rounded-xl border text-left cursor-pointer transition-colors ${
-                  returnType === 'CUSTOM_LOCATION'
-                    ? 'border-brand bg-brand-soft/40 text-brand ring-1 ring-brand'
-                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                }`}
-              >
-                🤝 Meetup Spot
-              </button>
-            </div>
-          </div>
-
-          {/* Locality Input */}
-          <div>
+          {/* Destination Location */}
+          <div className="space-y-2 pt-1 border-t border-divider">
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-ink">Locality / Address *</label>
+              <label className="text-xs font-bold text-ink">Item Destination Location</label>
               <button
                 type="button"
                 onClick={handleDetectLocation}
@@ -459,33 +508,68 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
               >
                 <MapPin className="w-3 h-3" />
-                <span>{isDetectingLocation ? '...' : 'GPS'}</span>
+                <span>{isDetectingLocation ? 'Detecting...' : 'Use current location 📍'}</span>
               </button>
             </div>
-            <input
-              type="text"
-              value={locality}
-              onChange={(e) => setLocality(e.target.value)}
-              placeholder="e.g. Indiranagar, Bengaluru"
-              className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-              required
-            />
-          </div>
 
-          {/* Return Locality if Custom or My Place */}
-          {returnType === 'CUSTOM_LOCATION' && (
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">Return Landmark / Spot *</label>
-              <input
-                type="text"
-                value={returnLocality}
-                onChange={(e) => setReturnLocality(e.target.value)}
-                placeholder="e.g. Indiranagar Metro Station Gate 2"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                required
-              />
+            {locationSuccessMsg && (
+              <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                {locationSuccessMsg}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">
+                  Building / Flat / House No. <span className="text-brand">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={buildingHouseNo}
+                  onChange={(e) => setBuildingHouseNo(e.target.value)}
+                  placeholder="e.g. Flat 304 / Stanza Kimberly"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">Street / Landmark</label>
+                <input
+                  type="text"
+                  value={streetArea}
+                  onChange={(e) => setStreetArea(e.target.value)}
+                  placeholder="e.g. Mylasandra Main Rd"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">
+                  Locality / City <span className="text-brand">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={locality}
+                  onChange={(e) => setLocality(e.target.value)}
+                  placeholder="e.g. BEML Layout 7th Phase, Bengaluru"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">PIN Code</label>
+                <input
+                  type="text"
+                  value={pincode}
+                  onChange={(e) => setPincode(e.target.value)}
+                  placeholder="e.g. 560060"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Description */}
           <div>

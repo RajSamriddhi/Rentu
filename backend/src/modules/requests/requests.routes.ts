@@ -27,6 +27,9 @@ const createRequestSchema = z.object({
   pickup_locality: z.string().optional(),
   return_type: z.string().optional().default('LENDER_LOCATION'),
   return_locality: z.string().optional(),
+  will_pickup: z.boolean().optional().default(true),
+  will_drop_back: z.boolean().optional().default(true),
+  delivery_fee: z.number().min(0).optional().default(0),
 });
 
 const updateRequestSchema = z.object({
@@ -40,12 +43,17 @@ const updateRequestSchema = z.object({
   duration_days: z.number().int().positive().optional(),
   offered_amount: z.number().min(0).optional(),
   locality: z.string().optional(),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
   status: z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
   image_url: z.string().nullable().optional(),
   pickup_type: z.string().optional(),
   pickup_locality: z.string().optional(),
   return_type: z.string().optional(),
   return_locality: z.string().optional(),
+  will_pickup: z.boolean().optional(),
+  will_drop_back: z.boolean().optional(),
+  delivery_fee: z.number().min(0).optional(),
 });
 
 
@@ -58,7 +66,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
@@ -123,7 +133,9 @@ router.get('/:id', async (req: Request, res: Response, next) => {
       `SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
@@ -174,9 +186,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, status)
+        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, will_pickup, will_drop_back, delivery_fee, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 'OPEN')
        RETURNING *`,
       [
         req.user!.id,
@@ -199,6 +211,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.pickup_locality || null,
         validated.return_type || 'LENDER_LOCATION',
         validated.return_locality || null,
+        validated.will_pickup ?? true,
+        validated.will_drop_back ?? true,
+        validated.delivery_fee ?? 0,
       ]);
     const createdRequest = result.rows[0];
     const seekerId = req.user!.id;
@@ -392,6 +407,26 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.return_locality !== undefined) {
       values.push(validated.return_locality);
       fields.push(`return_locality = $${values.length}`);
+    }
+    if (validated.address_text !== undefined) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== undefined) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.will_pickup !== undefined) {
+      values.push(validated.will_pickup);
+      fields.push(`will_pickup = $${values.length}`);
+    }
+    if (validated.will_drop_back !== undefined) {
+      values.push(validated.will_drop_back);
+      fields.push(`will_drop_back = $${values.length}`);
+    }
+    if (validated.delivery_fee !== undefined) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
     }
 
     if (fields.length === 0) {
