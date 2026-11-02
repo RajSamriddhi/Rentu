@@ -40,10 +40,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-canvas text-ink-secondary">
-              <Package className="w-8 h-8 text-ink-secondary/60 mb-1" />
-              <span className="text-[11px] font-bold text-ink-secondary">No image</span>
-            </div>
+            <div className="w-full h-full bg-zinc-100 dark:bg-zinc-800/60" />
           )}
 
           {/* Floating Favorite Heart Icon */}

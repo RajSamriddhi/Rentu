@@ -38,6 +38,7 @@ import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest, UserReview } from '../lib/types';
 import { ItemCard } from './ItemCard';
+import { RequestCard } from './RequestCard';
 import { EditProfileModal } from './EditProfileModal';
 import { HelpSupportModal } from './HelpSupportModal';
 import { EditItemModal } from './EditItemModal';
@@ -747,81 +748,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
             ) : (
-              myRequests.map((req) => (
-                <div 
-                  key={req.id} 
-                  onClick={() => setEditingRequest(req)}
-                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-brand hover:shadow-sm transition-all cursor-pointer group"
-                >
-                  <div className="flex items-start gap-3.5">
-                    {/* Always display an image container; if no picture was uploaded, show a clean "No image" placeholder */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0 flex flex-col items-center justify-center text-ink-secondary">
-                      {req.image_url ? (
-                        <img 
-                          src={req.image_url} 
-                          alt={req.item_name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-1 text-center">
-                          <Package className="w-5 h-5 text-ink-secondary/60 mb-0.5" />
-                          <span className="text-[9px] font-bold text-ink-secondary">No image</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <h4 className="font-extrabold text-ink text-sm sm:text-base group-hover:text-brand transition-colors">
-                          {req.item_name}
-                        </h4>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
-                          req.status === 'OPEN'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : req.status === 'FULFILLED'
-                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                            : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
-                        }`}>
-                          {req.status}
-                        </span>
-                        {req.category && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
-                            {req.category}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
-                        <span>•</span>
-                        <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
-                        {req.duration_days ? (
-                          <>
-                            <span>•</span>
-                            <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
-                          </>
-                        ) : null}
-                        <span>•</span>
-                        <span>{getReachDistance(req, user)}</span>
-                      </p>
-                      {req.description && (
-                        <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
-                          {req.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    <span className="text-xs font-bold text-ink-secondary group-hover:text-brand transition-colors hidden sm:inline">
-                      Edit Request
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
-                  </div>
-                </div>
-              ))
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {myRequests.map((req) => (
+                  <RequestCard
+                    key={req.id}
+                    request={req}
+                    onClick={() => setEditingRequest(req)}
+                    onEdit={(r) => setEditingRequest(r)}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}

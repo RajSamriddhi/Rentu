@@ -27,6 +27,7 @@ import {
 import { api } from '../lib/api';
 import { PublicUserProfile, Item, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
+import { RequestCard } from './RequestCard';
 import { useAuth } from '../lib/authContext';
 import { formatFullAddress } from '../lib/location';
 
@@ -555,75 +556,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {profile.requests.map((req) => (
-                  <div
+                  <RequestCard
                     key={req.id}
-                    className="p-4 sm:p-5 bg-surface border border-divider hover:border-brand/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all"
-                  >
-                    <div className="flex items-start gap-3.5">
-                      {req.image_url ? (
-                        <div className="w-14 h-14 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0">
-                          <img src={req.image_url} alt={req.item_name} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <div className="w-14 h-14 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
-                          <Sparkles className="w-6 h-6" />
-                        </div>
-                      )}
-
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-extrabold text-ink text-sm sm:text-base">{req.item_name}</h4>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-brand-soft text-brand">
-                            {req.category || 'Gear'}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
-                            {req.status === 'OPEN' ? '🟢 Open to Rent' : '✓ Fulfilled'}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-ink-secondary line-clamp-2 max-w-xl">
-                          {req.description}
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-secondary pt-1">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-brand" />
-                            <span>Needed: {req.start_date || 'Flexible'} {req.start_time ? `(${req.start_time})` : ''}</span>
-                          </span>
-
-                          {req.end_date && (
-                            <span className="flex items-center gap-1">
-                              <span>Return: {req.end_date} {req.end_time ? `(${req.end_time})` : ''}</span>
-                            </span>
-                          )}
-
-                          <span className="font-bold text-ink">
-                            Offered: {Number(req.offered_amount) > 0 ? `₹${req.offered_amount}` : 'Free Borrow / Gift'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {!isOwnProfile && (
-                      <button
-                        onClick={() => {
-                          if (!isAuthenticated && onOpenAuth) {
-                            onOpenAuth();
-                          } else if (onClaimRequest) {
-                            onClaimRequest(req);
-                          } else if (onOpenChatWithUser) {
-                            onOpenChatWithUser(profile.id, profile.name);
-                          }
-                        }}
-                        className="btn-primary text-xs px-4 py-2 font-bold shrink-0 shadow-pink cursor-pointer inline-flex items-center gap-1.5"
-                      >
-                        <Gift className="w-3.5 h-3.5" />
-                        <span>Lend This Gear</span>
-                      </button>
-                    )}
-                  </div>
+                    request={req}
+                    onClick={() => {
+                      if (!isAuthenticated && onOpenAuth) {
+                        onOpenAuth();
+                      } else if (onClaimRequest) {
+                        onClaimRequest(req);
+                      }
+                    }}
+                    onClaim={onClaimRequest}
+                  />
                 ))}
               </div>
             )}
