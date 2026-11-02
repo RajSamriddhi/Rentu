@@ -887,7 +887,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
 
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
-        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
          FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
         [id]

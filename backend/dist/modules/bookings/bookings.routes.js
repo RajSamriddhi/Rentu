@@ -220,7 +220,8 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
        RETURNING *`, [status, pickupCode, id]);
         // Sync item status if accepted or completed
         if (status === 'ACCEPTED') {
-            await (0, db_1.query)(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+            // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
+            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
             // Add notification chat message
             await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
          VALUES ($1, $2, $3, '🎉 Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`, [id, booking.lender_id, booking.borrower_id]);
@@ -269,8 +270,8 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $2
        RETURNING *`, [returnCode, id]);
-        // Keep item status as RENTED
-        await (0, db_1.query)(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+        // Keep item status as AVAILABLE since item is rented only for agreed dates
+        await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         // Send chat system message
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, '🤝 Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);

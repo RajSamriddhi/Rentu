@@ -429,6 +429,9 @@ const runMigrations = async () => {
       SET latitude = 12.9240, longitude = 77.5340 
       WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
         AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
+      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
     `);
         await client.query('COMMIT');
         console.log('Database migrations completed successfully!');

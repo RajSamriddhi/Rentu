@@ -52990,7 +52990,8 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.pincode, i.pincode) AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude, 
-        i.status, i.available_for_borrowing,
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
@@ -53061,7 +53062,8 @@ router2.get("/:id", async (req, res, next) => {
         COALESCE(u.pincode, i.pincode) AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude,
-        i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
         COALESCE(u.locality, i.locality) AS owner_locality,
@@ -54107,7 +54109,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       [status, pickupCode, id]
     );
     if (status === "ACCEPTED") {
-      await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
          VALUES ($1, $2, $3, '\u{1F389} Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
@@ -54160,7 +54162,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
        RETURNING *`,
       [returnCode, id]
     );
-    await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, '\u{1F91D} Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`,
@@ -55265,7 +55267,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     let userRequests = [];
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
-        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
          FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
         [id]
@@ -55881,7 +55883,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       `INSERT INTO items (
         owner_id, title, description, category, price_per_day, max_duration_days, 
         image_urls, locality, address_text, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'RENTED')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`,
       [
         lenderId,
@@ -66482,6 +66484,9 @@ var runMigrations = async () => {
       SET latitude = 12.9240, longitude = 77.5340 
       WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
         AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
+      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
     `);
     await client.query("COMMIT");
     console.log("Database migrations completed successfully!");

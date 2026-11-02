@@ -853,7 +853,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         let userItems = [];
         let userRequests = [];
         if (!isBlocked && !isBlockedBy) {
-            const itemsRes = await (0, db_1.query)(`SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+            const itemsRes = await (0, db_1.query)(`SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
          FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`, [id]);
             userItems = itemsRes.rows;

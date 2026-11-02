@@ -318,7 +318,7 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         const itemRes = await (0, db_1.query)(`INSERT INTO items (
         owner_id, title, description, category, price_per_day, max_duration_days, 
         image_urls, locality, address_text, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'RENTED')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`, [
             lenderId,
             itemTitle,

@@ -276,7 +276,8 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
 
     // Sync item status if accepted or completed
     if (status === 'ACCEPTED') {
-      await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+      // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       // Add notification chat message
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
@@ -343,8 +344,8 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
       [returnCode, id]
     );
 
-    // Keep item status as RENTED
-    await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+    // Keep item status as AVAILABLE since item is rented only for agreed dates
+    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
 
     // Send chat system message
     await query(
