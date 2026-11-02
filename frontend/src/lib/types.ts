@@ -286,13 +286,18 @@ export interface AppNotification {
   id: string;
   user_id: string;
   sender_id?: string;
+  booking_id?: string;
+  message_id?: string;
   type: string;
   title: string;
   body: string;
   reference_id?: string;
   reference_type?: string;
+  read_at?: string;
   is_read: boolean;
   created_at: string;
+  sender_name?: string;
+  sender_avatar?: string;
 }
 
 export interface SupportTicket {
