@@ -55,6 +55,8 @@ export interface Item {
   owner_name?: string;
   owner_avatar?: string;
   owner_locality?: string;
+  owner_address_text?: string;
+  owner_pincode?: string;
   owner_trust_score?: number;
   owner_bio?: string;
   owner_phone?: string;
@@ -218,6 +220,8 @@ export interface CommunityLeaderboardMember {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   bio?: string;
   rating: number;
@@ -259,6 +263,8 @@ export interface PublicUserProfile {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
@@ -330,6 +336,8 @@ export interface UserSearchResult {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   bio?: string;
   rating: number;

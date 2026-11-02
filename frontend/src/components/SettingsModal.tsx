@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 import { api } from '../lib/api';
+import { formatFullAddress } from '../lib/location';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -159,7 +160,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-0.5 min-w-0">
                 <div className="text-xs font-bold text-ink flex items-center gap-1.5 truncate">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                  <span className="truncate">{user?.locality || 'BEML Layout 7th Phase, Bengaluru'}</span>
+                  <span className="truncate">{formatFullAddress(user)}</span>
                 </div>
                 <p className="text-[11px] text-ink-secondary">
                   Used as your center point for proximity filters and distance calculations.
@@ -250,3 +251,4 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     </div>
   );
 };
+

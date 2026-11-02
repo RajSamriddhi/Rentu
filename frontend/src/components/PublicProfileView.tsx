@@ -28,6 +28,7 @@ import { api } from '../lib/api';
 import { PublicUserProfile, Item, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
 import { useAuth } from '../lib/authContext';
+import { formatFullAddress } from '../lib/location';
 
 interface PublicProfileViewProps {
   userId: string;
@@ -328,8 +329,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-secondary font-medium mt-1">
                   <span className="flex items-center gap-1 text-ink">
-                    <MapPin className="w-3.5 h-3.5 text-brand" />
-                    <span>{profile.locality || 'Bengaluru, India'}</span>
+                    <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                    <span>{formatFullAddress(profile)}</span>
                   </span>
                   <span className="text-divider">•</span>
                   <span className="flex items-center gap-1">

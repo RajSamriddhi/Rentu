@@ -174,3 +174,42 @@ export const detectCurrentLocation = async (): Promise<ResolvedLocation> => {
   const coords = await getCoordinates();
   return await reverseGeocode(coords.latitude, coords.longitude);
 };
+
+/**
+ * Formats the full complete location string of a user, owner, or item:
+ * Includes Building/Flat/House, Street/Road, Locality/Neighborhood, and PIN code.
+ * De-duplicates redundant sub-strings cleanly.
+ */
+export function formatFullAddress(entity?: {
+  address_text?: string | null;
+  locality?: string | null;
+  pincode?: string | null;
+  owner_locality?: string | null;
+} | null): string {
+  if (!entity) return 'Bengaluru, India';
+
+  const address = (entity.address_text || '').trim();
+  const locality = (entity.locality || entity.owner_locality || '').trim();
+  const pincode = (entity.pincode || '').trim();
+
+  const rawParts = `${address}, ${locality}`
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const part of rawParts) {
+    const lower = part.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      parts.push(part);
+    }
+  }
+
+  if (pincode && !seen.has(pincode.toLowerCase())) {
+    parts.push(pincode);
+  }
+
+  return parts.join(', ') || locality || address || 'Bengaluru, India';
+}

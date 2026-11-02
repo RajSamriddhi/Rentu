@@ -52883,14 +52883,21 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     let sql = `
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude, 
+        i.status, i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -52947,10 +52954,18 @@ router2.get("/:id", async (req, res, next) => {
     const result = await query(
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, i.address_text, i.latitude, i.longitude,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude,
         i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
       JOIN users u ON i.owner_id = u.id
@@ -54689,6 +54704,8 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         id, 
         name, 
         locality, 
+        address_text,
+        pincode,
         avatar_url, 
         banner_url, 
         bio, 
@@ -54773,6 +54790,8 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       id: user.id,
       name: user.name || "Community Member",
       locality: user.locality || "Bengaluru",
+      address_text: user.address_text || "",
+      pincode: user.pincode || "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
       bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
@@ -54871,6 +54890,19 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
+    if (validated.locality !== void 0 || validated.address_text !== void 0 || validated.latitude !== void 0 || validated.longitude !== void 0 || cleanPincode !== void 0) {
+      await query(
+        `UPDATE items 
+         SET locality = COALESCE($1, locality),
+             address_text = COALESCE($2, address_text),
+             pincode = COALESCE($3, pincode),
+             latitude = COALESCE($4, latitude),
+             longitude = COALESCE($5, longitude),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE owner_id = $6`,
+        [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]
+      ).catch((err) => console.error("Failed to sync items location:", err));
+    }
     return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
   } catch (error) {
     next(error);

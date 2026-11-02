@@ -157,14 +157,21 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         let sql = `
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude, 
+        i.status, i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -226,10 +233,18 @@ router.get('/:id', async (req, res, next) => {
         const { id } = req.params;
         const result = await (0, db_1.query)(`SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, i.address_text, i.latitude, i.longitude,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude,
         i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
       JOIN users u ON i.owner_id = u.id

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
+import { formatFullAddress } from '../lib/location';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest, UserReview } from '../lib/types';
@@ -406,10 +407,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
 
           {/* Top Left: Locality Pill */}
-          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10">
-            <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md">
-              <MapPin className="w-3.5 h-3.5 text-brand" />
-              <span>{user?.locality || user?.address_text || 'Location not set'}</span>
+          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 max-w-[85%]">
+            <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md max-w-full">
+              <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+              <span className="truncate">{formatFullAddress(user)}</span>
             </div>
           </div>
 
@@ -543,11 +544,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <button
                 onClick={() => setIsEditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer max-w-full"
                 title="Click to update your location"
               >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{user?.locality || user?.address_text || 'Set Your Location'}</span>
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{formatFullAddress(user)}</span>
               </button>
             </div>
 

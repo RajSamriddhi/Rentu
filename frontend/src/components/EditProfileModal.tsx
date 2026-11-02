@@ -181,9 +181,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      if (loc.building_no) {
-        setBuildingHouseNo(loc.building_no);
-      }
+      // DO NOT overwrite buildingHouseNo - user must manually type or keep their building/flat/house
       if (loc.address_text) {
         setStreetArea(loc.address_text);
       }
@@ -195,7 +193,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       }
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
-      setLocationSuccessMsg(`Current location detected (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
+
+      // Clean friendly location summary without exposing raw latitude/longitude coordinates
+      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
+      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
       } catch {}
@@ -208,18 +209,24 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setErrorMsg('');
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      const fullAddress = [buildingHouseNo.trim(), streetArea.trim()].filter(Boolean).join(', ');
+      const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
 
       await api.updateProfile({
         name: name.trim(),
         bio: bio.trim(),
         phone: phone.trim() || undefined,
         locality: locality.trim() || undefined,
-        address_text: fullAddress || undefined,
+        address_text: fullAddress,
         pincode: pincode.trim() || undefined,
         latitude,
         longitude,
@@ -496,7 +503,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in">
                     <Check className="w-3.5 h-3.5 stroke-[3] shrink-0" />
                     <span>
-                      {locationSuccessMsg || `Coordinates active (${latitude?.toFixed(4)}, ${longitude?.toFixed(4)})`}
+                      {locationSuccessMsg || 'GPS Location pinpointed & verified'}
                     </span>
                   </div>
                 )}
@@ -507,13 +514,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 {/* Building / House / Flat No. */}
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
-                    Building / Flat / House No.
+                    Building / Flat / House No. <span className="text-brand font-black">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={buildingHouseNo}
                     onChange={(e) => setBuildingHouseNo(e.target.value)}
-                    placeholder="e.g. Flat 304, Sunshine Apts / House #12"
+                    placeholder="e.g. Stanza Living Kimberly / Flat 304, Sunshine Apts"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>

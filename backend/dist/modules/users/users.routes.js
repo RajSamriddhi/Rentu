@@ -630,6 +630,8 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         id, 
         name, 
         locality, 
+        address_text,
+        pincode,
         avatar_url, 
         banner_url, 
         bio, 
@@ -703,6 +705,8 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             id: user.id,
             name: user.name || 'Community Member',
             locality: user.locality || 'Bengaluru',
+            address_text: user.address_text || '',
+            pincode: user.pincode || '',
             avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,
             banner_url: user.banner_url || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80',
             bio: user.bio || 'Neighbor & Gear Sharer ⚡ Passionate about circular economy and community access over ownership.',
@@ -800,6 +804,17 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
     `;
         const result = await (0, db_1.query)(updateSql, values);
         const updatedUser = result.rows[0];
+        // Synchronize owner's active gear listings with updated location
+        if (validated.locality !== undefined || validated.address_text !== undefined || validated.latitude !== undefined || validated.longitude !== undefined || cleanPincode !== undefined) {
+            await (0, db_1.query)(`UPDATE items 
+         SET locality = COALESCE($1, locality),
+             address_text = COALESCE($2, address_text),
+             pincode = COALESCE($3, pincode),
+             latitude = COALESCE($4, latitude),
+             longitude = COALESCE($5, longitude),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE owner_id = $6`, [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]).catch((err) => console.error('Failed to sync items location:', err));
+        }
         return (0, response_1.sendSuccess)(res, updatedUser, 'Profile updated successfully ✨');
     }
     catch (error) {

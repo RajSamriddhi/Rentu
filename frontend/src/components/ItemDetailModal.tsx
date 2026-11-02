@@ -22,7 +22,7 @@ import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, formatFullAddress } from '../lib/location';
 import { RentalCalendar } from './RentalCalendar';
 import { getReachDistance } from '../lib/distance';
 
@@ -57,8 +57,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   // Available for borrowing status (set by owner during listing/editing)
   const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
   const reachDistanceText = item ? getReachDistance(item, user) : 'Nearby';
-  const itemLocation = item?.locality || item?.owner_locality || item?.address_text || 'Bengaluru';
-  const ownerLocation = item?.owner_locality || item?.locality || 'Bengaluru';
+  const itemLocation = item ? formatFullAddress({
+    address_text: item.address_text || item.owner_address_text,
+    locality: item.locality || item.owner_locality,
+    pincode: item.pincode || item.owner_pincode,
+  }) : 'Bengaluru';
+  const ownerLocation = item ? formatFullAddress({
+    address_text: item.owner_address_text || item.address_text,
+    locality: item.owner_locality || item.locality,
+    pincode: item.owner_pincode || item.pincode,
+  }) : 'Bengaluru';
 
   // Owner detection: checks user id or firebase_uid against item.owner_id
   const isOwner = Boolean(
