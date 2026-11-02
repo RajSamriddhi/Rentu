@@ -131,7 +131,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
                 </div>
                 <h3 className="font-extrabold text-base text-ink">Create, Flex & Return</h3>
                 <p className="text-xs text-ink-secondary leading-relaxed">
-                  Pick up the equipment, shoot your project or enjoy your weekend getaway, and return on time. Leave a review to boost each other's community karma!
+                  Pick up the equipment, shoot your project or enjoy your weekend getaway, and return on time. Leave a review to boost each other's community trust score!
                 </p>
                 <div className="pt-2 text-[11px] font-bold text-brand flex items-center gap-1">
                   <span>5-star reviews build score</span>
@@ -184,7 +184,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
                 </div>
                 <h3 className="font-extrabold text-base text-ink">List In Under 2 Minutes</h3>
                 <p className="text-xs text-ink-secondary leading-relaxed">
-                  Snap a photo of your camera, projector, or camping kit. Set your daily price or offer it for ₹0/day as a free community share to earn gift economy karma!
+                  Snap a photo of your camera, projector, or camping kit. Set your daily price or offer it for ₹0/day as a free community share to build community trust!
                 </p>
                 <div className="pt-2 text-[11px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
                   <span>Free or paid rentals</span>

@@ -54,7 +54,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'items' | 'requests' | 'reviews' | 'about'>('items');
+  const [activeTab, setActiveTab] = useState<'items' | 'requests' | 'reviews'>('items');
   const [copiedLink, setCopiedLink] = useState(false);
   const [reviewTypeFilter, setReviewTypeFilter] = useState<'ALL' | 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>('ALL');
 
@@ -482,27 +482,14 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 : 'border-transparent text-ink-secondary hover:text-ink'
             }`}
           >
-            <Star className="w-4 h-4" />
-            <span>Reviews & Karma</span>
+            <ShieldCheck className="w-4 h-4" />
+            <span>Reviews & Trust</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
               activeTab === 'reviews' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
             }`}>
               {profile.reviews.length}
             </span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('about')}
-            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'about'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-ink-secondary hover:text-ink'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Trust & Verification</span>
-          </button>
-
         </div>
 
         {/* TAB 1: LISTED PRODUCTS */}
@@ -586,22 +573,22 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           </div>
         )}
 
-        {/* TAB 3: REVIEWS & KARMA */}
+        {/* TAB 3: REVIEWS & TRUST VERIFICATION */}
         {activeTab === 'reviews' && (
           <div className="space-y-6 animate-in fade-in duration-200">
             
-            {/* Reviews Summary Header */}
+            {/* Reviews & Trust Summary Header */}
             <div className="bg-surface border border-divider rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-xs">
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-1.5 text-xs font-black uppercase text-amber-500 tracking-wider">
-                  <Star className="w-4 h-4 fill-amber-400" />
-                  <span>Peer Verified Reputation</span>
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Peer Verified Reputation & Trust</span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-ink font-display">
-                  Community Reviews for {profile.name}
+                  Reviews & Trust Standing for {profile.name}
                 </h3>
                 <p className="text-xs text-ink-secondary">
-                  Combined Trust Rating across all 3 community roles: Gear Owner, Renter, and Free Community Lender.
+                  Community verification, trust score, and peer ratings across Gear Owner, Renter, and Free Community Lender roles.
                 </p>
               </div>
 
@@ -625,6 +612,39 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     Trust Score
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Trust & Safety Verification Badges */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  <span>Identity Verified</span>
+                </div>
+                <p className="text-[11px] text-ink-secondary">
+                  Phone and verified community neighbor confirmed on Rentu⁺.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                  <Clock className="w-4 h-4 text-blue-500" />
+                  <span>100% Punctuality</span>
+                </div>
+                <p className="text-[11px] text-ink-secondary">
+                  Always completes scheduled pick up and handoff returns on time.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                  <ShieldCheck className="w-4 h-4 text-purple-500" />
+                  <span>Gear Care Guarantee</span>
+                </div>
+                <p className="text-[11px] text-ink-secondary">
+                  Maintains pristine cleanliness and equipment safety standards.
+                </p>
               </div>
             </div>
 
@@ -810,63 +830,6 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               );
             })()}
 
-          </div>
-        )}
-
-        {/* TAB 4: TRUST & ABOUT */}
-        {activeTab === 'about' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="bg-surface border border-divider rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
-              
-              <div>
-                <h3 className="text-lg font-black text-ink font-display">
-                  About {profile.name}
-                </h3>
-                <p className="text-xs text-ink-secondary mt-1">
-                  Verified background and neighbor standing in Rentu⁺
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    <span>Identity Verified</span>
-                  </div>
-                  <p className="text-[11px] text-ink-secondary">
-                    Phone and government/student identification confirmed on Rentu.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                    <Clock className="w-4 h-4 text-blue-500" />
-                    <span>100% Punctuality</span>
-                  </div>
-                  <p className="text-[11px] text-ink-secondary">
-                    Always completes scheduled pick up and handoff returns on time.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                    <ShieldCheck className="w-4 h-4 text-purple-500" />
-                    <span>Gear Care Guarantee</span>
-                  </div>
-                  <p className="text-[11px] text-ink-secondary">
-                    Maintains pristine cleanliness and equipment safety standards.
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-divider space-y-2">
-                <h4 className="text-xs font-extrabold text-ink uppercase tracking-wider">Community Bio</h4>
-                <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed">
-                  {profile.bio || 'Active peer in our anti-ownership circular network.'}
-                </p>
-              </div>
-
-            </div>
           </div>
         )}
 
