@@ -14,9 +14,16 @@ import supportRoutes from './modules/support/support.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import { errorHandler } from './middleware/error';
 import { sendError, sendSuccess } from './middleware/response';
+import { authMiddleware, AuthenticatedRequest } from './middleware/auth';
 import { query } from './config/db';
 import { ENV } from './config/env';
 import { runMigrations } from './db/migrate';
+import { 
+  securityHeaders, 
+  authRateLimiter, 
+  generalApiRateLimiter, 
+  isAllowedOrigin 
+} from './middleware/security';
 
 let migrationsPromise: Promise<void> | null = null;
 const ensureMigrations = async () => {
@@ -32,10 +39,31 @@ const ensureMigrations = async () => {
 export const createApp = () => {
   const app = express();
 
-  // Middleware
-  app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true }));
+  // 1. OWASP HTTP Security Headers
+  app.use(securityHeaders);
+
+  // 2. Strict CORS Whitelist Protection
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Cross-Origin Request Blocked by Security Policy'));
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    })
+  );
+
+  // 3. Request body parsers with safe limits (prevents memory exhaustion DoS)
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+  // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
+  app.use(generalApiRateLimiter);
 
   // Auto-run migrations in serverless environment on cold start
   app.use(async (req, res, next) => {
@@ -47,35 +75,29 @@ export const createApp = () => {
     next();
   });
 
-  // Health Check (Matches both /api/health and /health)
+  // Health Check (Matches both /api/health and /health) - Sanitized so no internal endpoints leak
   app.get(['/api/health', '/health'], async (req, res) => {
     let dbStatus = 'disconnected';
     try {
       await query('SELECT 1');
       dbStatus = 'connected';
-    } catch (err: any) {
-      dbStatus = `error: ${err.message}`;
+    } catch {
+      dbStatus = 'unreachable';
     }
 
     return sendSuccess(res, {
       status: 'healthy',
-      app: 'Rentu⁺ Headless REST API',
-      version: '1.0.0',
+      app: 'Rentu⁺ REST API',
       database: dbStatus,
-      supabase: {
-        configured: Boolean(ENV.SUPABASE_URL && ENV.SUPABASE_ANON_KEY),
-        url: ENV.SUPABASE_URL || 'not_configured',
-      },
-      firebase: {
-        configured: Boolean(ENV.FIREBASE_PROJECT_ID),
-        projectId: ENV.FIREBASE_PROJECT_ID,
-      },
       timestamp: new Date().toISOString(),
     });
   });
 
-  // Dedicated migration trigger endpoint
-  app.get(['/api/migrate', '/migrate'], async (req, res) => {
+  // Dedicated migration trigger endpoint - Strictly Admin Protected
+  app.get(['/api/migrate', '/migrate'], authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user?.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Only authorized platform administrators can execute migrations', 403);
+    }
     try {
       await runMigrations();
       return sendSuccess(res, { migrated: true, timestamp: new Date().toISOString() }, 'Database schema updated successfully.');
@@ -84,8 +106,8 @@ export const createApp = () => {
     }
   });
 
-  // Mount API modules (supporting both with and without /api prefix)
-  app.use(['/api/auth', '/auth'], authRoutes);
+  // Mount API modules with specific brute-force protection on Auth
+  app.use(['/api/auth', '/auth'], authRateLimiter, authRoutes);
   app.use(['/api/items', '/items'], itemsRoutes);
   app.use(['/api/requests', '/requests'], requestsRoutes);
   app.use(['/api/bookings', '/bookings'], bookingsRoutes);

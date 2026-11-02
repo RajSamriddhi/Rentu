@@ -52317,9 +52317,12 @@ var isRemote = ENV.DATABASE_URL.includes("supabase.co") || ENV.DATABASE_URL.incl
 var pool = new Pool({
   connectionString: ENV.DATABASE_URL,
   ssl: isRemote ? { rejectUnauthorized: false } : void 0,
-  max: 10,
+  max: 15,
   idleTimeoutMillis: 3e4,
-  connectionTimeoutMillis: 5e3
+  connectionTimeoutMillis: 5e3,
+  statement_timeout: 1e4,
+  // 10s query timeout prevents runaway queries from locking database tables
+  query_timeout: 1e4
 });
 pool.on("error", (err) => {
   console.error("Unexpected error on idle PostgreSQL client:", err);
@@ -66096,11 +66099,20 @@ var errorHandler = (err, req, res, next) => {
     }));
     return sendError(res, "VALIDATION_ERROR", "Input validation failed", 400, details);
   }
-  console.error("Unhandled Server Error:", err);
+  console.error("[SERVER ERROR AUDIT]:", {
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    path: req.path,
+    method: req.method,
+    ip: req.headers["x-forwarded-for"] || req.ip,
+    error: err.message,
+    stack: ENV.NODE_ENV === "production" ? void 0 : err.stack
+  });
+  const isProd = ENV.NODE_ENV === "production";
+  const safeMessage = isProd ? "An unexpected error occurred. Please try again later." : err.message || "An unexpected internal error occurred";
   return sendError(
     res,
     "INTERNAL_SERVER_ERROR",
-    err.message || "An unexpected internal error occurred",
+    safeMessage,
     500
   );
 };
@@ -66541,6 +66553,93 @@ if (require.main === module) {
   runMigrations().then(() => process.exit(0)).catch(() => process.exit(1));
 }
 
+// src/middleware/security.ts
+var securityHeaders = (req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "0");
+  if (ENV.NODE_ENV === "production" || req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), payment=()");
+  res.removeHeader("X-Powered-By");
+  next();
+};
+var createRateLimiter = (options) => {
+  const buckets = /* @__PURE__ */ new Map();
+  const { windowMs, maxRequests, keyPrefix = "rl", errorMessage = "Too many requests. Please try again later." } = options;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets.entries()) {
+      if (now - bucket.lastRefill > windowMs * 2) {
+        buckets.delete(key);
+      }
+    }
+  }, 5 * 60 * 1e3).unref();
+  return (req, res, next) => {
+    const rawIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "unknown_ip";
+    const clientKey = `${keyPrefix}:${rawIp}`;
+    const now = Date.now();
+    let bucket = buckets.get(clientKey);
+    if (!bucket) {
+      bucket = { tokens: maxRequests - 1, lastRefill: now };
+      buckets.set(clientKey, bucket);
+      res.setHeader("X-RateLimit-Limit", maxRequests);
+      res.setHeader("X-RateLimit-Remaining", bucket.tokens);
+      return next();
+    }
+    const elapsed = now - bucket.lastRefill;
+    if (elapsed > windowMs) {
+      bucket.tokens = maxRequests;
+      bucket.lastRefill = now;
+    } else {
+      const tokensToAdd = Math.floor(elapsed / windowMs * maxRequests);
+      if (tokensToAdd > 0) {
+        bucket.tokens = Math.min(maxRequests, bucket.tokens + tokensToAdd);
+        bucket.lastRefill = now;
+      }
+    }
+    if (bucket.tokens > 0) {
+      bucket.tokens -= 1;
+      res.setHeader("X-RateLimit-Limit", maxRequests);
+      res.setHeader("X-RateLimit-Remaining", bucket.tokens);
+      return next();
+    }
+    const retryAfterSec = Math.ceil((windowMs - (now - bucket.lastRefill)) / 1e3);
+    res.setHeader("Retry-After", Math.max(1, retryAfterSec));
+    res.setHeader("X-RateLimit-Limit", maxRequests);
+    res.setHeader("X-RateLimit-Remaining", 0);
+    return sendError(res, "TOO_MANY_REQUESTS", errorMessage, 429);
+  };
+};
+var authRateLimiter = createRateLimiter({
+  windowMs: 60 * 1e3,
+  maxRequests: 20,
+  keyPrefix: "auth",
+  errorMessage: "Too many authentication attempts. Please wait a minute before trying again."
+});
+var generalApiRateLimiter = createRateLimiter({
+  windowMs: 60 * 1e3,
+  maxRequests: 200,
+  keyPrefix: "api",
+  errorMessage: "Request limit exceeded. Please slow down your requests."
+});
+var isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.toLowerCase();
+    if (host === "rentu.site" || host === "www.rentu.site") return true;
+    if (host.endsWith(".vercel.app") || host.endsWith(".up.railway.app")) return true;
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 // src/app.ts
 var migrationsPromise = null;
 var ensureMigrations = async () => {
@@ -66554,9 +66653,24 @@ var ensureMigrations = async () => {
 };
 var createApp = () => {
   const app2 = (0, import_express13.default)();
-  app2.use((0, import_cors.default)({ origin: true, credentials: true }));
-  app2.use(import_express13.default.json({ limit: "10mb" }));
-  app2.use(import_express13.default.urlencoded({ extended: true }));
+  app2.use(securityHeaders);
+  app2.use(
+    (0, import_cors.default)({
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error("Cross-Origin Request Blocked by Security Policy"));
+        }
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+    })
+  );
+  app2.use(import_express13.default.json({ limit: "2mb" }));
+  app2.use(import_express13.default.urlencoded({ extended: true, limit: "2mb" }));
+  app2.use(generalApiRateLimiter);
   app2.use(async (req, res, next) => {
     try {
       await ensureMigrations();
@@ -66570,26 +66684,20 @@ var createApp = () => {
     try {
       await query("SELECT 1");
       dbStatus = "connected";
-    } catch (err) {
-      dbStatus = `error: ${err.message}`;
+    } catch {
+      dbStatus = "unreachable";
     }
     return sendSuccess(res, {
       status: "healthy",
-      app: "Rentu\u207A Headless REST API",
-      version: "1.0.0",
+      app: "Rentu\u207A REST API",
       database: dbStatus,
-      supabase: {
-        configured: Boolean(ENV.SUPABASE_URL && ENV.SUPABASE_ANON_KEY),
-        url: ENV.SUPABASE_URL || "not_configured"
-      },
-      firebase: {
-        configured: Boolean(ENV.FIREBASE_PROJECT_ID),
-        projectId: ENV.FIREBASE_PROJECT_ID
-      },
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
   });
-  app2.get(["/api/migrate", "/migrate"], async (req, res) => {
+  app2.get(["/api/migrate", "/migrate"], authMiddleware, async (req, res) => {
+    if (req.user?.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only authorized platform administrators can execute migrations", 403);
+    }
     try {
       await runMigrations();
       return sendSuccess(res, { migrated: true, timestamp: (/* @__PURE__ */ new Date()).toISOString() }, "Database schema updated successfully.");
@@ -66597,7 +66705,7 @@ var createApp = () => {
       return sendError(res, "MIGRATION_FAILED", err.message, 500);
     }
   });
-  app2.use(["/api/auth", "/auth"], auth_routes_default);
+  app2.use(["/api/auth", "/auth"], authRateLimiter, auth_routes_default);
   app2.use(["/api/items", "/items"], items_routes_default);
   app2.use(["/api/requests", "/requests"], requests_routes_default);
   app2.use(["/api/bookings", "/bookings"], bookings_routes_default);
