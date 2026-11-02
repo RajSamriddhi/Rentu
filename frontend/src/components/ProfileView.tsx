@@ -488,15 +488,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Edit Profile</span>
               </button>
 
-              <button 
-                onClick={() => setIsHelpModalOpen(true)}
-                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-amber-500 hover:text-amber-500 transition-all flex-1 sm:flex-initial"
-                title="Raise a Concern or Feedback to Admin"
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-                <span>Help & Concerns</span>
-              </button>
-
               <button
                 onClick={onOpenDropGear}
                 className="btn-primary text-xs px-4 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-pink font-bold flex-1 sm:flex-initial"
@@ -619,12 +610,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           refreshUser();
           loadData();
         }}
-      />
-
-      {/* Help & Support Modal */}
-      <HelpSupportModal
-        isOpen={isHelpModalOpen}
-        onClose={() => setIsHelpModalOpen(false)}
       />
 
       {/* Product Detail Preview Modal (Owner Preview as seen by other users) */}

@@ -18,6 +18,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { AiAssistantModal } from './components/AiAssistantModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
+import { SettingsModal } from './components/SettingsModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
@@ -125,6 +126,7 @@ export const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -204,6 +206,7 @@ export const App: React.FC = () => {
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
         onOpenHelpSupport={() => setIsHelpOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main View Router */}
@@ -439,6 +442,12 @@ export const App: React.FC = () => {
       <HelpSupportModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      {/* Account & Radar Alert Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
 
     </div>
