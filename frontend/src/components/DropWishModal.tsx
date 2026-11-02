@@ -21,7 +21,7 @@ import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
 
 interface DropWishModalProps {
   isOpen: boolean;
@@ -37,6 +37,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   onOpenAuth,
 }) => {
   const { user, isAuthenticated } = useAuth();
+  const savedLocations = getEffectiveSavedLocations(user);
 
   // Tomorrow for default start date
   const tomorrow = new Date();
@@ -606,9 +607,15 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
               
               {/* Start / Handover Date & Time */}
               <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-ink">
-                  <Calendar className="w-4 h-4 text-brand" />
-                  <span>Needed From (Start Date & Time) *</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-ink">
+                    <Calendar className="w-4 h-4 text-brand" />
+                    <span>Needed From *</span>
+                  </div>
+                  <div className="text-[10px] font-bold text-brand flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>Pickup Time</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-12 gap-2">
@@ -616,23 +623,57 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark]"
                     required
                   />
                   <input
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
+                </div>
+
+                {/* Quick start time presets */}
+                <div className="flex flex-wrap items-center gap-1 pt-1">
+                  {['09:00', '10:00', '12:00', '16:00', '18:00'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setStartTime(t)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${
+                        startTime === t
+                          ? 'bg-brand text-white border-brand shadow-xs'
+                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                      }`}
+                    >
+                      {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               {/* End / Return Date & Time */}
               <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-ink">
-                  <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>When will you return it? (Return Date) *</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-ink">
+                    <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>When will you return it? *</span>
+                  </div>
+                  <div className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>Return Time</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-12 gap-2">
@@ -641,15 +682,43 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     min={startDate}
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark]"
                     required
                   />
                   <input
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand"
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
+                </div>
+
+                {/* Quick return time presets */}
+                <div className="flex flex-wrap items-center gap-1 pt-1">
+                  {['11:00', '14:00', '18:00', '20:00', '21:30'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEndTime(t)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${
+                        endTime === t
+                          ? 'bg-brand text-white border-brand shadow-xs'
+                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                      }`}
+                    >
+                      {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -807,31 +876,46 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   <span>5. Item Destination Location</span>
                 </h3>
                 <p className="text-[11px] text-ink-secondary mt-0.5">
-                  Fill the exact location where you want the item to be at / used.
+                  Choose from your saved profile locations or enter your destination address.
                 </p>
               </div>
-
-              {/* Use My Current Location Button */}
-              <button
-                type="button"
-                onClick={handleDetectLocation}
-                disabled={isDetectingLocation}
-                className="inline-flex items-center gap-1.5 text-xs font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-3 py-1.5 rounded-xl border border-brand/20 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
-                title="Detect GPS location"
-              >
-                {isDetectingLocation ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Detecting Location...</span>
-                  </>
-                ) : (
-                  <>
-                    <Navigation className="w-3.5 h-3.5 text-brand" />
-                    <span>Use my current location 📍</span>
-                  </>
-                )}
-              </button>
             </div>
+
+            {/* Choose from Saved Profile Locations */}
+            {savedLocations.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary">
+                  Choose from saved profile locations:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {savedLocations.map((loc) => {
+                    const isSelected = locality === loc.locality && buildingHouseNo === loc.building_flat_house;
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => {
+                          setBuildingHouseNo(loc.building_flat_house || '');
+                          setStreetArea(loc.street_road_landmark || '');
+                          setLocality(loc.locality || '');
+                          setPincode(loc.pincode || '');
+                          setLocationSuccessMsg(`✓ Location selected: ${loc.label}`);
+                        }}
+                        className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                        <span className="font-extrabold">{loc.label}</span>
+                        <span className="text-[10px] opacity-75">({loc.locality || loc.building_flat_house})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {locationSuccessMsg && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in">

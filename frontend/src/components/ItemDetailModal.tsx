@@ -22,7 +22,7 @@ import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { detectCurrentLocation, formatFullAddress } from '../lib/location';
+import { getEffectiveSavedLocations, formatSavedLocationFull, formatFullAddress } from '../lib/location';
 import { RentalCalendar } from './RentalCalendar';
 import { getReachDistance } from '../lib/distance';
 
@@ -139,47 +139,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [endTime, setEndTime] = useState('18:00');
 
   // Delivery & Return Collection options based on lender listing
+  const savedLocations = getEffectiveSavedLocations(user);
+  const defaultSavedAddr = savedLocations.length > 0 && (savedLocations[0].building_flat_house || savedLocations[0].locality)
+    ? formatSavedLocationFull(savedLocations[0])
+    : (user?.address_text || user?.locality || '');
+
   const [optForDelivery, setOptForDelivery] = useState(false);
   const [optForPickup, setOptForPickup] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState(user?.locality || '');
-  const [pickupAddress, setPickupAddress] = useState(user?.locality || '');
-  const [isDetectingDeliveryLoc, setIsDetectingDeliveryLoc] = useState(false);
-  const [isDetectingPickupLoc, setIsDetectingPickupLoc] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState(defaultSavedAddr);
+  const [pickupAddress, setPickupAddress] = useState(defaultSavedAddr);
 
   React.useEffect(() => {
-    if (user?.locality) {
-      if (!deliveryAddress) setDeliveryAddress(user.locality);
-      if (!pickupAddress) setPickupAddress(user.locality);
+    if (defaultSavedAddr) {
+      if (!deliveryAddress) setDeliveryAddress(defaultSavedAddr);
+      if (!pickupAddress) setPickupAddress(defaultSavedAddr);
     }
-  }, [user]);
-
-  const handleDetectDeliveryAddress = async () => {
-    setIsDetectingDeliveryLoc(true);
-    try {
-      const loc = await detectCurrentLocation();
-      if (loc?.locality) {
-        setDeliveryAddress(loc.locality);
-      }
-    } catch (err) {
-      console.warn('GPS detection failed:', err);
-    } finally {
-      setIsDetectingDeliveryLoc(false);
-    }
-  };
-
-  const handleDetectPickupAddress = async () => {
-    setIsDetectingPickupLoc(true);
-    try {
-      const loc = await detectCurrentLocation();
-      if (loc?.locality) {
-        setPickupAddress(loc.locality);
-      }
-    } catch (err) {
-      console.warn('GPS detection failed:', err);
-    } finally {
-      setIsDetectingPickupLoc(false);
-    }
-  };
+  }, [defaultSavedAddr]);
 
   const [proposalMessage, setProposalMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -695,27 +670,52 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                             </div>
 
                             {optForDelivery && (
-                              <div className="pt-2 border-t border-divider/60 space-y-1 animate-in fade-in">
+                              <div className="pt-2 border-t border-divider/60 space-y-2 animate-in fade-in">
                                 <div className="flex items-center justify-between">
-                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary">
-                                    Delivery Address <span className="text-brand">*</span>
+                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-brand" />
+                                    <span>Delivery Address</span>
+                                    <span className="text-brand">*</span>
                                   </label>
-                                  <button
-                                    type="button"
-                                    onClick={handleDetectDeliveryAddress}
-                                    disabled={isDetectingDeliveryLoc}
-                                    className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Navigation className="w-2.5 h-2.5" />
-                                    <span>{isDetectingDeliveryLoc ? 'Detecting...' : 'Detect GPS'}</span>
-                                  </button>
+                                  {savedLocations.length > 0 && (
+                                    <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
+                                  )}
                                 </div>
+
+                                {/* Choose from Saved Profile Locations */}
+                                {savedLocations.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {savedLocations.map((loc) => {
+                                      const full = formatSavedLocationFull(loc);
+                                      const isSelected = deliveryAddress === full;
+                                      return (
+                                        <button
+                                          key={loc.id}
+                                          type="button"
+                                          onClick={() => setDeliveryAddress(full)}
+                                          className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                            isSelected
+                                              ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                                              : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                                          }`}
+                                        >
+                                          <MapPin className="w-3 h-3 text-brand shrink-0" />
+                                          <span className="font-extrabold">{loc.label}</span>
+                                          <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                            ({loc.locality || loc.building_flat_house})
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
                                 <input
                                   type="text"
                                   value={deliveryAddress}
                                   onChange={(e) => setDeliveryAddress(e.target.value)}
                                   placeholder="Enter where the owner should deliver to you..."
-                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
                                   required
                                 />
                               </div>
@@ -760,38 +760,64 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                             </div>
 
                             {optForPickup && (
-                              <div className="pt-2 border-t border-divider/60 space-y-1 animate-in fade-in">
+                              <div className="pt-2 border-t border-divider/60 space-y-2 animate-in fade-in">
                                 <div className="flex items-center justify-between">
-                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary">
-                                    Return Collection Address <span className="text-brand">*</span>
+                                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-brand" />
+                                    <span>Return Collection Address</span>
+                                    <span className="text-brand">*</span>
                                   </label>
-                                  <div className="flex items-center gap-2">
-                                    {optForDelivery && deliveryAddress && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setPickupAddress(deliveryAddress)}
-                                        className="text-[10px] font-bold text-ink-secondary hover:text-ink hover:underline cursor-pointer"
-                                      >
-                                        Same as delivery
-                                      </button>
-                                    )}
+                                  {savedLocations.length > 0 && (
+                                    <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
+                                  )}
+                                </div>
+
+                                {/* Choose from Saved Profile Locations & Same as delivery */}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {optForDelivery && deliveryAddress && (
                                     <button
                                       type="button"
-                                      onClick={handleDetectPickupAddress}
-                                      disabled={isDetectingPickupLoc}
-                                      className="text-[10px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                      onClick={() => setPickupAddress(deliveryAddress)}
+                                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        pickupAddress === deliveryAddress
+                                          ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                                      }`}
                                     >
-                                      <Navigation className="w-2.5 h-2.5" />
-                                      <span>{isDetectingPickupLoc ? 'Detecting...' : 'Detect GPS'}</span>
+                                      <span>✓ Same as delivery</span>
                                     </button>
-                                  </div>
+                                  )}
+
+                                  {savedLocations.map((loc) => {
+                                    const full = formatSavedLocationFull(loc);
+                                    const isSelected = pickupAddress === full;
+                                    return (
+                                      <button
+                                        key={loc.id}
+                                        type="button"
+                                        onClick={() => setPickupAddress(full)}
+                                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                          isSelected
+                                            ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                                        }`}
+                                      >
+                                        <MapPin className="w-3 h-3 text-brand shrink-0" />
+                                        <span className="font-extrabold">{loc.label}</span>
+                                        <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                          ({loc.locality || loc.building_flat_house})
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
+
                                 <input
                                   type="text"
                                   value={pickupAddress}
                                   onChange={(e) => setPickupAddress(e.target.value)}
                                   placeholder="Enter where the owner should collect on return..."
-                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-1.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
                                   required
                                 />
                               </div>
