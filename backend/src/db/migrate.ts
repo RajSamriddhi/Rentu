@@ -78,6 +78,7 @@ export const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

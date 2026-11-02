@@ -10,6 +10,7 @@ import {
   CommunityLeaderboardData,
   PublicUserProfile,
   UserSearchResult,
+  SavedLocation,
   AiChatResponse,
   AiChatContext
 } from './types';
@@ -176,6 +177,10 @@ export const api = {
     image_urls: string[];
     sticker_badge: string;
     locality: string;
+    address_text?: string;
+    pincode?: string;
+    latitude?: number;
+    longitude?: number;
     available_for_borrowing?: boolean;
     offers_delivery?: boolean;
     delivery_fee?: number;
@@ -481,6 +486,22 @@ export const api = {
       body: JSON.stringify(data),
     });
     return handleResponse(res);
+  },
+
+  async addSavedLocation(location: Omit<SavedLocation, 'id'>, currentUser?: User | null): Promise<User> {
+    const newLoc: SavedLocation = {
+      ...location,
+      id: `loc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    };
+    const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
+    const updatedList = [...currentList, newLoc];
+    return await this.updateProfile({ saved_locations: updatedList });
+  },
+
+  async deleteSavedLocation(locationId: string, currentUser?: User | null): Promise<User> {
+    const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
+    const updatedList = currentList.filter(l => l.id !== locationId);
+    return await this.updateProfile({ saved_locations: updatedList });
   },
 
   async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {

@@ -3,6 +3,8 @@
  * High-accuracy GPS detection with OpenStreetMap Nominatim + BigDataCloud fallback
  */
 
+import { User, SavedLocation } from './types';
+
 export interface ResolvedLocation {
   locality: string;
   city: string;
@@ -212,4 +214,54 @@ export function formatFullAddress(entity?: {
   }
 
   return parts.join(', ') || locality || address || 'Bengaluru, India';
+}
+
+/**
+ * Returns all saved locations for a user, ensuring their Primary Profile Address
+ * is always the default first entry.
+ */
+export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] {
+  if (!user) return [];
+
+  // Parse building and street from user.address_text
+  let building = '';
+  let street = '';
+  if (user.address_text) {
+    const parts = user.address_text.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      building = parts[0];
+      street = parts.slice(1).join(', ');
+    } else {
+      building = parts[0] || '';
+    }
+  }
+
+  const primaryLoc: SavedLocation = {
+    id: 'primary',
+    label: 'Primary Profile Address',
+    building_flat_house: building,
+    street_road_landmark: street,
+    locality: user.locality || '',
+    pincode: user.pincode || '',
+    latitude: user.latitude,
+    longitude: user.longitude,
+    is_default: true,
+  };
+
+  const otherLocations = Array.isArray(user.saved_locations) ? user.saved_locations : [];
+  return [primaryLoc, ...otherLocations];
+}
+
+/**
+ * Formats a single SavedLocation object into its full clean address line
+ */
+export function formatSavedLocationFull(loc: SavedLocation): string {
+  const parts = [
+    loc.building_flat_house,
+    loc.street_road_landmark,
+    loc.locality,
+    loc.pincode
+  ].map(s => (s || '').trim()).filter(Boolean);
+
+  return parts.join(', ') || loc.locality || 'Address not specified';
 }

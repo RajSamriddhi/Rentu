@@ -52633,7 +52633,7 @@ var handleSyncUser = async (req, res, next) => {
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
     const locality = validated.locality || "";
     const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
       [uid, uid, email]
     );
@@ -52646,7 +52646,7 @@ var handleSyncUser = async (req, res, next) => {
              avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
         [uid, validated.name, avatar, existing.rows[0].id]
       );
       user = updated.rows[0];
@@ -52654,7 +52654,7 @@ var handleSyncUser = async (req, res, next) => {
       const created = await query(
         `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
         [
           uid,
           uid,
@@ -52688,7 +52688,8 @@ router.get("/me", authMiddleware, async (req, res, next) => {
               COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
               COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
               COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-              avatar_url, banner_url, bio, trust_score, role, created_at
+              avatar_url, banner_url, bio, trust_score, role,
+              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
        FROM users WHERE id = $1`,
       [req.user.id]
     );
@@ -54219,7 +54220,8 @@ var updateProfileSchema = external_exports.object({
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
   longitude: external_exports.number().optional(),
-  notify_nearby_requests_5km: external_exports.boolean().optional()
+  notify_nearby_requests_5km: external_exports.boolean().optional(),
+  saved_locations: external_exports.array(external_exports.any()).optional()
 });
 var SEED_COMMUNITY_CHAMPIONS = [
   {
@@ -54910,6 +54912,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
         created_at
        FROM users WHERE id = $1`,
       [id]
@@ -55021,6 +55024,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+      saved_locations: user.saved_locations || [],
       is_following: isFollowing,
       is_blocked: isBlocked,
       is_blocked_by: isBlockedBy,
@@ -55100,6 +55104,10 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       values.push(validated.notify_nearby_requests_5km);
       fields.push(`notify_nearby_requests_5km = $${values.length}`);
     }
+    if (validated.saved_locations !== void 0) {
+      values.push(JSON.stringify(validated.saved_locations));
+      fields.push(`saved_locations = $${values.length}::jsonb`);
+    }
     if (fields.length === 0) {
       return sendError(res, "BAD_REQUEST", "No fields to update", 400);
     }
@@ -55108,7 +55116,7 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];

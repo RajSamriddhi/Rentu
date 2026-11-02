@@ -23,7 +23,20 @@ export interface User {
   trust_score?: number;
   role: 'USER' | 'ADMIN';
   notify_nearby_requests_5km?: boolean;
+  saved_locations?: SavedLocation[];
   created_at: string;
+}
+
+export interface SavedLocation {
+  id: string;
+  label: string; // e.g. "Primary Profile Address", "Office", "Studio", "Storage"
+  building_flat_house: string; // compulsory
+  street_road_landmark: string;
+  locality: string;
+  pincode: string;
+  latitude?: number;
+  longitude?: number;
+  is_default?: boolean;
 }
 
 export interface Item {

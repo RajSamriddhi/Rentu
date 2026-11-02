@@ -18,6 +18,7 @@ const updateProfileSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   notify_nearby_requests_5km: z.boolean().optional(),
+  saved_locations: z.array(z.any()).optional(),
 });
 
 
@@ -792,6 +793,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
         created_at
        FROM users WHERE id = $1`,
       [id]
@@ -917,6 +919,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+      saved_locations: user.saved_locations || [],
       is_following: isFollowing,
       is_blocked: isBlocked,
       is_blocked_by: isBlockedBy,
@@ -1001,6 +1004,10 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       values.push(validated.notify_nearby_requests_5km);
       fields.push(`notify_nearby_requests_5km = $${values.length}`);
     }
+    if (validated.saved_locations !== undefined) {
+      values.push(JSON.stringify(validated.saved_locations));
+      fields.push(`saved_locations = $${values.length}::jsonb`);
+    }
 
     if (fields.length === 0) {
       return sendError(res, 'BAD_REQUEST', 'No fields to update', 400);
@@ -1011,7 +1018,7 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
 
     const result = await query(updateSql, values);

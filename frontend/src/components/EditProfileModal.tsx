@@ -12,13 +12,16 @@ import {
   ImageIcon,
   Sparkles,
   Navigation,
-  Bell
+  Bell,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
+import { AddLocationModal } from './AddLocationModal';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -93,6 +96,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -570,6 +574,70 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Additional Saved Pickup & Drop Locations */}
+              <div className="pt-3 border-t border-divider space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-brand" />
+                      <span>Additional Saved Locations</span>
+                    </h4>
+                    <p className="text-[11px] text-ink-secondary">
+                      Save alternative locations (e.g. Office, Studio) to quickly select when listing products.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddLocationOpen(true)}
+                    className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Another Location</span>
+                  </button>
+                </div>
+
+                {/* Render User's Saved Locations */}
+                {Array.isArray(user?.saved_locations) && user.saved_locations.length > 0 ? (
+                  <div className="space-y-2">
+                    {user.saved_locations.map((loc) => (
+                      <div
+                        key={loc.id}
+                        className="p-3 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-ink">{loc.label}</span>
+                            <span className="text-[10px] text-ink-secondary font-medium">({loc.locality})</span>
+                          </div>
+                          <p className="text-[11px] text-ink-secondary truncate mt-0.5">
+                            {formatSavedLocationFull(loc)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm(`Remove saved location "${loc.label}"?`)) {
+                              await api.deleteSavedLocation(loc.id, user);
+                              await refreshUser();
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                          title="Remove location"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-canvas border border-divider/60 text-center text-[11px] text-ink-secondary">
+                    No additional locations saved yet. Click "+ Add Another Location" to add an office, studio, or warehouse address.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -599,8 +667,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </button>
           </div>
         </form>
-
       </div>
+
+      {/* Add Another Location Modal */}
+      <AddLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        onSuccess={async () => {
+          await refreshUser();
+        }}
+      />
     </div>
   );
 };

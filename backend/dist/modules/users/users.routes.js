@@ -18,6 +18,7 @@ const updateProfileSchema = zod_1.z.object({
     latitude: zod_1.z.number().optional(),
     longitude: zod_1.z.number().optional(),
     notify_nearby_requests_5km: zod_1.z.boolean().optional(),
+    saved_locations: zod_1.z.array(zod_1.z.any()).optional(),
 });
 // Curated community champions to guarantee vibrant, full top-10 lists across all categories
 const SEED_COMMUNITY_CHAMPIONS = [
@@ -768,6 +769,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
         created_at
        FROM users WHERE id = $1`, [id]);
         if (userRes.rows.length === 0) {
@@ -868,6 +870,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
             created_at: user.created_at,
             notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+            saved_locations: user.saved_locations || [],
             is_following: isFollowing,
             is_blocked: isBlocked,
             is_blocked_by: isBlockedBy,
@@ -946,6 +949,10 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
             values.push(validated.notify_nearby_requests_5km);
             fields.push(`notify_nearby_requests_5km = $${values.length}`);
         }
+        if (validated.saved_locations !== undefined) {
+            values.push(JSON.stringify(validated.saved_locations));
+            fields.push(`saved_locations = $${values.length}::jsonb`);
+        }
         if (fields.length === 0) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'No fields to update', 400);
         }
@@ -954,7 +961,7 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
         const result = await (0, db_1.query)(updateSql, values);
         const updatedUser = result.rows[0];

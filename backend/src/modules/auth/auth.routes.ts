@@ -162,7 +162,7 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
 
     // 1. Look for existing user by firebase_uid, clerk_id or email
     const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
        FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
       [uid, uid, email]
     );
@@ -177,7 +177,7 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
              avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
              updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
         [uid, validated.name, avatar, existing.rows[0].id]
       );
       user = updated.rows[0];
@@ -186,7 +186,7 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
       const created = await query(
         `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
         [
           uid,
           uid,
@@ -225,7 +225,8 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
               COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
               COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
               COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-              avatar_url, banner_url, bio, trust_score, role, created_at
+              avatar_url, banner_url, bio, trust_score, role,
+              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
        FROM users WHERE id = $1`,
       [req.user!.id]
     );
