@@ -16,6 +16,18 @@ import { errorHandler } from './middleware/error';
 import { sendError, sendSuccess } from './middleware/response';
 import { query } from './config/db';
 import { ENV } from './config/env';
+import { runMigrations } from './db/migrate';
+
+let migrationsPromise: Promise<void> | null = null;
+const ensureMigrations = async () => {
+  if (!migrationsPromise) {
+    migrationsPromise = runMigrations().catch((err) => {
+      console.warn('Auto migration error on startup:', err.message || err);
+      migrationsPromise = null;
+    });
+  }
+  return migrationsPromise;
+};
 
 export const createApp = () => {
   const app = express();
@@ -24,6 +36,16 @@ export const createApp = () => {
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+
+  // Auto-run migrations in serverless environment on cold start
+  app.use(async (req, res, next) => {
+    try {
+      await ensureMigrations();
+    } catch (e: any) {
+      console.warn('Migration check warning:', e?.message || e);
+    }
+    next();
+  });
 
   // Health Check (Matches both /api/health and /health)
   app.get(['/api/health', '/health'], async (req, res) => {
@@ -50,6 +72,16 @@ export const createApp = () => {
       },
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Dedicated migration trigger endpoint
+  app.get(['/api/migrate', '/migrate'], async (req, res) => {
+    try {
+      await runMigrations();
+      return sendSuccess(res, { migrated: true, timestamp: new Date().toISOString() }, 'Database schema updated successfully.');
+    } catch (err: any) {
+      return sendError(res, 'MIGRATION_FAILED', err.message, 500);
+    }
   });
 
   // Mount API modules (supporting both with and without /api prefix)

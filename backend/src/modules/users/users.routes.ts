@@ -773,31 +773,107 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     }
 
     // Query real PostgreSQL user
-    const userRes = await query(
-      `SELECT 
-        id, 
-        name, 
-        locality, 
-        address_text,
-        pincode,
-        avatar_url, 
-        banner_url, 
-        bio, 
-        COALESCE(trust_score, 98)::int AS trust_score, 
-        COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-        COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-        COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-        COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
-        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-        COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
-        created_at
-       FROM users WHERE id = $1`,
-      [id]
-    );
+    let userRes: any;
+    try {
+      userRes = await query(
+        `SELECT 
+          id, 
+          name, 
+          locality, 
+          address_text,
+          pincode,
+          avatar_url, 
+          banner_url, 
+          bio, 
+          COALESCE(trust_score, 98)::int AS trust_score, 
+          COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+          COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+          COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+          COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+          COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+          COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+          COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+          COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+          COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+          COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+          created_at
+         FROM users WHERE id = $1`,
+        [id]
+      );
+    } catch (err: any) {
+      if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
+        console.warn('Auto-repairing missing user columns on query error...', err.message);
+        try {
+          await query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+          `);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text,
+              pincode,
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+        } catch (retryErr: any) {
+          console.warn('Fallback to baseline user columns query:', retryErr.message);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text, 
+              pincode, 
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+          if (userRes && userRes.rows.length > 0) {
+            userRes.rows[0].saved_locations = [];
+            userRes.rows[0].trust_rating = userRes.rows[0].rating;
+            userRes.rows[0].owner_rating = 5.00;
+            userRes.rows[0].renter_rating = 5.00;
+            userRes.rows[0].community_lender_rating = 5.00;
+            userRes.rows[0].owner_reviews_count = 0;
+            userRes.rows[0].renter_reviews_count = 0;
+            userRes.rows[0].community_lender_reviews_count = 0;
+            userRes.rows[0].notify_nearby_requests_5km = true;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
 
     if (userRes.rows.length === 0) {
       return sendError(res, 'NOT_FOUND', 'User not found', 404);

@@ -52625,6 +52625,22 @@ var firebaseSyncSchema = external_exports.object({
   locality: external_exports.string().optional(),
   phone: external_exports.string().optional()
 });
+var ensureUserColumns = async () => {
+  try {
+    await query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+    `);
+  } catch (err) {
+    console.warn("ensureUserColumns notice:", err?.message || err);
+  }
+};
 var handleSyncUser = async (req, res, next) => {
   try {
     const validated = firebaseSyncSchema.parse(req.body);
@@ -52632,41 +52648,90 @@ var handleSyncUser = async (req, res, next) => {
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
     const locality = validated.locality || "";
-    const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-       FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
-      [uid, uid, email]
-    );
+    let existing;
+    try {
+      existing = await query(
+        `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
+        [uid, uid, email]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        await ensureUserColumns();
+        existing = await query(
+          `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
+           FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
+          [uid, uid, email]
+        );
+      } else {
+        throw err;
+      }
+    }
     let user;
     if (existing.rows.length > 0) {
-      const updated = await query(
-        `UPDATE users
-         SET firebase_uid = $1,
-             name = COALESCE(NULLIF($2, ''), name),
-             avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
-             updated_at = NOW()
-         WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
-        [uid, validated.name, avatar, existing.rows[0].id]
-      );
-      user = updated.rows[0];
+      try {
+        const updated = await query(
+          `UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+          [uid, validated.name, avatar, existing.rows[0].id]
+        );
+        user = updated.rows[0];
+      } catch (err) {
+        await ensureUserColumns();
+        const updated = await query(
+          `UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+          [uid, validated.name, avatar, existing.rows[0].id]
+        );
+        user = { ...updated.rows[0], saved_locations: [] };
+      }
     } else {
-      const created = await query(
-        `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
-        [
-          uid,
-          uid,
-          email,
-          validated.name,
-          validated.phone || null,
-          locality,
-          avatar,
-          "Member of the Rentu\u207A gear rental community \u26A1"
-        ]
-      );
-      user = created.rows[0];
+      try {
+        const created = await query(
+          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+          [
+            uid,
+            uid,
+            email,
+            validated.name,
+            validated.phone || null,
+            locality,
+            avatar,
+            "Member of the Rentu\u207A gear rental community \u26A1"
+          ]
+        );
+        user = created.rows[0];
+      } catch (err) {
+        await ensureUserColumns();
+        const created = await query(
+          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+          [
+            uid,
+            uid,
+            email,
+            validated.name,
+            validated.phone || null,
+            locality,
+            avatar,
+            "Member of the Rentu\u207A gear rental community \u26A1"
+          ]
+        );
+        user = { ...created.rows[0], saved_locations: [] };
+      }
     }
     const token = generateToken(user);
     return sendSuccess(res, { user, token }, "Firebase session synchronized with Rentu\u207A! \u{1F680}");
@@ -52678,21 +52743,47 @@ router.post("/firebase-sync", handleSyncUser);
 router.post("/clerk-sync", handleSyncUser);
 router.get("/me", authMiddleware, async (req, res, next) => {
   try {
-    const result = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
-              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-              avatar_url, banner_url, bio, trust_score, role,
-              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-       FROM users WHERE id = $1`,
-      [req.user.id]
-    );
+    let result;
+    try {
+      result = await query(
+        `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+                COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+                COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+                COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+                COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+                COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+                COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                avatar_url, banner_url, bio, trust_score, role,
+                COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE id = $1`,
+        [req.user.id]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        await ensureUserColumns();
+        result = await query(
+          `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                  COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                  avatar_url, banner_url, bio, trust_score, role, created_at
+           FROM users WHERE id = $1`,
+          [req.user.id]
+        );
+        if (result.rows.length > 0) {
+          result.rows[0].saved_locations = [];
+          result.rows[0].trust_rating = result.rows[0].rating;
+          result.rows[0].owner_rating = 5;
+          result.rows[0].renter_rating = 5;
+          result.rows[0].community_lender_rating = 5;
+          result.rows[0].owner_reviews_count = 0;
+          result.rows[0].renter_reviews_count = 0;
+          result.rows[0].community_lender_reviews_count = 0;
+        }
+      } else {
+        throw err;
+      }
+    }
     if (result.rows.length === 0) {
       return sendError(res, "USER_NOT_FOUND", "User profile not found", 404);
     }
@@ -55065,31 +55156,107 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         }
       });
     }
-    const userRes = await query(
-      `SELECT 
-        id, 
-        name, 
-        locality, 
-        address_text,
-        pincode,
-        avatar_url, 
-        banner_url, 
-        bio, 
-        COALESCE(trust_score, 98)::int AS trust_score, 
-        COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-        COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-        COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-        COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
-        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-        COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
-        created_at
-       FROM users WHERE id = $1`,
-      [id]
-    );
+    let userRes;
+    try {
+      userRes = await query(
+        `SELECT 
+          id, 
+          name, 
+          locality, 
+          address_text,
+          pincode,
+          avatar_url, 
+          banner_url, 
+          bio, 
+          COALESCE(trust_score, 98)::int AS trust_score, 
+          COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+          COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+          COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+          COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+          COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+          COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+          COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+          COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+          COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+          COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+          created_at
+         FROM users WHERE id = $1`,
+        [id]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        console.warn("Auto-repairing missing user columns on query error...", err.message);
+        try {
+          await query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+          `);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text,
+              pincode,
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+        } catch (retryErr) {
+          console.warn("Fallback to baseline user columns query:", retryErr.message);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text, 
+              pincode, 
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+          if (userRes && userRes.rows.length > 0) {
+            userRes.rows[0].saved_locations = [];
+            userRes.rows[0].trust_rating = userRes.rows[0].rating;
+            userRes.rows[0].owner_rating = 5;
+            userRes.rows[0].renter_rating = 5;
+            userRes.rows[0].community_lender_rating = 5;
+            userRes.rows[0].owner_reviews_count = 0;
+            userRes.rows[0].renter_reviews_count = 0;
+            userRes.rows[0].community_lender_reviews_count = 0;
+            userRes.rows[0].notify_nearby_requests_5km = true;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
     if (userRes.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "User not found", 404);
     }
@@ -65901,12 +66068,459 @@ var errorHandler = (err, req, res, next) => {
   );
 };
 
+// src/db/migrate.ts
+var runMigrations = async () => {
+  console.log("Running database migrations (Supabase Compatible)...");
+  const client = await pool.connect();
+  try {
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`).catch(() => {
+    });
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis";`).catch(() => {
+      console.log("PostGIS extension not available locally; using Haversine proximity formulas.");
+    });
+    await client.query("BEGIN");
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+          CREATE TYPE user_role AS ENUM ('USER', 'ADMIN');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'item_status') THEN
+          CREATE TYPE item_status AS ENUM ('AVAILABLE', 'RENTED', 'UNAVAILABLE');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'request_status') THEN
+          CREATE TYPE request_status AS ENUM ('OPEN', 'FULFILLED', 'CANCELLED');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'HANDED_OVER');
+        ELSE
+          ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'HANDED_OVER';
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        name VARCHAR(120) NOT NULL,
+        email VARCHAR(255) UNIQUE,
+        password_hash VARCHAR(255),
+        phone VARCHAR(20),
+        bio TEXT DEFAULT 'Creator & Gear Sharer',
+        avatar_url TEXT,
+        address_text TEXT,
+        locality VARCHAR(120),
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        rating NUMERIC(3, 2) DEFAULT 5.00,
+        trust_score INT DEFAULT 98,
+        role user_role DEFAULT 'USER',
+        clerk_id VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address_text TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_users_locality ON users(locality);
+      CREATE INDEX IF NOT EXISTS idx_users_coords ON users(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_id TEXT NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        description TEXT,
+        category VARCHAR(60) NOT NULL,
+        price_per_day NUMERIC(10, 2) NOT NULL CHECK (price_per_day >= 0),
+        max_duration_days INTEGER DEFAULT 3 CHECK (max_duration_days > 0),
+        image_urls JSONB DEFAULT '[]'::JSONB,
+        sticker_badge VARCHAR(50) DEFAULT '\u2728 Weekend Flex',
+        locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        status item_status DEFAULT 'AVAILABLE',
+        available_for_borrowing BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+
+      CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+      CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+      CREATE INDEX IF NOT EXISTS idx_items_coords ON items(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_items_borrowing ON items(available_for_borrowing);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        seeker_id TEXT NOT NULL,
+        item_name VARCHAR(150) NOT NULL,
+        description TEXT,
+        category VARCHAR(60),
+        start_date DATE NOT NULL,
+        start_time TIME,
+        duration_days INTEGER NOT NULL DEFAULT 1 CHECK (duration_days > 0),
+        offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount >= 0),
+        locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        status request_status DEFAULT 'OPEN',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_pickup BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_drop_back BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+
+      CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
+      CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
+      CREATE INDEX IF NOT EXISTS idx_requests_coords ON requests(latitude, longitude);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id UUID NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+        borrower_id TEXT NOT NULL,
+        lender_id TEXT NOT NULL,
+        start_date DATE NOT NULL,
+        start_time TIME,
+        duration_days INTEGER NOT NULL CHECK (duration_days > 0),
+        total_price NUMERIC(10, 2) NOT NULL CHECK (total_price >= 0),
+        status booking_status DEFAULT 'PENDING',
+        message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
+
+      CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_lender ON bookings(lender_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+        sender_id TEXT NOT NULL,
+        receiver_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_booking ON messages(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
+      ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS postal_codes (
+        pincode VARCHAR(10) PRIMARY KEY,
+        locality VARCHAR(120) NOT NULL,
+        city VARCHAR(120),
+        state VARCHAR(120),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_postal_codes_locality ON postal_codes(locality);
+
+      -- Backfill postal_codes from existing distinct pincodes and localities
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM users 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM items 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM requests 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality, city, state)
+      VALUES 
+        ('560001', 'MG Road / Central', 'Bangalore', 'Karnataka'),
+        ('560038', 'Indiranagar', 'Bangalore', 'Karnataka'),
+        ('560034', 'Koramangala', 'Bangalore', 'Karnataka'),
+        ('560059', 'Mylasandra / Global Village', 'Bangalore', 'Karnataka'),
+        ('560060', 'Kengeri Satellite Town', 'Bangalore', 'Karnataka'),
+        ('110017', 'Saket', 'New Delhi', 'Delhi'),
+        ('110016', 'Hauz Khas', 'New Delhi', 'Delhi'),
+        ('400050', 'Bandra West', 'Mumbai', 'Maharashtra'),
+        ('400076', 'Powai', 'Mumbai', 'Maharashtra')
+      ON CONFLICT (pincode) DO NOTHING;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS item_images (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        image_url TEXT NOT NULL,
+        display_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_item_images_item_id ON item_images(item_id);
+
+      -- Backfill item_images from existing items.image_urls JSON array
+      INSERT INTO item_images (item_id, image_url, display_order)
+      SELECT i.id, img.val, img.ord - 1
+      FROM items i,
+      LATERAL jsonb_array_elements_text(COALESCE(NULLIF(i.image_urls, 'null'::jsonb), '[]'::jsonb)) WITH ORDINALITY AS img(val, ord)
+      WHERE NOT EXISTS (SELECT 1 FROM item_images WHERE item_id = i.id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE,
+        reviewer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reviewee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating NUMERIC(3, 2) NOT NULL CHECK (rating >= 1.00 AND rating <= 5.00),
+        comment TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
+      CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        body TEXT NOT NULL,
+        sender_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+        message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+        reference_id TEXT,
+        reference_type VARCHAR(50),
+        data JSONB,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
+
+      -- Backfill notifications atomic columns from data JSON
+      UPDATE notifications
+      SET sender_id = COALESCE(sender_id, data->>'sender_id'),
+          booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
+          message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
+      WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_follows (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(follower_id, following_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
+      CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows(following_id);
+
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(blocker_id, blocked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id);
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        user_email TEXT,
+        type TEXT NOT NULL, -- 'CONCERN' | 'FEEDBACK'
+        category TEXT NOT NULL, -- 'BOOKING' | 'ITEM_QUALITY' | 'PAYMENT' | 'USER_BEHAVIOR' | 'FEATURE_REQUEST' | 'BUG' | 'GENERAL'
+        subject TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'OPEN', -- 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED'
+        priority TEXT DEFAULT 'NORMAL', -- 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+        admin_notes TEXT,
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+    `);
+    await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
+    await client.query(`UPDATE users SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE items SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE requests SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    const relationalConstraints = [
+      { name: "fk_items_owner", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_requests_seeker", sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_seeker FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_bookings_borrower", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: "fk_bookings_lender", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: "fk_messages_sender", sql: `ALTER TABLE messages ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_users_pincode", sql: `ALTER TABLE users ADD CONSTRAINT fk_users_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: "fk_items_pincode", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: "fk_requests_pincode", sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` }
+    ];
+    for (const c of relationalConstraints) {
+      const check = await client.query(`
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = $1 AND table_schema = 'public'
+      `, [c.name]);
+      if (check.rows.length === 0) {
+        await client.query(c.sql);
+      }
+    }
+    await client.query(`
+      UPDATE items 
+      SET latitude = 12.9255, longitude = 77.5355 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      UPDATE users 
+      SET latitude = 12.9240, longitude = 77.5340 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+    `);
+    await client.query("COMMIT");
+    console.log("Database migrations completed successfully!");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Migration failed:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+if (require.main === module) {
+  runMigrations().then(() => process.exit(0)).catch(() => process.exit(1));
+}
+
 // src/app.ts
+var migrationsPromise = null;
+var ensureMigrations = async () => {
+  if (!migrationsPromise) {
+    migrationsPromise = runMigrations().catch((err) => {
+      console.warn("Auto migration error on startup:", err.message || err);
+      migrationsPromise = null;
+    });
+  }
+  return migrationsPromise;
+};
 var createApp = () => {
   const app2 = (0, import_express13.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
   app2.use(import_express13.default.json({ limit: "10mb" }));
   app2.use(import_express13.default.urlencoded({ extended: true }));
+  app2.use(async (req, res, next) => {
+    try {
+      await ensureMigrations();
+    } catch (e) {
+      console.warn("Migration check warning:", e?.message || e);
+    }
+    next();
+  });
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -65930,6 +66544,14 @@ var createApp = () => {
       },
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
+  });
+  app2.get(["/api/migrate", "/migrate"], async (req, res) => {
+    try {
+      await runMigrations();
+      return sendSuccess(res, { migrated: true, timestamp: (/* @__PURE__ */ new Date()).toISOString() }, "Database schema updated successfully.");
+    } catch (err) {
+      return sendError(res, "MIGRATION_FAILED", err.message, 500);
+    }
   });
   app2.use(["/api/auth", "/auth"], auth_routes_default);
   app2.use(["/api/items", "/items"], items_routes_default);

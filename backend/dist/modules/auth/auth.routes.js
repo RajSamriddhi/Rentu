@@ -124,6 +124,23 @@ const firebaseSyncSchema = zod_1.z.object({
     locality: zod_1.z.string().optional(),
     phone: zod_1.z.string().optional(),
 });
+const ensureUserColumns = async () => {
+    try {
+        await (0, db_1.query)(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+    `);
+    }
+    catch (err) {
+        console.warn('ensureUserColumns notice:', err?.message || err);
+    }
+};
 // Sync Firebase / SSO user with Rentu⁺ database
 const handleSyncUser = async (req, res, next) => {
     try {
@@ -133,35 +150,79 @@ const handleSyncUser = async (req, res, next) => {
         const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
         const locality = validated.locality || '';
         // 1. Look for existing user by firebase_uid, clerk_id or email
-        const existing = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-       FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
+        let existing;
+        try {
+            existing = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
+        }
+        catch (err) {
+            if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
+                await ensureUserColumns();
+                existing = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
+           FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
+            }
+            else {
+                throw err;
+            }
+        }
         let user;
         if (existing.rows.length > 0) {
             // Update existing user with firebase_uid and keep custom avatar if set
-            const updated = await (0, db_1.query)(`UPDATE users
-         SET firebase_uid = $1,
-             name = COALESCE(NULLIF($2, ''), name),
-             avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
-             updated_at = NOW()
-         WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [uid, validated.name, avatar, existing.rows[0].id]);
-            user = updated.rows[0];
+            try {
+                const updated = await (0, db_1.query)(`UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [uid, validated.name, avatar, existing.rows[0].id]);
+                user = updated.rows[0];
+            }
+            catch (err) {
+                await ensureUserColumns();
+                const updated = await (0, db_1.query)(`UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [uid, validated.name, avatar, existing.rows[0].id]);
+                user = { ...updated.rows[0], saved_locations: [] };
+            }
         }
         else {
             // Create new user for this Firebase account
-            const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [
-                uid,
-                uid,
-                email,
-                validated.name,
-                validated.phone || null,
-                locality,
-                avatar,
-                'Member of the Rentu⁺ gear rental community ⚡',
-            ]);
-            user = created.rows[0];
+            try {
+                const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [
+                    uid,
+                    uid,
+                    email,
+                    validated.name,
+                    validated.phone || null,
+                    locality,
+                    avatar,
+                    'Member of the Rentu⁺ gear rental community ⚡',
+                ]);
+                user = created.rows[0];
+            }
+            catch (err) {
+                await ensureUserColumns();
+                const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [
+                    uid,
+                    uid,
+                    email,
+                    validated.name,
+                    validated.phone || null,
+                    locality,
+                    avatar,
+                    'Member of the Rentu⁺ gear rental community ⚡',
+                ]);
+                user = { ...created.rows[0], saved_locations: [] };
+            }
         }
         const token = generateToken(user);
         return (0, response_1.sendSuccess)(res, { user, token }, 'Firebase session synchronized with Rentu⁺! 🚀');
@@ -175,18 +236,43 @@ router.post('/clerk-sync', handleSyncUser);
 // Get Current Profile
 router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
     try {
-        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
-              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-              avatar_url, banner_url, bio, trust_score, role,
-              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-       FROM users WHERE id = $1`, [req.user.id]);
+        let result;
+        try {
+            result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+                COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+                COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+                COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+                COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+                COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+                COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                avatar_url, banner_url, bio, trust_score, role,
+                COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE id = $1`, [req.user.id]);
+        }
+        catch (err) {
+            if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
+                await ensureUserColumns();
+                result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                  COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                  avatar_url, banner_url, bio, trust_score, role, created_at
+           FROM users WHERE id = $1`, [req.user.id]);
+                if (result.rows.length > 0) {
+                    result.rows[0].saved_locations = [];
+                    result.rows[0].trust_rating = result.rows[0].rating;
+                    result.rows[0].owner_rating = 5.00;
+                    result.rows[0].renter_rating = 5.00;
+                    result.rows[0].community_lender_rating = 5.00;
+                    result.rows[0].owner_reviews_count = 0;
+                    result.rows[0].renter_reviews_count = 0;
+                    result.rows[0].community_lender_reviews_count = 0;
+                }
+            }
+            else {
+                throw err;
+            }
+        }
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'User profile not found', 404);
         }
