@@ -77,8 +77,61 @@ export function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lo
 }
 
 /**
- * Calculates the numeric distance in km for gear items and requests relative to the user.
- * Strictly uses accurate user profile location and item/owner profile location.
+ * Computes exact distance in meters between user and item/request.
+ */
+export function getReachDistanceMeters(
+  item: {
+    distance_meters?: number | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+    id?: string;
+  },
+  user?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+  } | null
+): number {
+  // 1. If backend provided exact Haversine distance_meters
+  if (
+    typeof item.distance_meters === 'number' &&
+    !isNaN(item.distance_meters) &&
+    item.distance_meters > 0 &&
+    item.distance_meters < 50000
+  ) {
+    const m = Math.round(item.distance_meters);
+    return m < 100 ? 500 : m;
+  }
+
+  // 2. Resolve coordinates
+  let userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
+  if (!userCoords) {
+    userCoords = { lat: 12.9140, lon: 77.4993 };
+  }
+
+  const itemCoords = resolveCoords(item.latitude, item.longitude, item.locality);
+  if (itemCoords) {
+    const km = haversineDistanceKm(userCoords.lat, userCoords.lon, itemCoords.lat, itemCoords.lon);
+    const m = Math.round(km * 1000);
+    return m < 100 ? 500 : m;
+  }
+
+  // 3. Locality proximity matching fallback
+  const itemLoc = (item.locality || '').toLowerCase().trim();
+  const userLoc = (user?.locality || 'beml layout').toLowerCase().trim();
+
+  if (itemLoc && userLoc) {
+    if (itemLoc === userLoc || itemLoc.includes(userLoc) || userLoc.includes(itemLoc)) {
+      return 500;
+    }
+  }
+
+  return 1500;
+}
+
+/**
+ * Calculates numeric distance in km (for filter ranges)
  */
 export function getReachDistanceKm(
   item: {
@@ -94,50 +147,37 @@ export function getReachDistanceKm(
     locality?: string | null;
   } | null
 ): number {
-  // 1. Resolve user coordinates
-  let userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
-  if (!userCoords) {
-    // Default to BEML Layout, Bengaluru hub if user has not set profile location yet
-    userCoords = { lat: 12.9140, lon: 77.4993 };
-  }
-
-  // 2. Resolve item coordinates
-  const itemCoords = resolveCoords(item.latitude, item.longitude, item.locality);
-
-  if (itemCoords) {
-    const distanceKm = haversineDistanceKm(userCoords.lat, userCoords.lon, itemCoords.lat, itemCoords.lon);
-    // If distance is virtually 0 (same building/locality), return 0.2 km
-    return distanceKm < 0.1 ? 0.2 : Number(distanceKm.toFixed(1));
-  }
-
-  // 3. Fallback: if backend provided distance_meters
-  if (
-    typeof item.distance_meters === 'number' &&
-    !isNaN(item.distance_meters) &&
-    item.distance_meters >= 0 &&
-    item.distance_meters < 35000
-  ) {
-    const km = item.distance_meters / 1000;
-    return km < 0.1 ? 0.2 : Number(km.toFixed(1));
-  }
-
-  // 4. Locality string proximity matching
-  const itemLoc = (item.locality || '').toLowerCase().trim();
-  const userLoc = (user?.locality || 'beml layout').toLowerCase().trim();
-
-  if (itemLoc && userLoc) {
-    if (itemLoc === userLoc || itemLoc.includes(userLoc) || userLoc.includes(itemLoc)) {
-      return 0.3;
-    }
-  }
-
-  return 2.5;
+  const meters = getReachDistanceMeters(item, user);
+  return Number((meters / 1000).toFixed(2));
 }
 
 /**
- * Formats reach distance into clean user-facing string:
- * "Within 1 km", "Within 2 km", "Within 3 km", "Within 4 km", "Within 5 km", "Within 10 km".
- * Each item shows its actual distance based on its profile location instead of a fixed value.
+ * Formats distance into meters and kilometers representation:
+ * - If < 1000m: e.g. "500 meters away", "600 meters away"
+ * - If >= 1000m: e.g. "1 kilometer 600 meter away", "1 kilometer 500 meter away", "2 kilometer away", "2 kilometer 500 meter away"
+ */
+export function formatDistanceString(totalMeters: number): string {
+  // Round to nearest 50m for clean, realistic distance (500m, 550m, 600m...)
+  const roundedMeters = Math.max(50, Math.round(totalMeters / 50) * 50);
+
+  if (roundedMeters < 1000) {
+    return `${roundedMeters} meters away`;
+  }
+
+  const km = Math.floor(roundedMeters / 1000);
+  const remMeters = roundedMeters % 1000;
+
+  if (remMeters < 50) {
+    return `${km} kilometer away`;
+  }
+
+  return `${km} kilometer ${remMeters} meter away`;
+}
+
+/**
+ * Formats reach distance into clean user-facing string strictly indicating distance:
+ * e.g. "500 meters away", "1 kilometer 500 meter away", "2 kilometer away".
+ * No private user locations/localities are shown.
  */
 export function getReachDistance(
   item: {
@@ -153,13 +193,6 @@ export function getReachDistance(
     locality?: string | null;
   } | null
 ): string {
-  const km = getReachDistanceKm(item, user);
-
-  if (km <= 1) return 'Within 1 km';
-  if (km <= 2) return 'Within 2 km';
-  if (km <= 3) return 'Within 3 km';
-  if (km <= 4) return 'Within 4 km';
-  if (km <= 5) return 'Within 5 km';
-  if (km <= 10) return 'Within 10 km';
-  return `Within ${Math.ceil(km)} km`;
+  const meters = getReachDistanceMeters(item, user);
+  return formatDistanceString(meters);
 }
