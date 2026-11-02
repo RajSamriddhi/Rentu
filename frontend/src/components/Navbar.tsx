@@ -182,40 +182,117 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const unreadCount = notifications.filter((n) => !n.is_read && !n.read_at).length;
 
-  const getNotificationMeta = (type: string) => {
+  const formatInstaTime = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+    if (diffSec < 60) return 'now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 7) return `${diffDays}d`;
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) return `${diffWeeks}w`;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const getInstaMicroBadge = (type: string) => {
     switch (type) {
       case 'BOOKING_PROPOSAL':
-      case 'BOOKING_PENDING':
-        return { icon: '📅', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30', badge: 'Pending' };
+        return { icon: '📅', bg: 'bg-amber-500 text-white' };
       case 'BOOKING_ACCEPTED':
-      case 'BOOKING_ACCEPTED_CONFIRM':
-        return { icon: '🤝', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30', badge: 'Accepted' };
+        return { icon: '🤝', bg: 'bg-blue-500 text-white' };
       case 'BOOKING_REJECTED':
-        return { icon: '❌', color: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30', badge: 'Declined' };
+        return { icon: '✕', bg: 'bg-rose-500 text-white' };
       case 'BOOKING_RECEIVED':
       case 'BOOKING_HANDED_OVER':
-        return { icon: '📦', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', badge: 'Received' };
-      case 'BOOKING_RETURNED':
+        return { icon: '📦', bg: 'bg-emerald-500 text-white' };
       case 'BOOKING_COMPLETED':
-        return { icon: '✅', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30', badge: 'Rec Back' };
+      case 'BOOKING_RETURNED':
+        return { icon: '✓', bg: 'bg-purple-500 text-white' };
       case 'REMINDER_PICKUP':
       case 'REMINDER_RETURN':
-      case 'BOOKING_REMINDER_PICKUP':
-      case 'BOOKING_REMINDER_RETURN':
-        return { icon: '⏰', color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30', badge: 'Reminder' };
-      case 'ITEM_UNAVAILABLE':
-        return { icon: '🔒', color: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/30', badge: 'Unavailable' };
-      case 'ITEM_AVAILABLE':
-        return { icon: '✨', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', badge: 'Available' };
-      case 'BOOKING_REVIEW':
-        return { icon: '⭐', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30', badge: 'Review' };
-      case 'NEARBY_REQUEST_ANNOUNCEMENT':
-        return { icon: '📍', color: 'bg-brand/10 text-brand border-brand/30', badge: 'Nearby' };
+        return { icon: '⏰', bg: 'bg-orange-500 text-white' };
       case 'NEW_FOLLOWER':
-        return { icon: '🎉', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30', badge: 'Follower' };
+        return { icon: '👤', bg: 'bg-indigo-500 text-white' };
       default:
-        return { icon: '⚡', color: 'bg-brand/10 text-brand border-brand/30', badge: 'Alert' };
+        return { icon: '⚡', bg: 'bg-brand text-white' };
     }
+  };
+
+  const renderInstaContent = (n: AppNotification) => {
+    const sender = n.sender_name || 'A neighbor';
+    const item = n.item_title ? `"${n.item_title}"` : null;
+
+    if (n.type === 'BOOKING_PROPOSAL') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> requested to rent {item ? <span className="font-bold text-ink">{item}</span> : 'your gear'}.
+        </>
+      );
+    }
+    if (n.type === 'BOOKING_ACCEPTED') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> accepted your request for {item ? <span className="font-bold text-ink">{item}</span> : 'gear'}.
+        </>
+      );
+    }
+    if (n.type === 'BOOKING_REJECTED') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> declined your request for {item ? <span className="font-bold text-ink">{item}</span> : 'gear'}.
+        </>
+      );
+    }
+    if (n.type === 'BOOKING_RECEIVED' || n.type === 'BOOKING_HANDED_OVER') {
+      return (
+        <>
+          Handover verified for {item ? <span className="font-bold text-ink">{item}</span> : 'gear'} with <span className="font-bold text-ink">{sender}</span>.
+        </>
+      );
+    }
+    if (n.type === 'BOOKING_COMPLETED' || n.type === 'BOOKING_RETURNED') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> confirmed return of {item ? <span className="font-bold text-ink">{item}</span> : 'gear'}.
+        </>
+      );
+    }
+    if (n.type === 'REMINDER_PICKUP') {
+      return (
+        <>
+          Pickup reminder: handover for {item ? <span className="font-bold text-ink">{item}</span> : 'gear'} with <span className="font-bold text-ink">{sender}</span> is scheduled.
+        </>
+      );
+    }
+    if (n.type === 'REMINDER_RETURN') {
+      return (
+        <>
+          Return reminder: {item ? <span className="font-bold text-ink">{item}</span> : 'gear'} return with <span className="font-bold text-ink">{sender}</span> is due soon.
+        </>
+      );
+    }
+    if (n.type === 'NEW_FOLLOWER') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> started following your gear listings.
+        </>
+      );
+    }
+    if (n.type === 'NEARBY_REQUEST_ANNOUNCEMENT') {
+      return (
+        <>
+          <span className="font-bold text-ink">{sender}</span> posted a new wish nearby: {n.body}.
+        </>
+      );
+    }
+
+    // Clean fallback stripping emojis
+    const cleanBody = (n.body || n.title || '').replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim();
+    return <span>{cleanBody}</span>;
   };
 
   const handleNotificationClick = async (notif: AppNotification) => {
@@ -479,62 +556,93 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {showNotifications && (
                     <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface border border-divider rounded-2xl shadow-2xl overflow-hidden z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-4 py-3 border-b border-divider flex items-center justify-between bg-canvas/40">
-                        <div className="flex items-center gap-1.5 font-bold text-ink">
-                          <Bell className="w-3.5 h-3.5 text-brand" />
-                          <span>Announcements & Alerts</span>
-                        </div>
+                        <span className="font-bold text-ink text-sm">Notifications</span>
                         {unreadCount > 0 && (
                           <button
                             onClick={handleMarkAllRead}
-                            className="text-[11px] text-brand hover:underline font-bold cursor-pointer"
+                            className="text-xs text-brand hover:underline font-semibold cursor-pointer"
                           >
-                            Mark all read
+                            Mark all as read
                           </button>
                         )}
                       </div>
 
-                      <div className="max-h-80 overflow-y-auto divide-y divide-divider/50">
+                      <div className="max-h-[26rem] overflow-y-auto divide-y divide-divider/30">
                         {isLoadingNotifications && notifications.length === 0 ? (
                           <div className="py-8 text-center text-ink-secondary text-xs">
-                            Loading updates...
+                            Loading notifications...
                           </div>
                         ) : notifications.length === 0 ? (
-                          <div className="py-8 text-center text-ink-secondary text-xs px-4">
-                            <p className="font-bold text-ink mb-1">All caught up! 🎉</p>
-                            <p className="text-[11px]">When bookings are requested, accepted, received, or scheduled, you'll see alerts here.</p>
+                          <div className="py-10 text-center text-ink-secondary text-xs px-6">
+                            <div className="w-12 h-12 rounded-full bg-brand-soft/50 text-brand flex items-center justify-center mx-auto mb-2.5">
+                              <Bell className="w-5 h-5" />
+                            </div>
+                            <p className="font-semibold text-ink text-sm mb-1">No notifications yet</p>
+                            <p className="text-ink-secondary text-xs leading-relaxed">
+                              When neighbors request, accept, or update rentals with you, you'll see them here.
+                            </p>
                           </div>
                         ) : (
                           notifications.map((n) => {
-                            const meta = getNotificationMeta(n.type);
                             const isUnread = !n.is_read && !n.read_at;
+                            const micro = getInstaMicroBadge(n.type);
+                            const sender = n.sender_name || 'Neighbor';
+                            const initial = sender.charAt(0).toUpperCase();
+
                             return (
                               <div
                                 key={n.id}
                                 onClick={() => handleNotificationClick(n)}
-                                className={`p-3.5 hover:bg-canvas transition-colors cursor-pointer flex items-start gap-2.5 ${
-                                  isUnread ? 'bg-brand/5 dark:bg-brand/10' : ''
+                                className={`px-4 py-3 hover:bg-canvas/70 transition-colors cursor-pointer flex items-center gap-3 relative ${
+                                  isUnread ? 'bg-brand/[0.04]' : ''
                                 }`}
                               >
-                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-sm border ${meta.color}`}>
-                                  {meta.icon}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between gap-1 mb-0.5">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <span className="font-bold text-ink truncate text-xs">{n.title}</span>
-                                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${meta.color}`}>
-                                        {meta.badge}
-                                      </span>
+                                {/* Circular Avatar with micro-badge */}
+                                <div className="relative shrink-0">
+                                  {n.sender_avatar ? (
+                                    <img
+                                      src={n.sender_avatar}
+                                      alt={sender}
+                                      className="w-10 h-10 rounded-full object-cover ring-1 ring-divider"
+                                    />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-sm">
+                                      {initial}
                                     </div>
-                                    {isUnread && (
-                                      <span className="w-2 h-2 rounded-full bg-brand shrink-0 animate-pulse" />
-                                    )}
-                                  </div>
-                                  <p className="text-ink-secondary line-clamp-2 leading-relaxed text-[11px]">{n.body}</p>
-                                  <span className="text-[10px] text-ink-muted mt-1 block">
-                                    {new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  )}
+                                  <span
+                                    className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
+                                  >
+                                    {micro.icon}
                                   </span>
                                 </div>
+
+                                {/* Fluid sentence */}
+                                <div className="flex-1 min-w-0 pr-1">
+                                  <p className="text-xs text-ink leading-snug">
+                                    {renderInstaContent(n)}
+                                    <span className="text-ink-muted text-[11px] ml-1.5 font-normal">
+                                      {formatInstaTime(n.created_at)}
+                                    </span>
+                                  </p>
+                                </div>
+
+                                {/* Right: Gear image thumbnail or unread dot */}
+                                {n.item_image ? (
+                                  <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-divider bg-canvas flex items-center justify-center">
+                                    <img
+                                      src={n.item_image}
+                                      alt="gear"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                ) : isUnread ? (
+                                  <div className="shrink-0 w-2 h-2 rounded-full bg-brand" />
+                                ) : null}
+
+                                {n.item_image && isUnread && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                                )}
                               </div>
                             );
                           })
@@ -913,34 +1021,57 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </div>
 
-      {/* Real-Time Floating Notification Toast */}
+      {/* Real-Time Floating Notification Toast (Instagram Style) */}
       {latestToast && (
         <div 
           onClick={() => handleNotificationClick(latestToast)}
-          className="fixed top-20 right-4 sm:right-8 z-50 max-w-sm w-full bg-white/95 dark:bg-[#181920]/95 backdrop-blur-md border border-divider shadow-2xl rounded-2xl p-4 flex items-start gap-3 cursor-pointer animate-in slide-in-from-top-4 duration-200 hover:scale-[1.01] transition-transform"
+          className="fixed top-20 right-4 sm:right-8 z-50 max-w-sm w-full bg-surface/95 backdrop-blur-md border border-divider shadow-2xl rounded-2xl p-3 flex items-center gap-3 cursor-pointer animate-in slide-in-from-top-4 duration-200 hover:scale-[1.01] transition-transform"
         >
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base border ${getNotificationMeta(latestToast.type).color}`}>
-            {getNotificationMeta(latestToast.type).icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-xs font-bold text-ink truncate">{latestToast.title}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getNotificationMeta(latestToast.type).color}`}>
-                  {getNotificationMeta(latestToast.type).badge}
-                </span>
+          <div className="relative shrink-0">
+            {latestToast.sender_avatar ? (
+              <img
+                src={latestToast.sender_avatar}
+                alt={latestToast.sender_name || 'User'}
+                className="w-10 h-10 rounded-full object-cover ring-1 ring-divider"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-sm">
+                {(latestToast.sender_name || 'U').charAt(0).toUpperCase()}
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setLatestToast(null); }}
-                className="text-ink-muted hover:text-ink text-xs p-1 cursor-pointer leading-none"
-                aria-label="Dismiss toast"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-[11px] text-ink-secondary line-clamp-2 mt-0.5 leading-relaxed">{latestToast.body}</p>
-            <span className="text-[10px] text-brand font-bold mt-1 inline-block">Click to view on Bookings →</span>
+            )}
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${getInstaMicroBadge(latestToast.type).bg}`}
+            >
+              {getInstaMicroBadge(latestToast.type).icon}
+            </span>
           </div>
+
+          <div className="flex-1 min-w-0 pr-1">
+            <p className="text-xs text-ink leading-snug">
+              {renderInstaContent(latestToast)}
+              <span className="text-ink-muted text-[11px] ml-1.5 font-normal">
+                {formatInstaTime(latestToast.created_at)}
+              </span>
+            </p>
+          </div>
+
+          {latestToast.item_image && (
+            <div className="shrink-0 w-9 h-9 rounded-lg overflow-hidden border border-divider bg-canvas flex items-center justify-center">
+              <img
+                src={latestToast.item_image}
+                alt="gear"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLatestToast(null); }}
+            className="text-ink-muted hover:text-ink text-xs p-1 cursor-pointer leading-none shrink-0"
+            aria-label="Dismiss toast"
+          >
+            ✕
+          </button>
         </div>
       )}
     </header>

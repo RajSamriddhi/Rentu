@@ -351,6 +351,8 @@ export interface AppNotification {
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;
+  item_title?: string;
+  item_image?: string;
 }
 
 export interface SupportTicket {

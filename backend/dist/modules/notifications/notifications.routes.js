@@ -28,14 +28,36 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         n.read_at, 
         (n.read_at IS NOT NULL) AS is_read,
         n.created_at,
-        u.name AS sender_name,
-        u.avatar_url AS sender_avatar
+        COALESCE(u.name, 'Neighbor') AS sender_name,
+        u.avatar_url AS sender_avatar,
+        COALESCE(i.title, i_ref.title) AS item_title,
+        COALESCE(
+          CASE 
+            WHEN jsonb_typeof(i.image_urls) = 'array' AND jsonb_array_length(i.image_urls) > 0 
+            THEN i.image_urls->>0 
+            ELSE NULL 
+          END,
+          CASE 
+            WHEN jsonb_typeof(i_ref.image_urls) = 'array' AND jsonb_array_length(i_ref.image_urls) > 0 
+            THEN i_ref.image_urls->>0 
+            ELSE NULL 
+          END
+        ) AS item_image
        FROM notifications n
-       LEFT JOIN users u ON n.sender_id = u.id
+       LEFT JOIN users u ON (n.sender_id = u.id::text OR n.sender_id = u.firebase_uid)
+       LEFT JOIN bookings b ON (n.booking_id = b.id OR (n.reference_type = 'BOOKING' AND n.reference_id::text = b.id::text))
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN items i_ref ON (n.reference_type = 'ITEM' AND n.reference_id::text = i_ref.id::text)
        WHERE n.user_id = $1
+         AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
+         AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
        LIMIT 50`, [userId]);
-        const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id = $1 AND read_at IS NULL`, [userId]);
+        const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications 
+       WHERE user_id = $1 
+         AND read_at IS NULL
+         AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
+         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`, [userId]);
         return (0, response_1.sendSuccess)(res, {
             notifications: result.rows,
             unread_count: unreadCountRes.rows[0]?.unread || 0,
