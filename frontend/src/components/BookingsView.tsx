@@ -788,6 +788,15 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         booking={booking}
                         onClick={() => setSelectedStageBooking(booking)}
                         onOpenChat={onOpenChat}
+                        onUpdated={(updated) => {
+                          setBookings((prev) =>
+                            prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+                          );
+                          if (updated.status === 'COMPLETED') {
+                            setActiveTab('finished');
+                            setReviewBooking(updated);
+                          }
+                        }}
                       />
                     </div>
                   ))}
@@ -1066,6 +1075,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         onUpdated={(updated) => {
           setBookings((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
           setSelectedStageBooking(updated);
+          if (updated.status === 'COMPLETED') {
+            setActiveTab('finished');
+          }
         }}
         onOpenChat={onOpenChat}
         onLeaveReview={(b) => setReviewBooking(b)}
