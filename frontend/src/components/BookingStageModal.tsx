@@ -30,6 +30,29 @@ interface BookingStageModalProps {
   onLeaveReview?: (booking: Booking) => void;
 }
 
+function formatFriendlyDate(dateStr?: string): string {
+  if (!dateStr) return 'Not set';
+  try {
+    const raw = dateStr.slice(0, 10);
+    const parts = raw.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      }
+    }
+  } catch {}
+  return dateStr;
+}
+
 export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   booking,
   isOpen,
@@ -307,6 +330,53 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
             </div>
           )}
 
+          {/* Rental Period & Product Overview (Prominently visible across all stages) */}
+          <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-2.5 text-xs">
+            <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-divider/60">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-brand shrink-0" />
+                <span className="font-extrabold text-ink">Rental Duration:</span>
+                <span className="font-bold text-brand bg-brand-soft px-2 py-0.5 rounded-md text-[11px] border border-brand/20">
+                  {booking.duration_days || 1} {(booking.duration_days || 1) === 1 ? 'day' : 'days'}
+                </span>
+              </div>
+              <span className="font-extrabold text-ink font-display">
+                Total: {Number(booking.total_price) === 0 ? 'Free' : `₹${Number(booking.total_price)}`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+              <div className="flex items-start gap-2">
+                <Clock className="w-3.5 h-3.5 text-brand shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold text-ink-secondary/70 uppercase tracking-wider block">Starts</span>
+                  <span className="font-bold text-ink">
+                    {formatFriendlyDate(booking.start_date)} {booking.start_time ? `• ${booking.start_time}` : ''}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <Clock className="w-3.5 h-3.5 text-brand shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-bold text-ink-secondary/70 uppercase tracking-wider block">Ends</span>
+                  <span className="font-bold text-ink">
+                    {formatFriendlyDate(booking.end_date || booking.start_date)} {booking.end_time ? `• ${booking.end_time}` : ''}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {(booking.pickup_locality || booking.item_locality) && (
+              <div className="pt-2 border-t border-divider/60 flex items-center gap-1.5 text-ink-secondary text-[11px]">
+                <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                <span className="truncate">
+                  Location: <span className="font-bold text-ink">{booking.pickup_locality || booking.item_locality}</span>
+                </span>
+              </div>
+            )}
+          </div>
+
           {/* ======================================================== */}
           {/* STAGE 1: PROPOSAL ACCEPTED (Already Completed)           */}
           {/* ======================================================== */}
@@ -320,23 +390,6 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 <p className="text-xs text-ink-secondary leading-relaxed">
                   Both parties have agreed on the booking dates and details. At the agreed start date and time, Stage 2 will activate where the renter shows their pickup code and the owner confirms it.
                 </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-ink">Agreed Rental Start:</span>
-                  <span className="font-bold text-brand">{booking.start_date} {booking.start_time ? `(${booking.start_time})` : '10:00 AM'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-ink">Agreed Return Deadline:</span>
-                  <span className="font-bold text-ink">{booking.end_date || booking.start_date} {booking.end_time ? `(${booking.end_time})` : '18:00'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-ink">Pickup & Drop Location:</span>
-                  <span className="font-medium text-ink-secondary text-right max-w-[240px] truncate">
-                    {booking.pickup_locality || booking.item_locality || 'Agreed Location'}
-                  </span>
-                </div>
               </div>
             </div>
           )}
