@@ -16,7 +16,6 @@ import { CommunityView } from './components/CommunityView';
 import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
-import { AiAssistantModal } from './components/AiAssistantModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ItemCard } from './components/ItemCard';
@@ -125,7 +124,6 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isAiOpen, setIsAiOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -429,18 +427,6 @@ export const App: React.FC = () => {
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenChat={() => setActiveTab('messages')}
         onOpenAuth={() => setIsAuthOpen(true)}
-      />
-
-      {/* Rentu AI Assistant Modal & Floating Launcher */}
-      <AiAssistantModal
-        isOpen={isAiOpen}
-        onOpen={() => setIsAiOpen(true)}
-        onClose={() => setIsAiOpen(false)}
-        onSelectItem={(item) => setSelectedItem(item)}
-        context={{
-          itemId: selectedItem?.id || null,
-          locality: selectedItem?.locality || null,
-        }}
       />
 
       {/* Help & Community Support Modal */}
