@@ -53854,7 +53854,8 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
-        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.completed_at, b.created_at,
+        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.payment_status, b.payment_method,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
@@ -54020,10 +54021,95 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
       return sendError(res, "BAD_REQUEST", "Incorrect 6-digit return code. Please check the code with the other party.", 400);
     }
+    const isFree = Number(booking.total_price) === 0;
     const updateRes = await query(
       `UPDATE bookings 
-       SET status = 'COMPLETED', 
-           completed_at = CURRENT_TIMESTAMP, 
+       SET status = CASE WHEN $2::boolean THEN 'COMPLETED'::booking_status ELSE status END,
+           returned_at = CURRENT_TIMESTAMP,
+           completed_at = CASE WHEN $2::boolean THEN CURRENT_TIMESTAMP ELSE completed_at END,
+           payment_status = CASE WHEN $2::boolean THEN 'CONFIRMED' ELSE 'PENDING' END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id, isFree]
+    );
+    if (isFree) {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+    }
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        id,
+        userId,
+        isBorrower ? booking.lender_id : booking.borrower_id,
+        isFree ? "\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews for each other." : "\u{1F4E6} Product returned to owner! Stage 5: Payment settlement is now active."
+      ]
+    );
+    return sendSuccess(
+      res,
+      updateRes.rows[0],
+      isFree ? "Product returned successfully! Whole process completed." : "Product return verified! Please proceed to payment settlement."
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { payment_method = "UPI" } = req.body;
+    const userId = req.user.id;
+    const bookingRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.borrower_id !== userId && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the renter can submit payment", 403);
+    }
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET payment_status = 'SUBMITTED',
+           payment_method = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [payment_method, id]
+    );
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, '\u{1F4B3} Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+      [id, userId, booking.lender_id, payment_method]
+    );
+    return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, i.owner_id AS lender_id, b.item_id
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.lender_id !== userId && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the owner can confirm receiving payment", 403);
+    }
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET status = 'COMPLETED',
+           completed_at = CURRENT_TIMESTAMP,
+           payment_status = 'CONFIRMED',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
@@ -54032,10 +54118,10 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
-      [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
+       VALUES ($1, $2, $3, '\u2705 Payment verified and accepted by owner! The entire rental process is now finished. Please leave reviews for each other.')`,
+      [id, userId, booking.borrower_id]
     );
-    return sendSuccess(res, updateRes.rows[0], "Product returned successfully! You can now leave a review.");
+    return sendSuccess(res, updateRes.rows[0], "Payment confirmed! The whole rental process is now completed.");
   } catch (error) {
     next(error);
   }

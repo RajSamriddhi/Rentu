@@ -141,7 +141,10 @@ export interface Booking {
   pickup_code?: string;
   return_code?: string;
   handed_over_at?: string;
+  returned_at?: string;
   completed_at?: string;
+  payment_status?: 'PENDING' | 'SUBMITTED' | 'CONFIRMED';
+  payment_method?: string;
   user_review_id?: string;
   user_rating?: number;
   user_comment?: string;

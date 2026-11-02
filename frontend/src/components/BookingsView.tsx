@@ -27,6 +27,8 @@ import { api } from '../lib/api';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { ReviewModal } from './ReviewModal';
+import { BookingCard } from './BookingCard';
+import { BookingStageModal } from './BookingStageModal';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
@@ -104,6 +106,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
 
   // Review modal state
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+  const [selectedStageBooking, setSelectedStageBooking] = useState<Booking | null>(null);
 
   useEffect(() => {
     loadBookings();
@@ -337,6 +340,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
       setActiveTab('ongoing');
       setSelectedDateFilter(dateStr);
       setHighlightedBookingId(activeOnDate[0].id);
+      setSelectedStageBooking(activeOnDate[0]);
 
       setTimeout(() => {
         const el = document.getElementById(`booking-${activeOnDate[0].id}`);
@@ -747,310 +751,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                   )}
                 </div>
               ) : (
-                displayedOngoingList.map((booking) => {
-                  const isLender = booking.lender_id === user?.id;
-                  const otherPartyName = isLender ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Lender');
-                  const otherPartyAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
-                  const isHighlighted = highlightedBookingId === booking.id;
-
-                  return (
-                    <div
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {displayedOngoingList.map((booking) => (
+                    <BookingCard
                       key={booking.id}
-                      id={`booking-${booking.id}`}
-                      className={`bg-surface border rounded-3xl p-5 sm:p-6 shadow-sm transition-all space-y-4 relative ${
-                        isHighlighted
-                          ? 'border-brand ring-2 ring-brand/40 bg-brand/5'
-                          : 'border-divider hover:border-zinc-300 dark:hover:border-zinc-700'
-                      }`}
-                    >
-                      {/* Top Header: Gear info + Status Pill + Direct Message */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <img
-                            src={booking.item_images?.[0] || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80'}
-                            alt={booking.item_title}
-                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-divider shrink-0 shadow-xs"
-                          />
-
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-extrabold text-base sm:text-lg text-ink tracking-tight font-display">
-                                {booking.item_title}
-                              </h3>
-
-                              <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
-                                booking.status === 'ACCEPTED'
-                                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                              }`}>
-                                {booking.status === 'ACCEPTED' ? '● Handover & Meetup Stage' : '● Currently In Use'}
-                              </span>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-secondary">
-                              <span className="flex items-center gap-1 text-ink">
-                                <CalendarIcon className="w-3.5 h-3.5 text-brand" />
-                                <span>{booking.start_date} → {booking.end_date || booking.start_date} ({booking.duration_days} days)</span>
-                              </span>
-                              <span>•</span>
-                              <span className="font-extrabold text-ink font-display">
-                                {Number(booking.total_price) === 0 ? 'Free (Borrow)' : `₹${Number(booking.total_price)}`}
-                              </span>
-                            </div>
-
-                            <div className="text-xs text-ink-secondary font-medium flex items-center gap-1.5">
-                              {otherPartyAvatar && (
-                                <img src={otherPartyAvatar} alt={otherPartyName} className="w-4 h-4 rounded-full object-cover" />
-                              )}
-                              <span>{isLender ? 'Lending to:' : 'Renting from:'}</span>
-                              <strong className="text-ink">{otherPartyName}</strong>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Direct Message button */}
-                        <div className="shrink-0 w-full sm:w-auto flex sm:flex-col items-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onOpenChat(booking.id)}
-                            className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 w-full sm:w-auto justify-center hover:border-brand hover:text-brand transition-colors"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 text-brand" />
-                            <span>Message {otherPartyName}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Handoff & Pickup Logistics Details */}
-                      <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div className="flex items-start gap-2">
-                          <span className="text-base shrink-0 mt-0.5">🚗</span>
-                          <div>
-                            <div className="font-bold text-ink">
-                              {booking.requires_delivery ? 'Lender Drop-off Delivery' : 'Renter Self-Pickup'}
-                              {booking.requires_delivery && Number(booking.delivery_fee) > 0 && (
-                                <span className="ml-1 text-[10px] font-extrabold text-brand bg-brand-soft px-1.5 py-0.5 rounded-md">
-                                  +₹{Number(booking.delivery_fee)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-ink-secondary">
-                              {booking.requires_delivery
-                                ? 'Owner will deliver gear to the renter'
-                                : `Renter picks up from owner (${booking.item_locality || 'Owner location'})`}
-                            </div>
-                            <div className="text-[10px] text-ink-secondary font-medium mt-0.5">
-                              Pickup Time: {booking.start_time || '10:00'}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-2">
-                          <span className="text-base shrink-0 mt-0.5">🔄</span>
-                          <div>
-                            <div className="font-bold text-ink">
-                              {booking.requires_pickup ? 'Lender Collects on Return' : 'Renter Returns to Lender'}
-                              {booking.requires_pickup && Number(booking.pickup_fee) > 0 && (
-                                <span className="ml-1 text-[10px] font-extrabold text-brand bg-brand-soft px-1.5 py-0.5 rounded-md">
-                                  +₹{Number(booking.pickup_fee)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-ink-secondary">
-                              {booking.requires_pickup
-                                ? 'Owner will collect gear back from renter'
-                                : `Renter brings gear back to owner (${booking.item_locality || 'Owner location'})`}
-                            </div>
-                            <div className="text-[10px] text-ink-secondary font-medium mt-0.5">
-                              Return Due: {booking.end_date || booking.start_date} at {booking.end_time || '18:00'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 6-DIGIT CODE SECTION: HANDOVER CODE (If ACCEPTED) */}
-                      {booking.status === 'ACCEPTED' && (
-                        <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 space-y-3">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <KeyRound className="w-4 h-4 text-blue-600" />
-                              <h4 className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                                Handover Verification (Meetup Phase)
-                              </h4>
-                            </div>
-                            <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300">
-                              Exchange 6-digit code at meetup
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-ink-secondary leading-relaxed">
-                            {isLender
-                              ? `When you hand over ${booking.item_title} to ${otherPartyName}, enter their 6-digit code below to confirm they accepted the product, or give them your code.`
-                              : `When receiving ${booking.item_title} from ${otherPartyName}, give them your 6-digit code shown below, or enter their code to verify.`}
-                          </p>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-1">
-                            {/* Your Handover Code Display */}
-                            <div className="p-3 bg-surface rounded-xl border border-blue-500/30 flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-[10px] font-black uppercase text-ink-secondary">
-                                  6-Digit Handover Code
-                                </div>
-                                <div className="text-lg sm:text-xl font-mono font-black text-brand tracking-widest mt-0.5">
-                                  {booking.pickup_code || '------'}
-                                </div>
-                              </div>
-
-                              {booking.pickup_code && (
-                                <button
-                                  type="button"
-                                  onClick={() => copyToClipboard(booking.pickup_code!, `pickup-${booking.id}`)}
-                                  className="px-2.5 py-1.5 rounded-lg border border-divider hover:bg-canvas text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1 transition-colors"
-                                >
-                                  {copiedId === `pickup-${booking.id}` ? (
-                                    <>
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span className="text-emerald-500 text-[11px]">Copied</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3.5 h-3.5 text-brand" />
-                                      <span className="text-[11px]">Copy Code</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Code Input & Verification */}
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  maxLength={6}
-                                  placeholder="Enter 6-digit code"
-                                  value={pickupCodeInput[booking.id] || ''}
-                                  onChange={(e) => setPickupCodeInput((prev) => ({ ...prev, [booking.id]: e.target.value.replace(/\D/g, '') }))}
-                                  className="flex-1 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-mono font-black text-ink tracking-wider outline-none focus:border-brand"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleVerifyPickup(booking.id)}
-                                  disabled={verifyingId === booking.id || !(pickupCodeInput[booking.id]?.length >= 4)}
-                                  className="btn-primary text-xs px-4 py-2 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-                                >
-                                  {verifyingId === booking.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                  )}
-                                  <span>Confirm Handover</span>
-                                </button>
-                              </div>
-
-                              {actionError[booking.id] && (
-                                <div className="text-[11px] font-bold text-rose-500">
-                                  {actionError[booking.id]}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 6-DIGIT CODE SECTION: RETURN CODE (If HANDED_OVER) */}
-                      {booking.status === 'HANDED_OVER' && (
-                        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-3">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                              <h4 className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                                Gear Currently In Use • Return Due on {booking.end_date || booking.start_date}
-                              </h4>
-                            </div>
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                              Handed over on {booking.handed_over_at ? new Date(booking.handed_over_at).toLocaleDateString() : 'Active'}
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-ink-secondary leading-relaxed">
-                            {isLender
-                              ? `When ${otherPartyName} returns your item, enter their 6-digit return code below to complete the rental.`
-                              : `When returning the product to ${otherPartyName}, give them the 6-digit return code shown below, or enter their code.`}
-                          </p>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center pt-1">
-                            {/* Return Code Display */}
-                            <div className="p-3 bg-surface rounded-xl border border-emerald-500/30 flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-[10px] font-black uppercase text-ink-secondary">
-                                  6-Digit Return Code
-                                </div>
-                                <div className="text-lg sm:text-xl font-mono font-black text-emerald-600 dark:text-emerald-400 tracking-widest mt-0.5">
-                                  {booking.return_code || '------'}
-                                </div>
-                              </div>
-
-                              {booking.return_code && (
-                                <button
-                                  type="button"
-                                  onClick={() => copyToClipboard(booking.return_code!, `return-${booking.id}`)}
-                                  className="px-2.5 py-1.5 rounded-lg border border-divider hover:bg-canvas text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1 transition-colors"
-                                >
-                                  {copiedId === `return-${booking.id}` ? (
-                                    <>
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span className="text-emerald-500 text-[11px]">Copied</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3.5 h-3.5 text-emerald-600" />
-                                      <span className="text-[11px]">Copy Code</span>
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Return Code Input & Verification */}
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  maxLength={6}
-                                  placeholder="Enter 6-digit return code"
-                                  value={returnCodeInput[booking.id] || ''}
-                                  onChange={(e) => setReturnCodeInput((prev) => ({ ...prev, [booking.id]: e.target.value.replace(/\D/g, '') }))}
-                                  className="flex-1 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-mono font-black text-ink tracking-wider outline-none focus:border-brand"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleVerifyReturn(booking.id)}
-                                  disabled={verifyingId === booking.id || !(returnCodeInput[booking.id]?.length >= 4)}
-                                  className="btn-primary text-xs px-4 py-2 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0 bg-emerald-600 hover:bg-emerald-700"
-                                >
-                                  {verifyingId === booking.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                  )}
-                                  <span>Confirm Return 📦</span>
-                                </button>
-                              </div>
-
-                              {actionError[booking.id] && (
-                                <div className="text-[11px] font-bold text-rose-500">
-                                  {actionError[booking.id]}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  );
-                })
+                      booking={booking}
+                      onClick={() => setSelectedStageBooking(booking)}
+                      onOpenChat={onOpenChat}
+                    />
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -1306,6 +1016,19 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
           )}
         </>
       )}
+
+      {/* 5-Stage Booking Process Modal (Meetup QR, Rental Period, Return QR, Payment) */}
+      <BookingStageModal
+        booking={selectedStageBooking}
+        isOpen={Boolean(selectedStageBooking)}
+        onClose={() => setSelectedStageBooking(null)}
+        onUpdated={(updated) => {
+          setBookings((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
+          setSelectedStageBooking(updated);
+        }}
+        onOpenChat={onOpenChat}
+        onLeaveReview={(b) => setReviewBooking(b)}
+      />
 
       {/* Review Modal */}
       <ReviewModal

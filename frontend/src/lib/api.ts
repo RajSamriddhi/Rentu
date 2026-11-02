@@ -368,6 +368,24 @@ export const api = {
     return handleResponse(res);
   },
 
+  async submitBookingPayment(id: string, payment_method: string = 'UPI'): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/submit-payment`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ payment_method }),
+    });
+    return handleResponse(res);
+  },
+
+  async confirmBookingPayment(id: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/confirm-payment`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return handleResponse(res);
+  },
+
   async submitReview(
     bookingId: string, 
     rating: number, 
