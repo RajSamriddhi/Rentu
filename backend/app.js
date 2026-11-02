@@ -54362,6 +54362,16 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     if (status === "ACCEPTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"ACCEPTED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
+      await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
          VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
         [id, booking.lender_id, booking.borrower_id]
@@ -54378,6 +54388,16 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       });
     } else if (status === "REJECTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"DECLINED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
       await createNotification({
         userId: booking.borrower_id,
         senderId: booking.lender_id,
@@ -54390,6 +54410,16 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       });
     } else if (status === "CANCELLED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"CANCELLED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
       const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
       const actorName = isBorrower ? booking.borrower_name || "Borrower" : booking.lender_name || "Owner";
       await createNotification({
@@ -55688,9 +55718,11 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
         COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
         COALESCE(m.is_read, false) AS is_read, m.read_at,
         m.created_at,
-        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
+        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
+        b_linked.status AS linked_booking_status
        FROM messages m
        LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+       LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
        WHERE (
          (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
          OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
@@ -55716,10 +55748,28 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       [myIds, pIds]
     );
     const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+    const mappedMessages = messagesRes.rows.map((row) => {
+      if (row.message_type === "PROPOSAL" && row.proposal_data) {
+        let pData = typeof row.proposal_data === "string" ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
+        const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : void 0);
+        if (bStatus === "ACCEPTED" || bStatus === "HANDED_OVER" || bStatus === "COMPLETED") {
+          pData.status = "ACCEPTED";
+        } else if (bStatus === "REJECTED") {
+          pData.status = "DECLINED";
+        } else if (bStatus === "CANCELLED") {
+          pData.status = "CANCELLED";
+        }
+        return {
+          ...row,
+          proposal_data: pData
+        };
+      }
+      return row;
+    });
     return sendSuccess(res, {
       booking: activeBooking,
       partner: partnerData,
-      messages: messagesRes.rows
+      messages: mappedMessages
     });
   } catch (error) {
     next(error);

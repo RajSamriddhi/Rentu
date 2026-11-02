@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  X, 
-  Upload, 
-  Camera, 
-  Loader2, 
-  Navigation, 
+import {
+  X,
+  Upload,
+  Camera,
+  Loader2,
+  Navigation,
   Sparkles,
   MapPin,
   Trash2,
@@ -169,7 +169,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
       setLocationSuccessMsg(`Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
-      } catch {}
+      } catch { }
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect GPS location. Please type your address manually.');
     } finally {
@@ -384,7 +384,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div 
+      <div
         className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden border border-divider text-ink flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -635,7 +635,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
             {/* Start and Return Dates Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* Start / Handover Date & Time */}
               <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
                 <div className="flex items-center justify-between">
@@ -657,7 +657,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker?.();
-                      } catch {}
+                      } catch { }
                     }}
                     className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark]"
                     required
@@ -669,7 +669,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker?.();
-                      } catch {}
+                      } catch { }
                     }}
                     className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
@@ -682,11 +682,10 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                       key={t}
                       type="button"
                       onClick={() => setStartTime(t)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${
-                        startTime === t
-                          ? 'bg-brand text-white border-brand shadow-xs'
-                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
-                      }`}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${startTime === t
+                        ? 'bg-brand text-white border-brand shadow-xs'
+                        : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                        }`}
                     >
                       {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
                     </button>
@@ -716,7 +715,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker?.();
-                      } catch {}
+                      } catch { }
                     }}
                     className="col-span-7 bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark]"
                     required
@@ -728,7 +727,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker?.();
-                      } catch {}
+                      } catch { }
                     }}
                     className="col-span-5 bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs font-bold text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
@@ -741,11 +740,10 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                       key={t}
                       type="button"
                       onClick={() => setEndTime(t)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${
-                        endTime === t
-                          ? 'bg-brand text-white border-brand shadow-xs'
-                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
-                      }`}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${endTime === t
+                        ? 'bg-brand text-white border-brand shadow-xs'
+                        : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                        }`}
                     >
                       {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
                     </button>
@@ -794,18 +792,17 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Toggle 1: Pickup */}
-              <div className={`p-4 rounded-2xl border transition-all ${
-                willPickup
-                  ? 'bg-emerald-500/5 border-emerald-500/30'
-                  : 'bg-brand/5 border-brand/30 ring-1 ring-brand/20'
-              }`}>
+              <div className={`p-4 rounded-2xl border transition-all ${willPickup
+                ? 'bg-emerald-500/5 border-emerald-500/30'
+                : 'bg-brand/5 border-brand/30 ring-1 ring-brand/20'
+                }`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-xs font-black text-ink block">
                       {willPickup ? 'I will pick up the item myself' : 'I need it delivered to me'}
                     </span>
                     <span className="text-[11px] text-ink-secondary block mt-0.5">
-                      {willPickup 
+                      {willPickup
                         ? "You will travel to the lender's place to collect the gear."
                         : "Lender or runner delivers gear to your destination."}
                     </span>
@@ -817,30 +814,27 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     role="switch"
                     aria-checked={willPickup}
                     onClick={() => setWillPickup(!willPickup)}
-                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
-                      willPickup ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
-                    }`}
+                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${willPickup ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                      }`}
                   >
-                    <span className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                      willPickup ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
+                    <span className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${willPickup ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
                   </button>
                 </div>
               </div>
 
               {/* Toggle 2: Drop / Return */}
-              <div className={`p-4 rounded-2xl border transition-all ${
-                willDropBack
-                  ? 'bg-emerald-500/5 border-emerald-500/30'
-                  : 'bg-brand/5 border-brand/30 ring-1 ring-brand/20'
-              }`}>
+              <div className={`p-4 rounded-2xl border transition-all ${willDropBack
+                ? 'bg-emerald-500/5 border-emerald-500/30'
+                : 'bg-brand/5 border-brand/30 ring-1 ring-brand/20'
+                }`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-xs font-black text-ink block">
                       {willDropBack ? 'I will drop it back myself' : 'I need it collected from me'}
                     </span>
                     <span className="text-[11px] text-ink-secondary block mt-0.5">
-                      {willDropBack 
+                      {willDropBack
                         ? "You will return the gear back to the lender's place."
                         : "Lender or runner collects gear back from your place."}
                     </span>
@@ -852,13 +846,11 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                     role="switch"
                     aria-checked={willDropBack}
                     onClick={() => setWillDropBack(!willDropBack)}
-                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
-                      willDropBack ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
-                    }`}
+                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${willDropBack ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                      }`}
                   >
-                    <span className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                      willDropBack ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
+                    <span className={`block w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${willDropBack ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
                   </button>
                 </div>
               </div>
@@ -932,11 +924,10 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                           setPincode(loc.pincode || '');
                           setLocationSuccessMsg(`Location selected: ${loc.label}`);
                         }}
-                        className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                          isSelected
-                            ? 'bg-brand/10 border-brand text-brand shadow-xs'
-                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
-                        }`}
+                        className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${isSelected
+                          ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                          : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                          }`}
                       >
                         <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
                         <span className="font-extrabold">{loc.label}</span>

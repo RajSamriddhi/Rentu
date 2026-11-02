@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  X, 
-  Check, 
-  Upload, 
-  Camera, 
-  Loader2, 
-  Navigation, 
+import {
+  X,
+  Check,
+  Upload,
+  Camera,
+  Loader2,
+  Navigation,
   Sparkles,
   MapPin,
   Trash2,
@@ -214,8 +214,8 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
   const calculatedListingTotal = listingTypeChoice === 'Borrow'
     ? 0
     : (Number(listingPricePerDay || 0) * listingDurationDays) +
-      (listingOffersDelivery ? Number(listingDeliveryFee || 0) : 0) +
-      (listingOffersPickup ? Number(listingPickupFee || 0) : 0);
+    (listingOffersDelivery ? Number(listingDeliveryFee || 0) : 0) +
+    (listingOffersPickup ? Number(listingPickupFee || 0) : 0);
 
   // ================= FORM 2: PERSONAL BORROW REQUEST (DropWishModal Style) =================
   const [requestItemName, setRequestItemName] = useState('');
@@ -503,7 +503,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div 
+      <div
         className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden border border-divider text-ink flex flex-col max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -558,11 +558,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 setProposalType('LISTING');
                 setErrorMsg('');
               }}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                proposalType === 'LISTING'
-                  ? 'bg-brand text-white shadow-xs'
-                  : 'text-ink-secondary hover:text-ink'
-              }`}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${proposalType === 'LISTING'
+                ? 'bg-brand text-white shadow-xs'
+                : 'text-ink-secondary hover:text-ink'
+                }`}
             >
               <Package className="w-3.5 h-3.5" />
               <span>Offer to Lend (My Gear)</span>
@@ -574,11 +573,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 setProposalType('REQUEST');
                 setErrorMsg('');
               }}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                proposalType === 'REQUEST'
-                  ? 'bg-brand text-white shadow-xs'
-                  : 'text-ink-secondary hover:text-ink'
-              }`}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${proposalType === 'REQUEST'
+                ? 'bg-brand text-white shadow-xs'
+                : 'text-ink-secondary hover:text-ink'
+                }`}
             >
               <Megaphone className="w-3.5 h-3.5" />
               <span>Request to Borrow</span>
@@ -597,12 +595,12 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
         {isCameraActive && (
           <div className="p-4 mx-6 my-3 bg-canvas rounded-2xl border border-divider space-y-3 shrink-0 animate-in zoom-in-95 duration-150">
             <div className="relative aspect-video w-full max-w-md mx-auto bg-black rounded-xl overflow-hidden shadow-inner">
-              <video 
-                ref={videoRef} 
-                playsInline 
-                autoPlay 
-                muted 
-                className="w-full h-full object-cover" 
+              <video
+                ref={videoRef}
+                playsInline
+                autoPlay
+                muted
+                className="w-full h-full object-cover"
               />
               <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
                 Live Camera
@@ -709,11 +707,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   onChange={(e) => setListingDescription(e.target.value)}
                   placeholder="Be specific about your item, its condition, and included accessories..."
                   rows={3}
-                  className={`w-full bg-canvas border rounded-xl p-3 text-xs font-medium text-ink outline-none transition-colors resize-none ${
-                    listingDescription.length > 0 && listingDescription.trim().length < 10
-                      ? 'border-amber-400 focus:border-amber-500'
-                      : 'border-divider focus:border-brand'
-                  }`}
+                  className={`w-full bg-canvas border rounded-xl p-3 text-xs font-medium text-ink outline-none transition-colors resize-none ${listingDescription.length > 0 && listingDescription.trim().length < 10
+                    ? 'border-amber-400 focus:border-amber-500'
+                    : 'border-divider focus:border-brand'
+                    }`}
                   required
                 />
               </div>
@@ -833,11 +830,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setListingTypeChoice('Rent')}
-                  className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                    listingTypeChoice === 'Rent'
-                      ? 'border-brand bg-brand-soft/30 text-ink shadow-xs ring-1 ring-brand'
-                      : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                  }`}
+                  className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${listingTypeChoice === 'Rent'
+                    ? 'border-brand bg-brand-soft/30 text-ink shadow-xs ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                    }`}
                 >
                   <div className="text-xs font-black">Rent for Fee</div>
                   <div className="text-[11px] text-ink-secondary">Set a daily price</div>
@@ -846,11 +842,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setListingTypeChoice('Borrow')}
-                  className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                    listingTypeChoice === 'Borrow'
-                      ? 'border-brand bg-brand-soft/30 text-ink shadow-xs ring-1 ring-brand'
-                      : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                  }`}
+                  className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${listingTypeChoice === 'Borrow'
+                    ? 'border-brand bg-brand-soft/30 text-ink shadow-xs ring-1 ring-brand'
+                    : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
+                    }`}
                 >
                   <div className="text-xs font-black">Free Community Sharing</div>
                   <div className="text-[11px] text-ink-secondary">Lend to neighbor for free</div>
@@ -963,16 +958,14 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setListingOffersDelivery(!listingOffersDelivery)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        listingOffersDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                      }`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${listingOffersDelivery ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                        }`}
                       role="switch"
                       aria-checked={listingOffersDelivery}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                          listingOffersDelivery ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${listingOffersDelivery ? 'translate-x-5' : 'translate-x-0'
+                          }`}
                       />
                     </button>
                   </div>
@@ -1018,16 +1011,14 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setListingOffersPickup(!listingOffersPickup)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        listingOffersPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                      }`}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${listingOffersPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                        }`}
                       role="switch"
                       aria-checked={listingOffersPickup}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                          listingOffersPickup ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${listingOffersPickup ? 'translate-x-5' : 'translate-x-0'
+                          }`}
                       />
                     </button>
                   </div>
@@ -1088,15 +1079,13 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                     <div
                       key={loc.id}
                       onClick={() => setSelectedLocationId(loc.id)}
-                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-                        isSelected
-                          ? 'bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs'
-                          : 'bg-canvas border-divider hover:border-brand/40'
-                      }`}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${isSelected
+                        ? 'bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs'
+                        : 'bg-canvas border-divider hover:border-brand/40'
+                        }`}
                     >
-                      <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                        isSelected ? 'border-brand bg-brand' : 'border-divider bg-surface'
-                      }`}>
+                      <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-brand bg-brand' : 'border-divider bg-surface'
+                        }`}>
                         {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
 
@@ -1223,11 +1212,10 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   onChange={(e) => setRequestDescription(e.target.value)}
                   placeholder="Describe exactly what gear model, accessories, or specifications you need..."
                   rows={3}
-                  className={`w-full bg-canvas border rounded-xl p-3 text-xs font-medium text-ink outline-none transition-colors resize-none ${
-                    requestDescription.length > 0 && requestDescription.trim().length < 10
-                      ? 'border-amber-400 focus:border-amber-500'
-                      : 'border-divider focus:border-brand'
-                  }`}
+                  className={`w-full bg-canvas border rounded-xl p-3 text-xs font-medium text-ink outline-none transition-colors resize-none ${requestDescription.length > 0 && requestDescription.trim().length < 10
+                    ? 'border-amber-400 focus:border-amber-500'
+                    : 'border-divider focus:border-brand'
+                    }`}
                   required
                 />
               </div>
@@ -1435,16 +1423,14 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setRequestWillPickup(!requestWillPickup)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      requestWillPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requestWillPickup ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                      }`}
                     role="switch"
                     aria-checked={requestWillPickup}
                   >
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        requestWillPickup ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${requestWillPickup ? 'translate-x-5' : 'translate-x-0'
+                        }`}
                     />
                   </button>
                 </div>
@@ -1490,16 +1476,14 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setRequestWillDropBack(!requestWillDropBack)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      requestWillDropBack ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${requestWillDropBack ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
+                      }`}
                     role="switch"
                     aria-checked={requestWillDropBack}
                   >
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        requestWillDropBack ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${requestWillDropBack ? 'translate-x-5' : 'translate-x-0'
+                        }`}
                     />
                   </button>
                 </div>

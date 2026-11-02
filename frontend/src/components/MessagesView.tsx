@@ -1184,9 +1184,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                       // 2. PROPOSAL Messages (Personal Listing or Custom Request Deal Card)
                       if (m.message_type === 'PROPOSAL' && pData) {
-                        const isPending = !pData.status || pData.status === 'PENDING';
-                        const isAccepted = pData.status === 'ACCEPTED';
-                        const isDeclined = pData.status === 'DECLINED';
+                        const linkedStatus = (m as any).linked_booking_status ||
+                          (m.booking_id && m.booking_id === activeConversation?.booking_id ? activeConversation?.booking_status : undefined);
+
+                        const isAccepted = pData.status === 'ACCEPTED' ||
+                          linkedStatus === 'ACCEPTED' ||
+                          linkedStatus === 'HANDED_OVER' ||
+                          linkedStatus === 'COMPLETED';
+
+                        const isDeclined = pData.status === 'DECLINED' ||
+                          pData.status === 'REJECTED' ||
+                          linkedStatus === 'REJECTED' ||
+                          linkedStatus === 'CANCELLED';
+
+                        const isPending = !isAccepted && !isDeclined;
 
                         return (
                           <div

@@ -408,6 +408,19 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     if (status === 'ACCEPTED') {
       // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+
+      // Sync proposal_data status in messages so proposal cards in chat are marked ACCEPTED
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"ACCEPTED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
+
       // Add notification chat message
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
@@ -430,6 +443,18 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     } else if (status === 'REJECTED') {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
 
+      // Sync proposal_data status in messages so proposal cards in chat are marked DECLINED
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"DECLINED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
+
       // Notify Borrower: Declined
       await createNotification({
         userId: booking.borrower_id,
@@ -444,6 +469,18 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
 
     } else if (status === 'CANCELLED') {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+
+      // Sync proposal_data status in messages so proposal cards in chat are marked CANCELLED
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"CANCELLED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
 
       const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
       const actorName = isBorrower ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Owner');

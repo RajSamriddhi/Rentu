@@ -319,6 +319,14 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         if (status === 'ACCEPTED') {
             // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
             await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            // Sync proposal_data status in messages so proposal cards in chat are marked ACCEPTED
+            await (0, db_1.query)(`UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"ACCEPTED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [id]).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
             // Add notification chat message
             await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
          VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`, [id, booking.lender_id, booking.borrower_id]);
@@ -336,6 +344,14 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         }
         else if (status === 'REJECTED') {
             await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            // Sync proposal_data status in messages so proposal cards in chat are marked DECLINED
+            await (0, db_1.query)(`UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"DECLINED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [id]).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
             // Notify Borrower: Declined
             await (0, notifications_service_1.createNotification)({
                 userId: booking.borrower_id,
@@ -350,6 +366,14 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         }
         else if (status === 'CANCELLED') {
             await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            // Sync proposal_data status in messages so proposal cards in chat are marked CANCELLED
+            await (0, db_1.query)(`UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"CANCELLED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [id]).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
             const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
             const actorName = isBorrower ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Owner');
             await (0, notifications_service_1.createNotification)({

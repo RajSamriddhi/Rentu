@@ -226,9 +226,11 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
         COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
         COALESCE(m.is_read, false) AS is_read, m.read_at,
         m.created_at,
-        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
+        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
+        b_linked.status AS linked_booking_status
        FROM messages m
        LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+       LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
        WHERE (
          (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
          OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
@@ -250,10 +252,31 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
        ORDER BY b.created_at DESC
        LIMIT 1`, [myIds, pIds]);
         const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+        // Map messages so proposal_data status stays strictly synchronized with live booking status
+        const mappedMessages = messagesRes.rows.map((row) => {
+            if (row.message_type === 'PROPOSAL' && row.proposal_data) {
+                let pData = typeof row.proposal_data === 'string' ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
+                const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : undefined);
+                if (bStatus === 'ACCEPTED' || bStatus === 'HANDED_OVER' || bStatus === 'COMPLETED') {
+                    pData.status = 'ACCEPTED';
+                }
+                else if (bStatus === 'REJECTED') {
+                    pData.status = 'DECLINED';
+                }
+                else if (bStatus === 'CANCELLED') {
+                    pData.status = 'CANCELLED';
+                }
+                return {
+                    ...row,
+                    proposal_data: pData,
+                };
+            }
+            return row;
+        });
         return (0, response_1.sendSuccess)(res, {
             booking: activeBooking,
             partner: partnerData,
-            messages: messagesRes.rows,
+            messages: mappedMessages,
         });
     }
     catch (error) {
