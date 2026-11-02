@@ -20,11 +20,11 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   loginWithGoogle: () => Promise<void>;
-  continueWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  continueWithEmail: (email: string, password: string, name?: string, username?: string) => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
-  signupWithEmail: (email: string, password: string, name: string) => Promise<void>;
+  signupWithEmail: (email: string, password: string, name: string, username?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; name: string }) => Promise<void>;
+  register: (data: { email: string; password: string; name: string; username?: string }) => Promise<void>;
   demoLogin: (role: 'lender' | 'borrower' | 'admin' | 'creator') => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -163,14 +163,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Unified Email Auth: Signs in if user exists, or creates new account seamlessly
-  const continueWithEmail = async (email: string, password: string, name?: string) => {
+  const continueWithEmail = async (email: string, password: string, name?: string, username?: string) => {
     setIsLoading(true);
     const cleanEmail = email.trim();
+    const cleanUsername = username?.trim().toLowerCase();
     try {
       // 1. First attempt to sign in
       const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
       if (result.user) {
         await syncFirebaseUser(result.user);
+        if (cleanUsername) {
+          await api.updateProfile({ username: cleanUsername }).catch(() => {});
+          await fetchProfile();
+        }
         return;
       }
     } catch (signInErr: any) {
@@ -186,6 +191,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const displayName = name?.trim() || cleanEmail.split('@')[0] || 'Rentu Member';
             await updateProfile(createResult.user, { displayName });
             await syncFirebaseUser(createResult.user);
+            if (cleanUsername) {
+              await api.updateProfile({ username: cleanUsername }).catch(() => {});
+              await fetchProfile();
+            }
             return;
           }
         } catch (createErr: any) {
@@ -197,6 +206,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw createErr;
         }
       } else {
+        // Fallback: try direct backend login
+        try {
+          const res = await api.login(cleanEmail, password);
+          if (res && res.token && res.user) {
+            localStorage.setItem('borrowflex_token', res.token);
+            setToken(res.token);
+            setUser(res.user);
+            return;
+          }
+        } catch {
+          // Keep original error
+        }
         setIsLoading(false);
         throw signInErr;
       }
@@ -209,16 +230,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Email & Password signup
-  const signupWithEmail = async (email: string, password: string, name: string) => {
-    await continueWithEmail(email, password, name);
+  const signupWithEmail = async (email: string, password: string, name: string, username?: string) => {
+    await continueWithEmail(email, password, name, username);
   };
 
   const login = async (email: string, password: string) => {
     await continueWithEmail(email, password);
   };
 
-  const register = async (data: { email: string; password: string; name: string }) => {
-    await continueWithEmail(data.email, data.password, data.name);
+  const register = async (data: { email: string; password: string; name: string; username?: string }) => {
+    await continueWithEmail(data.email, data.password, data.name, data.username);
   };
 
   const demoLogin = async (_role: 'lender' | 'borrower' | 'admin' | 'creator') => {

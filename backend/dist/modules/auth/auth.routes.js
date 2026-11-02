@@ -16,6 +16,7 @@ const registerSchema = zod_1.z.object({
     email: zod_1.z.string().email('Invalid email address format'),
     password: zod_1.z.string().min(6, 'Password must be at least 6 characters'),
     name: zod_1.z.string().optional(),
+    username: zod_1.z.string().regex(/^[a-z0-9_]{3,30}$/, 'Username must be 3-30 characters of lowercase letters, numbers, and underscores').optional(),
     phone: zod_1.z.string().optional(),
     locality: zod_1.z.string().optional(),
     avatar_url: zod_1.z.string().url().optional(),
@@ -40,18 +41,26 @@ router.post('/register', async (req, res, next) => {
         const email = validated.email.toLowerCase();
         const displayName = validated.name || email.split('@')[0];
         const locality = validated.locality || '';
+        const cleanUsername = validated.username ? validated.username.trim().toLowerCase() : null;
         const existing = await (0, db_1.query)('SELECT id FROM users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
             return (0, response_1.sendError)(res, 'USER_EXISTS', 'An account with this email already exists', 409);
         }
+        if (cleanUsername) {
+            const existingUser = await (0, db_1.query)('SELECT id FROM users WHERE username = $1', [cleanUsername]);
+            if (existingUser.rows.length > 0) {
+                return (0, response_1.sendError)(res, 'USERNAME_TAKEN', 'This username is already taken. Please choose another.', 409);
+            }
+        }
         const passwordHash = await bcryptjs_1.default.hash(validated.password, 10);
         const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
-        const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, phone, locality, avatar_url, bio, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'USER')
-       RETURNING id, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`, [
+        const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'USER')
+       RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`, [
             email,
             passwordHash,
             displayName,
+            cleanUsername,
             validated.phone || null,
             locality,
             defaultAvatar,

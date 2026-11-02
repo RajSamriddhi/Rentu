@@ -95,7 +95,8 @@ export const api = {
     email: string;
     password: string;
     name: string;
-    locality: string;
+    username?: string;
+    locality?: string;
     phone?: string;
     avatar_url?: string;
     bio?: string;

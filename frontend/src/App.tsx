@@ -164,8 +164,14 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const handleOpenAuth = (mode: 'login' | 'signup' = 'login') => {
+    setAuthMode(mode);
+    setIsAuthOpen(true);
+  };
 
   useEffect(() => {
     loadFeed();
@@ -264,7 +270,7 @@ export const App: React.FC = () => {
         onSearch={handleSearch}
         onOpenDropGear={() => setIsDropGearOpen(true)}
         onOpenDropWish={() => setIsDropWishOpen(true)}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={handleOpenAuth}
         onOpenChat={() => setActiveTab('messages')}
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
@@ -480,6 +486,7 @@ export const App: React.FC = () => {
       {/* Auth Modal */}
       <AuthModal
         isOpen={isAuthOpen}
+        initialMode={authMode}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => loadFeed()}
       />

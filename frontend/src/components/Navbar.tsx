@@ -41,7 +41,7 @@ interface NavbarProps {
   onSearch: () => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'login' | 'signup') => void;
   onOpenChat: () => void;
   onOpenHowItWorks?: () => void;
   onOpenUserProfile?: (userId: string) => void;
@@ -963,14 +963,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </>
             ) : (
-              /* UNAUTHENTICATED: Single clean Sign In button */
-              <div className="flex items-center">
+              /* UNAUTHENTICATED: Distinct Log In and Sign Up buttons */
+              <div className="flex items-center gap-2">
                 <button
-                  id="navbar-signin-btn"
-                  onClick={onOpenAuth}
+                  id="navbar-login-btn"
+                  onClick={() => onOpenAuth('login')}
+                  className="px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold text-ink hover:text-brand transition-colors cursor-pointer rounded-full hover:bg-canvas"
+                >
+                  Log In
+                </button>
+                <button
+                  id="navbar-signup-btn"
+                  onClick={() => onOpenAuth('signup')}
                   className="btn-primary text-xs px-3.5 sm:px-4 py-1.5 sm:py-2 cursor-pointer shadow-pink font-bold"
                 >
-                  <span>Sign In</span>
+                  Sign Up
                 </button>
               </div>
             )}
@@ -1190,13 +1197,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="pt-2 border-t border-divider">
+              <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2">
                 <button
-                  id="mobile-signin-btn"
-                  onClick={() => { onOpenAuth(); setShowMobileMenu(false); }}
+                  id="mobile-login-btn"
+                  onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
+                  className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                >
+                  Log In
+                </button>
+                <button
+                  id="mobile-signup-btn"
+                  onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
                   className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
                 >
-                  Sign In
+                  Sign Up
                 </button>
               </div>
             )}
