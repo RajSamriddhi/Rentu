@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   MapPin, 
@@ -43,6 +43,13 @@ interface NavbarProps {
   onOpenUserProfile?: (userId: string) => void;
   onOpenHelpSupport?: () => void;
   onOpenSettings?: () => void;
+  onNavigateNotification?: (target: {
+    tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+    bookingSubTab?: 'ongoing' | 'requests' | 'finished';
+    bookingId?: string;
+    userId?: string;
+  }) => void;
+  onOpenChatWithUser?: (partnerId: string, partnerName?: string, partnerAvatar?: string) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -59,6 +66,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUserProfile,
   onOpenHelpSupport,
   onOpenSettings,
+  onNavigateNotification,
+  onOpenChatWithUser,
 }) => {
   const { user, firebaseUser, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -79,6 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   // Live Notifications State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(10);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [latestToast, setLatestToast] = useState<AppNotification | null>(null);
 
@@ -295,6 +305,57 @@ export const Navbar: React.FC<NavbarProps> = ({
     return <span>{cleanBody}</span>;
   };
 
+  const getDayMeta = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const dMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const diffDays = Math.round((nowMid - dMid) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return { key: 'today', label: 'Today' };
+    if (diffDays === 1) return { key: 'yesterday', label: 'Yesterday' };
+    return {
+      key: `date-${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
+      label: d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      }),
+    };
+  };
+
+  // Group notifications into daily sections respecting visibleLimit
+  const dayGroups = useMemo(() => {
+    const dayTotals: Record<string, number> = {};
+    for (const n of notifications) {
+      const { label } = getDayMeta(n.created_at);
+      dayTotals[label] = (dayTotals[label] || 0) + 1;
+    }
+
+    const visibleItems = notifications.slice(0, visibleLimit);
+    const groups: { key: string; label: string; totalCount: number; items: AppNotification[] }[] = [];
+    const map = new Map<string, AppNotification[]>();
+
+    for (const n of visibleItems) {
+      const { label } = getDayMeta(n.created_at);
+      if (!map.has(label)) {
+        map.set(label, []);
+      }
+      map.get(label)!.push(n);
+    }
+
+    for (const [label, items] of map.entries()) {
+      groups.push({
+        key: label,
+        label,
+        totalCount: dayTotals[label] || items.length,
+        items,
+      });
+    }
+
+    return groups;
+  }, [notifications, visibleLimit]);
+
   const handleNotificationClick = async (notif: AppNotification) => {
     if (!notif.is_read && !notif.read_at) {
       await api.markNotificationRead(notif.id).catch(() => {});
@@ -305,21 +366,74 @@ export const Navbar: React.FC<NavbarProps> = ({
     setShowNotifications(false);
     setLatestToast(null);
 
-    if (
-      notif.reference_type === 'BOOKING' ||
-      notif.booking_id ||
-      notif.type.startsWith('BOOKING_') ||
-      notif.type.startsWith('REMINDER_')
-    ) {
-      setActiveTab('bookings');
-    } else if (notif.reference_type === 'PROPOSAL' || notif.reference_type === 'MESSAGE') {
-      setActiveTab('messages');
-    } else if (notif.reference_type === 'REQUEST' || notif.type.includes('REQUEST')) {
-      setActiveTab('requests');
-    } else if (notif.reference_type === 'ITEM' || notif.type.startsWith('ITEM_')) {
-      setActiveTab('explore');
-    } else if (notif.sender_id && onOpenUserProfile) {
-      onOpenUserProfile(notif.sender_id);
+    const bookingId = notif.booking_id || notif.reference_id || undefined;
+    const nType = (notif.type || '').toUpperCase();
+    const nBody = (notif.body || '').toLowerCase();
+
+    // 1. Rental Request Notifications -> Takes you directly to 'requests' section of Bookings!
+    const isRentalRequest = 
+      nType === 'BOOKING_PROPOSAL' || 
+      nType === 'NEW_PROPOSAL' || 
+      nType.includes('PROPOSAL') ||
+      nBody.includes('requested to rent');
+
+    // 2. Active / Ongoing Handoff Notifications -> Takes you to 'ongoing' section of Bookings!
+    const isOngoing =
+      nType === 'BOOKING_ACCEPTED' ||
+      nType === 'BOOKING_STARTED' ||
+      nType.startsWith('REMINDER_') ||
+      nType.includes('HANDED_OVER') ||
+      nType.includes('PICKUP');
+
+    // 3. Finished / Returned / Reviews -> Takes you to 'finished' section of Bookings!
+    const isFinished =
+      nType === 'BOOKING_COMPLETED' ||
+      nType === 'RETURN_CONFIRMED' ||
+      nType.includes('COMPLETED') ||
+      nType.includes('REVIEW_REMINDER');
+
+    if (onNavigateNotification) {
+      if (isRentalRequest) {
+        onNavigateNotification({
+          tab: 'bookings',
+          bookingSubTab: 'requests',
+          bookingId,
+        });
+      } else if (isOngoing) {
+        onNavigateNotification({
+          tab: 'bookings',
+          bookingSubTab: 'ongoing',
+          bookingId,
+        });
+      } else if (isFinished) {
+        onNavigateNotification({
+          tab: 'bookings',
+          bookingSubTab: 'finished',
+          bookingId,
+        });
+      } else if (notif.reference_type === 'MESSAGE' || nType.includes('MESSAGE') || nType === 'CHAT') {
+        if (notif.sender_id && onOpenChatWithUser) {
+          onOpenChatWithUser(notif.sender_id, notif.sender_name, notif.sender_avatar);
+        } else {
+          setActiveTab('messages');
+        }
+      } else if (notif.reference_type === 'REQUEST' || nType.includes('REQUEST')) {
+        onNavigateNotification({ tab: 'requests' });
+      } else if (nType === 'NEW_FOLLOWER' && notif.sender_id && onOpenUserProfile) {
+        onOpenUserProfile(notif.sender_id);
+      } else if (notif.reference_type === 'ITEM' || nType.startsWith('ITEM_')) {
+        onNavigateNotification({ tab: 'explore' });
+      } else if (notif.sender_id && onOpenUserProfile) {
+        onOpenUserProfile(notif.sender_id);
+      } else {
+        setActiveTab('bookings');
+      }
+    } else {
+      if (isRentalRequest) {
+        setActiveTab('bookings');
+      } else {
+        setActiveTab('bookings');
+      }
     }
   };
 
@@ -538,10 +652,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="relative" ref={notifRef}>
                   <button
                     onClick={() => {
-                      setShowNotifications(!showNotifications);
-                      if (!showNotifications) fetchNotifications();
+                      const next = !showNotifications;
+                      setShowNotifications(next);
+                      if (next) {
+                        setVisibleLimit(10);
+                        fetchNotifications();
+                      }
                     }}
-                    className={`relative p-2 rounded-full transition-colors cursor-pointer hidden md:flex ${
+                    className={`relative p-2 rounded-full transition-colors cursor-pointer flex ${
                       showNotifications
                         ? 'bg-brand/10 text-brand'
                         : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink'
@@ -557,9 +675,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
 
                   {showNotifications && (
-                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface border border-divider rounded-2xl shadow-2xl overflow-hidden z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
+                    <div className="fixed sm:absolute right-2 sm:right-0 top-16 sm:top-full mt-2 w-[calc(100vw-1rem)] sm:w-96 max-w-sm sm:max-w-md bg-surface border border-divider rounded-2xl shadow-2xl overflow-hidden z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-4 py-3 border-b border-divider flex items-center justify-between bg-canvas/40">
-                        <span className="font-bold text-ink text-sm">Notifications</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-ink text-sm">Notifications</span>
+                          {notifications.length > 0 && (
+                            <span className="text-[10px] font-black text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                              {notifications.length}
+                            </span>
+                          )}
+                        </div>
                         {unreadCount > 0 && (
                           <button
                             onClick={handleMarkAllRead}
@@ -570,7 +695,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         )}
                       </div>
 
-                      <div className="max-h-[26rem] overflow-y-auto divide-y divide-divider/30">
+                      <div className="max-h-[28rem] overflow-y-auto">
                         {isLoadingNotifications && notifications.length === 0 ? (
                           <div className="py-8 text-center text-ink-secondary text-xs">
                             Loading notifications...
@@ -586,69 +711,109 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </p>
                           </div>
                         ) : (
-                          notifications.map((n) => {
-                            const isUnread = !n.is_read && !n.read_at;
-                            const micro = getInstaMicroBadge(n.type);
-                            const sender = n.sender_name || 'Neighbor';
-                            const initial = sender.charAt(0).toUpperCase();
-
-                            return (
-                              <div
-                                key={n.id}
-                                onClick={() => handleNotificationClick(n)}
-                                className={`px-4 py-3 hover:bg-canvas/70 transition-colors cursor-pointer flex items-center gap-3 relative ${
-                                  isUnread ? 'bg-brand/[0.04]' : ''
-                                }`}
-                              >
-                                {/* Circular Avatar with micro-badge */}
-                                <div className="relative shrink-0">
-                                  {n.sender_avatar ? (
-                                    <img
-                                      src={n.sender_avatar}
-                                      alt={sender}
-                                      className="w-10 h-10 rounded-full object-cover ring-1 ring-divider"
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-10 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-sm">
-                                      {initial}
-                                    </div>
-                                  )}
-                                  <span
-                                    className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
-                                  >
-                                    {micro.icon}
+                          <div className="space-y-1">
+                            {dayGroups.map((group) => (
+                              <div key={group.key} className="space-y-0.5">
+                                {/* Group Day Header: Displays date & count of notifications for that day */}
+                                <div className="sticky top-0 z-10 px-4 py-2 bg-surface/95 backdrop-blur-md border-y border-divider/60 flex items-center justify-between text-[11px] font-black tracking-wide text-ink font-display shadow-2xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-brand" />
+                                    <span>{group.label}</span>
+                                  </div>
+                                  <span className="text-[10px] font-extrabold text-ink-secondary bg-canvas px-2.5 py-0.5 rounded-full border border-divider/60">
+                                    {group.totalCount} {group.totalCount === 1 ? 'notification' : 'notifications'}
                                   </span>
                                 </div>
 
-                                {/* Fluid sentence */}
-                                <div className="flex-1 min-w-0 pr-1">
-                                  <p className="text-xs text-ink leading-snug">
-                                    {renderInstaContent(n)}
-                                    <span className="text-ink-muted text-[11px] ml-1.5 font-normal">
-                                      {formatInstaTime(n.created_at)}
-                                    </span>
-                                  </p>
+                                {/* Notifications in this day group */}
+                                <div className="divide-y divide-divider/30">
+                                  {group.items.map((n) => {
+                                    const isUnread = !n.is_read && !n.read_at;
+                                    const micro = getInstaMicroBadge(n.type);
+                                    const sender = n.sender_name || 'Neighbor';
+                                    const initial = sender.charAt(0).toUpperCase();
+
+                                    return (
+                                      <div
+                                        key={n.id}
+                                        onClick={() => handleNotificationClick(n)}
+                                        className={`px-4 py-3 hover:bg-canvas/70 transition-colors cursor-pointer flex items-center gap-3 relative ${
+                                          isUnread ? 'bg-brand/[0.04]' : ''
+                                        }`}
+                                      >
+                                        {/* Circular Avatar with micro-badge */}
+                                        <div className="relative shrink-0">
+                                          {n.sender_avatar ? (
+                                            <img
+                                              src={n.sender_avatar}
+                                              alt={sender}
+                                              className="w-10 h-10 rounded-full object-cover ring-1 ring-divider"
+                                            />
+                                          ) : (
+                                            <div className="w-10 h-10 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-sm">
+                                              {initial}
+                                            </div>
+                                          )}
+                                          <span
+                                            className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
+                                          >
+                                            {micro.icon}
+                                          </span>
+                                        </div>
+
+                                        {/* Fluid sentence */}
+                                        <div className="flex-1 min-w-0 pr-1">
+                                          <p className="text-xs text-ink leading-snug">
+                                            {renderInstaContent(n)}
+                                            <span className="text-ink-muted text-[11px] ml-1.5 font-normal">
+                                              {formatInstaTime(n.created_at)}
+                                            </span>
+                                          </p>
+                                        </div>
+
+                                        {/* Right: Gear image thumbnail or unread dot */}
+                                        {n.item_image ? (
+                                          <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-divider bg-canvas flex items-center justify-center">
+                                            <img
+                                              src={n.item_image}
+                                              alt="gear"
+                                              className="w-full h-full object-cover"
+                                            />
+                                          </div>
+                                        ) : isUnread ? (
+                                          <div className="shrink-0 w-2 h-2 rounded-full bg-brand" />
+                                        ) : null}
+
+                                        {n.item_image && isUnread && (
+                                          <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-
-                                {/* Right: Gear image thumbnail or unread dot */}
-                                {n.item_image ? (
-                                  <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-divider bg-canvas flex items-center justify-center">
-                                    <img
-                                      src={n.item_image}
-                                      alt="gear"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                ) : isUnread ? (
-                                  <div className="shrink-0 w-2 h-2 rounded-full bg-brand" />
-                                ) : null}
-
-                                {n.item_image && isUnread && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
-                                )}
                               </div>
-                            );
-                          })
+                            ))}
+
+                            {/* Show More Notifications Button (displayed when total notifications > visibleLimit) */}
+                            {notifications.length > visibleLimit && (
+                              <div className="p-3 text-center bg-canvas/40 border-t border-divider">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setVisibleLimit((prev) => prev + 10);
+                                  }}
+                                  className="btn-secondary w-full py-2.5 text-xs font-bold rounded-xl text-ink hover:text-brand hover:border-brand/40 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                                >
+                                  <span>Show More Notifications</span>
+                                  <span className="text-[10px] text-ink-secondary">
+                                    ({notifications.length - visibleLimit} remaining)
+                                  </span>
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

@@ -93,6 +93,8 @@ export const App: React.FC = () => {
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
+  const [bookingSubTab, setBookingSubTab] = useState<'ongoing' | 'requests' | 'finished'>('ongoing');
+  const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -222,11 +224,32 @@ export const App: React.FC = () => {
     setActiveTab('messages');
   };
 
-  const handleOpenChatWithUser = (targetUserId: string, targetUserName: string, avatarUrl?: string) => {
+  const handleOpenChatWithUser = (targetUserId: string, targetUserName?: string, avatarUrl?: string) => {
     setChatBookingId(null);
-    setChatPartner({ id: targetUserId, name: targetUserName, avatar: avatarUrl });
+    setChatPartner({ id: targetUserId, name: targetUserName || 'Neighbor', avatar: avatarUrl });
     handleCloseUserProfile();
     setActiveTab('messages');
+  };
+
+  const handleNavigateNotification = (target: {
+    tab: TabType;
+    bookingSubTab?: 'ongoing' | 'requests' | 'finished';
+    bookingId?: string;
+    userId?: string;
+  }) => {
+    if (target.userId) {
+      handleOpenUserProfile(target.userId);
+      return;
+    }
+    if (target.bookingSubTab) {
+      setBookingSubTab(target.bookingSubTab);
+    }
+    if (target.bookingId) {
+      setHighlightedBookingId(target.bookingId);
+    } else {
+      setHighlightedBookingId(null);
+    }
+    setActiveTab(target.tab);
   };
 
   return (
@@ -247,6 +270,8 @@ export const App: React.FC = () => {
         onOpenUserProfile={handleOpenUserProfile}
         onOpenHelpSupport={() => setIsHelpOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onNavigateNotification={handleNavigateNotification}
+        onOpenChatWithUser={handleOpenChatWithUser}
       />
 
       {/* Main View Router */}
@@ -353,6 +378,8 @@ export const App: React.FC = () => {
             {/* VIEW 7: BOOKINGS (Screen 7 in Mockup) */}
             {activeTab === 'bookings' && (
               <BookingsView
+                initialTab={bookingSubTab}
+                initialBookingId={highlightedBookingId}
                 onOpenChat={(bookingId) => handleOpenChatWithBooking(bookingId)}
               />
             )}

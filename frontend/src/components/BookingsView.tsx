@@ -32,6 +32,8 @@ import { BookingStageModal } from './BookingStageModal';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
+  initialTab?: 'ongoing' | 'requests' | 'finished';
+  initialBookingId?: string | null;
 }
 
 // Date string normalization ('YYYY-MM-DD')
@@ -66,14 +68,37 @@ const formatFriendlyDate = (dateStr: string): string => {
   }
 };
 
-export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
+export const BookingsView: React.FC<BookingsViewProps> = ({ 
+  onOpenChat,
+  initialTab = 'ongoing',
+  initialBookingId = null,
+}) => {
   const { user } = useAuth();
   
-  // 3 Primary Sections requested by user:
+  // 3 Primary Sections:
   // 1. 'ongoing' - All ongoing / active bookings (ACCEPTED & HANDED_OVER)
   // 2. 'requests' - All incoming / outgoing booking requests (PENDING)
   // 3. 'finished' - All finished bookings (COMPLETED & history)
-  const [activeTab, setActiveTab] = useState<'ongoing' | 'requests' | 'finished'>('ongoing');
+  const [activeTab, setActiveTab] = useState<'ongoing' | 'requests' | 'finished'>(initialTab);
+  const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(initialBookingId);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (initialBookingId) {
+      setHighlightedBookingId(initialBookingId);
+      setTimeout(() => {
+        const el = document.getElementById(`booking-${initialBookingId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 350);
+    }
+  }, [initialBookingId]);
   
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,7 +119,6 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
 
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
-  const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
   const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
 
   // 6-digit verification code input states keyed by booking ID
@@ -753,12 +777,19 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {displayedOngoingList.map((booking) => (
-                    <BookingCard
+                    <div
                       key={booking.id}
-                      booking={booking}
-                      onClick={() => setSelectedStageBooking(booking)}
-                      onOpenChat={onOpenChat}
-                    />
+                      id={`booking-${booking.id}`}
+                      className={`rounded-3xl transition-all ${
+                        highlightedBookingId === booking.id ? 'ring-4 ring-brand/60 shadow-pink animate-pulse' : ''
+                      }`}
+                    >
+                      <BookingCard
+                        booking={booking}
+                        onClick={() => setSelectedStageBooking(booking)}
+                        onOpenChat={onOpenChat}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
@@ -787,7 +818,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                   return (
                     <div
                       key={booking.id}
-                      className="bg-surface border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-sm hover:border-amber-500/60 transition-all space-y-4"
+                      id={`booking-${booking.id}`}
+                      className={`bg-surface border rounded-3xl p-5 sm:p-6 shadow-sm transition-all space-y-4 ${
+                        highlightedBookingId === booking.id
+                          ? 'border-brand ring-4 ring-brand/60 shadow-pink'
+                          : 'border-amber-500/30 hover:border-amber-500/60'
+                      }`}
                     >
                       {/* Top Row: Item Details & Requester */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -926,7 +962,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({ onOpenChat }) => {
                   return (
                     <div
                       key={booking.id}
-                      className="bg-surface border border-divider rounded-3xl p-5 sm:p-6 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition-all space-y-4"
+                      id={`booking-${booking.id}`}
+                      className={`bg-surface border rounded-3xl p-5 sm:p-6 shadow-sm transition-all space-y-4 ${
+                        highlightedBookingId === booking.id
+                          ? 'border-brand ring-4 ring-brand/60 shadow-pink'
+                          : 'border-divider hover:border-zinc-300 dark:hover:border-zinc-700'
+                      }`}
                     >
                       {/* Top Info */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

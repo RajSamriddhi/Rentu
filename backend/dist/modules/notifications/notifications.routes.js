@@ -52,7 +52,7 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 50`, [userId]);
+       LIMIT 150`, [userId]);
         const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications 
        WHERE user_id = $1 
          AND read_at IS NULL

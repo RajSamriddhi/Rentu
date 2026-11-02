@@ -65615,7 +65615,7 @@ router10.get("/", authMiddleware, async (req, res, next) => {
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 50`,
+       LIMIT 150`,
       [userId]
     );
     const unreadCountRes = await query(
