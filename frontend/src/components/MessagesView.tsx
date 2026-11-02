@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MessageSquare, Send, Search, ArrowLeft, Check, CheckCheck, AlertCircle, 
+  MessageSquare, MessageSquareOff, Send, Search, ArrowLeft, Check, CheckCheck, AlertCircle, 
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
   Trash2, Pencil, Image as ImageIcon, Phone, ExternalLink, Download, Loader2, Navigation,
@@ -78,6 +78,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const hasUserClosedChatRef = useRef<boolean>(false);
+
+  // Helper to reliably check if a conversation matches a selected identifier without null == null false positives
+  const isConvMatch = (c: Conversation, targetId: string | null | undefined): boolean => {
+    if (!targetId) return false;
+    return Boolean(
+      (c.conversation_id && c.conversation_id === targetId) ||
+      (c.booking_id && c.booking_id === targetId) ||
+      (c.partner_id && `dm_${c.partner_id}` === targetId)
+    );
+  };
 
   // Close attachment menu when clicking outside
   useEffect(() => {
@@ -169,7 +180,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           if (Array.isArray(data)) {
             setConversations((prev) => {
               let updated = [...data];
-              const currentPartner = activePartnerData || initialPartner;
+              const currentPartner = selectedConvId ? (activePartnerData || initialPartner) : null;
               if (currentPartner && currentPartner.id) {
                 const dmKey = `dm_${currentPartner.id}`;
                 const exists = updated.some(c => 
@@ -217,7 +228,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       let list: Conversation[] = Array.isArray(data) ? data : [];
 
       // If activePartnerData or initialPartner was set and not in list, prepend synthetic DM entry
-      const currentPartner = activePartnerData || initialPartner;
+      const currentPartner = selectedConvId ? (activePartnerData || initialPartner) : (initialPartner || null);
       if (currentPartner && currentPartner.id) {
         const dmKey = `dm_${currentPartner.id}`;
         const exists = list.some(c => 
@@ -244,7 +255,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
 
       setConversations(list);
-      if (list.length > 0 && !selectedConvId) {
+      // Auto-select first conversation on initial load only if user hasn't explicitly closed the chat
+      if (list.length > 0 && !selectedConvId && !hasUserClosedChatRef.current && !initialPartner && !initialBookingId) {
         setSelectedConvId(list[0].conversation_id || list[0].booking_id || `dm_${list[0].partner_id}`);
       }
     } catch (err) {
@@ -312,6 +324,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Close active chat from right side
   const handleCloseChat = () => {
+    hasUserClosedChatRef.current = true;
     setSelectedConvId(null);
     setActivePartnerData(null);
     setActiveBookingData(null);
@@ -331,22 +344,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     try {
       await api.deleteConversation(convId);
       setConversations((prev) =>
-        prev.filter((c) => {
-          const key = c.conversation_id || c.booking_id || `dm_${c.partner_id}`;
-          return (
-            key !== convId &&
-            c.conversation_id !== convId &&
-            c.booking_id !== convId &&
-            `dm_${c.partner_id}` !== convId
-          );
-        })
+        prev.filter((c) => !isConvMatch(c, convId) && c.conversation_id !== convId)
       );
 
       const isActive =
-        selectedConvId === convId ||
-        activeConversation?.conversation_id === convId ||
-        activeConversation?.booking_id === convId ||
-        `dm_${activeConversation?.partner_id}` === convId;
+        Boolean(selectedConvId) && (
+          selectedConvId === convId ||
+          isConvMatch({ conversation_id: convId, booking_id: convId, partner_id: convId } as any, selectedConvId)
+        );
 
       if (isActive) {
         handleCloseChat();
@@ -386,10 +391,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       // Also update last message in conversation list
       setConversations((prev) =>
         prev.map((c) => {
-          const match =
-            c.conversation_id === selectedConvId ||
-            c.booking_id === selectedConvId ||
-            `dm_${c.partner_id}` === selectedConvId;
+          const match = isConvMatch(c, selectedConvId);
           return match ? { ...c, last_message: trimmed } : c;
         })
       );
@@ -411,10 +413,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       // Update conversations if needed
       setConversations((prev) =>
         prev.map((c) => {
-          const match =
-            c.conversation_id === selectedConvId ||
-            c.booking_id === selectedConvId ||
-            `dm_${c.partner_id}` === selectedConvId;
+          const match = isConvMatch(c, selectedConvId);
           return match ? { ...c, last_message: 'Message deleted' } : c;
         })
       );
@@ -424,48 +423,45 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const activeConversation: Conversation | null =
-    conversations.find((c) =>
-      c.conversation_id === selectedConvId ||
-      c.booking_id === selectedConvId ||
-      `dm_${c.partner_id}` === selectedConvId
-    ) ||
-    (activePartnerData
-      ? {
-          conversation_id: `dm_${activePartnerData.id}`,
-          booking_id: null,
-          booking_status: 'DIRECT_DM',
-          total_price: 0,
-          item_title: 'Direct Message',
-          item_images: [],
-          partner_id: activePartnerData.id,
-          partner_name: activePartnerData.name || 'Neighbor',
-          partner_avatar: activePartnerData.avatar_url || activePartnerData.avatar,
-        }
-      : activeBookingData
-      ? {
-          booking_id: activeBookingData.id,
-          booking_status: activeBookingData.status,
-          start_date: activeBookingData.start_date,
-          duration_days: activeBookingData.duration_days,
-          total_price: activeBookingData.total_price,
-          item_title: activeBookingData.item_title,
-          item_images: activeBookingData.item_images,
-          item_locality: activeBookingData.item_locality,
-          partner_id:
-            activeBookingData.borrower_id === user?.id
-              ? activeBookingData.lender_id
-              : activeBookingData.borrower_id,
-          partner_name:
-            activeBookingData.borrower_id === user?.id
-              ? activeBookingData.lender_name || 'Lender'
-              : activeBookingData.borrower_name || 'Borrower',
-          partner_avatar: undefined,
-          partner_phone: undefined,
-          last_message: activeBookingData.message,
-          last_message_at: activeBookingData.created_at,
-        }
-      : null);
+  const activeConversation: Conversation | null = selectedConvId
+    ? (conversations.find((c) => isConvMatch(c, selectedConvId)) ||
+      (activePartnerData
+        ? {
+            conversation_id: `dm_${activePartnerData.id}`,
+            booking_id: null,
+            booking_status: 'DIRECT_DM',
+            total_price: 0,
+            item_title: 'Direct Message',
+            item_images: [],
+            partner_id: activePartnerData.id,
+            partner_name: activePartnerData.name || 'Neighbor',
+            partner_avatar: activePartnerData.avatar_url || activePartnerData.avatar,
+          }
+        : activeBookingData
+        ? {
+            booking_id: activeBookingData.id,
+            booking_status: activeBookingData.status,
+            start_date: activeBookingData.start_date,
+            duration_days: activeBookingData.duration_days,
+            total_price: activeBookingData.total_price,
+            item_title: activeBookingData.item_title,
+            item_images: activeBookingData.item_images,
+            item_locality: activeBookingData.item_locality,
+            partner_id:
+              activeBookingData.borrower_id === user?.id
+                ? activeBookingData.lender_id
+                : activeBookingData.borrower_id,
+            partner_name:
+              activeBookingData.borrower_id === user?.id
+                ? activeBookingData.lender_name || 'Lender'
+                : activeBookingData.borrower_name || 'Borrower',
+            partner_avatar: undefined,
+            partner_phone: undefined,
+            last_message: activeBookingData.message,
+            last_message_at: activeBookingData.created_at,
+          }
+        : null))
+    : null;
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -506,17 +502,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
 
       setConversations((prev) => {
-        const exists = prev.some((c) =>
-          c.conversation_id === selectedConvId ||
-          c.booking_id === selectedConvId ||
-          `dm_${c.partner_id}` === selectedConvId
-        );
+        const exists = prev.some((c) => isConvMatch(c, selectedConvId));
         if (exists) {
           return prev.map((c) => {
-            const match =
-              c.conversation_id === selectedConvId ||
-              c.booking_id === selectedConvId ||
-              `dm_${c.partner_id}` === selectedConvId;
+            const match = isConvMatch(c, selectedConvId);
             return match
               ? { ...c, last_message: textToSend, last_message_at: new Date().toISOString() }
               : c;
@@ -699,10 +688,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
       setConversations((prev) =>
         prev.map((c) => {
-          const match =
-            c.conversation_id === selectedConvId ||
-            c.booking_id === selectedConvId ||
-            `dm_${c.partner_id}` === selectedConvId;
+          const match = isConvMatch(c, selectedConvId);
           const label =
             opts.message_type === 'IMAGE'
               ? 'Photo'
@@ -930,10 +916,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               ) : (
                 filteredConversations.map((chat) => {
                   const chatKey = chat.conversation_id || chat.booking_id || `dm_${chat.partner_id}`;
-                  const isSelected =
-                    chatKey === selectedConvId ||
-                    chat.booking_id === selectedConvId ||
-                    `dm_${chat.partner_id}` === selectedConvId;
+                  const isSelected = isConvMatch(chat, selectedConvId);
                   const partnerAvatar =
                     chat.partner_avatar ||
                     (chat.partner_name
@@ -946,8 +929,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     <div
                       key={chatKey}
                       onClick={() => {
-                        setSelectedConvId(chatKey);
-                        setShowMobileThread(true);
+                        if (isSelected) {
+                          handleCloseChat();
+                        } else {
+                          hasUserClosedChatRef.current = false;
+                          setSelectedConvId(chatKey);
+                          setShowMobileThread(true);
+                        }
                       }}
                       className={`p-3.5 sm:p-4 flex items-start gap-3 cursor-pointer transition-all group relative ${
                         isSelected 
@@ -1950,14 +1938,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 </form>
               </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3 text-ink-secondary">
-                <div className="w-14 h-14 rounded-3xl bg-canvas border border-divider flex items-center justify-center text-ink-muted">
-                  <MessageSquare className="w-7 h-7" />
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4 text-ink-secondary bg-surface">
+                <div className="w-16 h-16 rounded-3xl bg-canvas border border-divider flex items-center justify-center text-ink-muted shadow-xs">
+                  <MessageSquareOff className="w-8 h-8 text-ink-muted/80" />
                 </div>
-                <h3 className="text-base font-black text-ink font-display">Select a Conversation</h3>
-                <p className="text-xs max-w-xs text-ink-secondary">
-                  Choose a rental conversation from the list to message your neighbor.
-                </p>
+                <div className="space-y-1.5 max-w-sm">
+                  <h3 className="text-base font-black text-ink font-display">No Chats Are Open</h3>
+                  <p className="text-xs leading-relaxed text-ink-secondary">
+                    {conversations.length === 0
+                      ? "You don't have any open conversations. Explore the marketplace or reach out to neighbors to start chatting."
+                      : "All chats are currently closed. Select a conversation from the left to view messages, or start a new chat."}
+                  </p>
+                </div>
               </div>
             )}
 
