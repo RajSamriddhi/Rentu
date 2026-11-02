@@ -346,7 +346,10 @@ export const api = {
     const res = await fetch(`${API_BASE}/bookings`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...data,
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
+      }),
     });
     return handleResponse(res);
   },
@@ -355,7 +358,10 @@ export const api = {
     const res = await fetch(`${API_BASE}/bookings/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
+      }),
     });
     return handleResponse(res);
   },

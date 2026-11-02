@@ -305,6 +305,35 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
       return;
     }
 
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (startDate < todayStr) {
+      setErrorMsg('Start date cannot be in the past. Please select an upcoming date.');
+      return;
+    }
+
+    if (startDate === todayStr && startTime <= currentHStr) {
+      setErrorMsg(`Pickup time (${startTime}) has already passed for today. Please select an upcoming time.`);
+      return;
+    }
+
+    if (endDate && endDate < startDate) {
+      setErrorMsg('Return date cannot be earlier than start date.');
+      return;
+    }
+
+    if (endDate && endDate === startDate && endTime && endTime <= startTime) {
+      setErrorMsg(`Return time (${endTime}) must be after pickup time (${startTime}).`);
+      return;
+    }
+
+    if (endDate && endDate === todayStr && endTime && endTime <= currentHStr) {
+      setErrorMsg(`Return time (${endTime}) has already passed for today. Please select an upcoming time.`);
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
 

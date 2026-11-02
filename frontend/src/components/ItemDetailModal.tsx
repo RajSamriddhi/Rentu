@@ -141,6 +141,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [endTime, setEndTime] = useState('18:00');
 
+  // If today is selected, ensure start time is an upcoming time slot rather than in the past
+  React.useEffect(() => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (startDate === todayStr && startTime <= currentHStr) {
+      const nextD = new Date();
+      nextD.setMinutes(nextD.getMinutes() + 30);
+      const nextH = String(nextD.getHours()).padStart(2, '0');
+      const nextM = nextD.getMinutes() < 30 ? '30' : '00';
+      setStartTime(`${nextH}:${nextM}`);
+    }
+  }, [startDate]);
+
   // Delivery & Return Collection options based on lender listing
   const savedLocations = getEffectiveSavedLocations(user);
   const defaultSavedAddr = savedLocations.length > 0 && (savedLocations[0].building_flat_house || savedLocations[0].locality)
@@ -199,8 +213,32 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
-    if (new Date(endDate) < new Date(startDate)) {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (startDate < todayStr) {
+      setErrorMsg('Start date cannot be in the past. Please select an upcoming date.');
+      return;
+    }
+
+    if (startDate === todayStr && startTime <= currentHourMin) {
+      setErrorMsg(`Pickup time (${startTime}) has already passed for today. Please select an upcoming time.`);
+      return;
+    }
+
+    if (endDate < startDate) {
       setErrorMsg('Return date cannot be earlier than start date.');
+      return;
+    }
+
+    if (endDate === startDate && endTime <= startTime) {
+      setErrorMsg(`Return time (${endTime}) must be after pickup time (${startTime}).`);
+      return;
+    }
+
+    if (endDate === todayStr && endTime <= currentHourMin) {
+      setErrorMsg(`Return time (${endTime}) has already passed for today. Please select an upcoming time.`);
       return;
     }
 

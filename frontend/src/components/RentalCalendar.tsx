@@ -317,161 +317,221 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
       </div>
 
       {/* Handover & Return Times Section directly inside Calendar */}
-      {(onSelectStartTime || onSelectEndTime) && (
-        <div className="mt-3.5 pt-3 border-t border-divider grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Pickup / Start Time */}
-          <div className="p-3 rounded-2xl bg-canvas border border-divider space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-brand" />
-                <span>Pickup / Start Time</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    startInputRef.current?.showPicker?.();
-                  } catch {}
-                  startInputRef.current?.focus();
-                }}
-                className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <CalendarIcon className="w-3 h-3 text-brand" />
-                <span>Select Time</span>
-              </button>
-            </div>
+      {(onSelectStartTime || onSelectEndTime) && (() => {
+        const isStartToday = startDate === todayStr;
+        const isEndToday = endDate === todayStr;
+        const now = new Date();
+        const currentHourNum = now.getHours();
+        const currentMinNum = now.getMinutes();
+        const currentTimeStr = `${String(currentHourNum).padStart(2, '0')}:${String(currentMinNum).padStart(2, '0')}`;
 
-            <div className="relative flex items-center">
-              <input
-                ref={startInputRef}
-                type="time"
-                value={startTime}
-                onChange={(e) => onSelectStartTime?.(e.target.value)}
-                onClick={(e) => {
-                  try {
-                    e.currentTarget.showPicker?.();
-                  } catch {}
-                }}
-                className="w-full bg-surface border border-divider rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    startInputRef.current?.showPicker?.();
-                  } catch {}
-                  startInputRef.current?.focus();
-                }}
-                className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
-                title="Open calendar time picker"
-              >
-                <CalendarIcon className="w-4 h-4 text-brand" />
-              </button>
-            </div>
+        const isStartTimePassedToday = isStartToday && startTime <= currentTimeStr;
+        const isEndTimePassedToday = isEndToday && endTime <= currentTimeStr;
+        const isEndTimeBeforeStartTime = startDate === endDate && endTime <= startTime;
 
-            {/* Quick Time Pills */}
-            <div className="flex flex-wrap items-center gap-1 pt-0.5">
-              <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
-              {[
-                { time: '09:00', label: '9 AM' },
-                { time: '10:00', label: '10 AM' },
-                { time: '12:00', label: '12 PM' },
-                { time: '16:00', label: '4 PM' },
-                { time: '18:00', label: '6 PM' },
-              ].map(({ time, label }) => (
-                <button
-                  key={time}
-                  type="button"
-                  onClick={() => onSelectStartTime?.(time)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer ${
-                    startTime === time
-                      ? 'bg-brand text-white border-brand shadow-xs'
-                      : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+        return (
+          <div className="mt-3.5 pt-3 border-t border-divider space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Pickup / Start Time */}
+              <div className={`p-3 rounded-2xl bg-canvas border space-y-2 shadow-2xs transition-colors ${
+                isStartTimePassedToday ? 'border-rose-500/40 bg-rose-500/5' : 'border-divider'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-brand" />
+                    <span>Pickup / Start Time</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        startInputRef.current?.showPicker?.();
+                      } catch {}
+                      startInputRef.current?.focus();
+                    }}
+                    className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <CalendarIcon className="w-3 h-3 text-brand" />
+                    <span>Select Time</span>
+                  </button>
+                </div>
+
+                <div className="relative flex items-center">
+                  <input
+                    ref={startInputRef}
+                    type="time"
+                    value={startTime}
+                    min={isStartToday ? currentTimeStr : undefined}
+                    onChange={(e) => onSelectStartTime?.(e.target.value)}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100 ${
+                      isStartTimePassedToday ? 'border-rose-500 text-rose-500' : 'border-divider'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        startInputRef.current?.showPicker?.();
+                      } catch {}
+                      startInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
+                    title="Open calendar time picker"
+                  >
+                    <CalendarIcon className="w-4 h-4 text-brand" />
+                  </button>
+                </div>
+
+                {/* Validation alert if past time today */}
+                {isStartTimePassedToday && (
+                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>Time has already passed today. Pick an upcoming time.</span>
+                  </div>
+                )}
+
+                {/* Quick Time Pills */}
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
+                  {[
+                    { time: '09:00', label: '9 AM' },
+                    { time: '10:00', label: '10 AM' },
+                    { time: '12:00', label: '12 PM' },
+                    { time: '16:00', label: '4 PM' },
+                    { time: '18:00', label: '6 PM' },
+                  ].map(({ time, label }) => {
+                    const isPast = isStartToday && time <= currentTimeStr;
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        disabled={isPast}
+                        onClick={() => !isPast && onSelectStartTime?.(time)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
+                          isPast
+                            ? 'opacity-30 cursor-not-allowed bg-canvas border-divider text-ink-muted line-through'
+                            : startTime === time
+                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
+                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
+                        }`}
+                        title={isPast ? 'This time has already passed today' : undefined}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Return / End Time */}
+              <div className={`p-3 rounded-2xl bg-canvas border space-y-2 shadow-2xs transition-colors ${
+                (isEndTimePassedToday || isEndTimeBeforeStartTime) ? 'border-rose-500/40 bg-rose-500/5' : 'border-divider'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-brand" />
+                    <span>Return / End Time</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        endInputRef.current?.showPicker?.();
+                      } catch {}
+                      endInputRef.current?.focus();
+                    }}
+                    className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <CalendarIcon className="w-3 h-3 text-brand" />
+                    <span>Select Time</span>
+                  </button>
+                </div>
+
+                <div className="relative flex items-center">
+                  <input
+                    ref={endInputRef}
+                    type="time"
+                    value={endTime}
+                    min={isEndToday ? currentTimeStr : (startDate === endDate ? startTime : undefined)}
+                    onChange={(e) => onSelectEndTime?.(e.target.value)}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {}
+                    }}
+                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100 ${
+                      (isEndTimePassedToday || isEndTimeBeforeStartTime) ? 'border-rose-500 text-rose-500' : 'border-divider'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        endInputRef.current?.showPicker?.();
+                      } catch {}
+                      endInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
+                    title="Open calendar time picker"
+                  >
+                    <CalendarIcon className="w-4 h-4 text-brand" />
+                  </button>
+                </div>
+
+                {/* Validation alert */}
+                {isEndTimePassedToday ? (
+                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>Return time has already passed today.</span>
+                  </div>
+                ) : isEndTimeBeforeStartTime ? (
+                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>Return time must be after pickup time.</span>
+                  </div>
+                ) : null}
+
+                {/* Quick Time Pills */}
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
+                  {[
+                    { time: '11:00', label: '11 AM' },
+                    { time: '14:00', label: '2 PM' },
+                    { time: '18:00', label: '6 PM' },
+                    { time: '20:00', label: '8 PM' },
+                    { time: '21:30', label: '9:30 PM' },
+                  ].map(({ time, label }) => {
+                    const isPast = (isEndToday && time <= currentTimeStr) || (startDate === endDate && time <= startTime);
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        disabled={isPast}
+                        onClick={() => !isPast && onSelectEndTime?.(time)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
+                          isPast
+                            ? 'opacity-30 cursor-not-allowed bg-canvas border-divider text-ink-muted line-through'
+                            : endTime === time
+                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
+                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
+                        }`}
+                        title={isPast ? (startDate === endDate && time <= startTime ? 'Must be after pickup time' : 'This time has already passed today') : undefined}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Return / End Time */}
-          <div className="p-3 rounded-2xl bg-canvas border border-divider space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-brand" />
-                <span>Return / End Time</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    endInputRef.current?.showPicker?.();
-                  } catch {}
-                  endInputRef.current?.focus();
-                }}
-                className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <CalendarIcon className="w-3 h-3 text-brand" />
-                <span>Select Time</span>
-              </button>
-            </div>
-
-            <div className="relative flex items-center">
-              <input
-                ref={endInputRef}
-                type="time"
-                value={endTime}
-                onChange={(e) => onSelectEndTime?.(e.target.value)}
-                onClick={(e) => {
-                  try {
-                    e.currentTarget.showPicker?.();
-                  } catch {}
-                }}
-                className="w-full bg-surface border border-divider rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    endInputRef.current?.showPicker?.();
-                  } catch {}
-                  endInputRef.current?.focus();
-                }}
-                className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
-                title="Open calendar time picker"
-              >
-                <CalendarIcon className="w-4 h-4 text-brand" />
-              </button>
-            </div>
-
-            {/* Quick Time Pills */}
-            <div className="flex flex-wrap items-center gap-1 pt-0.5">
-              <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
-              {[
-                { time: '11:00', label: '11 AM' },
-                { time: '14:00', label: '2 PM' },
-                { time: '18:00', label: '6 PM' },
-                { time: '20:00', label: '8 PM' },
-                { time: '21:30', label: '9:30 PM' },
-              ].map(({ time, label }) => (
-                <button
-                  key={time}
-                  type="button"
-                  onClick={() => onSelectEndTime?.(time)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer ${
-                    endTime === time
-                      ? 'bg-brand text-white border-brand shadow-xs'
-                      : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Booked ranges notice banner if any rentals exist */}
       {normalizedBookedRanges.length > 0 && (

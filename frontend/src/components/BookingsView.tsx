@@ -149,8 +149,38 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     }
   };
 
+  const isBookingRequestPassed = (b: Booking): boolean => {
+  try {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const endD = (b.end_date || b.start_date || '').slice(0, 10);
+    if (endD < todayStr) return true;
+    if (endD === todayStr) {
+      const endT = (b.end_time || '18:00').slice(0, 5);
+      if (endT <= currentHourMin) return true;
+    }
+
+    const startD = (b.start_date || '').slice(0, 10);
+    if (startD < todayStr) return true;
+    if (startD === todayStr) {
+      const startT = (b.start_time || '10:00').slice(0, 5);
+      if (startT <= currentHourMin) return true;
+    }
+  } catch {}
+  return false;
+};
+
   // Accept or Decline a proposal
   const handleStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
+    if (status === 'ACCEPTED') {
+      const b = bookings.find((item) => item.id === bookingId);
+      if (b && isBookingRequestPassed(b)) {
+        alert('This booking request cannot be accepted because its scheduled rental time has already passed. Please message the renter to propose new upcoming dates.');
+        return;
+      }
+    }
     try {
       const updated = await api.updateBookingStatus(bookingId, status);
       setBookings((prev) =>
@@ -823,6 +853,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   const isLender = booking.lender_id === user?.id;
                   const requesterName = isLender ? (booking.borrower_name || 'Neighbor') : (booking.lender_name || 'Owner');
                   const requesterAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
+                  const isTimePassed = isBookingRequestPassed(booking);
 
                   return (
                     <div
@@ -831,6 +862,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       className={`bg-surface border rounded-3xl p-5 sm:p-6 shadow-sm transition-all space-y-4 ${
                         highlightedBookingId === booking.id
                           ? 'border-brand ring-4 ring-brand/60 shadow-pink'
+                          : isTimePassed
+                          ? 'border-rose-500/30 hover:border-rose-500/60'
                           : 'border-amber-500/30 hover:border-amber-500/60'
                       }`}
                     >
@@ -848,9 +881,15 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                               <h3 className="font-extrabold text-base sm:text-lg text-ink tracking-tight font-display">
                                 {booking.item_title}
                               </h3>
-                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                {isLender ? 'Incoming Request' : 'Proposal Sent'}
-                              </span>
+                              {isTimePassed ? (
+                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                  Time Expired
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                  {isLender ? 'Incoming Request' : 'Proposal Sent'}
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-secondary">
@@ -887,6 +926,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         </div>
                       </div>
 
+                      {/* Expired alert if time passed */}
+                      {isTimePassed && (
+                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 animate-in fade-in">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>The scheduled rental time for this request ({booking.start_date} at {booking.start_time || '10:00'}) has already passed. It cannot be accepted. Please message {requesterName} to request upcoming dates.</span>
+                        </div>
+                      )}
+
                       {/* Requester note if any */}
                       {booking.message && (
                         <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary">
@@ -909,7 +956,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       {/* Actions: Accept or Reject (If Lender) */}
                       <div className="pt-2 border-t border-divider flex flex-col sm:flex-row items-center justify-between gap-3">
                         <div className="text-xs text-ink-secondary">
-                          {isLender
+                          {isTimePassed
+                            ? 'This request is expired because its scheduled pickup time has passed.'
+                            : isLender
                             ? 'Accepting this request will immediately activate the booking and schedule it on your calendar.'
                             : 'Waiting for the equipment owner to review and accept your proposal.'}
                         </div>
@@ -921,16 +970,27 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                               onClick={() => handleStatusUpdate(booking.id, 'REJECTED')}
                               className="btn-secondary text-xs px-4 py-2 text-rose-500 hover:border-rose-500 font-bold cursor-pointer"
                             >
-                              Decline
+                              {isTimePassed ? 'Dismiss / Decline' : 'Decline'}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusUpdate(booking.id, 'ACCEPTED')}
-                              className="btn-primary text-xs px-6 py-2 shadow-pink font-bold cursor-pointer inline-flex items-center gap-1.5"
-                            >
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>Accept Booking</span>
-                            </button>
+                            {isTimePassed ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="px-5 py-2 rounded-xl text-xs font-bold bg-zinc-200 dark:bg-zinc-800 text-ink-muted border border-divider opacity-50 cursor-not-allowed inline-flex items-center gap-1.5"
+                                title="Scheduled rental time has already passed. Cannot accept."
+                              >
+                                <span>Time Expired</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleStatusUpdate(booking.id, 'ACCEPTED')}
+                                className="btn-primary text-xs px-6 py-2 shadow-pink font-bold cursor-pointer inline-flex items-center gap-1.5"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Accept Booking</span>
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button

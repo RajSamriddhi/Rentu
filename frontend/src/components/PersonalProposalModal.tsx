@@ -342,6 +342,22 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
     const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
     const fullLocText = chosenLocation ? formatSavedLocationFull(chosenLocation) : user?.locality || '';
 
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (listingStartDate < todayStr) {
+      setErrorMsg('Start date cannot be in the past. Please select an upcoming date.');
+      return;
+    }
+
+    let effectiveStartTime = '10:00:00';
+    if (listingStartDate === todayStr && '10:00' <= currentHStr) {
+      const nextD = new Date();
+      nextD.setMinutes(nextD.getMinutes() + 30);
+      effectiveStartTime = `${String(nextD.getHours()).padStart(2, '0')}:${String(nextD.getMinutes()).padStart(2, '0')}:00`;
+    }
+
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -356,7 +372,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
         duration_days: Math.max(1, Number(listingDurationDays) || 1),
         start_date: listingStartDate,
         end_date: calculatedListingEndDate,
-        start_time: '10:00:00',
+        start_time: effectiveStartTime,
         end_time: '18:00:00',
         delivery_option: listingOffersDelivery ? 'LENDER_DELIVERY' : 'SELF',
         delivery_fee: listingOffersDelivery ? Number(listingDeliveryFee || 0) : 0,
@@ -411,6 +427,35 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
       reqLocality.trim(),
       reqPincode.trim(),
     ].filter(Boolean).join(', ');
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentHStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (requestStartDate < todayStr) {
+      setErrorMsg('Start date cannot be in the past. Please select an upcoming date.');
+      return;
+    }
+
+    if (requestStartDate === todayStr && requestStartTime <= currentHStr) {
+      setErrorMsg(`Start time (${requestStartTime}) has already passed for today. Please select an upcoming time.`);
+      return;
+    }
+
+    if (requestEndDate < requestStartDate) {
+      setErrorMsg('Return date cannot be earlier than start date.');
+      return;
+    }
+
+    if (requestEndDate === requestStartDate && requestEndTime <= requestStartTime) {
+      setErrorMsg(`Return time (${requestEndTime}) must be after start time (${requestStartTime}).`);
+      return;
+    }
+
+    if (requestEndDate === todayStr && requestEndTime <= currentHStr) {
+      setErrorMsg(`Return time (${requestEndTime}) has already passed for today. Please select an upcoming time.`);
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMsg('');

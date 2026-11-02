@@ -24,11 +24,27 @@ const createBookingSchema = z.object({
   requires_pickup: z.boolean().optional().default(false),
   pickup_fee: z.number().min(0).optional().default(0),
   message: z.string().optional(),
+  timezone_offset_minutes: z.number().optional(),
 });
 
 const updateStatusSchema = z.object({
   status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED']),
+  timezone_offset_minutes: z.number().optional(),
 });
+
+function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes?: number): number {
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
+  const cleanTime = (timeStr && timeStr.trim()) ? timeStr.slice(0, 5) : '10:00';
+  const [hour, minute] = cleanTime.split(':').map(Number);
+
+  if (typeof tzOffsetMinutes === 'number') {
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    return localUtcMs + (tzOffsetMinutes * 60000);
+  }
+
+  const d = new Date(`${dateStr.slice(0, 10)}T${cleanTime}:00`);
+  return d.getTime();
+}
 
 const verifyCodeSchema = z.object({
   code: z.string().min(4, 'Verification code is required'),
@@ -78,6 +94,35 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       } else {
         finalEndDate = validated.start_date;
       }
+    }
+
+    // PAST TIME VALIDATION:
+    // Reject any booking where the scheduled start time or return time has already passed
+    const tzOffset = typeof validated.timezone_offset_minutes === 'number'
+      ? validated.timezone_offset_minutes
+      : -330; // Default IST UTC+5:30
+
+    const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
+    // Allow 2-minute buffer for network transit and clock differences
+    const currentTimestampWithGrace = Date.now() - (2 * 60 * 1000);
+
+    if (startTimestamp < currentTimestampWithGrace) {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `Cannot book in the past. The selected start time (${validated.start_date} ${validated.start_time || ''}) has already passed. Please select an upcoming date and time.`,
+        400
+      );
+    }
+
+    const endTimestamp = parseToUtcTimestamp(finalEndDate, validated.end_time || '18:00', tzOffset);
+    if (endTimestamp <= startTimestamp) {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'Rental return time must be strictly after the pickup start time.',
+        400
+      );
     }
 
     // CALENDAR CONFLICT CHECK:
@@ -313,6 +358,29 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     if (status === 'ACCEPTED' || status === 'REJECTED') {
       if (!isLender && !isAdmin) {
         return sendError(res, 'FORBIDDEN', 'Only the gear owner can accept or reject proposals', 403);
+      }
+    }
+
+    // PAST TIME CHECK ON ACCEPTANCE:
+    // Reject accepting a booking if its rental period has already completely passed
+    if (status === 'ACCEPTED') {
+      const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
+        ? req.body.timezone_offset_minutes
+        : -330;
+
+      const endTimestamp = parseToUtcTimestamp(
+        booking.end_date_str || booking.start_date_str,
+        booking.end_time || '18:00',
+        tzOffset
+      );
+
+      if (endTimestamp < Date.now()) {
+        return sendError(
+          res,
+          'BAD_REQUEST',
+          'This booking request cannot be accepted because its scheduled rental time has already passed. Please ask the renter to send a request for upcoming dates.',
+          400
+        );
       }
     }
 
