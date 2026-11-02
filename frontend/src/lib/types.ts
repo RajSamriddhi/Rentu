@@ -199,7 +199,7 @@ export interface Message {
   sender_id: string;
   receiver_id: string;
   content: string;
-  message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
+  message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM' | 'IMAGE' | 'LOCATION' | 'CONTACT' | 'DOCUMENT' | string;
   proposal_data?: MessageProposalData | any;
   is_edited?: boolean;
   is_delivered?: boolean;

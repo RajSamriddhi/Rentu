@@ -3,12 +3,15 @@ import {
   MessageSquare, Send, Search, ArrowLeft, Check, CheckCheck, AlertCircle, 
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
-  Trash2, Pencil
+  Trash2, Pencil, Image as ImageIcon, Phone, ExternalLink, Download, Loader2, Navigation,
+  ClipboardCheck, Copy
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { Conversation, Message, MessageProposalData } from '../lib/types';
 import { PersonalProposalModal } from './PersonalProposalModal';
+import { uploadItemPhoto } from '../lib/supabase';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
@@ -56,8 +59,40 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [proposalType, setProposalType] = useState<'LISTING' | 'REQUEST'>('LISTING');
   const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
 
+  // WhatsApp-style Attachment Tray State
+  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [customLocationText, setCustomLocationText] = useState('');
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactLocality, setContactLocality] = useState('');
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [docTitle, setDocTitle] = useState('Pre-handover Equipment Inspection');
+  const [docNotes, setDocNotes] = useState('Item inspected and verified in clean working condition before handover. All cables and accessories accounted for.');
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close attachment menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setIsAttachMenuOpen(false);
+      }
+    };
+    if (isAttachMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAttachMenuOpen]);
 
   // Scroll to bottom cleanly within the thread container
   const scrollToBottom = (smooth = true) => {
@@ -622,6 +657,174 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
+  // WhatsApp-Style Attachment Senders
+  const handleSendAttachmentMessage = async (opts: {
+    content: string;
+    message_type: 'IMAGE' | 'LOCATION' | 'CONTACT' | 'DOCUMENT' | string;
+    proposal_data?: any;
+  }) => {
+    if (!selectedConvId) return;
+    const receiverId = activeConversation?.partner_id || (selectedConvId.startsWith('dm_') ? selectedConvId.replace('dm_', '') : '');
+    if (!receiverId) return;
+
+    setSendError(null);
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      booking_id: activeConversation?.booking_id || undefined,
+      sender_id: user?.id || 'me',
+      sender_name: user?.name || 'You',
+      receiver_id: receiverId,
+      content: opts.content,
+      message_type: opts.message_type as any,
+      proposal_data: opts.proposal_data,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => scrollToBottom(true), 50);
+
+    try {
+      const realMsg = await api.sendMessage(
+        activeConversation?.booking_id || null,
+        receiverId,
+        opts.content,
+        opts.message_type,
+        opts.proposal_data
+      );
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...realMsg, sender_name: user?.name || 'You' } : m))
+      );
+
+      setConversations((prev) =>
+        prev.map((c) => {
+          const match =
+            c.conversation_id === selectedConvId ||
+            c.booking_id === selectedConvId ||
+            `dm_${c.partner_id}` === selectedConvId;
+          const label =
+            opts.message_type === 'IMAGE'
+              ? 'Photo'
+              : opts.message_type === 'LOCATION'
+              ? 'Shared Location'
+              : opts.message_type === 'CONTACT'
+              ? 'Contact Card'
+              : opts.message_type === 'DOCUMENT'
+              ? 'Document Note'
+              : opts.content;
+          return match
+            ? { ...c, last_message: label, last_message_at: new Date().toISOString() }
+            : c;
+        })
+      );
+    } catch (err: any) {
+      console.error('Failed to send attachment message:', err);
+      setSendError(err.message || 'Failed to send attachment.');
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  };
+
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Photo is too large (maximum 15MB). Please choose a smaller photo.');
+      return;
+    }
+
+    try {
+      setIsUploadingPhoto(true);
+      const url = await uploadItemPhoto(file, 'chat');
+      await handleSendAttachmentMessage({
+        content: 'Photo',
+        message_type: 'IMAGE',
+        proposal_data: { image_url: url, file_name: file.name },
+      });
+    } catch (err: any) {
+      console.error('Photo upload failed:', err);
+      alert(err.message || 'Failed to upload photo. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleShareCurrentLocation = async () => {
+    try {
+      setIsDetectingLocation(true);
+      const loc = await detectCurrentLocation();
+      const addr = [loc.address_text, loc.locality, loc.city].filter(Boolean).join(', ') || 'Current Location';
+      await handleSendAttachmentMessage({
+        content: `Location: ${addr}`,
+        message_type: 'LOCATION',
+        proposal_data: {
+          address: addr,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          locality: loc.locality || loc.city,
+        },
+      });
+      setIsLocationModalOpen(false);
+    } catch (err: any) {
+      console.error('Failed to detect GPS location:', err);
+      alert(err.message || 'Could not detect your GPS location. Please choose a saved address below.');
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
+
+  const handleShareSavedLocation = async (locText: string) => {
+    if (!locText.trim()) return;
+    await handleSendAttachmentMessage({
+      content: `Location: ${locText.trim()}`,
+      message_type: 'LOCATION',
+      proposal_data: {
+        address: locText.trim(),
+      },
+    });
+    setCustomLocationText('');
+    setIsLocationModalOpen(false);
+  };
+
+  const handleShareContact = async () => {
+    const name = contactName.trim() || user?.name || 'Neighbor';
+    const phone = contactPhone.trim() || user?.phone || '';
+    if (!phone) {
+      alert('Please enter a phone number to share.');
+      return;
+    }
+    await handleSendAttachmentMessage({
+      content: `Contact: ${name} (${phone})`,
+      message_type: 'CONTACT',
+      proposal_data: {
+        name,
+        phone,
+        locality: contactLocality.trim() || user?.locality || undefined,
+      },
+    });
+    setIsContactModalOpen(false);
+  };
+
+  const handleShareDocument = async () => {
+    const title = docTitle.trim() || 'Gear Handover Inspection';
+    const notes = docNotes.trim();
+    if (!notes) {
+      alert('Please enter your condition inspection notes.');
+      return;
+    }
+    await handleSendAttachmentMessage({
+      content: `Condition Note: ${title}`,
+      message_type: 'DOCUMENT',
+      proposal_data: {
+        title,
+        notes,
+      },
+    });
+    setIsDocumentModalOpen(false);
+  };
+
   // Not signed in state
   if (!isAuthenticated) {
     return (
@@ -975,6 +1178,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                         : 'Just now';
 
+                      const pData = m.proposal_data
+                        ? (typeof m.proposal_data === 'string' ? (() => { try { return JSON.parse(m.proposal_data); } catch { return null; } })() : m.proposal_data)
+                        : null;
+
                       // 1. SYSTEM Announcement Messages (Deal confirmation, milestones)
                       if (m.message_type === 'SYSTEM') {
                         return (
@@ -988,8 +1195,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       }
 
                       // 2. PROPOSAL Messages (Personal Listing or Custom Request Deal Card)
-                      if (m.message_type === 'PROPOSAL' && m.proposal_data) {
-                        const pData = typeof m.proposal_data === 'string' ? JSON.parse(m.proposal_data) : m.proposal_data;
+                      if (m.message_type === 'PROPOSAL' && pData) {
                         const isPending = !pData.status || pData.status === 'PENDING';
                         const isAccepted = pData.status === 'ACCEPTED';
                         const isDeclined = pData.status === 'DECLINED';
@@ -1208,7 +1414,275 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                       }
 
-                      // 3. STANDARD CHAT TEXT MESSAGE
+                      // 3. IMAGE / PHOTO MESSAGE (WhatsApp Style)
+                      if (m.message_type === 'IMAGE' || (pData?.image_url && !pData.total_price)) {
+                        const imgUrl = pData?.image_url || m.content;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete photo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="rounded-2xl sm:rounded-3xl overflow-hidden max-w-[280px] sm:max-w-[340px] border border-divider/80 bg-surface shadow-xs">
+                              <div
+                                onClick={() => setPreviewImageUrl(imgUrl)}
+                                className="relative group/img cursor-pointer overflow-hidden bg-black/10"
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt="Shared photo"
+                                  className="w-full max-h-[320px] object-cover transition-transform duration-200 group-hover/img:scale-102"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-black/60 backdrop-blur-sm">
+                                    Click to expand
+                                  </span>
+                                </div>
+                              </div>
+                              {pData?.caption && (
+                                <p className="px-3 pt-2 text-xs font-medium text-ink leading-relaxed">
+                                  {pData.caption}
+                                </p>
+                              )}
+                              <div className="px-3 py-1.5 flex items-center justify-end gap-1 text-[9px] text-ink-secondary">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 4. LOCATION MESSAGE (WhatsApp Style)
+                      if (m.message_type === 'LOCATION' || pData?.address) {
+                        const addrText = pData?.address || m.content.replace(/^Location:\s*/i, '');
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete location"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="w-full max-w-[280px] sm:max-w-xs rounded-2xl sm:rounded-3xl p-3.5 border border-emerald-500/30 bg-surface shadow-xs space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                  <MapPin className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider block">
+                                    Shared Location
+                                  </span>
+                                  <span className="text-xs font-bold text-ink truncate block">
+                                    Meetup Handover Spot
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-xs text-ink font-medium leading-relaxed bg-canvas p-2 rounded-xl border border-divider">
+                                {addrText}
+                              </p>
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addrText)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center gap-1.5 w-full py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                <span>Open in Google Maps</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                              <div className="text-[9px] flex items-center justify-end gap-1 text-ink-secondary pt-0.5">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 5. CONTACT CARD MESSAGE (WhatsApp Style)
+                      if (m.message_type === 'CONTACT' || (pData?.phone && !pData.total_price)) {
+                        const cName = pData?.name || m.sender_name || 'Neighbor';
+                        const cPhone = pData?.phone || '';
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete contact"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="w-full max-w-[280px] sm:max-w-xs rounded-2xl sm:rounded-3xl p-3.5 border border-blue-500/30 bg-surface shadow-xs space-y-2.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                  <UserIcon className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider block">
+                                    Contact Card
+                                  </span>
+                                  <span className="text-xs font-black text-ink truncate block">
+                                    {cName}
+                                  </span>
+                                  {pData?.locality && (
+                                    <span className="text-[10px] text-ink-secondary truncate block">
+                                      {pData.locality}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="p-2.5 bg-canvas rounded-xl border border-divider text-xs font-bold text-ink flex items-center justify-between">
+                                <span>{cPhone || 'Phone shared'}</span>
+                                {cPhone && (
+                                  <a
+                                    href={`tel:${cPhone}`}
+                                    className="text-xs font-bold text-brand hover:underline inline-flex items-center gap-1"
+                                  >
+                                    <Phone className="w-3 h-3" />
+                                    <span>Call</span>
+                                  </a>
+                                )}
+                              </div>
+                              <div className="text-[9px] flex items-center justify-end gap-1 text-ink-secondary">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 6. CONDITION / INSPECTION NOTE (WhatsApp Style)
+                      if (m.message_type === 'DOCUMENT' || (pData?.notes && !pData.total_price)) {
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete document"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="w-full max-w-[280px] sm:max-w-xs rounded-2xl sm:rounded-3xl p-3.5 border border-indigo-500/30 bg-surface shadow-xs space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                  <ClipboardCheck className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider block">
+                                    Condition Check
+                                  </span>
+                                  <span className="text-xs font-bold text-ink truncate block">
+                                    {pData?.title || 'Handover Inspection'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="p-2.5 bg-canvas rounded-xl border border-divider text-xs text-ink-secondary leading-relaxed font-medium">
+                                {pData?.notes || m.content}
+                              </div>
+                              <div className="text-[9px] flex items-center justify-end gap-1 text-ink-secondary">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 7. STANDARD CHAT TEXT MESSAGE
                       return (
                         <div
                           key={m.id}
@@ -1328,20 +1802,130 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   )}
                 </div>
 
-                {/* Reply Input Bar with + Button */}
+                {/* Photo upload status banner if currently uploading */}
+                {isUploadingPhoto && (
+                  <div className="shrink-0 px-4 py-2 bg-brand/10 border-t border-brand/20 flex items-center justify-between text-xs font-bold text-brand animate-pulse">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Uploading and sharing photo with neighbor...</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reply Input Bar with WhatsApp-style + Button */}
                 <form
                   onSubmit={handleSendMessage}
-                  className="shrink-0 p-3 sm:p-4 border-t border-divider bg-surface flex items-center gap-2 sm:gap-3"
+                  className="shrink-0 p-3 sm:p-4 border-t border-divider bg-surface flex items-center gap-2 sm:gap-3 relative"
                 >
-                  {/* Plus button to launch personal listing / request */}
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateProposalOpen(true)}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-canvas hover:bg-brand-soft border border-divider hover:border-brand text-ink-secondary hover:text-brand flex items-center justify-center shrink-0 transition-all cursor-pointer group shadow-xs"
-                    title="Release a personal listing or request agreement for this neighbor (+)"
-                  >
-                    <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-200" />
-                  </button>
+                  {/* WhatsApp-Style Attachment Menu + Button */}
+                  <div className="relative" ref={attachMenuRef}>
+                    {isAttachMenuOpen && (
+                      <div className="absolute bottom-14 left-0 mb-1 z-40 w-64 bg-surface/98 backdrop-blur-md border border-divider rounded-3xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 space-y-1">
+                        <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-ink-secondary border-b border-divider/60">
+                          Share Attachment
+                        </div>
+
+                        {/* 1. Photos & Videos */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachMenuOpen(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <ImageIcon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-ink">Photos & Videos</div>
+                            <div className="text-[10px] text-ink-secondary">Share gear photos or handoff proof</div>
+                          </div>
+                        </button>
+
+                        {/* 2. Share Location */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachMenuOpen(false);
+                            setIsLocationModalOpen(true);
+                          }}
+                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-ink">Location</div>
+                            <div className="text-[10px] text-ink-secondary">Share meetup spot or saved address</div>
+                          </div>
+                        </button>
+
+                        {/* 3. Contact Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachMenuOpen(false);
+                            setContactName(user?.name || '');
+                            setContactPhone(user?.phone || '');
+                            setContactLocality(user?.locality || '');
+                            setIsContactModalOpen(true);
+                          }}
+                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <Phone className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-ink">Contact Card</div>
+                            <div className="text-[10px] text-ink-secondary">Share your phone number for meetup</div>
+                          </div>
+                        </button>
+
+                        {/* 4. Condition / Inspection Note */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachMenuOpen(false);
+                            setIsDocumentModalOpen(true);
+                          }}
+                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-ink">Condition Note</div>
+                            <div className="text-[10px] text-ink-secondary">Gear inspection & handover checklist</div>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hidden file input for Photo Upload */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoSelected}
+                      className="hidden"
+                    />
+
+                    {/* WhatsApp-style Plus Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full border transition-all flex items-center justify-center shrink-0 shadow-xs cursor-pointer ${
+                        isAttachMenuOpen
+                          ? 'bg-brand text-white border-brand rotate-45'
+                          : 'bg-canvas hover:bg-brand-soft border-divider hover:border-brand text-ink-secondary hover:text-brand'
+                      }`}
+                      title="Attach photo, location, contact, or condition note"
+                      aria-label="Attachment options"
+                    >
+                      <Plus className="w-5 h-5 transition-transform duration-200" />
+                    </button>
+                  </div>
 
                   <input
                     ref={inputRef}
@@ -1393,6 +1977,324 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         onSubmitProposal={handleProposalSubmit}
         initialType={proposalType}
       />
+
+      {/* WhatsApp Modal 1: Location Share Modal */}
+      {isLocationModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-ink font-display">Share Meetup Location</h3>
+                  <p className="text-[10px] text-ink-secondary">Send location to {activeConversation?.partner_name || 'neighbor'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Option A: 1-Click GPS Location */}
+              <button
+                type="button"
+                onClick={handleShareCurrentLocation}
+                disabled={isDetectingLocation}
+                className="w-full p-3.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-between transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5">
+                  {isDetectingLocation ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <Navigation className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                  )}
+                  <span>{isDetectingLocation ? 'Detecting GPS coordinates...' : 'Share Current GPS Location'}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              {/* Option B: Profile Saved Locations */}
+              <div className="space-y-2">
+                <div className="text-[10px] font-black uppercase tracking-wider text-ink-secondary">
+                  Or Pick Saved Address from Profile
+                </div>
+                {getEffectiveSavedLocations(user).map((loc) => {
+                  const full = formatSavedLocationFull(loc);
+                  return (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      onClick={() => handleShareSavedLocation(full)}
+                      className="w-full text-left p-3 rounded-2xl bg-canvas hover:bg-surface border border-divider hover:border-emerald-500/40 transition-all cursor-pointer group space-y-0.5"
+                    >
+                      <div className="flex items-center justify-between text-xs font-bold text-ink">
+                        <span>{loc.label}</span>
+                        {loc.is_default && (
+                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                            Primary
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-ink-secondary truncate">
+                        {full}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Option C: Custom Address Input */}
+              <div className="space-y-2 pt-2 border-t border-divider">
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block">
+                  Or Enter Specific Meetup Spot
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customLocationText}
+                    onChange={(e) => setCustomLocationText(e.target.value)}
+                    placeholder="e.g. Metro Station Gate 2, Bengaluru"
+                    className="flex-1 bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleShareSavedLocation(customLocationText)}
+                    disabled={!customLocationText.trim()}
+                    className="btn-primary text-xs px-3 py-2 font-bold disabled:opacity-50 cursor-pointer shrink-0"
+                  >
+                    Share
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Modal 2: Contact Card Modal */}
+      {isContactModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Phone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-ink font-display">Share Contact Card</h3>
+                  <p className="text-[10px] text-ink-secondary">Direct handover contact info</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsContactModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3.5">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  placeholder="Your Name"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
+                  Locality / Landmark (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={contactLocality}
+                  onChange={(e) => setContactLocality(e.target.value)}
+                  placeholder="e.g. BEML Layout 7th Phase, Bengaluru"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-divider">
+                <button
+                  type="button"
+                  onClick={() => setIsContactModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-ink-secondary hover:text-ink rounded-xl border border-divider transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareContact}
+                  disabled={!contactPhone.trim()}
+                  className="btn-primary text-xs px-5 py-2 font-extrabold shadow-pink disabled:opacity-50 cursor-pointer"
+                >
+                  Share Contact Card
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Modal 3: Condition & Inspection Note Modal */}
+      {isDocumentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-ink font-display">Gear Condition & Check Note</h3>
+                  <p className="text-[10px] text-ink-secondary">Record pre-handover or return inspection</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDocumentModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3.5">
+              {/* Presets */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1.5">
+                  Quick Presets
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Clean & Fully Operational',
+                    'Minor Existing Scratches Noted',
+                    'All Cables & Case Included',
+                    'Battery at 100% Charged',
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setDocNotes((prev) => (prev ? `${prev}\n• ${preset}` : `• ${preset}`))}
+                      className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-canvas hover:bg-indigo-500/10 hover:text-indigo-600 border border-divider transition-colors cursor-pointer"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
+                  Note Title
+                </label>
+                <input
+                  type="text"
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  placeholder="e.g. Handover Inspection Note"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
+                  Inspection Details *
+                </label>
+                <textarea
+                  value={docNotes}
+                  onChange={(e) => setDocNotes(e.target.value)}
+                  placeholder="Describe gear working state, inclusions, or inspection agreement..."
+                  rows={4}
+                  className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs font-medium text-ink outline-none focus:border-brand resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-divider">
+                <button
+                  type="button"
+                  onClick={() => setIsDocumentModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-ink-secondary hover:text-ink rounded-xl border border-divider transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareDocument}
+                  disabled={!docNotes.trim()}
+                  className="btn-primary text-xs px-5 py-2 font-extrabold shadow-pink disabled:opacity-50 cursor-pointer"
+                >
+                  Share Condition Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Modal 4: Fullscreen Image Lightbox */}
+      {previewImageUrl && (
+        <div 
+          onClick={() => setPreviewImageUrl(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 cursor-zoom-out"
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setPreviewImageUrl(null)}
+              className="absolute -top-12 right-0 p-2 text-white/80 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+              title="Close preview"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={previewImageUrl}
+              alt="Enlarged attachment"
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <a
+                href={previewImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download="rentu-photo.jpg"
+                className="px-4 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Open / Download Original</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

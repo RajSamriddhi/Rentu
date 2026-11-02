@@ -88,6 +88,10 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
         partner.locality AS partner_locality,
         CASE 
           WHEN latest_msg.message_type = 'PROPOSAL' THEN 'Rental Proposal: ' || COALESCE(latest_booking.item_title, 'Gear')
+          WHEN latest_msg.message_type = 'IMAGE' THEN 'Photo'
+          WHEN latest_msg.message_type = 'LOCATION' THEN 'Shared Location'
+          WHEN latest_msg.message_type = 'CONTACT' THEN 'Contact Card'
+          WHEN latest_msg.message_type = 'DOCUMENT' THEN 'Document Note'
           ELSE COALESCE(latest_msg.content, 'Direct conversation')
         END AS last_message,
         COALESCE(latest_msg.created_at, dp.latest_interaction) AS last_message_at,
