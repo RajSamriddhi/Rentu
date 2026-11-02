@@ -545,20 +545,38 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         const { id } = req.params;
         const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
         const userId = req.user.id;
-        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, i.price_per_day
+        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day
        FROM bookings b
-       JOIN items i ON b.item_id = i.id
+       LEFT JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`, [id]);
         if (bookingRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        const isLender = booking.lender_id === userId;
-        const isBorrower = booking.borrower_id === userId;
+        // Resolve canonical user records for current user, borrower, and lender
+        const [currentUserRes, borrowerRes, lenderRes] = await Promise.all([
+            (0, db_1.query)('SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1', [userId]),
+            (0, db_1.query)('SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1', [booking.borrower_id]),
+            (0, db_1.query)('SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1', [booking.lender_id]),
+        ]);
+        const currentUser = currentUserRes.rows[0];
+        const borrowerUser = borrowerRes.rows[0];
+        const lenderUser = lenderRes.rows[0];
+        const currentId = currentUser?.id || userId;
+        const currentFbUid = currentUser?.firebase_uid;
+        const isLender = Boolean((lenderUser && (lenderUser.id === currentId || (currentFbUid && lenderUser.firebase_uid === currentFbUid))) ||
+            booking.lender_id === userId ||
+            (currentFbUid && booking.lender_id === currentFbUid));
+        const isBorrower = Boolean((borrowerUser && (borrowerUser.id === currentId || (currentFbUid && borrowerUser.firebase_uid === currentFbUid))) ||
+            booking.borrower_id === userId ||
+            (currentFbUid && booking.borrower_id === currentFbUid));
         if (!isLender && !isBorrower) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only verified participants of this rental can leave reviews', 403);
         }
-        if (booking.lender_id === booking.borrower_id) {
+        const targetUser = isBorrower ? lenderUser : borrowerUser;
+        const revieweeId = targetUser?.id || (isBorrower ? booking.lender_id : booking.borrower_id);
+        const reviewerId = currentId;
+        if (!revieweeId || revieweeId === reviewerId) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Self-reviews are strictly forbidden', 400);
         }
         if (booking.status !== 'COMPLETED') {
@@ -570,13 +588,9 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         if (Date.now() - completedAt.getTime() > threeDaysMs) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Review period has expired. Reviews are available for at most 3 days after completion.', 400);
         }
-        const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
-        if (!revieweeId || revieweeId === userId) {
-            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot review yourself', 400);
-        }
         // Tamper-proof role-based review type:
-        // 1) Borrower reviewing owner: OWNER_RENTAL (for paid rental) or COMMUNITY_LENDER (for ₹0 / free borrow)
-        // 2) Owner reviewing borrower: RENTER
+        // 1) Borrower (renter) reviewing owner: OWNER_RENTAL (for paid rental) or COMMUNITY_LENDER (for free borrow)
+        // 2) Owner reviewing borrower (renter): RENTER
         let resolvedReviewType;
         if (isBorrower) {
             const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
@@ -585,21 +599,21 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         else {
             resolvedReviewType = 'RENTER';
         }
-        // Check if user already reviewed
-        const existing = await (0, db_1.query)(`SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`, [id, userId]);
+        // Check if user already reviewed this booking
+        const existing = await (0, db_1.query)(`SELECT id FROM reviews WHERE booking_id = $1 AND (reviewer_id = $2 OR reviewer_id = $3)`, [id, reviewerId, userId]);
         let reviewResult;
         if (existing.rows.length > 0) {
             reviewResult = await (0, db_1.query)(`UPDATE reviews 
          SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
-         WHERE booking_id = $4 AND reviewer_id = $5 
-         RETURNING *`, [rating, comment || '', resolvedReviewType, id, userId]);
+         WHERE id = $4
+         RETURNING *`, [rating, comment || '', resolvedReviewType, existing.rows[0].id]);
         }
         else {
             reviewResult = await (0, db_1.query)(`INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`, [id, userId, revieweeId, rating, comment || '', resolvedReviewType]);
+         RETURNING *`, [id, reviewerId, revieweeId, rating, comment || '', resolvedReviewType]);
         }
-        // Recalculate 3 review ratings + overall trust rating (strictly dynamically computed from actual reviews table)
+        // Recalculate review ratings and verified counts for reviewee
         await (0, db_1.query)(`
       WITH stats AS (
         SELECT 
@@ -626,23 +640,23 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         rating = stats.trust_rating,
         trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
       FROM stats
-      WHERE users.id = $1
+      WHERE users.id = $1 OR users.firebase_uid = $1
     `, [revieweeId]).catch((err) => {
             console.error('Failed to update ratings for reviewee:', err);
         });
         // Notify reviewee about new feedback
-        const reviewerRes = await (0, db_1.query)('SELECT name FROM users WHERE id = $1', [userId]);
-        const reviewerName = reviewerRes.rows[0]?.name || 'Your rental partner';
+        const reviewerRes = await (0, db_1.query)('SELECT name FROM users WHERE id = $1', [reviewerId]);
+        const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || 'Your rental partner';
         await (0, notifications_service_1.createNotification)({
             userId: revieweeId,
-            senderId: userId,
+            senderId: reviewerId,
             bookingId: id,
             referenceId: id,
             referenceType: 'BOOKING',
             type: 'BOOKING_REVIEW',
             title: 'New Review & Rating Received',
-            body: `${reviewerName} left a ${rating}-star review for "${booking.item_title}".`,
-        });
+            body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || 'rental gear'}".`,
+        }).catch(() => { });
         return (0, response_1.sendSuccess)(res, reviewResult.rows[0], 'Thank you! Your review and feedback has been recorded.');
     }
     catch (error) {

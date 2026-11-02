@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Star, Loader2, Sparkles, CheckCircle2, Package, UserCheck, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Star, Loader2, Sparkles, CheckCircle2, Package, UserCheck, Clock, ShieldCheck } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
 import { api } from '../lib/api';
@@ -24,20 +24,43 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   const [comment, setComment] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [reviewType, setReviewType] = useState<'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>('RENTER');
 
+  // Safely compute roles unconditionally
+  const isLender = Boolean(
+    booking && (
+      (booking.lender_id && (booking.lender_id === user?.id || (user?.firebase_uid && booking.lender_id === user.firebase_uid))) ||
+      (booking.lender_name && user?.name && booking.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
+    )
+  );
+
+  const isFreeItem = Boolean(
+    booking && (Number(booking.total_price) <= 0 || (booking as any).price_per_day === 0)
+  );
+
+  // Sync state whenever modal opens or booking changes
+  useEffect(() => {
+    if (isOpen && booking) {
+      const computedType: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER' = isLender 
+        ? 'RENTER' 
+        : (isFreeItem ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL');
+
+      setReviewType(computedType);
+      setRating(booking.user_rating ? Math.round(Number(booking.user_rating)) : 5);
+      setComment(booking.user_comment || '');
+      setErrorMsg('');
+      setIsSubmitting(false);
+    }
+  }, [isOpen, booking?.id, isLender, isFreeItem]);
+
+  // Hook rules preserved: Early return is strictly placed AFTER all hooks
   if (!isOpen || !booking) return null;
 
-  const isLender = booking.lender_id === user?.id || (user as any)?.firebase_uid === booking.lender_id;
-  const isFreeItem = Number(booking.total_price) <= 0 || (booking as any).price_per_day === 0;
+  const targetPersonName = isLender 
+    ? (booking.borrower_name || 'Renter') 
+    : (booking.lender_name || 'Gear Owner');
 
-  // Initial review type based on role and pricing
-  const defaultReviewType: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER' = isLender 
-    ? 'RENTER' 
-    : (isFreeItem ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL');
-
-  const [reviewType, setReviewType] = useState<'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>(defaultReviewType);
-
-  const otherPartyName = isLender ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Gear Owner');
+  const targetRoleTitle = isLender ? 'Renter' : (isFreeItem ? 'Community Lender' : 'Gear Owner');
 
   const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Exceptional!'];
 
@@ -53,16 +76,20 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
     try {
       await api.submitReview(booking.id, rating, comment.trim(), reviewType);
-      confetti({
-        particleCount: 70,
-        spread: 60,
-        origin: { y: 0.6 },
-      });
+      try {
+        confetti({
+          particleCount: 70,
+          spread: 60,
+          origin: { y: 0.6 },
+        });
+      } catch {
+        // Confetti visual extra only
+      }
       onSuccess();
       onClose();
     } catch (err: any) {
       console.error('Failed to submit review:', err);
-      setErrorMsg(err.message || 'Failed to submit review.');
+      setErrorMsg(err.message || 'Failed to submit review. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -77,16 +104,17 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface">
           <div>
-            <h3 className="text-base sm:text-lg font-black text-ink font-display">
-              Review & Verified Trust
+            <h3 className="text-base sm:text-lg font-black text-ink font-display flex items-center gap-2">
+              <span>Review & Verified Trust</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
             </h3>
-            <p className="text-xs text-ink-secondary">
-              Rate your rental handoff with <strong className="text-ink">{otherPartyName}</strong>
+            <p className="text-xs text-ink-secondary mt-0.5">
+              Reviewing <strong className="text-ink font-bold">{targetPersonName}</strong> ({targetRoleTitle})
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-canvas text-ink transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -102,9 +130,9 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           )}
 
           {/* Review Type Badge & Guidance */}
-          <div className="p-3 bg-canvas rounded-2xl border border-divider space-y-2">
+          <div className="p-3.5 bg-canvas rounded-2xl border border-divider space-y-2">
             <div className="text-[10px] font-bold text-ink-muted uppercase tracking-wider">
-              Review Category
+              Feedback Role
             </div>
             <div className="flex items-center gap-2">
               {reviewType === 'OWNER_RENTAL' && (
@@ -114,7 +142,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               )}
               {reviewType === 'COMMUNITY_LENDER' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                  <Sparkles className="w-3.5 h-3.5" /> Community Lender Review (Free Community Sharing)
+                  <Sparkles className="w-3.5 h-3.5" /> Community Lender Review (Free Community Gear)
                 </span>
               )}
               {reviewType === 'RENTER' && (
@@ -123,10 +151,10 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-ink-secondary">
-              {reviewType === 'OWNER_RENTAL' && 'Reviewing the gear owner for equipment condition, communication, and handoff quality.'}
-              {reviewType === 'COMMUNITY_LENDER' && 'Reviewing the neighbor who generously lent this gear completely free of charge to support the community.'}
-              {reviewType === 'RENTER' && 'Reviewing the renter for prompt return, respectful handling of equipment, and clear communication.'}
+            <p className="text-[11px] text-ink-secondary leading-relaxed">
+              {reviewType === 'OWNER_RENTAL' && `Reviewing owner ${targetPersonName} for equipment condition, communication, and handoff experience.`}
+              {reviewType === 'COMMUNITY_LENDER' && `Reviewing neighbor ${targetPersonName} who generously lent this gear completely free to the community.`}
+              {reviewType === 'RENTER' && `Reviewing renter ${targetPersonName} for prompt return, respectful equipment handling, and smooth handoff.`}
             </p>
           </div>
 
@@ -137,10 +165,10 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               alt={booking.item_title}
               className="w-12 h-12 rounded-xl object-cover border border-divider shrink-0"
             />
-            <div className="space-y-0.5 min-w-0">
+            <div className="space-y-0.5 min-w-0 flex-1">
               <h4 className="text-xs font-extrabold text-ink truncate">{booking.item_title}</h4>
               <p className="text-[11px] text-ink-secondary font-medium">
-                {booking.start_date} → {booking.end_date || booking.start_date} • Completed
+                {booking.start_date} → {booking.end_date || booking.start_date} • Completed Handover
               </p>
             </div>
           </div>
@@ -148,7 +176,9 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           {/* Star Rating Selector */}
           <div className="text-center space-y-2 py-2">
             <label className="block text-xs font-bold text-ink uppercase tracking-wider">
-              How was your experience?
+              {isLender 
+                ? `How was ${targetPersonName}'s handling of your gear?` 
+                : `How was your rental experience with ${targetPersonName}?`}
             </label>
 
             <div className="flex items-center justify-center gap-2">
@@ -188,15 +218,19 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder={`Share how prompt, trustworthy, or helpful ${otherPartyName} was during handover and return...`}
+              placeholder={isLender 
+                ? `Share how prompt, careful, and communicative ${targetPersonName} was with your ${booking.item_title}...` 
+                : `Share how clean, accurate, and ready the gear was when handed over by ${targetPersonName}...`}
               rows={3}
               className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs font-medium text-ink outline-none focus:border-brand resize-none"
             />
           </div>
 
           <div className="text-[10px] text-ink-secondary flex items-center justify-between">
-            <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 text-ink-muted" /> Feedback window open for 3 days post-return</span>
-            <span>Contributes to Community Trust Rating</span>
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3 h-3 text-ink-muted" /> 3-day peer review window
+            </span>
+            <span>Updates Community Trust Rating</span>
           </div>
 
           {/* Submit CTA */}
@@ -222,7 +256,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Submit Review</span>
+                  <span>{booking.user_review_id ? 'Update Review' : 'Submit Review'}</span>
                 </>
               )}
             </button>
@@ -232,4 +266,3 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
     </div>
   );
 };
-
