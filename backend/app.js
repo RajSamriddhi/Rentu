@@ -52555,12 +52555,12 @@ router.post("/register", async (req, res, next) => {
         validated.phone || null,
         locality,
         defaultAvatar,
-        validated.bio || "New member of the Rentu\u207A gear rental network \u26A1"
+        validated.bio || "Member of the Rentu gear sharing community"
       ]
     );
     const user = result.rows[0];
     const token = generateToken(user);
-    return sendSuccess(res, { user, token }, "Registration successful! Welcome to Rentu\u207A \u{1F680}", 201);
+    return sendSuccess(res, { user, token }, "Registration successful. Welcome to Rentu.", 201);
   } catch (error) {
     next(error);
   }
@@ -52583,7 +52583,7 @@ router.post("/login", async (req, res, next) => {
     }
     const { password_hash, ...safeUser } = user;
     const token = generateToken(safeUser);
-    return sendSuccess(res, { user: safeUser, token }, "Logged in successfully! \u{1F680}");
+    return sendSuccess(res, { user: safeUser, token }, "Logged in successfully.");
   } catch (error) {
     next(error);
   }
@@ -52686,7 +52686,7 @@ var handleSyncUser = async (req, res, next) => {
             validated.phone || null,
             locality,
             avatar,
-            "Member of the Rentu\u207A gear rental community \u26A1"
+            "Member of the Rentu gear sharing community"
           ]
         );
         user = created.rows[0];
@@ -52704,14 +52704,14 @@ var handleSyncUser = async (req, res, next) => {
             validated.phone || null,
             locality,
             avatar,
-            "Member of the Rentu\u207A gear rental community \u26A1"
+            "Member of the Rentu gear sharing community"
           ]
         );
         user = { ...created.rows[0], saved_locations: [] };
       }
     }
     const token = generateToken(user);
-    return sendSuccess(res, { user, token }, "Firebase session synchronized with Rentu\u207A! \u{1F680}");
+    return sendSuccess(res, { user, token }, "Account synchronized with Rentu.");
   } catch (error) {
     next(error);
   }
@@ -52927,7 +52927,7 @@ var createItemSchema = external_exports.object({
   price_per_day: external_exports.number().min(0, "Price per day cannot be negative"),
   max_duration_days: external_exports.number().int().positive().default(3),
   image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).min(1, "At least one photo is required"),
-  sticker_badge: external_exports.string().default("\u2728 Available"),
+  sticker_badge: external_exports.string().default("Available"),
   locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
@@ -53281,7 +53281,7 @@ router2.patch("/:id/borrowing", authMiddleware, async (req, res, next) => {
     return sendSuccess(
       res,
       result.rows[0],
-      available_for_borrowing ? "Item is now available for borrowing as well! \u{1F91D}" : "Item is now set to rental only."
+      available_for_borrowing ? "Item is now available for borrowing as well." : "Item is now set to rental only."
     );
   } catch (error) {
     next(error);
@@ -53379,7 +53379,7 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         });
       }
     }
-    return sendSuccess(res, createdItem, "Gear listed successfully! \u2728 It is now live on the feed.", 201);
+    return sendSuccess(res, createdItem, "Gear listed successfully. It is now live on the feed.", 201);
   } catch (error) {
     next(error);
   }
@@ -53479,7 +53479,7 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
       await createNotification({
         userId: req.user.id,
         type: "ITEM_UNAVAILABLE",
-        title: "Listing Marked Unavailable \u{1F512}",
+        title: "Listing Marked Unavailable",
         body: `"${result.rows[0]?.title || "Item"}" is now marked unavailable and paused from rental listings.`,
         referenceId: id,
         referenceType: "ITEM"
@@ -53488,7 +53488,7 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
       await createNotification({
         userId: req.user.id,
         type: "ITEM_AVAILABLE",
-        title: "Listing Marked Available \u2728",
+        title: "Listing Marked Available",
         body: `"${result.rows[0]?.title || "Item"}" is active and available for rent on the marketplace.`,
         referenceId: id,
         referenceType: "ITEM"
@@ -53730,7 +53730,7 @@ router3.post("/", authMiddleware, async (req, res, next) => {
           [
             f.follower_id,
             seekerId,
-            `\u{1F4E2} New Request from ${seekerName}`,
+            `New Request from ${seekerName}`,
             `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: \u20B9${validated.offered_amount})`,
             createdRequest.id
           ]
@@ -53778,7 +53778,7 @@ router3.post("/", authMiddleware, async (req, res, next) => {
             [
               u.id,
               seekerId,
-              `\u{1F4CD} Nearby Gear Request (within 5 km)`,
+              `Nearby Gear Request`,
               `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || "nearby"})`,
               createdRequest.id
             ]
@@ -53789,7 +53789,7 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     } catch (announcementErr) {
       console.warn("Failed to dispatch request announcements:", announcementErr);
     }
-    return sendSuccess(res, createdRequest, "Wish dropped to community feed! \u{1F3AF} Nearby owners will see your bounty.", 201);
+    return sendSuccess(res, createdRequest, "Wish dropped to community feed. Nearby owners will see your request.", 201);
   } catch (error) {
     next(error);
   }
@@ -53849,7 +53849,7 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       image_url: request.image_url || null,
       status: "PENDING"
     };
-    const summaryText = `\u{1F91D} I Can Lend This! ${lenderName} offered to fulfill your request for "${request.item_name}" (\u20B9${totalDealPrice} for ${durationDays} days)`;
+    const summaryText = `I Can Lend This: ${lenderName} offered to fulfill your request for "${request.item_name}" (\u20B9${totalDealPrice} for ${durationDays} days)`;
     const msgResult = await query(
       `INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
        VALUES ($1, $2, $3, 'PROPOSAL', $4)
@@ -53863,7 +53863,7 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       [
         request.seeker_id,
         lenderId,
-        `\u{1F91D} ${lenderName} is ready to lend gear!`,
+        `${lenderName} is ready to lend gear`,
         `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
         request.id
       ]
@@ -53896,7 +53896,7 @@ router3.put("/:id", authMiddleware, async (req, res, next) => {
           `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
           [id]
         );
-        return sendSuccess(res, result2.rows[0], "Wish marked as fulfilled! \u{1F91D}");
+        return sendSuccess(res, result2.rows[0], "Wish marked as fulfilled.");
       }
       return sendError(res, "FORBIDDEN", "Permission denied", 403);
     }
@@ -54062,7 +54062,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
     }
     const item = itemRes.rows[0];
     if (item.owner_id === borrowerId) {
-      return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear \u{1F609}", 400);
+      return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear.", 400);
     }
     const blockCheck = await query(
       `SELECT 1 FROM user_blocks 
@@ -54302,7 +54302,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, '\u{1F389} Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
         [id, booking.lender_id, booking.borrower_id]
       );
       await createNotification({
@@ -54394,7 +54394,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '\u{1F91D} Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`,
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
     const sDate = booking.start_date_str || booking.start_date;
@@ -54479,7 +54479,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
         id,
         userId,
         isBorrower ? booking.lender_id : booking.borrower_id,
-        isFree ? "\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews for each other." : "\u{1F4E6} Product returned to owner! Stage 5: Payment settlement is now active."
+        isFree ? "Product returned to owner. The rental process is completed. Please leave reviews for each other." : "Product returned to owner. Final payment confirmation is now active."
       ]
     );
     return sendSuccess(
@@ -54515,7 +54515,7 @@ router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
     );
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '\u{1F4B3} Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
       [id, userId, booking.lender_id, payment_method]
     );
     return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
@@ -54554,7 +54554,7 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
       [id, userId, booking.borrower_id]
     );
     await createNotification({
@@ -54675,8 +54675,8 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
       referenceId: id,
       referenceType: "BOOKING",
       type: "BOOKING_REVIEW",
-      title: "New Review & Rating Received \u2B50",
-      body: `${reviewerName} left a ${rating}-star review for the "${booking.item_title}" rental!`
+      title: "New Review & Rating Received",
+      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title}".`
     });
     return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
   } catch (error) {
@@ -54837,7 +54837,7 @@ router6.get("/check-username/:username", optionalAuthMiddleware, async (req, res
     if (result.rows.length > 0) {
       return sendSuccess(res, { available: false, message: "Username is already taken" });
     }
-    return sendSuccess(res, { available: true, message: "Username is available! \u2728" });
+    return sendSuccess(res, { available: true, message: "Username is available" });
   } catch (error) {
     next(error);
   }
@@ -54852,7 +54852,7 @@ router6.get("/leaderboard", async (req, res, next) => {
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer \u26A1') AS bio, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
         COALESCE(u.owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
         COALESCE(u.renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
@@ -54931,8 +54931,8 @@ router6.get("/leaderboard", async (req, res, next) => {
       rank: index + 1,
       category_type: "top_rated",
       metric_label: "Overall Trust Rating",
-      metric_value: `${(member.trust_rating || member.rating || 0).toFixed(2)} \u2605 (${member.reviews_count} Reviews)`,
-      badges: index === 0 ? ["\u{1F451} #1 Overall Trust", "\u{1F6E1}\uFE0F Verified Reputation", "\u{1F31F} Flawless Community Record"] : index < 3 ? ["\u2B50 Top Trust Neighbor", "\u{1F6E1}\uFE0F Verified Trust", "\u{1F4AC} Outstanding Feedback"] : ["\u2B50 Top Rated", "\u{1F6E1}\uFE0F Verified Neighbor"]
+      metric_value: `${(member.trust_rating || member.rating || 0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
+      badges: index === 0 ? ["#1 Overall Trust", "Verified Reputation", "Top Community Record"] : index < 3 ? ["Top Trust Neighbor", "Verified Trust", "High Feedback"] : ["Top Rated", "Verified Neighbor"]
     }));
     const topLendersSorted = combinedPool.filter((m) => m.owner_reviews_count > 0).sort((a, b) => {
       const bOr = b.owner_rating ?? 0;
@@ -54947,8 +54947,8 @@ router6.get("/leaderboard", async (req, res, next) => {
       rank: index + 1,
       category_type: "top_lenders",
       metric_label: "Gear Owner Rating",
-      metric_value: `${(member.owner_rating || 0).toFixed(2)} \u2605 (${member.owner_reviews_count} Owner Reviews)`,
-      badges: index === 0 ? ["\u{1F451} #1 Gear Owner", "\u{1F4E6} 5-Star Equipment", "\u26A1 Instant Handover"] : index < 3 ? ["\u{1F3F7}\uFE0F Super Gear Owner", "\u26A1 Verified Gear Care", "\u{1F4E6} Active Gear"] : ["\u{1F3F7}\uFE0F Top Gear Owner", "\u{1F4E6} Gear Sharer"]
+      metric_value: `${(member.owner_rating || 0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
+      badges: index === 0 ? ["#1 Gear Owner", "Top-Tier Equipment", "Prompt Handover"] : index < 3 ? ["Super Gear Owner", "Verified Gear Care", "Active Gear Closet"] : ["Top Gear Owner", "Gear Sharer"]
     }));
     const topBorrowersSorted = combinedPool.filter((m) => m.renter_reviews_count > 0).sort((a, b) => {
       const bRr = b.renter_rating ?? 0;
@@ -54963,8 +54963,8 @@ router6.get("/leaderboard", async (req, res, next) => {
       rank: index + 1,
       category_type: "top_borrowers",
       metric_label: "Renter Rating",
-      metric_value: `${(member.renter_rating || 0).toFixed(2)} \u2605 (${member.renter_reviews_count} Renter Reviews)`,
-      badges: index === 0 ? ["\u{1F451} #1 Trusted Renter", "\u23F1\uFE0F 100% Punctual", "\u{1F331} Zero Waste Hero"] : index < 3 ? ["\u{1F392} 5-Star Renter", "\u23F1\uFE0F 100% On-Time Return", "\u{1F91D} Trusted Neighbor"] : ["\u{1F392} Verified Renter", "\u{1F91D} Verified Peer"]
+      metric_value: `${(member.renter_rating || 0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
+      badges: index === 0 ? ["#1 Trusted Renter", "100% Punctual", "Reliable Borrower"] : index < 3 ? ["5-Star Renter", "On-Time Return", "Trusted Neighbor"] : ["Verified Renter", "Verified Peer"]
     }));
     const topSharersSorted = combinedPool.filter((m) => m.community_lender_reviews_count > 0).sort((a, b) => {
       const bClr = b.community_lender_rating ?? 0;
@@ -54979,8 +54979,8 @@ router6.get("/leaderboard", async (req, res, next) => {
       rank: index + 1,
       category_type: "top_sharers",
       metric_label: "Free Lender Rating",
-      metric_value: `${(member.community_lender_rating || 0).toFixed(2)} \u2605 (${member.community_lender_reviews_count} Free Share Reviews)`,
-      badges: index === 0 ? ["\u{1F451} #1 Community Angel", "\u{1F381} Gift Economy Pioneer", "\u2764\uFE0F Pure Generosity"] : index < 3 ? ["\u{1F381} Free Gear Angel", "\u{1F331} Community Champion", "\u2764\uFE0F Neighbor Favorite"] : ["\u{1F381} Community Lender", "\u2764\uFE0F Generous Neighbor"]
+      metric_value: `${(member.community_lender_rating || 0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
+      badges: index === 0 ? ["#1 Community Lender", "Gift Economy Contributor", "Generous Contributor"] : index < 3 ? ["Free Gear Lender", "Community Champion", "Neighbor Favorite"] : ["Community Lender", "Generous Neighbor"]
     }));
     return sendSuccess(res, {
       top_rated: topRatedSorted,
@@ -55008,7 +55008,7 @@ router6.get("/search", async (req, res, next) => {
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer \u26A1') AS bio, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 90)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
@@ -55160,7 +55160,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       pincode: isSelf ? user.pincode || "" : "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
-      bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
+      bio: user.bio || "Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.",
       trust_score: parseInt(user.trust_score, 10) || 90,
       rating: trustRating,
       trust_rating: trustRating,
@@ -55299,7 +55299,7 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
         [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]
       ).catch((err) => console.error("Failed to sync items location:", err));
     }
-    return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
+    return sendSuccess(res, updatedUser, "Profile updated successfully.");
   } catch (error) {
     next(error);
   }
@@ -55324,7 +55324,7 @@ router6.post("/:id/follow", authMiddleware, async (req, res, next) => {
     );
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body)
-       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower \u{1F389}', $3)`,
+       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
       [followingId, followerId, `${req.user.name || "A neighbor"} started following your gear listings.`]
     ).catch(() => {
     });
@@ -55805,12 +55805,12 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `\u{1F389} Request Accepted! Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Pickup Verification Code: ${pickupCode2}. Handover is now live in Bookings!`
+            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Pickup Verification Code: ${pickupCode2}. Handover is now live in Bookings.`
           ]
         );
         await query(
           `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-           VALUES ($1, $2, 'BOOKING_ACCEPTED', '\u{1F389} Rental Request Accepted!', 'Your request for "' || $3 || '" was accepted! Handover is now active in Bookings.', $4, 'BOOKING')`,
+           VALUES ($1, $2, 'BOOKING_ACCEPTED', 'Rental Request Accepted', 'Your request for "' || $3 || '" was accepted. Handover is now active in Bookings.', $4, 'BOOKING')`,
           [message.sender_id, currentUserId, itemTitle2, existingBookingId]
         ).catch(() => {
         });
@@ -55910,7 +55910,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         createdBooking.id,
         currentUserId,
         message.sender_id,
-        `\u{1F389} Agreement Accepted! Confirmed booking for "${itemTitle}" (\u20B9${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`
+        `Agreement Accepted. Confirmed booking for "${itemTitle}" (\u20B9${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`
       ]
     );
     if (proposal.request_id) {
@@ -55922,13 +55922,13 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     }
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '\u{1F389} Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
       [message.sender_id, currentUserId, itemTitle, createdBooking.id]
     ).catch(() => {
     });
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '\u{1F389} Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
       [currentUserId, message.sender_id, itemTitle, createdBooking.id]
     ).catch(() => {
     });
@@ -55972,7 +55972,7 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
           existingBookingId,
           currentUserId,
           message.sender_id,
-          `\u274C Rental request for "${itemTitle}" was declined.`
+          `Rental request for "${itemTitle}" was declined.`
         ]
       ).catch(() => {
       });
@@ -64305,7 +64305,7 @@ function formatItemRow(row) {
     price_per_day: Number(row.price_per_day || 0),
     max_duration_days: Number(row.max_duration_days || 3),
     image_urls: images,
-    sticker_badge: row.sticker_badge || "\u2728 Available",
+    sticker_badge: row.sticker_badge || "Available",
     locality: row.locality || "",
     address_text: row.address_text || "",
     pincode: row.pincode || "",
@@ -64753,7 +64753,7 @@ var CANDIDATE_MODELS = [
 var SYSTEM_INSTRUCTION = `
 You are Rentu AI, the lovable, intelligent shopping and rental assistant for Rentu\u207A (a Gen Z peer-to-peer gear sharing and rental platform).
 Personality:
-- Friendly, warm, encouraging, and helpful. You occasionally use a sweet touch like "Of course! \u{1F497}" or "Let me check that for you! \u2728" without overusing emojis.
+- Friendly, warm, encouraging, and helpful. Professional and authentic without overusing emojis.
 - Never sound robotic or overly corporate.
 - For general greetings (e.g. "hi", "hello", "who are you"), casual everyday questions, and introductions: reply warmly and conversationally directly. Do NOT call search or database tools for pure greetings!
 - You can answer general everyday questions, casual conversation, explanations ("explain this simply"), brainstorming, and recommendations.
@@ -65013,13 +65013,13 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
   const isCasualPleasantry = normalized.includes("how are you") || normalized.includes("how r u") || normalized.includes("how is it going") || normalized.includes("how are things") || normalized === "thanks" || normalized.startsWith("thank you") || normalized.startsWith("thanks") || normalized === "bye" || normalized.startsWith("goodbye") || normalized.includes("nice to meet you");
   if (isGreeting || isIntroductionOrIdentity || isCasualPleasantry) {
     if (normalized.includes("thank")) {
-      reply = `You're so very welcome! \u{1F497} It's always my pleasure to help. Let me know if you need to find more gear, compare rates, or check availability for your next adventure! \u2728`;
+      reply = `You're very welcome. It is always a pleasure to help. Let me know if you need to find more gear, compare rates, or check availability for your next adventure.`;
     } else if (normalized.startsWith("bye") || normalized.startsWith("goodbye")) {
-      reply = `Goodbye neighbor! \u{1F44B} Have a wonderful time, and remember I'm always here whenever you want to rent or share gear on Rentu\u207A! \u{1F497}`;
+      reply = `Goodbye neighbor. Have a wonderful time, and remember I'm always here whenever you want to rent or share gear on Rentu\u207A.`;
     } else if (normalized.includes("how are you") || normalized.includes("how is it going")) {
-      reply = `I'm doing fantastic, thank you so much for asking! \u{1F497} Ready to help you discover the coolest gear and best rental deals in your neighborhood. How are you doing today? \u2728`;
+      reply = `I'm doing fantastic, thank you so much for asking. Ready to help you discover the coolest gear and best rental deals in your neighborhood. How are you doing today?`;
     } else {
-      reply = `Hey there neighbor! \u{1F497} I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
+      reply = `Hey there neighbor! I'm **Rentu AI**, your personal gear sharing companion on Rentu\u207A.
 
 I can help you:
 \u2022 **Find affordable gear** matching your daily budget (cameras, camping, tools, DJ gear, laptops)
@@ -65027,7 +65027,7 @@ I can help you:
 \u2022 **Compare prices** and recommend cheaper alternatives
 \u2022 **Explain how to rent, list, or borrow gear for free**
 
-What are you looking to rent, borrow, or explore today? \u2728`;
+What are you looking to rent, borrow, or explore today?`;
     }
     return {
       reply,
@@ -65042,13 +65042,13 @@ What are you looking to rent, borrow, or explore today? \u2728`;
     };
   }
   if (normalized.includes("photosynthesis")) {
-    reply = `Think of photosynthesis like a plant's way of cooking its own dinner! \u{1F33F}\u{1F373}
+    reply = `Think of photosynthesis like a plant's way of cooking its own dinner:
 
 1. **The Ingredients:** A plant takes in sunlight, water from the ground, and carbon dioxide from the air.
 2. **The Cooking:** Inside its leaves, it uses light energy to transform water and gas into food.
 3. **The Meal:** It makes sugar (plant food) and releases oxygen into the air for us to breathe!
 
-Plants basically turn sunshine into food! Isn't nature amazing? \u2728`;
+Plants turn sunshine into nourishment.`;
     return {
       reply,
       mode: "fallback",
@@ -65062,14 +65062,14 @@ Plants basically turn sunshine into food! Isn't nature amazing? \u2728`;
     };
   }
   if (normalized.includes("explain this") || normalized.includes("simple words") || normalized.includes("help me decide")) {
-    reply = `I'd love to help! \u{1F497}
+    reply = `I would be happy to help.
 
 On Rentu\u207A, you can rent equipment directly from verified local neighbors rather than buying expensive gear you only need for a few days.
 
 \u2022 **To decide between listings:** Look at the daily rate (\u20B9/day), the lender's community trust score, and their locality for easy pickup.
 \u2022 **Need a comparison?** Just ask me to "compare these cameras" or tell me your budget and duration, and I'll calculate which option saves you the most money!
 
-What gear would you like to explore? \u2728`;
+What gear would you like to explore?`;
     return {
       reply,
       mode: "fallback",
@@ -65083,7 +65083,7 @@ What gear would you like to explore? \u2728`;
     };
   }
   if (queryLower.includes("how do i list") || queryLower.includes("list my product") || queryLower.includes("list gear") || queryLower.includes("post an item")) {
-    reply = `\u{1F4B8} **How to List Your Gear for Rent on Rentu\u207A:**
+    reply = `**How to List Your Gear for Rent on Rentu\u207A:**
 
 1. Tap the **"+ Post"** button in the top navigation bar (or bottom menu on mobile).
 2. Choose **"List Gear for Rent"**.
@@ -65091,7 +65091,7 @@ What gear would you like to explore? \u2728`;
 4. Set your title, category, daily rental rate (e.g. \u20B9350/day), and max duration (up to 7 days).
 5. Enter your locality for easy local pickup, then hit **Publish**!
 
-Neighbors near you can now view your listing and send rental proposals. You get paid directly with zero platform cuts! \u{1F680}`;
+Neighbors near you can now view your listing and send rental proposals. You get paid directly with zero platform cuts.`;
     return {
       reply,
       mode: "fallback",
@@ -65105,7 +65105,7 @@ Neighbors near you can now view your listing and send rental proposals. You get 
     };
   }
   if (queryLower.includes("contact the owner") || queryLower.includes("message the owner") || queryLower.includes("chat with owner") || queryLower.includes("talk to lender")) {
-    reply = `\u{1F4AC} **How to Contact a Gear Owner:**
+    reply = `**How to Contact a Gear Owner:**
 
 \u2022 **Direct Rental Chat:** When viewing any listing in the catalog, click **"Request to Rent"** with a quick note. A direct 2-way message thread will open between you and the lender in the Messages panel.
 \u2022 **Coordination:** You can discuss exact pickup times, equipment condition, memory cards/cables, and handoff spots directly.
@@ -65123,13 +65123,13 @@ Neighbors near you can now view your listing and send rental proposals. You get 
     };
   }
   if (queryLower.includes("how does booking") || queryLower.includes("booking and return") || queryLower.includes("how it works") || queryLower.includes("how to rent")) {
-    reply = `\u{1F91D} **How Booking & Returning Works on Rentu\u207A:**
+    reply = `**How Booking & Returning Works on Rentu\u207A:**
 
 1. **Discover:** Find the gear you need (cameras, outdoor equipment, DJ decks, tools).
 2. **Request:** Select your start date and duration, then click **"Request to Rent"**.
 3. **Lender Accepts:** The owner receives your proposal. Once accepted, the item is marked reserved.
-4. **Handoff:** Meet up locally to test and pick up the gear. No hidden platform fees!
-5. **Return:** Hand the item back on your scheduled end date. The owner marks the booking **"Completed"**, and you both exchange verified reviews! \u{1F31F}`;
+4. **Handoff:** Meet up locally to test and pick up the gear. No hidden platform fees.
+5. **Return:** Hand the item back on your scheduled end date. The owner marks the booking **"Completed"**, and you both exchange verified reviews.`;
     return {
       reply,
       mode: "fallback",
@@ -65145,10 +65145,10 @@ Neighbors near you can now view your listing and send rental proposals. You get 
   if (queryLower.includes("free") || queryLower.includes("borrow for free") || queryLower.includes("without paying") || queryLower.includes("borrow free")) {
     const freeItemsRes = await searchListings({ free_only: true, limit: 3 });
     if (freeItemsRes.items.length > 0) {
-      reply = `\u{1F389} Here are gear items currently listed with \u20B90 daily rates by friendly neighbors in your area!`;
+      reply = `Here are gear items currently listed with \u20B90 daily rates by friendly neighbors in your area:`;
       accumulatedItems.push(...freeItemsRes.items);
     } else {
-      reply = `\u{1F4A1} **Can You Borrow for Free on Rentu\u207A? Yes!**
+      reply = `**Can You Borrow for Free on Rentu\u207A? Yes:**
 
 While most marketplace listings have a modest daily fee (e.g. \u20B9200\u2013\u20B9400/day) to cover wear & tear, Rentu\u207A features a dedicated **Requests Board**:
 
@@ -65180,9 +65180,9 @@ Here are the most affordable verified options currently available in the communi
     if (searchRes2.items.length > 0) {
       const best = searchRes2.items[0];
       accumulatedItems.push(...searchRes2.items);
-      reply = `\u{1F31F} **Top Community Recommendation:**
+      reply = `**Top Community Recommendation:**
 
-I recommend the **${best.title}**! Here is why:
+I recommend the **${best.title}**. Here is why:
 \u2022 **Price:** Just **\u20B9${best.price_per_day}/day** \u2014 one of the best values in ${best.category}.
 \u2022 **Lender Rating:** ${best.owner_rating ? `${best.owner_rating.toFixed(1)}/5.0` : "5.0/5.0"} (${best.owner_name})
 \u2022 **Verified Location:** ${best.locality || "Nearby"}
@@ -65237,15 +65237,15 @@ Here are the top options compared side-by-side:`;
         duration_days: duration
       });
       if (avail.available) {
-        reply = `\u2705 **Great news!** **${avail.item_title}** is **available** for your requested dates (${avail.requested_dates?.start_date} to ${avail.requested_dates?.end_date}, ${duration} days).
+        reply = `**${avail.item_title}** is **available** for your requested dates (${avail.requested_dates?.start_date} to ${avail.requested_dates?.end_date}, ${duration} days).
 
 \u2022 **Daily Rate:** \u20B9${avail.price_per_day}/day
 \u2022 **Estimated Total:** **\u20B9${avail.estimated_total}**
 \u2022 **Location:** ${avail.locality || "Nearby"}
 
-You can view full specs or send a rental proposal below! \u{1F497}`;
+You can view full specs or send a rental proposal below.`;
       } else {
-        reply = `\u26A0\uFE0F **Availability Notice:** **${avail.item_title || "Item"}** cannot be booked for those dates.
+        reply = `**Availability Notice:** **${avail.item_title || "Item"}** cannot be booked for those dates.
 
 \u2022 **Reason:** ${avail.reason || avail.error}
 
@@ -65296,12 +65296,12 @@ Here are available alternative listings in the same category:`;
       const topAlt = alts.alternatives[0];
       const refTitle = alts.reference_item ? alts.reference_item.title : "similar items";
       const savingsMsg = topAlt.savings_per_day ? `saving you **\u20B9${topAlt.savings_per_day}/day (${topAlt.savings_percentage}% off)**` : `starting at just \u20B9${topAlt.price_per_day}/day`;
-      reply = `\u{1F4B0} **Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**
+      reply = `**Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**
 
 \u2022 **Top Pick:** **${topAlt.title}** at **\u20B9${topAlt.price_per_day}/day**, ${savingsMsg}.
 \u2022 **Verified Location:** ${topAlt.locality || "Nearby"}
 
-Tap any card below to view full photos or request a booking!`;
+Tap any card below to view full photos or request a booking.`;
       accumulatedItems.push(...alts.alternatives);
     } else {
       reply = `We didn't find any listings priced lower in this category, but here are the most affordable listings available:`;
@@ -65330,7 +65330,7 @@ Tap any card below to view full photos or request a booking!`;
     });
     if (comp.comparison.length > 0 && comp.summary) {
       const s = comp.summary;
-      reply = `\u{1F4CA} **Rental Price Comparison (${duration} Days):**
+      reply = `**Rental Price Comparison (${duration} Days):**
 
 \u2022 **Cheapest Option:** **${s.cheapest_item}** at \u20B9${s.cheapest_daily_rate}/day (Total: **\u20B9${s.cheapest_total}**)
 ` + (s.potential_total_savings > 0 ? `\u2022 **Potential Savings:** Up to **\u20B9${s.potential_total_savings}** total compared to higher-priced gear.
@@ -65366,7 +65366,7 @@ Here are the compared listings:`;
       accumulatedItems.push(...searchRes2.items);
       const first = searchRes2.items[0];
       const total = first.price_per_day * duration;
-      reply = `\u{1F4B5} **Estimated Rental Cost for ${duration} Day${duration > 1 ? "s" : ""}:**
+      reply = `**Estimated Rental Cost for ${duration} Day${duration > 1 ? "s" : ""}:**
 
 \u2022 **${first.title}:** \u20B9${first.price_per_day}/day \xD7 ${duration} days = **\u20B9${total}**
 \u2022 **Zero Deposit / No Hidden Fees:** Rentu does not charge platform cuts. You coordinate directly with the owner.
@@ -65401,21 +65401,21 @@ Here is the listing and similar options:`;
   if (accumulatedItems.length > 0) {
     const budgetNote = maxPrice ? ` under \u20B9${maxPrice}/day` : "";
     const locNote = convContext.locality ? ` in ${convContext.locality}` : "";
-    reply = `\u2728 **Found ${accumulatedItems.length} verified listing${accumulatedItems.length > 1 ? "s" : ""}${budgetNote}${locNote} on Rentu\u207A:**
+    reply = `**Found ${accumulatedItems.length} verified listing${accumulatedItems.length > 1 ? "s" : ""}${budgetNote}${locNote} on Rentu\u207A:**
 
 ` + accumulatedItems.map((item) => `\u2022 **${item.title}** \u2014 \u20B9${item.price_per_day}/day (${item.locality || "Nearby"})`).join("\n") + `
 
-Tap any card below to inspect full specs or request a booking! \u{1F497}`;
+Tap any card below to inspect full specs or request a booking.`;
   } else {
     const hasExplicitGearTerm = category !== void 0 || maxPrice !== void 0 || cleanKeyword.length > 2 && (cleanKeyword.includes("camera") || cleanKeyword.includes("dslr") || cleanKeyword.includes("lens") || cleanKeyword.includes("laptop") || cleanKeyword.includes("macbook") || cleanKeyword.includes("tent") || cleanKeyword.includes("camp") || cleanKeyword.includes("drill") || cleanKeyword.includes("tool") || cleanKeyword.includes("bike") || cleanKeyword.includes("cycle") || cleanKeyword.includes("projector") || cleanKeyword.includes("speaker") || cleanKeyword.includes("dj") || cleanKeyword.includes("gear") || cleanKeyword.includes("costume") || cleanKeyword.includes("gopro") || cleanKeyword.includes("tripod"));
     if (hasExplicitGearTerm) {
-      reply = `\u{1F50D} I searched the marketplace but couldn't find any listings matching "${latestMessage}".
+      reply = `I searched the marketplace but couldn't find any listings matching "${latestMessage}".
 
-**Helpful Suggestions:**
+**Suggestions:**
 \u2022 Try a broader category (e.g. "cameras", "camping", "tech").
-\u2022 Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need!`;
+\u2022 Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need.`;
     } else {
-      reply = `I'm **Rentu AI**, your personal equipment sharing companion on Rentu\u207A! \u{1F497}
+      reply = `I'm **Rentu AI**, your personal equipment sharing companion on Rentu\u207A.
 
 I can help you:
 \u2022 **Find gear by budget:** e.g. *"Find a camera under \u20B9400/day"* or *"Find laptops under \u20B9500"*
@@ -65705,7 +65705,7 @@ router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
          VALUES ($1, NULL, 'SUPPORT_TICKET_RECEIVED', $2, $3, $4, 'SUPPORT')`,
         [
           userId,
-          validated.type === "CONCERN" ? "Concern Received \u{1F6E1}\uFE0F" : "Feedback Received \u{1F4A1}",
+          validated.type === "CONCERN" ? "Concern Received" : "Feedback Received",
           `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
           ticket.id
         ]
@@ -65801,7 +65801,7 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
          VALUES ($1, NULL, 'SUPPORT_TICKET_RESOLVED', $2, $3, $4, 'SUPPORT')`,
         [
           currentTicket.user_id,
-          validated.status === "RESOLVED" ? "Concern Resolved \u2705" : "Support Update \u{1F4AC}",
+          validated.status === "RESOLVED" ? "Concern Resolved" : "Support Update",
           `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
           updated.id
         ]
@@ -66167,7 +66167,7 @@ var runMigrations = async () => {
         price_per_day NUMERIC(10, 2) NOT NULL CHECK (price_per_day >= 0),
         max_duration_days INTEGER DEFAULT 3 CHECK (max_duration_days > 0),
         image_urls JSONB DEFAULT '[]'::JSONB,
-        sticker_badge VARCHAR(50) DEFAULT '\u2728 Weekend Flex',
+        sticker_badge VARCHAR(50) DEFAULT 'Available',
         locality VARCHAR(120),
         address_text TEXT DEFAULT 'South Delhi',
         pincode VARCHAR(10),

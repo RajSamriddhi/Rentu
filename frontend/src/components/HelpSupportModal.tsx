@@ -12,7 +12,8 @@ import {
   FileQuestion,
   MessageSquare,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -204,8 +205,8 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
           <div className="p-6">
             {submitSuccess ? (
               <div className="py-8 text-center space-y-4 animate-in zoom-in-95 duration-150">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto text-3xl">
-                  ✓
+                <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-ink font-display">
@@ -253,7 +254,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                     >
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                       <div>
-                        <div className="text-xs font-black">Raise a Concern ⚠️</div>
+                        <div className="text-xs font-black">Raise a Concern</div>
                         <div className="text-[10px] text-ink-secondary leading-tight mt-0.5">
                           Report a rental problem, neighbor issue, damage, or bug
                         </div>
@@ -271,7 +272,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                     >
                       <Lightbulb className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                       <div>
-                        <div className="text-xs font-black">Share Feedback 💡</div>
+                        <div className="text-xs font-black">Share Feedback</div>
                         <div className="text-[10px] text-ink-secondary leading-tight mt-0.5">
                           Ideas, feature requests, or compliments for Rentu
                         </div>
@@ -323,7 +324,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                               : 'bg-canvas border-divider text-ink-secondary hover:text-ink'
                           }`}
                         >
-                          {lvl === 'URGENT' ? '🚨 Urgent' : lvl === 'HIGH' ? '⚡ High' : lvl === 'LOW' ? 'Low' : 'Normal'}
+                          {lvl === 'URGENT' ? 'Urgent' : lvl === 'HIGH' ? 'High' : lvl === 'LOW' ? 'Low' : 'Normal'}
                         </button>
                       ))}
                     </div>
@@ -430,8 +431,8 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
               </div>
             ) : myTickets.length === 0 ? (
               <div className="py-16 text-center space-y-2 text-ink-secondary">
-                <div className="w-10 h-10 rounded-full bg-canvas border border-divider flex items-center justify-center mx-auto text-lg">
-                  🛡️
+                <div className="w-10 h-10 rounded-full bg-canvas border border-divider flex items-center justify-center mx-auto text-ink-muted">
+                  <ShieldCheck className="w-5 h-5" />
                 </div>
                 <p className="text-xs font-bold text-ink">No Prior Submissions</p>
                 <p className="text-[11px] max-w-xs mx-auto">

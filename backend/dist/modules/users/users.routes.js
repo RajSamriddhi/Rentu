@@ -49,7 +49,7 @@ router.get('/check-username/:username', auth_1.optionalAuthMiddleware, async (re
         if (result.rows.length > 0) {
             return (0, response_1.sendSuccess)(res, { available: false, message: 'Username is already taken' });
         }
-        return (0, response_1.sendSuccess)(res, { available: true, message: 'Username is available! ✨' });
+        return (0, response_1.sendSuccess)(res, { available: true, message: 'Username is available' });
     }
     catch (error) {
         next(error);
@@ -67,7 +67,7 @@ router.get('/leaderboard', async (req, res, next) => {
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer ⚡') AS bio, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
         COALESCE(u.owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
         COALESCE(u.renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
@@ -157,12 +157,12 @@ router.get('/leaderboard', async (req, res, next) => {
             rank: index + 1,
             category_type: 'top_rated',
             metric_label: 'Overall Trust Rating',
-            metric_value: `${(member.trust_rating || member.rating || 0.0).toFixed(2)} ★ (${member.reviews_count} Reviews)`,
+            metric_value: `${(member.trust_rating || member.rating || 0.0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
             badges: index === 0
-                ? ['👑 #1 Overall Trust', '🛡️ Verified Reputation', '🌟 Flawless Community Record']
+                ? ['#1 Overall Trust', 'Verified Reputation', 'Top Community Record']
                 : index < 3
-                    ? ['⭐ Top Trust Neighbor', '🛡️ Verified Trust', '💬 Outstanding Feedback']
-                    : ['⭐ Top Rated', '🛡️ Verified Neighbor'],
+                    ? ['Top Trust Neighbor', 'Verified Trust', 'High Feedback']
+                    : ['Top Rated', 'Verified Neighbor'],
         }));
         // 2. CATEGORY: TOP GEAR OWNERS (Strictly members with owner_reviews_count > 0)
         const topLendersSorted = combinedPool
@@ -184,12 +184,12 @@ router.get('/leaderboard', async (req, res, next) => {
             rank: index + 1,
             category_type: 'top_lenders',
             metric_label: 'Gear Owner Rating',
-            metric_value: `${(member.owner_rating || 0.0).toFixed(2)} ★ (${member.owner_reviews_count} Owner Reviews)`,
+            metric_value: `${(member.owner_rating || 0.0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
             badges: index === 0
-                ? ['👑 #1 Gear Owner', '📦 5-Star Equipment', '⚡ Instant Handover']
+                ? ['#1 Gear Owner', 'Top-Tier Equipment', 'Prompt Handover']
                 : index < 3
-                    ? ['🏷️ Super Gear Owner', '⚡ Verified Gear Care', '📦 Active Gear']
-                    : ['🏷️ Top Gear Owner', '📦 Gear Sharer'],
+                    ? ['Super Gear Owner', 'Verified Gear Care', 'Active Gear Closet']
+                    : ['Top Gear Owner', 'Gear Sharer'],
         }));
         // 3. CATEGORY: TOP RENTERS (Strictly members with renter_reviews_count > 0)
         const topBorrowersSorted = combinedPool
@@ -211,12 +211,12 @@ router.get('/leaderboard', async (req, res, next) => {
             rank: index + 1,
             category_type: 'top_borrowers',
             metric_label: 'Renter Rating',
-            metric_value: `${(member.renter_rating || 0.0).toFixed(2)} ★ (${member.renter_reviews_count} Renter Reviews)`,
+            metric_value: `${(member.renter_rating || 0.0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
             badges: index === 0
-                ? ['👑 #1 Trusted Renter', '⏱️ 100% Punctual', '🌱 Zero Waste Hero']
+                ? ['#1 Trusted Renter', '100% Punctual', 'Reliable Borrower']
                 : index < 3
-                    ? ['🎒 5-Star Renter', '⏱️ 100% On-Time Return', '🤝 Trusted Neighbor']
-                    : ['🎒 Verified Renter', '🤝 Verified Peer'],
+                    ? ['5-Star Renter', 'On-Time Return', 'Trusted Neighbor']
+                    : ['Verified Renter', 'Verified Peer'],
         }));
         // 4. CATEGORY: TOP FREE COMMUNITY LENDERS (Strictly members with community_lender_reviews_count > 0)
         const topSharersSorted = combinedPool
@@ -238,12 +238,12 @@ router.get('/leaderboard', async (req, res, next) => {
             rank: index + 1,
             category_type: 'top_sharers',
             metric_label: 'Free Lender Rating',
-            metric_value: `${(member.community_lender_rating || 0.0).toFixed(2)} ★ (${member.community_lender_reviews_count} Free Share Reviews)`,
+            metric_value: `${(member.community_lender_rating || 0.0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
             badges: index === 0
-                ? ['👑 #1 Community Angel', '🎁 Gift Economy Pioneer', '❤️ Pure Generosity']
+                ? ['#1 Community Lender', 'Gift Economy Contributor', 'Generous Contributor']
                 : index < 3
-                    ? ['🎁 Free Gear Angel', '🌱 Community Champion', '❤️ Neighbor Favorite']
-                    : ['🎁 Community Lender', '❤️ Generous Neighbor'],
+                    ? ['Free Gear Lender', 'Community Champion', 'Neighbor Favorite']
+                    : ['Community Lender', 'Generous Neighbor'],
         }));
         return (0, response_1.sendSuccess)(res, {
             top_rated: topRatedSorted,
@@ -273,7 +273,7 @@ router.get('/search', async (req, res, next) => {
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer ⚡') AS bio, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 90)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
@@ -420,7 +420,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             pincode: isSelf ? (user.pincode || '') : '',
             avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,
             banner_url: user.banner_url || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80',
-            bio: user.bio || 'Neighbor & Gear Sharer ⚡ Passionate about circular economy and community access over ownership.',
+            bio: user.bio || 'Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.',
             trust_score: parseInt(user.trust_score, 10) || 90,
             rating: trustRating,
             trust_rating: trustRating,
@@ -553,7 +553,7 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
              updated_at = CURRENT_TIMESTAMP
          WHERE owner_id = $6`, [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]).catch((err) => console.error('Failed to sync items location:', err));
         }
-        return (0, response_1.sendSuccess)(res, updatedUser, 'Profile updated successfully ✨');
+        return (0, response_1.sendSuccess)(res, updatedUser, 'Profile updated successfully.');
     }
     catch (error) {
         next(error);
@@ -575,7 +575,7 @@ router.post('/:id/follow', auth_1.authMiddleware, async (req, res, next) => {
         await (0, db_1.query)(`INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [followerId, followingId]);
         // Notify the followed user
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body)
-       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower 🎉', $3)`, [followingId, followerId, `${req.user.name || 'A neighbor'} started following your gear listings.`]).catch(() => { });
+       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`, [followingId, followerId, `${req.user.name || 'A neighbor'} started following your gear listings.`]).catch(() => { });
         const countRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
         return (0, response_1.sendSuccess)(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, 'Followed neighbor');
     }

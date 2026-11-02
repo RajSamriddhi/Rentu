@@ -245,7 +245,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay || 0),
         max_duration_days: Number(maxDurationDays),
         image_urls: [imageUrl],
-        sticker_badge: '✨ Available',
+        sticker_badge: 'Available',
         locality: finalLocality,
         address_text: itemAddress || finalLocality,
         pincode: chosenLocation?.pincode || user?.pincode || undefined,
@@ -569,7 +569,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                 }`}
               >
-                <div className="text-xs font-black">💰 Rent for Income</div>
+                <div className="text-xs font-black">Rent for Fee</div>
                 <div className="text-[11px] text-ink-secondary">Set a daily price</div>
               </button>
 
@@ -582,7 +582,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                     : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                 }`}
               >
-                <div className="text-xs font-black">🤝 Free Lending</div>
+                <div className="text-xs font-black">Free Community Sharing</div>
                 <div className="text-[11px] text-ink-secondary">Lend to neighbors for free</div>
               </button>
             </div>
@@ -647,7 +647,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-ink">I will deliver to the renter 🚗</span>
+                      <span className="text-xs font-bold text-ink">I will deliver to the renter</span>
                       {offersDelivery && (
                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                           Ready to Deliver
@@ -702,7 +702,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-ink">I will pick up / collect myself on return 🔄</span>
+                      <span className="text-xs font-bold text-ink">I will pick up / collect myself on return</span>
                       {offersPickup && (
                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                           Ready to Collect
@@ -814,8 +814,8 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                           </span>
                         )}
                         {isSelected && (
-                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                            ✓ Selected for this listing
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <Check className="w-2.5 h-2.5" /> Selected for this listing
                           </span>
                         )}
                       </div>

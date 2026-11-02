@@ -399,10 +399,10 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
                     existingBookingId,
                     currentUserId,
                     message.sender_id,
-                    `🎉 Request Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}). Pickup Verification Code: ${pickupCode}. Handover is now live in Bookings!`,
+                    `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Pickup Verification Code: ${pickupCode}. Handover is now live in Bookings.`,
                 ]);
                 await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-           VALUES ($1, $2, 'BOOKING_ACCEPTED', '🎉 Rental Request Accepted!', 'Your request for "' || $3 || '" was accepted! Handover is now active in Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, existingBookingId]).catch(() => { });
+           VALUES ($1, $2, 'BOOKING_ACCEPTED', 'Rental Request Accepted', 'Your request for "' || $3 || '" was accepted. Handover is now active in Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, existingBookingId]).catch(() => { });
                 return (0, response_1.sendSuccess)(res, {
                     booking: updatedBooking,
                     message_id: messageId,
@@ -498,7 +498,7 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
             createdBooking.id,
             currentUserId,
             message.sender_id,
-            `🎉 Agreement Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`,
+            `Agreement Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`,
         ]);
         // 6. If this proposal originated from a community request, mark that request as FULFILLED
         if (proposal.request_id) {
@@ -506,9 +506,9 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         }
         // 7. Send notifications to both lender and borrower about the ongoing booking
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, createdBooking.id]).catch(() => { });
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, createdBooking.id]).catch(() => { });
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [currentUserId, message.sender_id, itemTitle, createdBooking.id]).catch(() => { });
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [currentUserId, message.sender_id, itemTitle, createdBooking.id]).catch(() => { });
         return (0, response_1.sendSuccess)(res, {
             booking: createdBooking,
             item: createdItem,
@@ -547,7 +547,7 @@ router.post('/proposal/:messageId/decline', auth_1.authMiddleware, async (req, r
                 existingBookingId,
                 currentUserId,
                 message.sender_id,
-                `❌ Rental request for "${itemTitle}" was declined.`,
+                `Rental request for "${itemTitle}" was declined.`,
             ]).catch(() => { });
             await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
          VALUES ($1, $2, 'BOOKING_REJECTED', 'Rental Request Declined', 'Your request for "' || $3 || '" was declined.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, existingBookingId]).catch(() => { });

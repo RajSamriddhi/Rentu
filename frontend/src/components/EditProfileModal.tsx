@@ -181,7 +181,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       if (supabase) {
         const publicUrl = await uploadItemPhoto(file, 'avatars');
         setAvatarUrl(publicUrl);
-        setAvatarUploadStatus('✓ Profile picture uploaded!');
+        setAvatarUploadStatus('Profile picture uploaded successfully.');
       } else {
         const previewUrl = URL.createObjectURL(file);
         setAvatarUrl(previewUrl);
@@ -209,7 +209,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       if (supabase) {
         const publicUrl = await uploadItemPhoto(file, 'banners');
         setBannerUrl(publicUrl);
-        setBannerUploadStatus('✓ Background banner uploaded!');
+        setBannerUploadStatus('Background banner uploaded successfully.');
       } else {
         const previewUrl = URL.createObjectURL(file);
         setBannerUrl(previewUrl);
@@ -246,7 +246,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
       // Clean friendly location summary without exposing raw latitude/longitude coordinates
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
-      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
       } catch {}

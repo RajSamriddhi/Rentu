@@ -55,11 +55,11 @@ router.post('/register', async (req, res, next) => {
             validated.phone || null,
             locality,
             defaultAvatar,
-            validated.bio || 'New member of the Rentu⁺ gear rental network ⚡',
+            validated.bio || 'Member of the Rentu gear sharing community',
         ]);
         const user = result.rows[0];
         const token = generateToken(user);
-        return (0, response_1.sendSuccess)(res, { user, token }, 'Registration successful! Welcome to Rentu⁺ 🚀', 201);
+        return (0, response_1.sendSuccess)(res, { user, token }, 'Registration successful. Welcome to Rentu.', 201);
     }
     catch (error) {
         next(error);
@@ -81,7 +81,7 @@ router.post('/login', async (req, res, next) => {
         }
         const { password_hash, ...safeUser } = user;
         const token = generateToken(safeUser);
-        return (0, response_1.sendSuccess)(res, { user: safeUser, token }, 'Logged in successfully! 🚀');
+        return (0, response_1.sendSuccess)(res, { user: safeUser, token }, 'Logged in successfully.');
     }
     catch (error) {
         next(error);
@@ -181,7 +181,7 @@ const handleSyncUser = async (req, res, next) => {
                     validated.phone || null,
                     locality,
                     avatar,
-                    'Member of the Rentu⁺ gear rental community ⚡',
+                    'Member of the Rentu gear sharing community',
                 ]);
                 user = created.rows[0];
             }
@@ -197,13 +197,13 @@ const handleSyncUser = async (req, res, next) => {
                     validated.phone || null,
                     locality,
                     avatar,
-                    'Member of the Rentu⁺ gear rental community ⚡',
+                    'Member of the Rentu gear sharing community',
                 ]);
                 user = { ...created.rows[0], saved_locations: [] };
             }
         }
         const token = generateToken(user);
-        return (0, response_1.sendSuccess)(res, { user, token }, 'Firebase session synchronized with Rentu⁺! 🚀');
+        return (0, response_1.sendSuccess)(res, { user, token }, 'Account synchronized with Rentu.');
     }
     catch (error) {
         next(error);

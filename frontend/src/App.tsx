@@ -209,7 +209,7 @@ export const App: React.FC = () => {
       try {
         confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
       } catch {}
-      alert(`🤝 Offer sent! We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`);
+      alert(`Offer sent! We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`);
       if (req.seeker_id) {
         handleOpenChatWithUser(req.seeker_id, req.seeker_name || 'Neighbor', req.seeker_avatar);
       }

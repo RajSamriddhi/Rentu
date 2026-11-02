@@ -211,7 +211,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
            VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`, [
                     f.follower_id,
                     seekerId,
-                    `📢 New Request from ${seekerName}`,
+                    `New Request from ${seekerName}`,
                     `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: ₹${validated.offered_amount})`,
                     createdRequest.id,
                 ]).catch(() => { });
@@ -257,7 +257,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
              VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`, [
                         u.id,
                         seekerId,
-                        `📍 Nearby Gear Request (within 5 km)`,
+                        `Nearby Gear Request`,
                         `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || 'nearby'})`,
                         createdRequest.id,
                     ]).catch(() => { });
@@ -267,7 +267,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         catch (announcementErr) {
             console.warn('Failed to dispatch request announcements:', announcementErr);
         }
-        return (0, response_1.sendSuccess)(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
+        return (0, response_1.sendSuccess)(res, createdRequest, 'Wish dropped to community feed. Nearby owners will see your request.', 201);
     }
     catch (error) {
         next(error);
@@ -326,7 +326,7 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
             image_url: request.image_url || null,
             status: 'PENDING',
         };
-        const summaryText = `🤝 I Can Lend This! ${lenderName} offered to fulfill your request for "${request.item_name}" (₹${totalDealPrice} for ${durationDays} days)`;
+        const summaryText = `I Can Lend This: ${lenderName} offered to fulfill your request for "${request.item_name}" (₹${totalDealPrice} for ${durationDays} days)`;
         // Insert proposal message in chat between lender and seeker
         const msgResult = await (0, db_1.query)(`INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
        VALUES ($1, $2, $3, 'PROPOSAL', $4)
@@ -337,7 +337,7 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
        VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`, [
             request.seeker_id,
             lenderId,
-            `🤝 ${lenderName} is ready to lend gear!`,
+            `${lenderName} is ready to lend gear`,
             `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
             request.id,
         ]);
@@ -369,7 +369,7 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (!isSeeker) {
             if (validated.status === 'FULFILLED') {
                 const result = await (0, db_1.query)(`UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`, [id]);
-                return (0, response_1.sendSuccess)(res, result.rows[0], 'Wish marked as fulfilled! 🤝');
+                return (0, response_1.sendSuccess)(res, result.rows[0], 'Wish marked as fulfilled.');
             }
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Permission denied', 403);
         }

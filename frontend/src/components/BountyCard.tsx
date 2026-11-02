@@ -22,7 +22,7 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span className="w-8 h-8 rounded-full bg-brand-soft text-brand flex items-center justify-center font-black text-sm border border-brand/30">
-              🎯
+              <Target className="w-4 h-4" />
             </span>
             <span className="text-xs font-black uppercase tracking-wider text-ink bg-category-tech px-2.5 py-0.5 rounded-full border border-ink/20">
               {bounty.category}
@@ -63,9 +63,9 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
           </div>
           {(bounty.pickup_type || bounty.return_type || bounty.delivery_fee) && (
             <div className="col-span-2 pt-2 border-t border-divider/60 text-[11px] font-semibold text-ink-secondary flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>Pickup: <strong className="text-ink">{bounty.will_pickup === false || bounty.pickup_type === 'MY_LOCATION' ? '🚚 Deliver to Me' : '🚶 Go to Lender'}</strong></span>
+              <span>Pickup: <strong className="text-ink">{bounty.will_pickup === false || bounty.pickup_type === 'MY_LOCATION' ? 'Deliver to Me' : 'Go to Lender'}</strong></span>
               <span>•</span>
-              <span>Return: <strong className="text-ink">{bounty.will_drop_back === false || bounty.return_type === 'MY_LOCATION' ? '📦 Collect at Mine' : '🔄 Drop to Lender'}</strong></span>
+              <span>Return: <strong className="text-ink">{bounty.will_drop_back === false || bounty.return_type === 'MY_LOCATION' ? 'Collect at Mine' : 'Drop to Lender'}</strong></span>
               {Number(bounty.delivery_fee) > 0 && (
                 <span className="text-[10px] font-black uppercase text-brand bg-brand-soft px-1.5 py-0.5 rounded-md border border-brand/20">
                   +₹{Number(bounty.delivery_fee)} Delivery Pay

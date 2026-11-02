@@ -48,7 +48,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         }
         const item = itemRes.rows[0];
         if (item.owner_id === borrowerId) {
-            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot borrow your own gear 😉', 400);
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot borrow your own gear.', 400);
         }
         // Block check: borrower cannot book from owner if either has blocked the other
         const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
@@ -282,7 +282,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
             await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
             // Add notification chat message
             await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, '🎉 Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`, [id, booking.lender_id, booking.borrower_id]);
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`, [id, booking.lender_id, booking.borrower_id]);
             // Notify Borrower: Proposal Accepted
             await (0, notifications_service_1.createNotification)({
                 userId: booking.borrower_id,
@@ -374,7 +374,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         // Send chat system message
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '🤝 Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);
         const sDate = booking.start_date_str || booking.start_date;
         const eDate = booking.end_date_str || booking.end_date;
         // 1. Notify Borrower: Gear Received
@@ -456,8 +456,8 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
             userId,
             isBorrower ? booking.lender_id : booking.borrower_id,
             isFree
-                ? '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews for each other.'
-                : '📦 Product returned to owner! Stage 5: Payment settlement is now active.'
+                ? 'Product returned to owner. The rental process is completed. Please leave reviews for each other.'
+                : 'Product returned to owner. Final payment confirmation is now active.'
         ]);
         return (0, response_1.sendSuccess)(res, updateRes.rows[0], isFree
             ? 'Product returned successfully! Whole process completed.'
@@ -488,7 +488,7 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
        WHERE id = $2
        RETURNING *`, [payment_method, id]);
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '💳 Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`, [id, userId, booking.lender_id, payment_method]);
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`, [id, userId, booking.lender_id, payment_method]);
         return (0, response_1.sendSuccess)(res, updateRes.rows[0], 'Payment marked as sent! Waiting for owner verification.');
     }
     catch (error) {
@@ -521,7 +521,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
         // Release item back to AVAILABLE
         await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`, [id, userId, booking.borrower_id]);
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`, [id, userId, booking.borrower_id]);
         // Notify Borrower: Rental Completed
         await (0, notifications_service_1.createNotification)({
             userId: booking.borrower_id,
@@ -640,8 +640,8 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
             referenceId: id,
             referenceType: 'BOOKING',
             type: 'BOOKING_REVIEW',
-            title: 'New Review & Rating Received ⭐',
-            body: `${reviewerName} left a ${rating}-star review for the "${booking.item_title}" rental!`,
+            title: 'New Review & Rating Received',
+            body: `${reviewerName} left a ${rating}-star review for "${booking.item_title}".`,
         });
         return (0, response_1.sendSuccess)(res, reviewResult.rows[0], 'Thank you! Your review and feedback has been recorded.');
     }

@@ -12,7 +12,10 @@ import {
   Truck, 
   Package, 
   ShieldCheck,
-  Loader2
+  Loader2,
+  Star,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { useAuth } from '../lib/authContext';
@@ -151,7 +154,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                 ? 'bg-emerald-600 text-white shadow-md'
                 : 'bg-brand text-white shadow-pink'
             }`}>
-              {isFulfilled ? '✓ Fulfilled Request' : '● Active Gear Request'}
+              {isFulfilled ? 'Fulfilled Request' : 'Active Gear Request'}
             </span>
           </div>
         </div>
@@ -250,7 +253,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                   Pickup Handover
                 </span>
                 <div className="font-bold text-ink flex items-center gap-1.5">
-                  <span>{willPickup ? '🚗' : '🚚'}</span>
+                  <Truck className="w-4 h-4 text-brand shrink-0" />
                   <span>{willPickup ? 'Renter Self-Pickup' : 'Delivery Requested'}</span>
                 </div>
                 <p className="text-[11px] text-ink-secondary leading-relaxed">
@@ -266,7 +269,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                   Return Handover
                 </span>
                 <div className="font-bold text-ink flex items-center gap-1.5">
-                  <span>{willDropBack ? '🔄' : '📦'}</span>
+                  <RotateCcw className="w-4 h-4 text-brand shrink-0" />
                   <span>{willDropBack ? 'Renter Self-Return' : 'Pickup Collection Requested'}</span>
                 </div>
                 <p className="text-[11px] text-ink-secondary leading-relaxed">
@@ -314,7 +317,8 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                 <div className="text-[10px] font-bold text-amber-500 mt-0.5 flex items-center gap-1">
                   {(request as any).seeker_rating && Number((request as any).seeker_rating) > 0 ? (
                     <>
-                      <span>★ {Number((request as any).seeker_rating).toFixed(1)}</span>
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      <span>{Number((request as any).seeker_rating).toFixed(1)}</span>
                       <span className="text-ink-secondary font-medium">•</span>
                     </>
                   ) : null}
@@ -392,8 +396,8 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
             )}
 
             {isFulfilled && !isOwnRequest && (
-              <span className="text-xs font-bold text-emerald-600 py-2 px-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                ✓ Request Fulfilled
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 py-2 px-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                <Check className="w-3.5 h-3.5" /> Request Fulfilled
               </span>
             )}
           </div>

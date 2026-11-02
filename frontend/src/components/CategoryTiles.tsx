@@ -138,7 +138,7 @@ export const CategoryTiles: React.FC<CategoryTilesProps> = ({
             onClick={() => onSelectCategory('All')}
             className="text-xs font-bold text-brand hover:underline cursor-pointer"
           >
-            Reset to All Categories ✕
+            Reset to All Categories
           </button>
         )}
       </div>

@@ -31,7 +31,7 @@ const CANDIDATE_MODELS = [
 const SYSTEM_INSTRUCTION = `
 You are Rentu AI, the lovable, intelligent shopping and rental assistant for Rentu⁺ (a Gen Z peer-to-peer gear sharing and rental platform).
 Personality:
-- Friendly, warm, encouraging, and helpful. You occasionally use a sweet touch like "Of course! 💗" or "Let me check that for you! ✨" without overusing emojis.
+- Friendly, warm, encouraging, and helpful. Professional and authentic without overusing emojis.
 - Never sound robotic or overly corporate.
 - For general greetings (e.g. "hi", "hello", "who are you"), casual everyday questions, and introductions: reply warmly and conversationally directly. Do NOT call search or database tools for pure greetings!
 - You can answer general everyday questions, casual conversation, explanations ("explain this simply"), brainstorming, and recommendations.
@@ -383,22 +383,22 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         normalized.includes('nice to meet you');
     if (isGreeting || isIntroductionOrIdentity || isCasualPleasantry) {
         if (normalized.includes('thank')) {
-            reply = `You're so very welcome! 💗 It's always my pleasure to help. Let me know if you need to find more gear, compare rates, or check availability for your next adventure! ✨`;
+            reply = `You're very welcome. It is always a pleasure to help. Let me know if you need to find more gear, compare rates, or check availability for your next adventure.`;
         }
         else if (normalized.startsWith('bye') || normalized.startsWith('goodbye')) {
-            reply = `Goodbye neighbor! 👋 Have a wonderful time, and remember I'm always here whenever you want to rent or share gear on Rentu⁺! 💗`;
+            reply = `Goodbye neighbor. Have a wonderful time, and remember I'm always here whenever you want to rent or share gear on Rentu⁺.`;
         }
         else if (normalized.includes('how are you') || normalized.includes('how is it going')) {
-            reply = `I'm doing fantastic, thank you so much for asking! 💗 Ready to help you discover the coolest gear and best rental deals in your neighborhood. How are you doing today? ✨`;
+            reply = `I'm doing fantastic, thank you so much for asking. Ready to help you discover the coolest gear and best rental deals in your neighborhood. How are you doing today?`;
         }
         else {
-            reply = `Hey there neighbor! 💗 I'm **Rentu AI**, your personal gear sharing companion on Rentu⁺.\n\n` +
+            reply = `Hey there neighbor! I'm **Rentu AI**, your personal gear sharing companion on Rentu⁺.\n\n` +
                 `I can help you:\n` +
                 `• **Find affordable gear** matching your daily budget (cameras, camping, tools, DJ gear, laptops)\n` +
                 `• **Check live availability** for your upcoming weekend or trip dates\n` +
                 `• **Compare prices** and recommend cheaper alternatives\n` +
                 `• **Explain how to rent, list, or borrow gear for free**\n\n` +
-                `What are you looking to rent, borrow, or explore today? ✨`;
+                `What are you looking to rent, borrow, or explore today?`;
         }
         return {
             reply,
@@ -414,11 +414,11 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
     }
     // 1B. General Explanations & Help Deciding
     if (normalized.includes('photosynthesis')) {
-        reply = `Think of photosynthesis like a plant's way of cooking its own dinner! 🌿🍳\n\n` +
+        reply = `Think of photosynthesis like a plant's way of cooking its own dinner:\n\n` +
             `1. **The Ingredients:** A plant takes in sunlight, water from the ground, and carbon dioxide from the air.\n` +
             `2. **The Cooking:** Inside its leaves, it uses light energy to transform water and gas into food.\n` +
             `3. **The Meal:** It makes sugar (plant food) and releases oxygen into the air for us to breathe!\n\n` +
-            `Plants basically turn sunshine into food! Isn't nature amazing? ✨`;
+            `Plants turn sunshine into nourishment.`;
         return {
             reply,
             mode: 'fallback',
@@ -432,11 +432,11 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         };
     }
     if (normalized.includes('explain this') || normalized.includes('simple words') || normalized.includes('help me decide')) {
-        reply = `I'd love to help! 💗\n\n` +
+        reply = `I would be happy to help.\n\n` +
             `On Rentu⁺, you can rent equipment directly from verified local neighbors rather than buying expensive gear you only need for a few days.\n\n` +
             `• **To decide between listings:** Look at the daily rate (₹/day), the lender's community trust score, and their locality for easy pickup.\n` +
             `• **Need a comparison?** Just ask me to "compare these cameras" or tell me your budget and duration, and I'll calculate which option saves you the most money!\n\n` +
-            `What gear would you like to explore? ✨`;
+            `What gear would you like to explore?`;
         return {
             reply,
             mode: 'fallback',
@@ -451,13 +451,13 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
     }
     // 2. Marketplace Workflow Questions
     if (queryLower.includes('how do i list') || queryLower.includes('list my product') || queryLower.includes('list gear') || queryLower.includes('post an item')) {
-        reply = `💸 **How to List Your Gear for Rent on Rentu⁺:**\n\n` +
+        reply = `**How to List Your Gear for Rent on Rentu⁺:**\n\n` +
             `1. Tap the **"+ Post"** button in the top navigation bar (or bottom menu on mobile).\n` +
             `2. Choose **"List Gear for Rent"**.\n` +
             `3. Upload 1 or more clear photos of your equipment.\n` +
             `4. Set your title, category, daily rental rate (e.g. ₹350/day), and max duration (up to 7 days).\n` +
             `5. Enter your locality for easy local pickup, then hit **Publish**!\n\n` +
-            `Neighbors near you can now view your listing and send rental proposals. You get paid directly with zero platform cuts! 🚀`;
+            `Neighbors near you can now view your listing and send rental proposals. You get paid directly with zero platform cuts.`;
         return {
             reply,
             mode: 'fallback',
@@ -471,7 +471,7 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         };
     }
     if (queryLower.includes('contact the owner') || queryLower.includes('message the owner') || queryLower.includes('chat with owner') || queryLower.includes('talk to lender')) {
-        reply = `💬 **How to Contact a Gear Owner:**\n\n` +
+        reply = `**How to Contact a Gear Owner:**\n\n` +
             `• **Direct Rental Chat:** When viewing any listing in the catalog, click **"Request to Rent"** with a quick note. A direct 2-way message thread will open between you and the lender in the Messages panel.\n` +
             `• **Coordination:** You can discuss exact pickup times, equipment condition, memory cards/cables, and handoff spots directly.\n` +
             `• **Verified Neighbors:** All owners display trust scores and community ratings so you always know who you are renting from.`;
@@ -488,12 +488,12 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         };
     }
     if (queryLower.includes('how does booking') || queryLower.includes('booking and return') || queryLower.includes('how it works') || queryLower.includes('how to rent')) {
-        reply = `🤝 **How Booking & Returning Works on Rentu⁺:**\n\n` +
+        reply = `**How Booking & Returning Works on Rentu⁺:**\n\n` +
             `1. **Discover:** Find the gear you need (cameras, outdoor equipment, DJ decks, tools).\n` +
             `2. **Request:** Select your start date and duration, then click **"Request to Rent"**.\n` +
             `3. **Lender Accepts:** The owner receives your proposal. Once accepted, the item is marked reserved.\n` +
-            `4. **Handoff:** Meet up locally to test and pick up the gear. No hidden platform fees!\n` +
-            `5. **Return:** Hand the item back on your scheduled end date. The owner marks the booking **"Completed"**, and you both exchange verified reviews! 🌟`;
+            `4. **Handoff:** Meet up locally to test and pick up the gear. No hidden platform fees.\n` +
+            `5. **Return:** Hand the item back on your scheduled end date. The owner marks the booking **"Completed"**, and you both exchange verified reviews.`;
         return {
             reply,
             mode: 'fallback',
@@ -510,11 +510,11 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
     if (queryLower.includes('free') || queryLower.includes('borrow for free') || queryLower.includes('without paying') || queryLower.includes('borrow free')) {
         const freeItemsRes = await (0, ai_tools_1.searchListings)({ free_only: true, limit: 3 });
         if (freeItemsRes.items.length > 0) {
-            reply = `🎉 Here are gear items currently listed with ₹0 daily rates by friendly neighbors in your area!`;
+            reply = `Here are gear items currently listed with ₹0 daily rates by friendly neighbors in your area:`;
             accumulatedItems.push(...freeItemsRes.items);
         }
         else {
-            reply = `💡 **Can You Borrow for Free on Rentu⁺? Yes!**\n\n` +
+            reply = `**Can You Borrow for Free on Rentu⁺? Yes:**\n\n` +
                 `While most marketplace listings have a modest daily fee (e.g. ₹200–₹400/day) to cover wear & tear, Rentu⁺ features a dedicated **Requests Board**:\n\n` +
                 `1. Post a **Community Wish** explaining what you need (e.g. "Need camera for college film shoot").\n` +
                 `2. Community members often lend gear for free or in exchange for creative favors!\n\n` +
@@ -544,8 +544,8 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         if (searchRes.items.length > 0) {
             const best = searchRes.items[0];
             accumulatedItems.push(...searchRes.items);
-            reply = `🌟 **Top Community Recommendation:**\n\n` +
-                `I recommend the **${best.title}**! Here is why:\n` +
+            reply = `**Top Community Recommendation:**\n\n` +
+                `I recommend the **${best.title}**. Here is why:\n` +
                 `• **Price:** Just **₹${best.price_per_day}/day** — one of the best values in ${best.category}.\n` +
                 `• **Lender Rating:** ${best.owner_rating ? `${best.owner_rating.toFixed(1)}/5.0` : '5.0/5.0'} (${best.owner_name})\n` +
                 `• **Verified Location:** ${best.locality || 'Nearby'}\n\n` +
@@ -604,14 +604,14 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
                 duration_days: duration,
             });
             if (avail.available) {
-                reply = `✅ **Great news!** **${avail.item_title}** is **available** for your requested dates (${avail.requested_dates?.start_date} to ${avail.requested_dates?.end_date}, ${duration} days).\n\n` +
+                reply = `**${avail.item_title}** is **available** for your requested dates (${avail.requested_dates?.start_date} to ${avail.requested_dates?.end_date}, ${duration} days).\n\n` +
                     `• **Daily Rate:** ₹${avail.price_per_day}/day\n` +
                     `• **Estimated Total:** **₹${avail.estimated_total}**\n` +
                     `• **Location:** ${avail.locality || 'Nearby'}\n\n` +
-                    `You can view full specs or send a rental proposal below! 💗`;
+                    `You can view full specs or send a rental proposal below.`;
             }
             else {
-                reply = `⚠️ **Availability Notice:** **${avail.item_title || 'Item'}** cannot be booked for those dates.\n\n` +
+                reply = `**Availability Notice:** **${avail.item_title || 'Item'}** cannot be booked for those dates.\n\n` +
                     `• **Reason:** ${avail.reason || avail.error}\n\n` +
                     `Here are available alternative listings in the same category:`;
             }
@@ -663,10 +663,10 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
             const savingsMsg = topAlt.savings_per_day
                 ? `saving you **₹${topAlt.savings_per_day}/day (${topAlt.savings_percentage}% off)**`
                 : `starting at just ₹${topAlt.price_per_day}/day`;
-            reply = `💰 **Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**\n\n` +
+            reply = `**Found ${alts.alternatives.length} cheaper alternative(s) compared to ${refTitle}:**\n\n` +
                 `• **Top Pick:** **${topAlt.title}** at **₹${topAlt.price_per_day}/day**, ${savingsMsg}.\n` +
                 `• **Verified Location:** ${topAlt.locality || 'Nearby'}\n\n` +
-                `Tap any card below to view full photos or request a booking!`;
+                `Tap any card below to view full photos or request a booking.`;
             accumulatedItems.push(...alts.alternatives);
         }
         else {
@@ -697,7 +697,7 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
         });
         if (comp.comparison.length > 0 && comp.summary) {
             const s = comp.summary;
-            reply = `📊 **Rental Price Comparison (${duration} Days):**\n\n` +
+            reply = `**Rental Price Comparison (${duration} Days):**\n\n` +
                 `• **Cheapest Option:** **${s.cheapest_item}** at ₹${s.cheapest_daily_rate}/day (Total: **₹${s.cheapest_total}**)\n` +
                 (s.potential_total_savings > 0 ? `• **Potential Savings:** Up to **₹${s.potential_total_savings}** total compared to higher-priced gear.\n` : '') +
                 `• **Pricing Rule:** ${s.pricing_note}\n\n` +
@@ -733,7 +733,7 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
             accumulatedItems.push(...searchRes.items);
             const first = searchRes.items[0];
             const total = first.price_per_day * duration;
-            reply = `💵 **Estimated Rental Cost for ${duration} Day${duration > 1 ? 's' : ''}:**\n\n` +
+            reply = `**Estimated Rental Cost for ${duration} Day${duration > 1 ? 's' : ''}:**\n\n` +
                 `• **${first.title}:** ₹${first.price_per_day}/day × ${duration} days = **₹${total}**\n` +
                 `• **Zero Deposit / No Hidden Fees:** Rentu does not charge platform cuts. You coordinate directly with the owner.\n\n` +
                 `Here is the listing and similar options:`;
@@ -772,9 +772,9 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
     if (accumulatedItems.length > 0) {
         const budgetNote = maxPrice ? ` under ₹${maxPrice}/day` : '';
         const locNote = convContext.locality ? ` in ${convContext.locality}` : '';
-        reply = `✨ **Found ${accumulatedItems.length} verified listing${accumulatedItems.length > 1 ? 's' : ''}${budgetNote}${locNote} on Rentu⁺:**\n\n` +
+        reply = `**Found ${accumulatedItems.length} verified listing${accumulatedItems.length > 1 ? 's' : ''}${budgetNote}${locNote} on Rentu⁺:**\n\n` +
             accumulatedItems.map(item => `• **${item.title}** — ₹${item.price_per_day}/day (${item.locality || 'Nearby'})`).join('\n') +
-            `\n\nTap any card below to inspect full specs or request a booking! 💗`;
+            `\n\nTap any card below to inspect full specs or request a booking.`;
     }
     else {
         const hasExplicitGearTerm = category !== undefined || maxPrice !== undefined ||
@@ -785,13 +785,13 @@ async function executeDeterministicFallback(messages, context, fallbackReason) {
                 cleanKeyword.includes('speaker') || cleanKeyword.includes('dj') || cleanKeyword.includes('gear') ||
                 cleanKeyword.includes('costume') || cleanKeyword.includes('gopro') || cleanKeyword.includes('tripod')));
         if (hasExplicitGearTerm) {
-            reply = `🔍 I searched the marketplace but couldn't find any listings matching "${latestMessage}".\n\n` +
-                `**Helpful Suggestions:**\n` +
+            reply = `I searched the marketplace but couldn't find any listings matching "${latestMessage}".\n\n` +
+                `**Suggestions:**\n` +
                 `• Try a broader category (e.g. "cameras", "camping", "tech").\n` +
-                `• Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need!`;
+                `• Or post a **Community Wish** on the Requests Board so local neighbors can offer to lend you what you need.`;
         }
         else {
-            reply = `I'm **Rentu AI**, your personal equipment sharing companion on Rentu⁺! 💗\n\n` +
+            reply = `I'm **Rentu AI**, your personal equipment sharing companion on Rentu⁺.\n\n` +
                 `I can help you:\n` +
                 `• **Find gear by budget:** e.g. *"Find a camera under ₹400/day"* or *"Find laptops under ₹500"*\n` +
                 `• **Check live availability:** e.g. *"Is the Canon DSLR available this weekend?"*\n` +

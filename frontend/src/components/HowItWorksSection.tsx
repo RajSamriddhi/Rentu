@@ -8,7 +8,9 @@ import {
   ShieldCheck,
   CheckCircle2,
   Calendar,
-  Gift
+  Gift,
+  Lightbulb,
+  Star
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
@@ -144,7 +146,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
             {/* Bottom Notice */}
             <div className="p-4 rounded-2xl bg-brand/5 border border-brand/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 text-xs text-ink font-medium">
-                <span className="text-base">💡</span>
+                <Lightbulb className="w-4 h-4 text-brand shrink-0" />
                 <span>Can't find what you need? Post a request and verified neighbors will offer their idle gear to you!</span>
               </div>
               <button
@@ -227,7 +229,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
             {/* Bottom Notice */}
             <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 text-xs text-ink font-medium">
-                <span className="text-base">🛡️</span>
+                <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
                 <span>Your gear is protected: Every booking records item handover condition and contact verification.</span>
               </div>
               <button
@@ -254,7 +256,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
               {/* Pillar 1 */}
               <div className="p-5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 space-y-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-black flex items-center justify-center text-sm shadow-xs">
-                  🌟
+                  <Star className="w-5 h-5 text-emerald-600" />
                 </div>
                 <h3 className="font-extrabold text-base text-ink">Reviews Rule Over Volume</h3>
                 <p className="text-xs text-ink-secondary leading-relaxed">
@@ -265,7 +267,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
               {/* Pillar 2 */}
               <div className="p-5 rounded-2xl bg-canvas border border-divider space-y-3">
                 <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-black flex items-center justify-center text-sm shadow-xs">
-                  🛡️
+                  <ShieldCheck className="w-5 h-5 text-blue-600" />
                 </div>
                 <h3 className="font-extrabold text-base text-ink">Dynamic Trust Score (0-100)</h3>
                 <p className="text-xs text-ink-secondary leading-relaxed">
@@ -276,7 +278,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
               {/* Pillar 3 */}
               <div className="p-5 rounded-2xl bg-canvas border border-divider space-y-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-black flex items-center justify-center text-sm shadow-xs">
-                  🎁
+                  <Gift className="w-5 h-5 text-amber-600" />
                 </div>
                 <h3 className="font-extrabold text-base text-ink">Gift Economy & Free Shares</h3>
                 <p className="text-xs text-ink-secondary leading-relaxed">

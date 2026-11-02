@@ -22,7 +22,8 @@ import {
   UserCheck,
   Ban,
   Lock,
-  Users
+  Users,
+  AlertCircle
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { PublicUserProfile, Item, CommunityRequest } from '../lib/types';
@@ -169,8 +170,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   if (error || !profile) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
-        <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 flex items-center justify-center mx-auto text-2xl">
-          ⚠️
+        <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8" />
         </div>
         <h2 className="text-xl font-black text-ink font-display">Profile Not Found</h2>
         <p className="text-xs text-ink-secondary">{error || 'This member profile is unavailable.'}</p>
@@ -229,7 +230,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   } disabled:opacity-50`}
                 >
                   {isFollowing ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-                  <span>{isFollowing ? 'Following ✓' : 'Follow'}</span>
+                  <span>{isFollowing ? 'Following' : 'Follow'}</span>
                 </button>
 
                 {/* Message Button */}
@@ -309,7 +310,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <div className="px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  <span>{(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} ★ Rating</span>
+                  <span>{(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} Rating</span>
                 </div>
 
                 <div className="px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
@@ -425,8 +426,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               </div>
 
               <div className="p-3 rounded-2xl bg-canvas border border-divider">
-                <div className="text-xl sm:text-2xl font-black text-amber-500 font-display">
-                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} ★
+                <div className="text-xl sm:text-2xl font-black text-amber-500 font-display flex items-center justify-center gap-1">
+                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)}
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                 </div>
                 <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Neighbor Score
@@ -508,8 +510,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
             {profile.items.length === 0 ? (
               <div className="bg-surface border border-divider rounded-3xl p-10 text-center space-y-3 max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-2xl bg-brand/10 text-brand flex items-center justify-center mx-auto text-xl">
-                  📦
+                <div className="w-14 h-14 rounded-2xl bg-brand/10 text-brand flex items-center justify-center mx-auto">
+                  <Package className="w-7 h-7 text-brand" />
                 </div>
                 <h4 className="font-extrabold text-ink text-sm sm:text-base">No Gear Listed Yet</h4>
                 <p className="text-xs text-ink-secondary">
@@ -544,8 +546,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
             {profile.requests.length === 0 ? (
               <div className="bg-surface border border-divider rounded-3xl p-10 text-center space-y-3 max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center mx-auto text-xl">
-                  ✨
+                <div className="w-14 h-14 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center mx-auto">
+                  <Sparkles className="w-7 h-7 text-purple-600" />
                 </div>
                 <h4 className="font-extrabold text-ink text-sm sm:text-base">No Active Requests</h4>
                 <p className="text-xs text-ink-secondary">
@@ -797,25 +799,25 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
                           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs font-black">
                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            <span>{rev.rating} ★</span>
+                            <span>{rev.rating}</span>
                           </div>
                         </div>
 
                         {/* Role Badge */}
                         <div className="pt-0.5">
                           {rType === 'OWNER_RENTAL' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                              📦 Gear Owner Review
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                              <Package className="w-3 h-3" /> Gear Owner Review
                             </span>
                           )}
                           {rType === 'RENTER' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                              🎒 Renter Review
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <UserCheck className="w-3 h-3" /> Renter Review
                             </span>
                           )}
                           {rType === 'COMMUNITY_LENDER' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
-                              🎁 Free Community Lender Review
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
+                              <Sparkles className="w-3 h-3" /> Community Lender Review
                             </span>
                           )}
                         </div>

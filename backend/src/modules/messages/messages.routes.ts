@@ -485,13 +485,13 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `🎉 Request Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}). Pickup Verification Code: ${pickupCode}. Handover is now live in Bookings!`,
+            `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Pickup Verification Code: ${pickupCode}. Handover is now live in Bookings.`,
           ]
         );
 
         await query(
           `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-           VALUES ($1, $2, 'BOOKING_ACCEPTED', '🎉 Rental Request Accepted!', 'Your request for "' || $3 || '" was accepted! Handover is now active in Bookings.', $4, 'BOOKING')`,
+           VALUES ($1, $2, 'BOOKING_ACCEPTED', 'Rental Request Accepted', 'Your request for "' || $3 || '" was accepted. Handover is now active in Bookings.', $4, 'BOOKING')`,
           [message.sender_id, currentUserId, itemTitle, existingBookingId]
         ).catch(() => {});
 
@@ -611,7 +611,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         createdBooking.id,
         currentUserId,
         message.sender_id,
-        `🎉 Agreement Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`,
+        `Agreement Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`,
       ]
     );
 
@@ -626,13 +626,13 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     // 7. Send notifications to both lender and borrower about the ongoing booking
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
       [message.sender_id, currentUserId, itemTitle, createdBooking.id]
     ).catch(() => {});
 
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
       [currentUserId, message.sender_id, itemTitle, createdBooking.id]
     ).catch(() => {});
 
@@ -684,7 +684,7 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
           existingBookingId,
           currentUserId,
           message.sender_id,
-          `❌ Rental request for "${itemTitle}" was declined.`,
+          `Rental request for "${itemTitle}" was declined.`,
         ]
       ).catch(() => {});
 

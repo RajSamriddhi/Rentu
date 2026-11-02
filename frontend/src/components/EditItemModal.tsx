@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles, Plus } from 'lucide-react';
+import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles, Plus, Check } from 'lucide-react';
 import { Item, SavedLocation } from '../lib/types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/authContext';
@@ -275,9 +275,9 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
                 onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none cursor-pointer"
               >
-                <option value="AVAILABLE">✨ Available for Rent</option>
-                <option value="RENTED">🔒 Currently Rented</option>
-                <option value="UNAVAILABLE">⏸️ Paused / Unavailable</option>
+                <option value="AVAILABLE">Available for Rent</option>
+                <option value="RENTED">Currently Rented</option>
+                <option value="UNAVAILABLE">Paused / Unavailable</option>
               </select>
             </div>
           </div>
@@ -373,8 +373,8 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
                           </span>
                         )}
                         {isSelected && (
-                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                            ✓ Selected for this listing
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <Check className="w-2.5 h-2.5" /> Selected for this listing
                           </span>
                         )}
                       </div>
@@ -404,7 +404,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-ink">I will deliver to the renter 🚗</span>
+                    <span className="text-xs font-bold text-ink">I will deliver to the renter</span>
                     {offersDelivery && (
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                         Ready to Deliver
@@ -459,7 +459,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-ink">I will pick up / collect myself on return 🔄</span>
+                    <span className="text-xs font-bold text-ink">I will pick up / collect myself on return</span>
                     {offersPickup && (
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                         Ready to Collect

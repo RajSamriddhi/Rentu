@@ -307,7 +307,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
         setReqPincode(loc.pincode);
       }
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
-      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not fetch current location. Please fill fields manually.');
     } finally {
@@ -369,7 +369,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
         status: 'PENDING',
       };
 
-      const summary = `📦 Personal Gear Offer: ${listingTitle.trim()} (₹${calculatedListingTotal} for ${listingDurationDays} days)`;
+      const summary = `Personal Gear Offer: ${listingTitle.trim()} (₹${calculatedListingTotal} for ${listingDurationDays} days)`;
 
       await onSubmitProposal(proposalPayload, summary);
       confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
@@ -441,7 +441,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
         status: 'PENDING',
       };
 
-      const summary = `🎯 Custom Borrow Request: ${requestItemName.trim()} (Offered Budget: ₹${calculatedRequestTotal} for ${requestDurationDays} days)`;
+      const summary = `Custom Borrow Request: ${requestItemName.trim()} (Offered Budget: ₹${calculatedRequestTotal} for ${requestDurationDays} days)`;
 
       await onSubmitProposal(proposalPayload, summary);
       confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
@@ -794,7 +794,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                       : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                   }`}
                 >
-                  <div className="text-xs font-black">💰 Rent for Income</div>
+                  <div className="text-xs font-black">Rent for Fee</div>
                   <div className="text-[11px] text-ink-secondary">Set a daily price</div>
                 </button>
 
@@ -807,7 +807,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                       : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
                   }`}
                 >
-                  <div className="text-xs font-black">🤝 Free Lending</div>
+                  <div className="text-xs font-black">Free Community Sharing</div>
                   <div className="text-[11px] text-ink-secondary">Lend to neighbor for free</div>
                 </button>
               </div>
@@ -903,7 +903,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-ink">I will deliver to the renter 🚗</span>
+                        <span className="text-xs font-bold text-ink">I will deliver to the renter</span>
                         {listingOffersDelivery && (
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                             Ready to Deliver
@@ -958,7 +958,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-ink">I will pick up / collect myself on return 🔄</span>
+                        <span className="text-xs font-bold text-ink">I will pick up / collect myself on return</span>
                         {listingOffersPickup && (
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                             Ready to Collect
@@ -1064,8 +1064,8 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                             </span>
                           )}
                           {isSelected && (
-                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                              ✓ Selected for this offer
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                              <Check className="w-2.5 h-2.5" /> Selected for this offer
                             </span>
                           )}
                         </div>
@@ -1375,7 +1375,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-ink">I will pick up the item myself 🚗</span>
+                      <span className="text-xs font-bold text-ink">I will pick up the item myself</span>
                       {requestWillPickup && (
                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                           Self-Pickup
@@ -1430,7 +1430,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-ink">I will drop / return the item myself 🔄</span>
+                      <span className="text-xs font-bold text-ink">I will drop / return the item myself</span>
                       {requestWillDropBack && (
                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                           Self-Return

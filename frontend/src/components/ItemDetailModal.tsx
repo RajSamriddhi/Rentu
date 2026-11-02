@@ -16,7 +16,10 @@ import {
   Calendar,
   Clock,
   Edit3,
-  Trash2
+  Trash2,
+  Truck,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
@@ -371,8 +374,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     </span>
 
                     {isAvailableForBorrowing && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                        🤝 Free Borrowing
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                        <Sparkles className="w-3 h-3" /> Free Borrowing
                       </span>
                     )}
                   </div>
@@ -577,7 +580,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           : 'text-ink-secondary hover:text-ink'
                       }`}
                     >
-                      <span>🤝 Borrow (Free)</span>
+                      <span>Free Borrowing</span>
                     </button>
                   </div>
                 )}
@@ -598,7 +601,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       }}
                       className="btn-primary text-xs w-full py-2.5 cursor-pointer"
                     >
-                      Open Coordination Chat 💬
+                      Open Coordination Chat
                     </button>
                   </div>
                 ) : (
@@ -638,7 +641,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <div className="p-3 rounded-2xl bg-surface border border-divider space-y-2.5">
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2.5">
-                                <span className="text-base">🚗</span>
+                                <Truck className="w-5 h-5 text-brand shrink-0" />
                                 <div>
                                   <div className="text-xs font-bold text-ink flex items-center gap-1.5">
                                     <span>Owner Delivery</span>
@@ -728,7 +731,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <div className="p-3 rounded-2xl bg-surface border border-divider space-y-2.5">
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2.5">
-                                <span className="text-base">🔄</span>
+                                <RotateCcw className="w-5 h-5 text-brand shrink-0" />
                                 <div>
                                   <div className="text-xs font-bold text-ink flex items-center gap-1.5">
                                     <span>Return Pickup by Owner</span>
@@ -784,7 +787,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                           : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
                                       }`}
                                     >
-                                      <span>✓ Same as delivery</span>
+                                      <span>Same as delivery</span>
                                     </button>
                                   )}
 
@@ -880,7 +883,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     {isOwner ? (
                       <div className="space-y-2 mt-3 pt-3 border-t border-divider">
                         <div className="p-3 rounded-2xl bg-brand-soft/40 border border-brand/20 text-center">
-                          <div className="text-xs font-bold text-ink">👀 Product Preview Mode</div>
+                          <div className="text-xs font-bold text-ink flex items-center justify-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5 text-brand" /> Product Preview Mode
+                          </div>
                           <p className="text-[11px] text-ink-secondary mt-0.5">
                             This preview matches exactly what other users see when viewing your listed gear.
                           </p>

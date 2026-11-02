@@ -158,7 +158,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                   onClick={onOpenDropWish}
                   className="mt-4 btn-primary text-xs cursor-pointer"
                 >
-                  Post a Request 🎯
+                  Post a Request
                 </button>
               ) : (
                 <button
@@ -245,7 +245,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                         className="px-4 py-2 rounded-full text-xs font-bold bg-surface border border-divider hover:border-brand text-ink hover:text-brand shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
                       >
                         <span>See More</span>
-                        <span>➔</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>

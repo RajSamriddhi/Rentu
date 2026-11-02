@@ -237,7 +237,7 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
                 ) : (
                   <>
                     <Navigation className="w-4 h-4 animate-pulse" />
-                    <span>Detect Location 📍</span>
+                    <span>Detect Location</span>
                   </>
                 )}
               </button>

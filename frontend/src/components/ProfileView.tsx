@@ -744,16 +744,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           <div className="pt-1 flex items-center gap-2">
                             {isWithin3Days ? (
                               <span className="text-[10px] font-black uppercase text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                                ✨ 3-Day Review Window Open
+                                3-Day Review Window Open
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold text-ink-secondary bg-canvas px-2 py-0.5 rounded-full border border-divider">
-                                ⏰ 3-Day Window Closed
+                                Review Window Closed
                               </span>
                             )}
                             {hasReviewed && (
                               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                                ✅ Review Submitted
+                                Review Submitted
                               </span>
                             )}
                           </div>
@@ -770,7 +770,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           className="btn-primary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-pink disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Star className="w-3.5 h-3.5 fill-white text-white" />
-                          <span>{hasReviewed ? 'Edit Review' : 'Write Review ⭐'}</span>
+                          <span>{hasReviewed ? 'Edit Review' : 'Write Review'}</span>
                         </button>
                       </div>
                     </div>
@@ -870,18 +870,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           {/* Role Badge */}
                           <div className="pt-0.5">
                             {rType === 'OWNER_RENTAL' && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                                📦 Gear Owner Review
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                <Package className="w-3 h-3" /> Gear Owner Review
                               </span>
                             )}
                             {rType === 'RENTER' && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                🎒 Renter Review
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                <UserCheck className="w-3 h-3" /> Renter Review
                               </span>
                             )}
                             {rType === 'COMMUNITY_LENDER' && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
-                                🎁 Free Community Lender Review
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
+                                <Sparkles className="w-3 h-3" /> Community Lender Review
                               </span>
                             )}
                           </div>

@@ -54,7 +54,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const item = itemRes.rows[0];
     if (item.owner_id === borrowerId) {
-      return sendError(res, 'BAD_REQUEST', 'You cannot borrow your own gear 😉', 400);
+      return sendError(res, 'BAD_REQUEST', 'You cannot borrow your own gear.', 400);
     }
 
     // Block check: borrower cannot book from owner if either has blocked the other
@@ -343,7 +343,7 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
       // Add notification chat message
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, '🎉 Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
         [id, booking.lender_id, booking.borrower_id]
       );
 
@@ -458,7 +458,7 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
     // Send chat system message
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '🤝 Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`,
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
 
@@ -564,8 +564,8 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
         userId, 
         isBorrower ? booking.lender_id : booking.borrower_id,
         isFree 
-          ? '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews for each other.'
-          : '📦 Product returned to owner! Stage 5: Payment settlement is now active.'
+          ? 'Product returned to owner. The rental process is completed. Please leave reviews for each other.'
+          : 'Product returned to owner. Final payment confirmation is now active.'
       ]
     );
 
@@ -609,7 +609,7 @@ router.post('/:id/submit-payment', authMiddleware, async (req: AuthenticatedRequ
 
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '💳 Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
       [id, userId, booking.lender_id, payment_method]
     );
 
@@ -656,7 +656,7 @@ router.post('/:id/confirm-payment', authMiddleware, async (req: AuthenticatedReq
 
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
       [id, userId, booking.borrower_id]
     );
 
@@ -803,8 +803,8 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       referenceId: id,
       referenceType: 'BOOKING',
       type: 'BOOKING_REVIEW',
-      title: 'New Review & Rating Received ⭐',
-      body: `${reviewerName} left a ${rating}-star review for the "${booking.item_title}" rental!`,
+      title: 'New Review & Rating Received',
+      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title}".`,
     });
 
     return sendSuccess(res, reviewResult.rows[0], 'Thank you! Your review and feedback has been recorded.');

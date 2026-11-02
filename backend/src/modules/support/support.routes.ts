@@ -54,7 +54,7 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
          VALUES ($1, NULL, 'SUPPORT_TICKET_RECEIVED', $2, $3, $4, 'SUPPORT')`,
         [
           userId,
-          validated.type === 'CONCERN' ? 'Concern Received 🛡️' : 'Feedback Received 💡',
+          validated.type === 'CONCERN' ? 'Concern Received' : 'Feedback Received',
           `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
           ticket.id,
         ]
@@ -171,7 +171,7 @@ router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res:
          VALUES ($1, NULL, 'SUPPORT_TICKET_RESOLVED', $2, $3, $4, 'SUPPORT')`,
         [
           currentTicket.user_id,
-          validated.status === 'RESOLVED' ? 'Concern Resolved ✅' : 'Support Update 💬',
+          validated.status === 'RESOLVED' ? 'Concern Resolved' : 'Support Update',
           `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
           updated.id,
         ]

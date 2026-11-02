@@ -12,9 +12,9 @@ const startServer = async () => {
     });
 
     const server = app.listen(ENV.PORT, () => {
-      console.log(`⚡ Rentu⁺ API Service listening on http://localhost:${ENV.PORT}`);
-      console.log(`🌱 Environment: ${ENV.NODE_ENV}`);
-      console.log(`📡 Ready for rental requests!`);
+      console.log(`Rentu⁺ API Service listening on http://localhost:${ENV.PORT}`);
+      console.log(`Environment: ${ENV.NODE_ENV}`);
+      console.log(`Ready for rental requests.`);
     });
 
     const shutdown = () => {

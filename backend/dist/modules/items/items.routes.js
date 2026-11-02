@@ -15,7 +15,7 @@ const createItemSchema = zod_1.z.object({
     price_per_day: zod_1.z.number().min(0, 'Price per day cannot be negative'),
     max_duration_days: zod_1.z.number().int().positive().default(3),
     image_urls: zod_1.z.array(zod_1.z.string().min(1, 'Photo URL cannot be empty')).min(1, 'At least one photo is required'),
-    sticker_badge: zod_1.z.string().default('✨ Available'),
+    sticker_badge: zod_1.z.string().default('Available'),
     locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
@@ -352,7 +352,7 @@ router.patch('/:id/borrowing', auth_1.authMiddleware, async (req, res, next) => 
        WHERE id = $2
        RETURNING *`, [available_for_borrowing, id]);
         return (0, response_1.sendSuccess)(res, result.rows[0], available_for_borrowing
-            ? 'Item is now available for borrowing as well! 🤝'
+            ? 'Item is now available for borrowing as well.'
             : 'Item is now set to rental only.');
     }
     catch (error) {
@@ -451,7 +451,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
                 await (0, db_1.query)(`INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`, [createdItem.id, validated.image_urls[i], i]).catch(() => { });
             }
         }
-        return (0, response_1.sendSuccess)(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
+        return (0, response_1.sendSuccess)(res, createdItem, 'Gear listed successfully. It is now live on the feed.', 201);
     }
     catch (error) {
         next(error);
@@ -551,7 +551,7 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
             await (0, notifications_service_1.createNotification)({
                 userId: req.user.id,
                 type: 'ITEM_UNAVAILABLE',
-                title: 'Listing Marked Unavailable 🔒',
+                title: 'Listing Marked Unavailable',
                 body: `"${result.rows[0]?.title || 'Item'}" is now marked unavailable and paused from rental listings.`,
                 referenceId: id,
                 referenceType: 'ITEM',
@@ -561,7 +561,7 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
             await (0, notifications_service_1.createNotification)({
                 userId: req.user.id,
                 type: 'ITEM_AVAILABLE',
-                title: 'Listing Marked Available ✨',
+                title: 'Listing Marked Available',
                 body: `"${result.rows[0]?.title || 'Item'}" is active and available for rent on the marketplace.`,
                 referenceId: id,
                 referenceType: 'ITEM',

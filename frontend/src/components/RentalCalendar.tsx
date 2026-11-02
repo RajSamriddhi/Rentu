@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, AlertCircle, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, AlertCircle, Clock, Lock, ArrowRight } from 'lucide-react';
 
 export interface BookedDateRange {
   id?: string;
@@ -182,7 +182,7 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
       } else {
         // Validate if any date in between is already rented
         if (hasBookedDateInRange(startDate, dateStr)) {
-          setRangeError('⚠️ This range crosses dates when the item is already rented. Please pick an uninterrupted available period.');
+          setRangeError('This range crosses dates when the item is already rented. Please pick an uninterrupted available period.');
           return;
         }
         onSelectRange(startDate, dateStr);
@@ -310,8 +310,8 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
         </div>
 
         {isSelectingEnd && (
-          <span className="text-brand font-black animate-pulse">
-            👉 Now click return date
+          <span className="text-brand font-bold inline-flex items-center gap-1">
+            <ArrowRight className="w-3.5 h-3.5" /> Select return date
           </span>
         )}
       </div>
@@ -484,9 +484,9 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
             {normalizedBookedRanges.map((range, i) => (
               <span
                 key={i}
-                className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
               >
-                🔒 {range.start} → {range.end} (Rented)
+                <Lock className="w-2.5 h-2.5" /> {range.start} → {range.end} (Rented)
               </span>
             ))}
           </div>

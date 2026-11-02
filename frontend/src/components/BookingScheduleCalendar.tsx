@@ -17,7 +17,9 @@ import {
   ArrowRight,
   ShieldCheck,
   Star,
-  Loader2
+  Loader2,
+  Truck,
+  RotateCcw
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
@@ -126,7 +128,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
           badgeText: 'Stage 1: Pending Proposal',
           chipBg: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/60',
           dotBg: 'bg-amber-500',
-          icon: '⏳',
+          icon: '',
         };
       case 'ACCEPTED':
         return {
@@ -135,7 +137,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
           badgeText: 'Stage 2: Accepted Meetup',
           chipBg: 'bg-blue-500/15 text-blue-800 dark:text-blue-300 border-blue-500/30 hover:border-blue-500/60',
           dotBg: 'bg-blue-500',
-          icon: '🤝',
+          icon: '',
         };
       case 'HANDED_OVER':
         return {
@@ -144,7 +146,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
           badgeText: 'Stage 3: Received (In Use)',
           chipBg: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 hover:border-emerald-500/60',
           dotBg: 'bg-emerald-500',
-          icon: '📦',
+          icon: '',
         };
       case 'COMPLETED':
         return {
@@ -153,7 +155,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
           badgeText: 'Stage 4: Received Back',
           chipBg: 'bg-purple-500/15 text-purple-800 dark:text-purple-300 border-purple-500/30 hover:border-purple-500/60',
           dotBg: 'bg-purple-500',
-          icon: '✅',
+          icon: '',
         };
       case 'REJECTED':
       case 'CANCELLED':
@@ -164,7 +166,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
           badgeText: status,
           chipBg: 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700',
           dotBg: 'bg-zinc-400',
-          icon: '⚪',
+          icon: '',
         };
     }
   };
@@ -368,13 +370,13 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                     const bStart = cleanYMD(b.start_date);
                     const bEnd = cleanYMD(b.end_date || b.start_date);
                     
-                    let prefix = cfg.icon;
+                    let prefix = '';
                     if (d.dateStr === bStart) {
-                      prefix = `${cfg.icon} Pickup:`;
+                      prefix = 'Pickup:';
                     } else if (d.dateStr === bEnd) {
-                      prefix = `${cfg.icon} Return:`;
+                      prefix = 'Return:';
                     } else {
-                      prefix = `${cfg.icon} Active:`;
+                      prefix = 'Active:';
                     }
 
                     return (
@@ -475,7 +477,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
 
                           {/* 4 STAGE STATUS BADGE */}
                           <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${cfg.chipBg}`}>
-                            {cfg.icon} {cfg.badgeText}
+                            {cfg.badgeText}
                           </span>
 
                           <span className="text-[10px] font-bold text-ink-muted bg-canvas border border-divider px-2 py-0.5 rounded-full">
@@ -524,7 +526,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                   {/* Logistics info */}
                   <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="flex items-start gap-2">
-                      <span className="text-base shrink-0 mt-0.5">🚗</span>
+                      <Truck className="w-4 h-4 text-brand shrink-0 mt-0.5" />
                       <div>
                         <div className="font-bold text-ink">
                           {booking.requires_delivery ? 'Lender Drop-off Delivery' : 'Renter Self-Pickup'}
@@ -539,7 +541,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                     </div>
 
                     <div className="flex items-start gap-2">
-                      <span className="text-base shrink-0 mt-0.5">🔄</span>
+                      <RotateCcw className="w-4 h-4 text-brand shrink-0 mt-0.5" />
                       <div>
                         <div className="font-bold text-ink">
                           {booking.requires_pickup ? 'Lender Collects on Return' : 'Renter Returns to Lender'}

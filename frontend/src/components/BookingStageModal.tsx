@@ -133,7 +133,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       try {
         confetti({ particleCount: 65, spread: 60, origin: { y: 0.6 } });
       } catch {}
-      setSuccessMessage('✓ Pickup handover confirmed! Rental period is now in use.');
+      setSuccessMessage('Pickup handover confirmed. Rental period is now in use.');
       onUpdated({ ...booking, ...updated, status: 'HANDED_OVER', handed_over_at: new Date().toISOString() });
     } catch (err: any) {
       setErrorMessage(err.message || 'Incorrect pickup code. Please check with the renter.');
@@ -160,7 +160,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       try {
         confetti({ particleCount: 75, spread: 70, origin: { y: 0.6 } });
       } catch {}
-      setSuccessMessage('✓ Return handover verified! Proceeding to final payment settlement.');
+      setSuccessMessage('Return handover verified. Proceeding to final payment settlement.');
       onUpdated({ ...booking, ...updated, returned_at: new Date().toISOString() });
     } catch (err: any) {
       setErrorMessage(err.message || 'Incorrect return code. Please check with the other party.');
@@ -178,7 +178,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       try {
         confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
       } catch {}
-      setSuccessMessage('🎉 Payment confirmed! The rental is 100% completed.');
+      setSuccessMessage('Payment confirmed. The rental is completed.');
       onUpdated({ ...booking, ...updated, status: 'COMPLETED', payment_status: 'CONFIRMED' });
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to confirm payment.');
@@ -388,7 +388,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">✓ Copied to clipboard</span>}
+                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">Copied to clipboard</span>}
                   </div>
 
                   <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
@@ -556,7 +556,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">✓ Copied to clipboard</span>}
+                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">Copied to clipboard</span>}
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] font-medium text-purple-700 dark:text-purple-300">
@@ -631,7 +631,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 </span>
                 <h4 className="text-base font-extrabold text-ink font-display">
                   {booking.status === 'COMPLETED'
-                    ? 'Rental Process Completed! 🎉'
+                    ? 'Rental Process Completed'
                     : 'Take the payment from the renter'}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
@@ -678,7 +678,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                       className="btn-primary text-xs px-5 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Rate & Review Neighbor ⭐</span>
+                      <span>Rate & Review Neighbor</span>
                     </button>
                   )}
                 </div>
@@ -719,7 +719,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                       Please hand over or transfer ₹{Number(booking.total_price)} directly to {otherPartyName}. Once {otherPartyName} confirms receiving it, this booking will be finalized.
                     </p>
                     <span className="text-[11px] font-bold text-amber-600 bg-amber-500/20 px-3 py-1 rounded-full inline-block mt-1">
-                      ⏳ Awaiting confirmation from owner
+                      Awaiting confirmation from owner
                     </span>
                   </div>
                 </div>

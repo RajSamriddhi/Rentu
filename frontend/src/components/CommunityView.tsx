@@ -23,6 +23,7 @@ import {
   ThumbsUp,
   RefreshCw,
   Zap,
+  Clock,
   Quote
 } from 'lucide-react';
 import { api } from '../lib/api';
@@ -88,7 +89,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Trust Rating (Avg)</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{((member.trust_rating || member.rating) || 0.0).toFixed(2)} ★</span>
+              <span>{((member.trust_rating || member.rating) || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -108,7 +109,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Owner Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.owner_rating || 0.0).toFixed(2)} ★</span>
+              <span>{(member.owner_rating || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -127,7 +128,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Renter Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.renter_rating || 0.0).toFixed(2)} ★</span>
+              <span>{(member.renter_rating || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -145,7 +146,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className="text-[10px] text-ink-muted font-bold uppercase">Free Lender Rating</div>
           <div className="font-black text-ink flex items-center gap-1 mt-0.5">
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span>{(member.community_lender_rating || 0.0).toFixed(2)} ★</span>
+            <span>{(member.community_lender_rating || 0.0).toFixed(2)}</span>
           </div>
         </div>
         <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -315,7 +316,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Top Gear Owners (5★ Owner)</span>
+            <span>Top Gear Owners (5-Star Owner)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
@@ -332,7 +333,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Top Renters (5★ Renter)</span>
+            <span>Top Renters (5-Star Renter)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
@@ -349,7 +350,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Gift className="w-4 h-4" />
-            <span>Free Community Lenders (5★ Free)</span>
+            <span>Free Community Lenders (5-Star Free)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
@@ -361,26 +362,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         <div className="p-4 rounded-2xl bg-surface border border-divider shadow-xs text-center mb-8 max-w-3xl mx-auto animate-in fade-in duration-200">
           {activeCategory === 'top_rated' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              ⭐ <strong className="text-ink">Trust Rating Leaderboard:</strong> Ranked by combined 
+              <strong className="text-ink">Trust Rating Leaderboard:</strong> Ranked by combined 
               average rating across all 3 community roles (Gear Owner, Renter, and Free Community Lender). 
               Denotes overall peer reliability, participation, and stellar reputation in the community!
             </p>
           )}
           {activeCategory === 'top_lenders' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              📦 <strong className="text-ink">Top Gear Owners Leaderboard:</strong> Ranked by Gear Owner Rating, 
+              <strong className="text-ink">Top Gear Owners Leaderboard:</strong> Ranked by Gear Owner Rating, 
               awarded by renters for equipment quality, immaculate hygiene, prompt communication, and smooth rental handover.
             </p>
           )}
           {activeCategory === 'top_borrowers' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              🎒 <strong className="text-ink">Top Renters Leaderboard:</strong> Ranked by Renter Rating, 
+              <strong className="text-ink">Top Renters Leaderboard:</strong> Ranked by Renter Rating, 
               awarded by gear owners for treating equipment with the utmost care, respect, and returning 100% on schedule.
             </p>
           )}
           {activeCategory === 'top_sharers' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              🎁 <strong className="text-ink">Top Free Community Lenders Leaderboard:</strong> Ranked by Free Lender Rating, 
+              <strong className="text-ink">Top Free Community Lenders Leaderboard:</strong> Ranked by Free Lender Rating, 
               awarded by neighbors for generous spirit and community support by lending gear completely free of charge (₹0).
             </p>
           )}
@@ -515,7 +516,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           className="w-20 h-20 rounded-full object-cover border-4 border-amber-400 shadow-md ring-4 ring-amber-400/20 group-hover/user:ring-amber-500"
                         />
                         <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-black shadow-xs">
-                          👑
+                          <Award className="w-3.5 h-3.5 text-white" />
                         </div>
                       </div>
                       <div>
@@ -735,7 +736,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                   ? (member.renter_rating || 0.0).toFixed(2)
                                   : activeCategory === 'top_sharers'
                                   ? (member.community_lender_rating || 0.0).toFixed(2)
-                                  : ((member.trust_rating || member.rating) || 0.0).toFixed(2)} ★
+                                  : ((member.trust_rating || member.rating) || 0.0).toFixed(2)}
                               </span>
                             </div>
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
@@ -779,8 +780,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         {/* Empty State when ranking list has no members yet */}
         {!isLoading && !error && currentList.length === 0 && (
           <div className="p-10 sm:p-14 rounded-3xl bg-surface border border-divider text-center space-y-4 max-w-xl mx-auto shadow-sm my-6">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto text-2xl font-bold">
-              ★
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+              <Star className="w-6 h-6 fill-amber-400 text-amber-400" />
             </div>
             <div className="space-y-1.5">
               <h3 className="text-base sm:text-lg font-black text-ink font-display">
@@ -809,7 +810,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-left pt-2">
             <div className="p-4 rounded-2xl bg-surface/90 border border-divider space-y-2">
-              <div className="text-lg">⏱️</div>
+              <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
+                <Clock className="w-4 h-4" />
+              </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Be Punctual</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
                 Always stick to your agreed calendar handover time. 100% on-time returns elevate your Trust Score.
@@ -817,7 +820,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="p-4 rounded-2xl bg-surface/90 border border-divider space-y-2">
-              <div className="text-lg">🧼</div>
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                <Sparkles className="w-4 h-4" />
+              </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Treat Gear Like Gold</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
                 Return items in clean, pristine condition. Great gear hygiene earns you 5-star reviews from owners.
@@ -825,7 +830,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="p-4 rounded-2xl bg-surface/90 border border-divider space-y-2">
-              <div className="text-lg">💬</div>
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                <MessageSquare className="w-4 h-4" />
+              </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Communicate Early</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
                 Coordinate pickup logistics via Rentu chat. Prompt responders get marked as preferred community peers.
@@ -833,7 +840,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="p-4 rounded-2xl bg-surface/90 border border-divider space-y-2">
-              <div className="text-lg">🎁</div>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                <Gift className="w-4 h-4" />
+              </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Give Back & Share</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
                 List idle items or offer free sharing. Helping students and neighbors unlocks our Free Sharers Badge!
@@ -846,7 +855,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               onClick={onExploreGear}
               className="btn-primary text-xs shadow-pink cursor-pointer"
             >
-              Start Exploring Rentals 🚀
+              Explore Gear Rentals
             </button>
             <button
               onClick={() => {
@@ -858,7 +867,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               }}
               className="btn-secondary text-xs cursor-pointer"
             >
-              List Gear to Join Top 10 🏷️
+              List Your Gear
             </button>
           </div>
         </div>

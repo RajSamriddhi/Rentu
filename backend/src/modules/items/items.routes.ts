@@ -15,7 +15,7 @@ const createItemSchema = z.object({
   price_per_day: z.number().min(0, 'Price per day cannot be negative'),
   max_duration_days: z.number().int().positive().default(3),
   image_urls: z.array(z.string().min(1, 'Photo URL cannot be empty')).min(1, 'At least one photo is required'),
-  sticker_badge: z.string().default('✨ Available'),
+  sticker_badge: z.string().default('Available'),
   locality: z.string().optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
@@ -409,7 +409,7 @@ router.patch('/:id/borrowing', authMiddleware, async (req: AuthenticatedRequest,
       res, 
       result.rows[0], 
       available_for_borrowing 
-        ? 'Item is now available for borrowing as well! 🤝' 
+        ? 'Item is now available for borrowing as well.' 
         : 'Item is now set to rental only.'
     );
   } catch (error) {
@@ -501,7 +501,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       }
     }
 
-    return sendSuccess(res, createdItem, 'Gear listed successfully! ✨ It is now live on the feed.', 201);
+    return sendSuccess(res, createdItem, 'Gear listed successfully. It is now live on the feed.', 201);
   } catch (error) {
     next(error);
   }
@@ -613,7 +613,7 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       await createNotification({
         userId: req.user!.id,
         type: 'ITEM_UNAVAILABLE',
-        title: 'Listing Marked Unavailable 🔒',
+        title: 'Listing Marked Unavailable',
         body: `"${result.rows[0]?.title || 'Item'}" is now marked unavailable and paused from rental listings.`,
         referenceId: id,
         referenceType: 'ITEM',
@@ -622,7 +622,7 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       await createNotification({
         userId: req.user!.id,
         type: 'ITEM_AVAILABLE',
-        title: 'Listing Marked Available ✨',
+        title: 'Listing Marked Available',
         body: `"${result.rows[0]?.title || 'Item'}" is active and available for rent on the marketplace.`,
         referenceId: id,
         referenceType: 'ITEM',

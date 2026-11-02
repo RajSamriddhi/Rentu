@@ -102,7 +102,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
         setPincode(loc.pincode);
       }
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Location detected';
-      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect location.');
     } finally {
@@ -345,9 +345,9 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none cursor-pointer"
               >
-                <option value="OPEN">🎯 Open (Seeking Gear)</option>
-                <option value="FULFILLED">✅ Fulfilled</option>
-                <option value="CANCELLED">❌ Cancelled</option>
+                <option value="OPEN">Open (Seeking Gear)</option>
+                <option value="FULFILLED">Fulfilled</option>
+                <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
           </div>
@@ -421,7 +421,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <span className="text-xs font-bold text-ink block">
-                      {willPickup ? '🚶 Pick up myself' : '🚚 Need delivery'}
+                      {willPickup ? 'Pick up myself' : 'Need delivery'}
                     </span>
                     <span className="text-[10px] text-ink-secondary block">
                       {willPickup ? 'Go to lender to collect' : 'Lender delivers to you'}
@@ -452,7 +452,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <span className="text-xs font-bold text-ink block">
-                      {willDropBack ? '🔄 Drop back myself' : '📦 Need collection'}
+                      {willDropBack ? 'Drop back myself' : 'Need collection'}
                     </span>
                     <span className="text-[10px] text-ink-secondary block">
                       {willDropBack ? 'Return to lender yourself' : 'Lender collects from you'}
@@ -508,7 +508,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
               >
                 <MapPin className="w-3 h-3" />
-                <span>{isDetectingLocation ? 'Detecting...' : 'Use current location 📍'}</span>
+                <span>{isDetectingLocation ? 'Detecting...' : 'Use current location'}</span>
               </button>
             </div>
 

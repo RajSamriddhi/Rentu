@@ -15,7 +15,8 @@ import {
   ArrowRight,
   Truck,
   CheckCircle2,
-  Compass
+  Compass,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -165,7 +166,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         setPincode(loc.pincode);
       }
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
-      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
       } catch {}
@@ -529,7 +530,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                 />
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                    <span>✓ Picture Attached</span>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Picture Attached</span>
                   </div>
                   <p className="text-[11px] text-ink-secondary">
                     Your photo helps community members identify the exact model or condition.
@@ -771,7 +773,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-xs font-black text-ink block">
-                      {willPickup ? '🚶 I will pick up the item myself' : '🚚 I need it delivered to me'}
+                      {willPickup ? 'I will pick up the item myself' : 'I need it delivered to me'}
                     </span>
                     <span className="text-[11px] text-ink-secondary block mt-0.5">
                       {willPickup 
@@ -806,7 +808,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <span className="text-xs font-black text-ink block">
-                      {willDropBack ? '🔄 I will drop it back myself' : '📦 I need it collected from me'}
+                      {willDropBack ? 'I will drop it back myself' : 'I need it collected from me'}
                     </span>
                     <span className="text-[11px] text-ink-secondary block mt-0.5">
                       {willDropBack 
@@ -899,7 +901,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                           setStreetArea(loc.street_road_landmark || '');
                           setLocality(loc.locality || '');
                           setPincode(loc.pincode || '');
-                          setLocationSuccessMsg(`✓ Location selected: ${loc.label}`);
+                          setLocationSuccessMsg(`Location selected: ${loc.label}`);
                         }}
                         className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
                           isSelected
@@ -1013,7 +1015,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
             ) : (
               <>
                 <Sparkles className="w-4 h-4 stroke-[2.5]" />
-                <span>Post Request Now 🎯</span>
+                <span>Post Request</span>
               </>
             )}
           </button>

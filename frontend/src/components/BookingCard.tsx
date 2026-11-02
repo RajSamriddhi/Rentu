@@ -262,7 +262,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
           <div className="flex items-center gap-1.5 text-xs text-ink-secondary font-medium">
             <Calendar className="w-3.5 h-3.5 text-brand shrink-0" />
             <span className="truncate">
-              {booking.start_date?.slice(0, 10)} {booking.end_date ? `➔ ${booking.end_date.slice(0, 10)}` : ''}
+              {booking.start_date?.slice(0, 10)} {booking.end_date ? `→ ${booking.end_date.slice(0, 10)}` : ''}
             </span>
           </div>
 
@@ -350,7 +350,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
                 onClick={() => setIsReturnMode(true)}
                 className="w-full btn-secondary text-[11px] py-1 font-bold cursor-pointer"
               >
-                Proceed to Return Handover ➔
+                Proceed to Return Handover
               </button>
             </div>
           )}
@@ -446,7 +446,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
                     Please pay ₹{Number(booking.total_price)} to {otherPartyName}. Once confirmed, rental will finish.
                   </p>
                   <span className="text-[9px] font-bold text-amber-600 bg-amber-500/20 px-2 py-0.5 rounded-full inline-block">
-                    ⏳ Awaiting confirmation from owner
+                    Awaiting confirmation from owner
                   </span>
                 </div>
               )}

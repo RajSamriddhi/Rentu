@@ -640,7 +640,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             onClick={onOpenAuth}
             className="btn-primary text-xs sm:text-sm px-6 py-3 font-extrabold shadow-pink cursor-pointer w-full"
           >
-            Sign In to Open Messages 💬
+            Sign In to Open Messages
           </button>
         </div>
       </div>
@@ -900,7 +900,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     ) : (
                       <div className="shrink-0 pl-1 hidden sm:block">
                         <span className="text-[11px] font-bold text-ink-secondary px-3 py-1 rounded-full bg-canvas border border-divider">
-                          Direct DM 💬
+                          Direct Message
                         </span>
                       </div>
                     )}
@@ -1048,7 +1048,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     ? 'bg-red-500/10 text-red-500 border-red-500/20'
                                     : 'bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse'
                                 }`}>
-                                  {isAccepted ? '✓ Accepted & Booked' : isDeclined ? 'Declined' : 'Pending Review'}
+                                  {isAccepted ? 'Accepted & Booked' : isDeclined ? 'Declined' : 'Pending Review'}
                                 </span>
                               </div>
 

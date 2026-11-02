@@ -55,7 +55,7 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
       setLongitude(loc.longitude);
 
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Location detected';
-      setLocationSuccessMsg(`✓ Current location detected: ${locSummary}`);
+      setLocationSuccessMsg(`Current location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
       } catch {}

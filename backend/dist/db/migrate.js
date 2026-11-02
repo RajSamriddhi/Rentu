@@ -92,7 +92,7 @@ const runMigrations = async () => {
         price_per_day NUMERIC(10, 2) NOT NULL CHECK (price_per_day >= 0),
         max_duration_days INTEGER DEFAULT 3 CHECK (max_duration_days > 0),
         image_urls JSONB DEFAULT '[]'::JSONB,
-        sticker_badge VARCHAR(50) DEFAULT '✨ Weekend Flex',
+        sticker_badge VARCHAR(50) DEFAULT 'Available',
         locality VARCHAR(120),
         address_text TEXT DEFAULT 'South Delhi',
         pincode VARCHAR(10),

@@ -217,7 +217,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 <span>Filters & Distance</span>
               </span>
               <span className="text-xs font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full">
-                {showMobileFilters ? 'Hide ▲' : 'Show Filters ▼'}
+                {showMobileFilters ? 'Hide' : 'Show Filters'}
               </span>
             </button>
           </div>
@@ -386,7 +386,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                         onClick={onOpenDropGear}
                         className="btn-primary text-xs cursor-pointer font-bold px-4 py-2 shadow-pink"
                       >
-                        List an Item 💸
+                        List an Item
                       </button>
                     ) : (
                       <button
@@ -490,7 +490,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       onClick={onOpenDropWish}
                       className="mt-4 btn-primary text-xs cursor-pointer font-bold px-5 py-2 shadow-pink"
                     >
-                      Post a Request 🎯
+                      Post a Request
                     </button>
                   ) : (
                     <button

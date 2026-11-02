@@ -176,7 +176,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   }}
                   className="px-3 py-1.5 rounded-xl border border-divider hover:border-brand text-xs font-bold text-ink hover:text-brand transition-colors cursor-pointer shrink-0 bg-surface shadow-2xs"
                 >
-                  Change 📍
+                  Change
                 </button>
               )}
             </div>
@@ -204,7 +204,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={toggleTheme}
                 className="px-3 py-1.5 rounded-xl border border-divider bg-surface hover:border-zinc-400 text-xs font-bold text-ink transition-colors cursor-pointer shadow-2xs"
               >
-                Switch to {theme === 'dark' ? 'Light ☀️' : 'Dark 🌙'}
+                Switch to {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
               </button>
             </div>
           </div>

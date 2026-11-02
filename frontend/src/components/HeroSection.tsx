@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Sparkles, ShieldCheck, ArrowRight, Heart, Zap } from 'lucide-react';
+import { Plus, Sparkles, ShieldCheck, ArrowRight, Heart, Zap, Lock, MessageSquare } from 'lucide-react';
 
 interface HeroSectionProps {
   onOpenDropGear: () => void;
@@ -92,12 +92,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
           <span className="w-1 h-1 rounded-full bg-divider hidden sm:block" />
           <div className="flex items-center gap-1.5">
-            <span className="text-amber-500 font-bold">🔒</span>
+            <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span>6-Digit Handover Verification</span>
           </div>
           <span className="w-1 h-1 rounded-full bg-divider hidden sm:block" />
           <div className="flex items-center gap-1.5">
-            <span className="text-brand font-bold">💬</span>
+            <MessageSquare className="w-3.5 h-3.5 text-brand shrink-0" />
             <span>Direct DM Agreements</span>
           </div>
         </div>

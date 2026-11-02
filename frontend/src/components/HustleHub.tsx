@@ -27,7 +27,8 @@ import {
   RefreshCw,
   Eye,
   Check,
-  X
+  X,
+  Star
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
@@ -614,7 +615,7 @@ export const HustleHub: React.FC = () => {
                         ticketFilterType === t ? 'bg-brand text-white shadow-xs' : 'hover:bg-surface text-ink-secondary'
                       }`}
                     >
-                      {t === 'ALL' ? 'All' : t === 'CONCERN' ? '⚠️ Concerns' : '💡 Feedback'}
+                      {t === 'ALL' ? 'All' : t === 'CONCERN' ? 'Concerns' : 'Feedback'}
                     </button>
                   ))}
                 </div>
@@ -643,8 +644,8 @@ export const HustleHub: React.FC = () => {
                 </div>
               ) : supportTickets.length === 0 ? (
                 <div className="py-20 text-center space-y-2 bg-canvas rounded-2xl border border-divider">
-                  <div className="w-12 h-12 rounded-full bg-surface border border-divider flex items-center justify-center mx-auto text-xl">
-                    🎉
+                  <div className="w-12 h-12 rounded-full bg-surface border border-divider flex items-center justify-center mx-auto text-emerald-500">
+                    <CheckCircle2 className="w-6 h-6" />
                   </div>
                   <p className="text-sm font-bold text-ink">No Tickets Matching Filter</p>
                   <p className="text-xs text-ink-secondary max-w-sm mx-auto">
@@ -667,7 +668,7 @@ export const HustleHub: React.FC = () => {
                                 ? 'bg-red-500/10 text-red-500 border border-red-500/25' 
                                 : 'bg-amber-500/10 text-amber-500 border border-amber-500/25'
                             }`}>
-                              {ticket.type === 'CONCERN' ? '⚠️ Concern' : '💡 Feedback'}
+                              {ticket.type === 'CONCERN' ? 'Concern' : 'Feedback'}
                             </span>
                             <span className="text-xs font-bold text-ink bg-surface px-2.5 py-0.5 rounded-full border border-divider">
                               {ticket.category}
@@ -891,7 +892,10 @@ export const HustleHub: React.FC = () => {
                             <td className="p-3.5">
                               <div className="flex items-center gap-2">
                                 <span className="font-black text-ink">{u.trust_score || 95}%</span>
-                                <span className="text-amber-500 font-bold">★ {Number(u.rating || 0.0).toFixed(1)}</span>
+                                <span className="text-amber-500 font-bold inline-flex items-center gap-1">
+                                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                  <span>{Number(u.rating || 0.0).toFixed(1)}</span>
+                                </span>
                               </div>
                             </td>
                             <td className="p-3.5 text-ink-secondary">

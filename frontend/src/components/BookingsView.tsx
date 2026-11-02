@@ -1037,7 +1037,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                               <div className="space-y-0.5">
                                 <span className="font-bold text-ink">3-Day Peer Review Window Active</span>
                                 <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                                  ⏳ {reviewWindow.label}
+                                  {reviewWindow.label}
                                 </p>
                               </div>
                             ) : (
@@ -1052,7 +1052,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                               className="btn-primary text-xs px-4 py-2 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 shrink-0"
                             >
                               <Star className="w-3.5 h-3.5 fill-white text-white" />
-                              <span>{booking.user_review_id ? 'Update Review ⭐' : 'Leave Review & Feedback ⭐'}</span>
+                              <span>{booking.user_review_id ? 'Update Review' : 'Leave Review & Feedback'}</span>
                             </button>
                           )}
                         </div>

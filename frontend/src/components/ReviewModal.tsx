@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Star, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Star, Loader2, Sparkles, CheckCircle2, Package, UserCheck, Clock } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
 import { api } from '../lib/api';
@@ -108,18 +108,18 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             </div>
             <div className="flex items-center gap-2">
               {reviewType === 'OWNER_RENTAL' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                  📦 Gear Owner Review (Paid Rental)
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  <Package className="w-3.5 h-3.5" /> Gear Owner Review (Paid Rental)
                 </span>
               )}
               {reviewType === 'COMMUNITY_LENDER' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
-                  🎁 Free Community Lender Review (₹0 Community Sharing)
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
+                  <Sparkles className="w-3.5 h-3.5" /> Community Lender Review (Free Community Sharing)
                 </span>
               )}
               {reviewType === 'RENTER' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  🎒 Renter Review (Gear Care & Return)
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <UserCheck className="w-3.5 h-3.5" /> Renter Review (Gear Care & Return)
                 </span>
               )}
             </div>
@@ -195,7 +195,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           </div>
 
           <div className="text-[10px] text-ink-secondary flex items-center justify-between">
-            <span>⏳ Feedback window is open for 3 days post-return</span>
+            <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 text-ink-muted" /> Feedback window open for 3 days post-return</span>
             <span>Contributes to Community Trust Rating</span>
           </div>
 

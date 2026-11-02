@@ -22,7 +22,11 @@ import {
   Star,
   ArrowRight,
   HelpCircle,
-  Settings
+  Settings,
+  Check,
+  CheckCircle2,
+  Clock,
+  Package
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -211,24 +215,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   const getInstaMicroBadge = (type: string) => {
     switch (type) {
       case 'BOOKING_PROPOSAL':
-        return { icon: '📅', bg: 'bg-amber-500 text-white' };
+        return { Icon: Calendar, bg: 'bg-amber-500 text-white' };
       case 'BOOKING_ACCEPTED':
-        return { icon: '🤝', bg: 'bg-blue-500 text-white' };
+        return { Icon: Check, bg: 'bg-blue-500 text-white' };
       case 'BOOKING_REJECTED':
-        return { icon: '✕', bg: 'bg-rose-500 text-white' };
+        return { Icon: X, bg: 'bg-rose-500 text-white' };
       case 'BOOKING_RECEIVED':
       case 'BOOKING_HANDED_OVER':
-        return { icon: '📦', bg: 'bg-emerald-500 text-white' };
+        return { Icon: Package, bg: 'bg-emerald-500 text-white' };
       case 'BOOKING_COMPLETED':
       case 'BOOKING_RETURNED':
-        return { icon: '✓', bg: 'bg-purple-500 text-white' };
+        return { Icon: CheckCircle2, bg: 'bg-purple-500 text-white' };
       case 'REMINDER_PICKUP':
       case 'REMINDER_RETURN':
-        return { icon: '⏰', bg: 'bg-orange-500 text-white' };
+        return { Icon: Clock, bg: 'bg-orange-500 text-white' };
       case 'NEW_FOLLOWER':
-        return { icon: '👤', bg: 'bg-indigo-500 text-white' };
+        return { Icon: UserIcon, bg: 'bg-indigo-500 text-white' };
       default:
-        return { icon: '⚡', bg: 'bg-brand text-white' };
+        return { Icon: Sparkles, bg: 'bg-brand text-white' };
     }
   };
 
@@ -574,7 +578,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                                   <span className="text-[10px] font-bold text-brand font-mono">@{u.username}</span>
                                 )}
                                 <span className="inline-flex items-center text-[10px] font-black text-amber-500">
-                                  ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'}
+                                  <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 mr-0.5 shrink-0" />
+                                  <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'}</span>
                                 </span>
                               </div>
                               <div className="text-[10px] text-ink-secondary truncate">
@@ -755,9 +760,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                                             </div>
                                           )}
                                           <span
-                                            className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
+                                            className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
                                           >
-                                            {micro.icon}
+                                            <micro.Icon className="w-2.5 h-2.5 stroke-[2.5]" />
                                           </span>
                                         </div>
 
@@ -851,7 +856,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                         onClick={() => { setShowPostMenu(false); onOpenDropGear(); }}
                         className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer"
                       >
-                        <span className="text-base">💸</span>
+                        <div className="w-8 h-8 rounded-xl bg-pink-500/10 text-brand flex items-center justify-center shrink-0">
+                          <Plus className="w-4 h-4 stroke-[2.5]" />
+                        </div>
                         <div>
                           <div>List Gear for Rent</div>
                           <div className="text-[10px] text-ink-secondary font-medium">Turn unused items into income</div>
@@ -862,7 +869,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                         onClick={() => { setShowPostMenu(false); onOpenDropWish(); }}
                         className="w-full text-left p-2.5 rounded-xl hover:bg-canvas transition-colors flex items-center gap-2.5 font-bold text-ink cursor-pointer mt-1"
                       >
-                        <span className="text-base">🎯</span>
+                        <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
                         <div>
                           <div>Post a Request</div>
                           <div className="text-[10px] text-ink-secondary font-medium">Ask community for items you need</div>
@@ -1058,8 +1067,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 <span className="text-[10px] font-bold text-brand font-mono">@{u.username}</span>
                               )}
                             </div>
-                            <div className="text-[10px] text-ink-secondary truncate">
-                              ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {u.locality || 'Nearby'}
+                            <div className="text-[10px] text-ink-secondary truncate flex items-center gap-1">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
+                              <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {u.locality || 'Nearby'}</span>
                             </div>
                           </div>
                         </div>
@@ -1212,11 +1222,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {(latestToast.sender_name || 'U').charAt(0).toUpperCase()}
               </div>
             )}
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ring-2 ring-surface ${getInstaMicroBadge(latestToast.type).bg}`}
-            >
-              {getInstaMicroBadge(latestToast.type).icon}
-            </span>
+            {(() => {
+              const badge = getInstaMicroBadge(latestToast.type);
+              const BadgeIcon = badge.Icon;
+              return (
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-surface ${badge.bg}`}
+                >
+                  <BadgeIcon className="w-2.5 h-2.5 stroke-[2.5]" />
+                </span>
+              );
+            })()}
           </div>
 
           <div className="flex-1 min-w-0 pr-1">
@@ -1243,7 +1259,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="text-ink-muted hover:text-ink text-xs p-1 cursor-pointer leading-none shrink-0"
             aria-label="Dismiss toast"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}

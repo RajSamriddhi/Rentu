@@ -76,7 +76,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
 
             {item.available_for_borrowing && (
               <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                🤝 Can Borrow
+                Free Borrowing
               </span>
             )}
           </div>
