@@ -223,10 +223,12 @@ export interface Conversation {
   item_locality?: string;
   partner_id: string;
   partner_name: string;
+  partner_username?: string;
   partner_avatar?: string;
   partner_phone?: string;
   last_message?: string;
   last_message_at?: string;
+  unread_count?: number;
 }
 
 export interface CommunityPulse {

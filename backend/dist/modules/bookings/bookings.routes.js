@@ -122,11 +122,42 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             pickupCode,
         ]);
         const booking = bookingRes.rows[0];
-        // Seed initial message if provided
-        if (validated.message) {
-            await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, $4)`, [booking.id, borrowerId, item.owner_id, validated.message]);
-        }
+        // Seed structured PROPOSAL message into the unified conversation with full item and rental terms
+        const proposalData = {
+            type: 'RENTAL_REQUEST',
+            booking_id: booking.id,
+            item_id: item.id,
+            item_title: item.title,
+            title: item.title,
+            item_images: item.image_urls || [],
+            image_url: (Array.isArray(item.image_urls) && item.image_urls.length > 0) ? item.image_urls[0] : (item.image_url || ''),
+            category: item.category,
+            price_per_day: Number(item.price_per_day),
+            total_price: totalPrice,
+            duration_days: validated.duration_days,
+            start_date: validated.start_date,
+            start_time: validated.start_time || '10:00',
+            end_date: finalEndDate,
+            end_time: validated.end_time || '18:00',
+            pickup_type: validated.pickup_type || 'LENDER_LOCATION',
+            pickup_locality: validated.pickup_locality || item.locality || '',
+            return_type: validated.return_type || 'LENDER_LOCATION',
+            return_locality: validated.return_locality || item.locality || '',
+            requires_delivery: validated.requires_delivery ?? false,
+            delivery_fee: validated.delivery_fee ?? 0,
+            requires_pickup: validated.requires_pickup ?? false,
+            pickup_fee: validated.pickup_fee ?? 0,
+            status: 'PENDING',
+            notes: validated.message || `Hey! I'd love to rent your ${item.title} for ${validated.duration_days} days.`,
+        };
+        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+       VALUES ($1, $2, $3, $4, 'PROPOSAL', $5, false, false)`, [
+            booking.id,
+            borrowerId,
+            item.owner_id,
+            validated.message || `Rental request for ${item.title} (${validated.duration_days} days)`,
+            JSON.stringify(proposalData),
+        ]);
         // Query borrower name for notifications
         const borrowerUserRes = await (0, db_1.query)('SELECT name FROM users WHERE id = $1', [borrowerId]);
         const borrowerName = borrowerUserRes.rows[0]?.name || 'A community member';

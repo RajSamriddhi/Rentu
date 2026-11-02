@@ -231,9 +231,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
       if (data?.partner) {
         setActivePartnerData(data.partner);
+        const dmKey = `dm_${data.partner.id}`;
+        if (convId !== dmKey && !convId.startsWith('dm_')) {
+          setSelectedConvId(dmKey);
+        }
         // Ensure this partner is visible in the conversations list!
         setConversations((prev) => {
-          const dmKey = `dm_${data.partner.id}`;
           const exists = prev.some(c => 
             c.conversation_id === dmKey || 
             c.partner_id === data.partner.id ||
@@ -779,14 +782,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         <p className="text-xs text-ink-secondary truncate font-medium">
                           {chat.last_message || (isDirect ? 'Direct conversation' : `Rental request for ${chat.item_title}`)}
                         </p>
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                        <div className="flex items-center justify-between gap-1.5 mt-1.5">
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border truncate max-w-[160px] ${
                             isDirect 
                               ? 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20' 
                               : 'text-brand bg-brand-soft border-brand/20'
                           }`}>
                             {isDirect ? 'Direct Message' : chat.item_title}
                           </span>
+                          {Boolean(chat.unread_count && chat.unread_count > 0) && (
+                            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm leading-none">
+                              {chat.unread_count}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1020,11 +1028,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     <Package className="w-4 h-4" />
                                   </div>
                                   <div className="min-w-0">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-brand block">
-                                      {pData.type === 'LISTING' ? 'Personal Gear Offer' : 'Custom Gear Request'}
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-brand block truncate">
+                                      {pData.type === 'RENTAL_REQUEST'
+                                        ? 'Rental Request'
+                                        : pData.type === 'LISTING'
+                                        ? 'Personal Gear Offer'
+                                        : 'Custom Gear Request'}
                                     </span>
                                     <span className="text-[11px] font-bold text-ink-secondary truncate block">
-                                      Direct Agreement Proposal
+                                      {pData.type === 'RENTAL_REQUEST' ? 'Listing Booking Proposal' : 'Direct Agreement Proposal'}
                                     </span>
                                   </div>
                                 </div>
@@ -1042,14 +1054,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                               {/* Title & Terms */}
                               <div className="py-3 space-y-2.5">
-                                {pData.image_url && (
+                                {(pData.image_url || (Array.isArray(pData.item_images) && pData.item_images[0])) && (
                                   <div className="w-full aspect-[16/9] rounded-2xl overflow-hidden bg-black/10 border border-divider">
-                                    <img src={pData.image_url} alt={pData.title} className="w-full h-full object-cover" />
+                                    <img
+                                      src={pData.image_url || (Array.isArray(pData.item_images) && pData.item_images[0])}
+                                      alt={pData.title || pData.item_title}
+                                      className="w-full h-full object-cover"
+                                    />
                                   </div>
                                 )}
-                                <h3 className="text-sm font-black text-ink font-display leading-tight">
-                                  {pData.title || 'Personal Deal Item'}
-                                </h3>
+                                <div className="flex items-start justify-between gap-2">
+                                  <h3 className="text-sm font-black text-ink font-display leading-tight">
+                                    {pData.title || pData.item_title || 'Rental Gear'}
+                                  </h3>
+                                  {pData.category && (
+                                    <span className="text-[10px] font-bold text-ink-secondary bg-canvas px-2 py-0.5 rounded-full border border-divider shrink-0">
+                                      {pData.category}
+                                    </span>
+                                  )}
+                                </div>
 
                                 <div className="grid grid-cols-2 gap-2 text-xs">
                                   <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
@@ -1064,26 +1087,53 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                                   <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
                                     <span className="text-[10px] text-ink-secondary block font-semibold">Rental Schedule</span>
-                                    <span className="font-bold text-ink text-[11px] block">{pData.start_date}</span>
-                                    <span className="text-[10px] text-ink-secondary block">to {pData.end_date || 'End Date'}</span>
+                                    <span className="font-bold text-ink text-[11px] block truncate">
+                                      {pData.start_date} {pData.start_time ? `(${pData.start_time})` : ''}
+                                    </span>
+                                    <span className="text-[10px] text-ink-secondary block truncate">
+                                      to {pData.end_date || 'End Date'} {pData.end_time ? `(${pData.end_time})` : ''}
+                                    </span>
                                   </div>
                                 </div>
 
-                                {/* Handover Info */}
-                                <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 bg-canvas/60 px-3 py-1.5 rounded-xl border border-divider/40">
-                                  <Truck className="w-3.5 h-3.5 text-brand shrink-0" />
-                                  <span className="truncate">
-                                    {pData.delivery_option === 'LENDER_DELIVERY' 
-                                      ? `Owner Delivery (+₹${pData.delivery_fee || 0})` 
-                                      : 'Borrower Self Pickup & Return'}
-                                    {pData.delivery_location ? ` • ${pData.delivery_location}` : ''}
-                                  </span>
+                                {/* Handover Preferences & Addresses */}
+                                <div className="space-y-1.5">
+                                  <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 bg-canvas/60 px-3 py-1.5 rounded-xl border border-divider/40">
+                                    <Truck className="w-3.5 h-3.5 text-brand shrink-0" />
+                                    <span className="truncate">
+                                      {pData.requires_delivery || pData.pickup_type === 'MY_LOCATION' || pData.delivery_option === 'LENDER_DELIVERY'
+                                        ? `Owner Delivery (+₹${pData.delivery_fee || 0}) to ${pData.pickup_locality || pData.delivery_location || 'Recipient Location'}`
+                                        : `Borrower Self Pickup at ${pData.pickup_locality || 'Lender Location'}`}
+                                    </span>
+                                  </div>
+
+                                  {(pData.requires_pickup || pData.return_type === 'MY_LOCATION' || pData.collection_option === 'LENDER_COLLECT') && (
+                                    <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 bg-canvas/60 px-3 py-1.5 rounded-xl border border-divider/40">
+                                      <Clock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span className="truncate">
+                                        Return: Owner Collects (+₹${pData.pickup_fee || pData.collection_fee || 0}) from {pData.return_locality || pData.return_location || 'Location'}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Custom Notes */}
                                 {pData.notes && (
                                   <div className="text-[11px] text-ink bg-canvas/40 p-2.5 rounded-xl border border-divider/40 leading-relaxed italic">
                                     "{pData.notes}"
+                                  </div>
+                                )}
+
+                                {/* Security Pickup Code Badge (shown when accepted) */}
+                                {isAccepted && pData.pickup_code && (
+                                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                      <span className="text-[11px] font-bold text-ink">Handover Verification Code:</span>
+                                    </div>
+                                    <span className="font-mono font-black text-sm tracking-wider text-emerald-600 dark:text-emerald-400">
+                                      {pData.pickup_code}
+                                    </span>
                                   </div>
                                 )}
                               </div>
@@ -1126,7 +1176,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                           ) : (
                                             <>
                                               <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                              <span>Accept Agreement & Book</span>
+                                              <span>Accept Request & Book</span>
                                             </>
                                           )}
                                         </button>
