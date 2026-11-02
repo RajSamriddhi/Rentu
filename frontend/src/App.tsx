@@ -20,6 +20,7 @@ import { HelpSupportModal } from './components/HelpSupportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
+import { SetUsernameModal } from './components/SetUsernameModal';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
@@ -27,28 +28,61 @@ import confetti from 'canvas-confetti';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
+const RESERVED_ROUTES = new Set([
+  'admin',
+  'requests',
+  'bookings',
+  'messages',
+  'chat',
+  'community',
+  'profile',
+  'explore',
+  'marketplace',
+  'api',
+  'login',
+  'signup',
+  'register',
+  'auth',
+  'terms',
+  'privacy',
+  'settings',
+  'hustle',
+]);
+
 const getUserIdFromUrl = (): string | null => {
   if (typeof window === 'undefined') return null;
-  const path = window.location.pathname;
-  const hash = window.location.hash;
-  const pathMatch = path.match(/^\/(?:user|u)\/([^/?#]+)/i);
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  const hash = window.location.hash.replace(/^#\/?/, '');
+
+  // Check /user/:id or /u/:id
+  const pathMatch = path.match(/^(?:user|u)\/([^/?#]+)/i);
   if (pathMatch) return decodeURIComponent(pathMatch[1]);
-  const hashMatch = hash.match(/^#\/?(?:user|u)\/([^/?#]+)/i);
+  const hashMatch = hash.match(/^(?:user|u)\/([^/?#]+)/i);
   if (hashMatch) return decodeURIComponent(hashMatch[1]);
+
+  // Check root slug as unique username (e.g. rentu.site/sadiqua or rentu.site/geetansh)
+  if (path && !path.includes('/')) {
+    const slug = path.toLowerCase();
+    if (!RESERVED_ROUTES.has(slug) && /^[a-z0-9_]{3,30}$/.test(slug)) {
+      return decodeURIComponent(slug);
+    }
+  }
+
   return null;
 };
 
 const getTabFromUrl = (): TabType => {
   if (typeof window === 'undefined') return 'home';
-  const path = window.location.pathname.toLowerCase();
-  const hash = window.location.hash.toLowerCase();
-  if (path === '/admin' || hash === '#admin') return 'hustle';
-  if (path === '/requests' || hash === '#requests') return 'requests';
-  if (path === '/bookings' || hash === '#bookings') return 'bookings';
-  if (path === '/messages' || hash === '#messages' || path === '/chat' || hash === '#chat') return 'messages';
-  if (path === '/community' || hash === '#community') return 'community';
-  if (path === '/profile' || hash === '#profile') return 'profile';
-  if (path === '/explore' || hash === '#explore' || path === '/marketplace' || hash === '#marketplace') return 'explore';
+  const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+  const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+
+  if (path === 'admin' || hash === 'admin') return 'hustle';
+  if (path === 'requests' || hash === 'requests') return 'requests';
+  if (path === 'bookings' || hash === 'bookings') return 'bookings';
+  if (path === 'messages' || hash === 'messages' || path === 'chat' || hash === 'chat') return 'messages';
+  if (path === 'community' || hash === 'community') return 'community';
+  if (path === 'profile' || hash === 'profile') return 'profile';
+  if (path === 'explore' || hash === 'explore' || path === 'marketplace' || hash === 'marketplace') return 'explore';
   return 'home';
 };
 
@@ -85,9 +119,13 @@ export const App: React.FC = () => {
     }
   }, [activeTab, isUserAdmin]);
 
-  const handleOpenUserProfile = (userId: string) => {
-    setViewingUserId(userId);
-    const targetPath = `/user/${encodeURIComponent(userId)}`;
+  const handleOpenUserProfile = (userIdOrUsername: string) => {
+    setViewingUserId(userIdOrUsername);
+    // If it's a clean username (not a UUID with hyphens), use direct /username URL
+    const isCleanUsername = /^[a-zA-Z0-9_]{3,30}$/.test(userIdOrUsername) && !userIdOrUsername.includes('-');
+    const targetPath = isCleanUsername 
+      ? `/${encodeURIComponent(userIdOrUsername.toLowerCase())}` 
+      : `/user/${encodeURIComponent(userIdOrUsername)}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
@@ -96,7 +134,7 @@ export const App: React.FC = () => {
   const handleCloseUserProfile = () => {
     setViewingUserId(null);
     const targetPath = activeTab === 'home' ? '/' : activeTab === 'hustle' ? '/admin' : `/${activeTab}`;
-    if (window.location.pathname.startsWith('/user/') || window.location.pathname.startsWith('/u/')) {
+    if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
   };
@@ -440,6 +478,11 @@ export const App: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* Required Unique Username Modal for All Users */}
+      {isAuthenticated && user && !user.username && (
+        <SetUsernameModal />
+      )}
 
     </div>
   );

@@ -425,7 +425,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <div className="space-y-3 pt-4">
                     <button
                       type="button"
-                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[1].id)}
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[1].username || topThree[1].id)}
                       className="flex items-center gap-3 text-left group/user cursor-pointer"
                       title={`View ${topThree[1].name}'s public profile`}
                     >
@@ -444,6 +444,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <span>{topThree[1].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
+                        {topThree[1].username && (
+                          <div className="text-[11px] font-bold text-brand font-mono">
+                            @{topThree[1].username}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 text-[11px] text-ink-secondary mt-0.5">
                           <MapPin className="w-3 h-3 text-ink-muted" />
                           <span>{topThree[1].locality || 'Bengaluru'}</span>
@@ -478,7 +483,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {onOpenUserProfile && (
                       <button
                         type="button"
-                        onClick={() => onOpenUserProfile(topThree[1].id)}
+                        onClick={() => onOpenUserProfile(topThree[1].username || topThree[1].id)}
                         className="text-xs font-extrabold text-brand hover:underline cursor-pointer flex items-center gap-1 shrink-0"
                       >
                         Profile <ArrowRight className="w-3 h-3" />
@@ -499,7 +504,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <div className="space-y-3 pt-4">
                     <button
                       type="button"
-                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[0].id)}
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[0].username || topThree[0].id)}
                       className="flex items-center gap-3 text-left group/user cursor-pointer"
                       title={`View ${topThree[0].name}'s public profile`}
                     >
@@ -518,6 +523,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <span>{topThree[0].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
+                        {topThree[0].username && (
+                          <div className="text-xs font-bold text-amber-500 font-mono">
+                            @{topThree[0].username}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
                           <MapPin className="w-3.5 h-3.5 text-amber-500" />
                           <span className="font-semibold">{topThree[0].locality || 'Bengaluru'}</span>
@@ -555,7 +565,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {onOpenUserProfile && (
                       <button
                         type="button"
-                        onClick={() => onOpenUserProfile(topThree[0].id)}
+                        onClick={() => onOpenUserProfile(topThree[0].username || topThree[0].id)}
                         className="text-xs font-black text-amber-600 dark:text-amber-400 hover:underline cursor-pointer flex items-center gap-1 shrink-0"
                       >
                         View Profile <ArrowRight className="w-3.5 h-3.5" />
@@ -576,7 +586,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <div className="space-y-3 pt-4">
                     <button
                       type="button"
-                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[2].id)}
+                      onClick={() => onOpenUserProfile && onOpenUserProfile(topThree[2].username || topThree[2].id)}
                       className="flex items-center gap-3 text-left group/user cursor-pointer"
                       title={`View ${topThree[2].name}'s public profile`}
                     >
@@ -595,6 +605,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <span>{topThree[2].name}</span>
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                         </h4>
+                        {topThree[2].username && (
+                          <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 font-mono">
+                            @{topThree[2].username}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 text-[11px] text-ink-secondary mt-0.5">
                           <MapPin className="w-3 h-3 text-ink-muted" />
                           <span>{topThree[2].locality || 'Bengaluru'}</span>
@@ -629,7 +644,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {onOpenUserProfile && (
                       <button
                         type="button"
-                        onClick={() => onOpenUserProfile(topThree[2].id)}
+                        onClick={() => onOpenUserProfile(topThree[2].username || topThree[2].id)}
                         className="text-xs font-extrabold text-brand hover:underline cursor-pointer flex items-center gap-1 shrink-0"
                       >
                         Profile <ArrowRight className="w-3 h-3" />
@@ -673,7 +688,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           {/* Clickable Profile Identity */}
                           <button
                             type="button"
-                            onClick={() => onOpenUserProfile && onOpenUserProfile(member.id)}
+                            onClick={() => onOpenUserProfile && onOpenUserProfile(member.username || member.id)}
                             className="flex items-center gap-3 text-left group/member cursor-pointer min-w-0"
                             title={`View ${member.name}'s public profile`}
                           >
@@ -687,6 +702,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <div className="space-y-0.5 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-extrabold text-sm text-ink group-hover/member:text-brand group-hover/member:underline">{member.name}</span>
+                                {member.username && (
+                                  <span className="text-xs font-bold text-brand font-mono">@{member.username}</span>
+                                )}
                                 <span className="inline-flex items-center gap-1 text-[11px] text-ink-muted">
                                   <MapPin className="w-3 h-3" />
                                   <span>{member.locality || 'Bengaluru'}</span>
@@ -739,7 +757,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           {onOpenUserProfile && (
                             <button
                               type="button"
-                              onClick={() => onOpenUserProfile(member.id)}
+                              onClick={() => onOpenUserProfile(member.username || member.id)}
                               className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-brand/10 hover:bg-brand text-brand hover:text-white transition-all cursor-pointer hidden sm:flex items-center gap-1 shrink-0"
                             >
                               <span>Profile</span>

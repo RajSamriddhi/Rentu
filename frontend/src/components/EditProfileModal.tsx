@@ -14,7 +14,8 @@ import {
   Navigation,
   Bell,
   Plus,
-  Trash2
+  Trash2,
+  AtSign
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -74,6 +75,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const initialAddr = parseAddress(user?.address_text);
   const [name, setName] = useState(user?.name || '');
+  const [username, setUsername] = useState(user?.username || '');
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{ available: boolean; message: string } | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [buildingHouseNo, setBuildingHouseNo] = useState(initialAddr.building);
@@ -105,6 +109,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   React.useEffect(() => {
     if (user) {
       setName(user.name || '');
+      setUsername(user.username || '');
       setBio(user.bio || '');
       setPhone(user.phone || '');
       const addr = parseAddress(user.address_text);
@@ -120,6 +125,47 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       );
     }
   }, [user]);
+
+  // Debounced check for username
+  React.useEffect(() => {
+    const clean = username.trim().toLowerCase();
+    if (!clean) {
+      setUsernameStatus(null);
+      setIsCheckingUsername(false);
+      return;
+    }
+    if (user?.username && clean === user.username.toLowerCase()) {
+      setUsernameStatus({ available: true, message: 'This is your current handle' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    if (clean.length < 3) {
+      setUsernameStatus({ available: false, message: 'Username must be at least 3 characters' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,30}$/.test(clean)) {
+      setUsernameStatus({ available: false, message: 'Only lowercase letters, numbers, and underscores allowed' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.checkUsername(clean);
+        setUsernameStatus(res);
+      } catch (err: any) {
+        setUsernameStatus({ available: false, message: err.message || 'Error checking username' });
+      } finally {
+        setIsCheckingUsername(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [username, user?.username]);
 
   if (!isOpen) return null;
 
@@ -221,12 +267,21 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       return;
     }
 
+    const cleanUsername = username.trim().toLowerCase();
+    if (cleanUsername && cleanUsername !== user?.username?.toLowerCase()) {
+      if (usernameStatus && !usernameStatus.available) {
+        setErrorMsg(usernameStatus.message || 'Username is not available. Please choose another one.');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
 
       await api.updateProfile({
         name: name.trim(),
+        username: cleanUsername || undefined,
         bio: bio.trim(),
         phone: phone.trim() || undefined,
         locality: locality.trim() || undefined,
@@ -428,6 +483,49 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
           {/* 3. Basic Info Fields */}
           <div className="space-y-3 pt-2 border-t border-divider">
+            {/* Username / Custom Link */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <AtSign className="w-3.5 h-3.5 text-brand" />
+                  Unique Username & Profile Link *
+                </label>
+                {isCheckingUsername ? (
+                  <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Checking...
+                  </span>
+                ) : usernameStatus?.available ? (
+                  <span className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Available
+                  </span>
+                ) : usernameStatus && !usernameStatus.available ? (
+                  <span className="text-[11px] text-red-500 font-bold flex items-center gap-1">
+                    <X className="w-3 h-3" /> {usernameStatus.message}
+                  </span>
+                ) : null}
+              </div>
+              <div className="relative flex items-center">
+                <span className="absolute left-3.5 text-xs font-bold text-ink-secondary select-none">
+                  @
+                </span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="your-unique-username"
+                  maxLength={30}
+                  className="w-full bg-canvas border border-divider rounded-xl pl-8 pr-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  required
+                />
+              </div>
+              <p className="text-[11px] text-ink-secondary mt-1">
+                Your dedicated page:{' '}
+                <span className="text-brand font-mono font-bold">
+                  rentu.site/{username || 'username'}
+                </span>
+              </p>
+            </div>
+
             {/* Full Name */}
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Full Name *</label>

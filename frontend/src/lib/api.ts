@@ -507,6 +507,13 @@ export const api = {
   },
 
   // Users
+  async checkUsername(username: string): Promise<{ available: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/users/check-username/${encodeURIComponent(username)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async getUser(id: string): Promise<User & { items: Item[]; stats: any }> {
     const res = await fetch(`${API_BASE}/users/${id}`, {
       headers: getHeaders(),

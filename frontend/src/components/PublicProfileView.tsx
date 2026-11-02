@@ -143,8 +143,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   };
 
   const handleShare = () => {
+    const shareUrl = profile?.username 
+      ? `${window.location.origin}/${profile.username}`
+      : (window.location.href || `${window.location.origin}/user/${userId}`);
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+      navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }
@@ -324,10 +327,17 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             {/* Name, Bio, and Locality */}
             <div className="space-y-3">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-black text-ink font-display flex items-center gap-2">
-                  <span>{profile.name}</span>
-                  <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" />
-                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl sm:text-3xl font-black text-ink font-display flex items-center gap-2">
+                    <span>{profile.name}</span>
+                    <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" />
+                  </h1>
+                  {profile.username && (
+                    <span className="text-xs sm:text-sm font-bold text-brand bg-brand/10 border border-brand/20 px-2.5 py-0.5 rounded-full font-mono">
+                      @{profile.username}
+                    </span>
+                  )}
+                </div>
                 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-secondary font-medium mt-1">
                   <span className="flex items-center gap-1 text-ink">

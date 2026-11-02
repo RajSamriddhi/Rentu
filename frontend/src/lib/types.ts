@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  username?: string;
   firebase_uid?: string;
   email: string;
   name: string;
@@ -249,6 +250,7 @@ export interface CategoryStat {
 
 export interface CommunityLeaderboardMember {
   id: string;
+  username?: string;
   name: string;
   email?: string;
   locality?: string;
@@ -300,6 +302,7 @@ export interface UserReview {
 
 export interface PublicUserProfile {
   id: string;
+  username?: string;
   name: string;
   email?: string;
   locality?: string;
@@ -387,6 +390,7 @@ export const isAuthorizedAdmin = (email?: string | null): boolean => {
 
 export interface UserSearchResult {
   id: string;
+  username?: string;
   name: string;
   email?: string;
   locality?: string;

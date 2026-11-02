@@ -6,8 +6,16 @@ import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '..
 
 const router = Router();
 
+export const RESERVED_USERNAMES = new Set([
+  'admin', 'api', 'messages', 'chat', 'explore', 'marketplace', 'requests', 'bookings',
+  'community', 'hustle', 'profile', 'settings', 'help', 'login', 'signup', 'auth',
+  'terms', 'privacy', 'about', 'contact', 'user', 'u', 'root', 'bot', 'support',
+  'null', 'undefined', 'item', 'items', 'request', 'booking', 'notifications'
+]);
+
 const updateProfileSchema = z.object({
   name: z.string().min(2).optional(),
+  username: z.string().min(3).max(30).optional(),
   phone: z.string().optional(),
   locality: z.string().min(2).optional(),
   avatar_url: z.string().url().or(z.literal('')).optional(),
@@ -21,6 +29,40 @@ const updateProfileSchema = z.object({
   saved_locations: z.array(z.any()).optional(),
 });
 
+// Check if a username is available
+router.get('/check-username/:username', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
+  try {
+    const rawUsername = (req.params.username || '').trim().toLowerCase();
+    const currentUserId = (req as AuthenticatedRequest).user?.id;
+
+    if (!rawUsername || rawUsername.length < 3) {
+      return sendSuccess(res, { available: false, message: 'Username must be at least 3 characters' });
+    }
+    if (rawUsername.length > 30) {
+      return sendSuccess(res, { available: false, message: 'Username cannot exceed 30 characters' });
+    }
+    if (!/^[a-z0-9_]+$/.test(rawUsername)) {
+      return sendSuccess(res, { available: false, message: 'Only lowercase letters, numbers, and underscores allowed' });
+    }
+    if (RESERVED_USERNAMES.has(rawUsername)) {
+      return sendSuccess(res, { available: false, message: 'This username is reserved' });
+    }
+
+    const result = await query(
+      `SELECT id FROM users WHERE LOWER(username) = LOWER($1) ${currentUserId ? 'AND id != $2' : ''} LIMIT 1`,
+      currentUserId ? [rawUsername, currentUserId] : [rawUsername]
+    );
+
+    if (result.rows.length > 0) {
+      return sendSuccess(res, { available: false, message: 'Username is already taken' });
+    }
+
+    return sendSuccess(res, { available: true, message: 'Username is available! ✨' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 // Community Leaderboard (Top 10 Lenders, Borrowers, Free Sharers, and Best Reviews/Scores)
 router.get('/leaderboard', async (req: Request, res: Response, next) => {
@@ -29,6 +71,7 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
     const realUsersRes = await query(`
       SELECT 
         u.id, 
+        u.username,
         u.name, 
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
@@ -58,6 +101,7 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
     const formattedRealUsers = realUsersRes.rows.map((u: any) => {
       const email = u.email || '';
       const name = u.name || 'Community Member';
+      const username = u.username || '';
       const avatar = u.avatar_url && u.avatar_url.trim() !== ''
         ? u.avatar_url
         : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
@@ -84,6 +128,7 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
 
       return {
         id: u.id,
+        username,
         name,
         email,
         locality: u.locality,
@@ -236,6 +281,7 @@ router.get('/search', async (req: Request, res: Response, next) => {
     const realUsersRes = await query(`
       SELECT 
         u.id, 
+        u.username,
         u.name, 
         u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
@@ -247,7 +293,7 @@ router.get('/search', async (req: Request, res: Response, next) => {
         (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
       FROM users u
-      WHERE u.name ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1 OR u.email ILIKE $1
+      WHERE u.name ILIKE $1 OR u.username ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1 OR u.email ILIKE $1
       LIMIT 15
     `, [searchPattern]);
 
@@ -255,6 +301,7 @@ router.get('/search', async (req: Request, res: Response, next) => {
       const revsCount = parseInt(u.reviews_count, 10) || 0;
       return {
         id: u.id,
+        username: u.username || '',
         name: u.name || 'Community Member',
         email: u.email,
         locality: u.locality,
@@ -276,145 +323,73 @@ router.get('/search', async (req: Request, res: Response, next) => {
   }
 });
 
-// Public User Profile & Gear Closet
+// Public User Profile & Gear Closet (Lookup by UUID, Firebase UID, or Unique Username)
 router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params;
     const currentUserId = (req as AuthenticatedRequest).user?.id;
 
-    // Check relationship if viewer is authenticated
-    let isFollowing = false;
-    let isBlocked = false;
-    let isBlockedBy = false;
-
-    if (currentUserId && currentUserId !== id) {
-      const [fRes, bRes, bbRes] = await Promise.all([
-        query(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, id]),
-        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, id]),
-        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [id, currentUserId]),
-      ]);
-      isFollowing = fRes.rows.length > 0;
-      isBlocked = bRes.rows.length > 0;
-      isBlockedBy = bbRes.rows.length > 0;
-    }
-
-    // Follower & following counts
-    const countsRes = await query(`
-      SELECT 
-        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
-        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
-    `, [id]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
-    const followersCount = countsRes.rows[0]?.followers_count || 0;
-    const followingCount = countsRes.rows[0]?.following_count || 0;
-
-    // Query real PostgreSQL user
-    let userRes: any;
-    try {
-      userRes = await query(
-        `SELECT 
-          id, 
-          name, 
-          locality, 
-          address_text,
-          pincode,
-          avatar_url, 
-          banner_url, 
-          bio, 
-          COALESCE(trust_score, 90)::int AS trust_score, 
-          COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
-          COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
-          COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
-          COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
-          COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-          COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-          COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-          COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
-          COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-          COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
-          created_at
-         FROM users WHERE id = $1`,
-        [id]
-      );
-    } catch (err: any) {
-      if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
-        console.warn('Auto-repairing missing user columns on query error...', err.message);
-        try {
-          await query(`
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
-          `);
-          userRes = await query(
-            `SELECT 
-              id, 
-              name, 
-              locality, 
-              address_text,
-              pincode,
-              avatar_url, 
-              banner_url, 
-              bio, 
-              COALESCE(trust_score, 90)::int AS trust_score, 
-              COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
-              COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
-              COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
-              COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
-              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-              COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
-              COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
-              created_at
-             FROM users WHERE id = $1`,
-            [id]
-          );
-        } catch (retryErr: any) {
-          console.warn('Fallback to baseline user columns query:', retryErr.message);
-          userRes = await query(
-            `SELECT 
-              id, 
-              name, 
-              locality, 
-              address_text, 
-              pincode, 
-              avatar_url, 
-              banner_url, 
-              bio, 
-              COALESCE(trust_score, 98)::int AS trust_score, 
-              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-              created_at
-             FROM users WHERE id = $1`,
-            [id]
-          );
-          if (userRes && userRes.rows.length > 0) {
-            userRes.rows[0].saved_locations = [];
-            userRes.rows[0].trust_rating = userRes.rows[0].rating;
-            userRes.rows[0].owner_rating = 5.00;
-            userRes.rows[0].renter_rating = 5.00;
-            userRes.rows[0].community_lender_rating = 5.00;
-            userRes.rows[0].owner_reviews_count = 0;
-            userRes.rows[0].renter_reviews_count = 0;
-            userRes.rows[0].community_lender_reviews_count = 0;
-            userRes.rows[0].notify_nearby_requests_5km = true;
-          }
-        }
-      } else {
-        throw err;
-      }
-    }
+    // 1. Query real PostgreSQL user by id, firebase_uid, or username
+    let userRes = await query(
+      `SELECT 
+        id, 
+        username,
+        name, 
+        locality, 
+        address_text,
+        pincode,
+        avatar_url, 
+        banner_url, 
+        bio, 
+        COALESCE(trust_score, 90)::int AS trust_score, 
+        COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+        COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+        created_at
+       FROM users 
+       WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1)
+       LIMIT 1`,
+      [id]
+    );
 
     if (userRes.rows.length === 0) {
       return sendError(res, 'NOT_FOUND', 'User not found', 404);
     }
 
     const user = userRes.rows[0];
+    const realUserId = user.id;
+
+    // 2. Check relationship if viewer is authenticated
+    let isFollowing = false;
+    let isBlocked = false;
+    let isBlockedBy = false;
+
+    if (currentUserId && currentUserId !== realUserId) {
+      const [fRes, bRes, bbRes] = await Promise.all([
+        query(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, realUserId]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, realUserId]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [realUserId, currentUserId]),
+      ]);
+      isFollowing = fRes.rows.length > 0;
+      isBlocked = bRes.rows.length > 0;
+      isBlockedBy = bbRes.rows.length > 0;
+    }
+
+    // 3. Follower & following counts
+    const countsRes = await query(`
+      SELECT 
+        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
+        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
+    `, [realUserId]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
+    const followersCount = countsRes.rows[0]?.followers_count || 0;
+    const followingCount = countsRes.rows[0]?.following_count || 0;
 
     // If blocked or blocked by, hide active listings & requests
     let userItems: any[] = [];
@@ -425,7 +400,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
          FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
-        [id]
+        [realUserId]
       );
       userItems = itemsRes.rows;
 
@@ -433,7 +408,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
          FROM requests WHERE seeker_id = $1
          ORDER BY created_at DESC`,
-        [id]
+        [realUserId]
       );
       userRequests = requestsRes.rows;
     }
@@ -453,7 +428,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
        LEFT JOIN users u ON r.reviewer_id = u.id
        WHERE r.reviewee_id = $1
        ORDER BY r.created_at DESC`,
-      [id]
+      [realUserId]
     );
 
     const reviewsList = reviewsRes.rows;
@@ -466,7 +441,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         (SELECT COUNT(*) FROM bookings WHERE borrower_id = $1 AND status = 'COMPLETED') AS completed_borrowed,
         (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count,
         (SELECT COUNT(*) FROM reviews WHERE reviewee_id = $1) AS reviews_count`,
-      [id]
+      [realUserId]
     );
 
     const stats = statsRes.rows[0];
@@ -485,6 +460,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
 
     return sendSuccess(res, {
       id: user.id,
+      username: user.username || '',
       name: user.name || 'Community Member',
       locality: user.locality || 'Bengaluru',
       address_text: isSelf ? (user.address_text || '') : '',
@@ -492,7 +468,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,
       banner_url: user.banner_url || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80',
       bio: user.bio || 'Neighbor & Gear Sharer ⚡ Passionate about circular economy and community access over ownership.',
-      trust_score: parseInt(user.trust_score, 10) || 98,
+      trust_score: parseInt(user.trust_score, 10) || 90,
       rating: trustRating,
       trust_rating: trustRating,
       owner_rating: ownerRating,
@@ -513,11 +489,11 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       requests: userRequests,
       reviews: reviewsList,
       stats: {
-        listings_count: parseInt(stats.listings_count, 10) || userItems.length,
-        requests_count: parseInt(stats.requests_count, 10) || userRequests.length,
-        completed_lent: parseInt(stats.completed_lent, 10) || 0,
-        completed_borrowed: parseInt(stats.completed_borrowed, 10) || 0,
-        reviews_count: Math.max(parseInt(stats.reviews_count, 10) || 0, reviewsList.length),
+        listings_count: parseInt(stats?.listings_count, 10) || userItems.length,
+        requests_count: parseInt(stats?.requests_count, 10) || userRequests.length,
+        completed_lent: parseInt(stats?.completed_lent, 10) || 0,
+        completed_borrowed: parseInt(stats?.completed_borrowed, 10) || 0,
+        reviews_count: revCount,
       },
     });
   } catch (error) {
@@ -537,6 +513,24 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
     if (validated.name !== undefined) {
       values.push(validated.name);
       fields.push(`name = $${values.length}`);
+    }
+    if (validated.username !== undefined) {
+      const cleanUsername = validated.username.trim().toLowerCase();
+      if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
+        return sendError(res, 'BAD_REQUEST', 'Username must be 3-30 characters with letters, numbers, or underscores only', 400);
+      }
+      if (RESERVED_USERNAMES.has(cleanUsername)) {
+        return sendError(res, 'BAD_REQUEST', 'This username is reserved. Please pick another one.', 400);
+      }
+      const existingUser = await query(
+        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2 LIMIT 1`,
+        [cleanUsername, userId]
+      );
+      if (existingUser.rows.length > 0) {
+        return sendError(res, 'CONFLICT', 'Username is already taken by another user. Please choose another one.', 409);
+      }
+      values.push(cleanUsername);
+      fields.push(`username = $${values.length}`);
     }
     if (validated.phone !== undefined) {
       values.push(validated.phone);

@@ -435,13 +435,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                           onMouseDown={(e) => {
                             e.preventDefault();
                             if (onOpenUserProfile) {
-                              onOpenUserProfile(u.id);
+                              onOpenUserProfile(u.username || u.id);
                             }
                             setShowUserDropdown(false);
                           }}
                           onClick={() => {
                             if (onOpenUserProfile) {
-                              onOpenUserProfile(u.id);
+                              onOpenUserProfile(u.username || u.id);
                             }
                             setShowUserDropdown(false);
                           }}
@@ -456,6 +456,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-ink group-hover:text-brand truncate">{u.name}</span>
+                                {u.username && (
+                                  <span className="text-[10px] font-bold text-brand font-mono">@{u.username}</span>
+                                )}
                                 <span className="inline-flex items-center text-[10px] font-black text-amber-500">
                                   ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'}
                                 </span>
@@ -863,14 +866,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                         onMouseDown={(e) => {
                           e.preventDefault();
                           if (onOpenUserProfile) {
-                            onOpenUserProfile(u.id);
+                            onOpenUserProfile(u.username || u.id);
                           }
                           setShowUserDropdown(false);
                           setShowMobileSearch(false);
                         }}
                         onClick={() => {
                           if (onOpenUserProfile) {
-                            onOpenUserProfile(u.id);
+                            onOpenUserProfile(u.username || u.id);
                           }
                           setShowUserDropdown(false);
                           setShowMobileSearch(false);
@@ -884,7 +887,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                             className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0"
                           />
                           <div className="min-w-0">
-                            <div className="text-xs font-bold text-ink truncate">{u.name}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-ink truncate">{u.name}</span>
+                              {u.username && (
+                                <span className="text-[10px] font-bold text-brand font-mono">@{u.username}</span>
+                              )}
+                            </div>
                             <div className="text-[10px] text-ink-secondary truncate">
                               ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {u.locality || 'Nearby'}
                             </div>
