@@ -301,9 +301,9 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This agreement has already been accepted', 400);
         }
         // Determine lender and borrower based on proposal type:
-        // If proposal was created as LISTING: creator is lender, recipient is borrower.
+        // If proposal was created as LISTING or is a lend offer from owner: creator/lender is message.sender_id, recipient is borrower.
         // If proposal was created as REQUEST: creator is borrower, recipient is lender.
-        const isOffer = proposal.type === 'LISTING';
+        const isOffer = proposal.type === 'LISTING' || proposal.is_lend_offer === true;
         const lenderId = isOffer ? message.sender_id : currentUserId;
         const borrowerId = isOffer ? currentUserId : message.sender_id;
         // Fetch lender details for locality
@@ -388,6 +388,15 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
             message.sender_id,
             `🎉 Agreement Accepted! Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`,
         ]);
+        // 6. If this proposal originated from a community request, mark that request as FULFILLED
+        if (proposal.request_id) {
+            await (0, db_1.query)(`UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [proposal.request_id]).catch(() => { });
+        }
+        // 7. Send notifications to both lender and borrower about the ongoing booking
+        await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, createdBooking.id]).catch(() => { });
+        await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', '🎉 Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [currentUserId, message.sender_id, itemTitle, createdBooking.id]).catch(() => { });
         return (0, response_1.sendSuccess)(res, {
             booking: createdBooking,
             item: createdItem,

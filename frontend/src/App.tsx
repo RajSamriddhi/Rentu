@@ -24,6 +24,7 @@ import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
+import confetti from 'canvas-confetti';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
@@ -166,13 +167,16 @@ export const App: React.FC = () => {
       return;
     }
     try {
-      await api.updateRequestStatus(req.id, 'FULFILLED');
-      setRequests((prev) =>
-        prev.map((r) => (r.id === req.id ? { ...r, status: 'FULFILLED' } : r))
-      );
-      alert(`Awesome! You've connected to lend gear for "${req.item_name}". Reach out to ${req.seeker_name}!`);
+      await api.offerLendOnRequest(req.id);
+      try {
+        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+      } catch {}
+      alert(`🤝 Offer sent! We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`);
+      if (req.seeker_id) {
+        handleOpenChatWithUser(req.seeker_id, req.seeker_name || 'Neighbor', req.seeker_avatar);
+      }
     } catch (err: any) {
-      alert(err.message || 'Could not fulfill request.');
+      alert(err.message || 'Could not send lend offer.');
     }
   };
 
@@ -306,6 +310,7 @@ export const App: React.FC = () => {
                 initialSubView={activeTab === 'requests' ? 'requests' : 'items'}
                 onOpenUserProfile={handleOpenUserProfile}
                 searchQuery={searchQuery}
+                onOpenChatWithUser={handleOpenChatWithUser}
               />
             )}
 

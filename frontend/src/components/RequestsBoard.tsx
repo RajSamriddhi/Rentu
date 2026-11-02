@@ -242,9 +242,10 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                     ) : (
                       <button
                         onClick={() => onClaimRequest(req)}
-                        className="px-4 py-2 rounded-full text-xs font-bold bg-brand text-white hover:bg-brand-hover shadow-xs transition-all cursor-pointer"
+                        className="px-4 py-2 rounded-full text-xs font-bold bg-surface border border-divider hover:border-brand text-ink hover:text-brand shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
                       >
-                        I Can Lend This
+                        <span>See More</span>
+                        <span>➔</span>
                       </button>
                     )}
                   </div>

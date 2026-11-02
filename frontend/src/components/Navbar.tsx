@@ -165,7 +165,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
     }
     setShowNotifications(false);
-    if (notif.reference_type === 'REQUEST') {
+    if (notif.reference_type === 'BOOKING') {
+      setActiveTab('bookings');
+    } else if (notif.reference_type === 'PROPOSAL' || notif.reference_type === 'MESSAGE') {
+      setActiveTab('messages');
+    } else if (notif.reference_type === 'REQUEST') {
       setActiveTab('requests');
     } else if (notif.sender_id && onOpenUserProfile) {
       onOpenUserProfile(notif.sender_id);

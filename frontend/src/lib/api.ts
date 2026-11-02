@@ -306,6 +306,14 @@ export const api = {
     return handleResponse(res);
   },
 
+  async offerLendOnRequest(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/requests/${id}/offer-lend`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   // Bookings
   async getBookings(role?: 'borrower' | 'lender'): Promise<Booking[]> {
     const query = role ? `?role=${role}` : '';

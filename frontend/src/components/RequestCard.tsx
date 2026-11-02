@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Heart, MapPin, CheckCircle2 } from 'lucide-react';
+import { Heart, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { getReachDistance } from '../lib/distance';
@@ -147,21 +147,18 @@ export const RequestCard: React.FC<RequestCardProps> = ({
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
                 My Request
               </span>
-            ) : onClaim ? (
+            ) : (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClaim(request);
+                  if (onClick) onClick();
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-brand text-white hover:bg-brand-hover shadow-pink transition-all cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-extrabold bg-surface border border-divider hover:border-brand hover:text-brand text-ink shadow-xs transition-all cursor-pointer active:scale-95 group/btn"
               >
-                I Can Lend
+                <span>See More</span>
+                <ArrowRight className="w-3 h-3 text-brand group-hover/btn:translate-x-0.5 transition-transform" />
               </button>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#EDE9FE] text-[#6D28D9] dark:bg-purple-950/40 dark:text-purple-300">
-                Open
-              </span>
             )}
           </div>
         </div>

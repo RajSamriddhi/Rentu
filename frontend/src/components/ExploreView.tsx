@@ -40,6 +40,7 @@ interface ExploreViewProps {
   initialSubView?: 'items' | 'requests';
   onOpenUserProfile?: (userId: string) => void;
   searchQuery?: string;
+  onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
 }
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
@@ -56,6 +57,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   initialSubView = 'items',
   onOpenUserProfile,
   searchQuery,
+  onOpenChatWithUser,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -670,6 +672,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         }}
         onOpenAuth={onOpenAuth}
         onOpenUserProfile={onOpenUserProfile}
+        onOpenChatWithUser={onOpenChatWithUser}
       />
 
     </div>
