@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { Conversation, Message, MessageProposalData } from '../lib/types';
+import { PersonalProposalModal } from './PersonalProposalModal';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
@@ -53,40 +54,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   // Custom Listing & Request Proposal Modal State
   const [isCreateProposalOpen, setIsCreateProposalOpen] = useState(false);
   const [proposalType, setProposalType] = useState<'LISTING' | 'REQUEST'>('LISTING');
-  const [proposalTitle, setProposalTitle] = useState('');
-  const [proposalCategory, setProposalCategory] = useState('Electronics & Tech');
-  const [proposalRate, setProposalRate] = useState<number>(300);
-  const [proposalDays, setProposalDays] = useState<number>(2);
-  const [proposalStartDate, setProposalStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  });
-  const [proposalStartTime, setProposalStartTime] = useState('10:00');
-  const [proposalEndTime, setProposalEndTime] = useState('18:00');
-  const [proposalDeliveryOption, setProposalDeliveryOption] = useState<'SELF' | 'LENDER_DELIVERY'>('SELF');
-  const [proposalDeliveryFee, setProposalDeliveryFee] = useState<number>(100);
-  const [proposalCollectionOption, setProposalCollectionOption] = useState<'SELF' | 'LENDER_COLLECT'>('SELF');
-  const [proposalCollectionFee, setProposalCollectionFee] = useState<number>(65);
-  const [proposalLocation, setProposalLocation] = useState('');
-  const [proposalNotes, setProposalNotes] = useState('');
-  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
   const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
-
-  const getCalculatedEndDate = (startDate: string, durationDays: number): string => {
-    try {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + Number(durationDays));
-      return d.toISOString().split('T')[0];
-    } catch {
-      return startDate;
-    }
-  };
-
-  const calculatedRentalCost = Math.max(0, Number(proposalRate) || 0) * Math.max(1, Number(proposalDays) || 1);
-  const calculatedDeliveryFee = proposalDeliveryOption === 'LENDER_DELIVERY' ? Math.max(0, Number(proposalDeliveryFee) || 0) : 0;
-  const calculatedCollectionFee = proposalCollectionOption === 'LENDER_COLLECT' ? Math.max(0, Number(proposalCollectionFee) || 0) : 0;
-  const calculatedTotalDealCost = calculatedRentalCost + calculatedDeliveryFee + calculatedCollectionFee;
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -580,39 +548,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const handleCreateProposalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!proposalTitle.trim() || !selectedConvId || isSubmittingProposal) return;
+  const handleProposalSubmit = async (proposalPayload: MessageProposalData, summaryText: string) => {
+    if (!selectedConvId) return;
 
     const receiverId = activeConversation?.partner_id || (selectedConvId.startsWith('dm_') ? selectedConvId.replace('dm_', '') : '');
     if (!receiverId) return;
 
-    setIsSubmittingProposal(true);
     setSendError(null);
-
-    const calculatedEnd = getCalculatedEndDate(proposalStartDate, proposalDays);
-
-    const proposalPayload: MessageProposalData = {
-      type: proposalType,
-      title: proposalTitle.trim(),
-      category: proposalCategory,
-      price_per_day: Number(proposalRate) || 0,
-      total_price: calculatedTotalDealCost,
-      duration_days: Math.max(1, Number(proposalDays) || 1),
-      start_date: proposalStartDate,
-      end_date: calculatedEnd,
-      start_time: proposalStartTime,
-      end_time: proposalEndTime,
-      delivery_option: proposalDeliveryOption,
-      delivery_fee: calculatedDeliveryFee,
-      collection_option: proposalCollectionOption,
-      collection_fee: calculatedCollectionFee,
-      delivery_location: proposalLocation.trim(),
-      notes: proposalNotes.trim(),
-      status: 'PENDING',
-    };
-
-    const summaryText = `📦 ${proposalType === 'LISTING' ? 'Personal Gear Offer' : 'Custom Borrow Request'}: ${proposalTitle.trim()} (₹${calculatedTotalDealCost} for ${proposalDays} days)`;
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -647,17 +589,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         );
       }
 
-      setProposalTitle('');
-      setProposalNotes('');
-      setProposalLocation('');
-
       loadConversations();
     } catch (err: any) {
       console.error('Failed to create proposal:', err);
       setSendError(err.message || 'Failed to send custom proposal.');
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-    } finally {
-      setIsSubmittingProposal(false);
+      throw err;
     }
   };
 
@@ -1084,6 +1021,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                               {/* Title & Terms */}
                               <div className="py-3 space-y-2.5">
+                                {pData.image_url && (
+                                  <div className="w-full aspect-[16/9] rounded-2xl overflow-hidden bg-black/10 border border-divider">
+                                    <img src={pData.image_url} alt={pData.title} className="w-full h-full object-cover" />
+                                  </div>
+                                )}
                                 <h3 className="text-sm font-black text-ink font-display leading-tight">
                                   {pData.title || 'Personal Deal Item'}
                                 </h3>
@@ -1371,272 +1313,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       </div>
 
       {/* Modal: Create Personal Listing / Borrow Request Agreement */}
-      {isCreateProposalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-surface border border-divider rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden my-8">
-            {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-divider flex items-center justify-between bg-surface">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-ink font-display">
-                    {proposalType === 'LISTING' ? 'Personal Gear Listing Offer' : 'Personal Borrow Request'}
-                  </h3>
-                  <p className="text-xs text-ink-secondary">
-                    Custom deal specifically for {activeConversation?.partner_name || 'this neighbor'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateProposalOpen(false)}
-                className="w-8 h-8 rounded-full bg-canvas hover:bg-divider/60 text-ink-secondary flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Proposal Form */}
-            <form onSubmit={handleCreateProposalSubmit} className="p-5 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-              {/* Type Switcher */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-canvas rounded-2xl border border-divider">
-                <button
-                  type="button"
-                  onClick={() => setProposalType('LISTING')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    proposalType === 'LISTING'
-                      ? 'bg-brand text-white shadow-xs'
-                      : 'text-ink-secondary hover:text-ink'
-                  }`}
-                >
-                  📦 Offer to Lend (My Gear)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProposalType('REQUEST')}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    proposalType === 'REQUEST'
-                      ? 'bg-brand text-white shadow-xs'
-                      : 'text-ink-secondary hover:text-ink'
-                  }`}
-                >
-                  🎯 Request to Borrow
-                </button>
-              </div>
-
-              {/* Title */}
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1.5">
-                  {proposalType === 'LISTING' ? 'Gear / Equipment Title *' : 'Item Needed *'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={proposalTitle}
-                  onChange={(e) => setProposalTitle(e.target.value)}
-                  placeholder={proposalType === 'LISTING' ? 'e.g. Sony Alpha 7 IV + 24-70mm Lens' : 'e.g. 4-Person Camping Tent with Sleeping Bags'}
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/30 font-semibold"
-                />
-              </div>
-
-              {/* Category & Rate */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-ink mb-1.5">Category</label>
-                  <select
-                    value={proposalCategory}
-                    onChange={(e) => setProposalCategory(e.target.value)}
-                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand font-semibold cursor-pointer"
-                  >
-                    <option value="Electronics & Tech">Electronics & Tech</option>
-                    <option value="Photography & Video">Photography & Video</option>
-                    <option value="Outdoor & Camping">Outdoor & Camping</option>
-                    <option value="Gaming & VR">Gaming & VR</option>
-                    <option value="Tools & DIY">Tools & DIY</option>
-                    <option value="Music & Audio">Music & Audio</option>
-                    <option value="Party & Events">Party & Events</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-ink mb-1.5">
-                    Rate (₹/day)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">₹</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={proposalRate}
-                      onChange={(e) => setProposalRate(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-canvas border border-divider rounded-xl pl-7 pr-3.5 py-2.5 text-xs text-ink outline-none focus:border-brand font-bold"
-                      placeholder="300"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Schedule: Start Date & Duration */}
-              <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-ink flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-brand" />
-                    <span>Rental Schedule</span>
-                  </span>
-                  <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
-                    {proposalDays} {proposalDays === 1 ? 'Day' : 'Days'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-[10px] font-bold text-ink-secondary mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      required
-                      value={proposalStartDate}
-                      min={new Date().toISOString().split('T')[0]}
-                      onChange={(e) => setProposalStartDate(e.target.value)}
-                      className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs text-ink outline-none focus:border-brand font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-ink-secondary mb-1">Duration (Days)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      required
-                      value={proposalDays}
-                      onChange={(e) => setProposalDays(Math.max(1, Number(e.target.value)))}
-                      className="w-full bg-surface border border-divider rounded-xl px-2.5 py-2 text-xs text-ink outline-none focus:border-brand font-bold"
-                    />
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-ink-secondary flex items-center justify-between pt-1 border-t border-divider/40">
-                  <span>Scheduled Return Date:</span>
-                  <span className="font-bold text-ink">{getCalculatedEndDate(proposalStartDate, proposalDays)}</span>
-                </div>
-              </div>
-
-              {/* Handover & Delivery Options */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-ink">Handover & Delivery</label>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setProposalDeliveryOption('SELF')}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      proposalDeliveryOption === 'SELF'
-                        ? 'border-brand bg-brand-soft/30 text-ink'
-                        : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                    }`}
-                  >
-                    <span className="text-xs font-bold block">Self Pickup</span>
-                    <span className="text-[10px] text-ink-secondary block">Borrower collects</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setProposalDeliveryOption('LENDER_DELIVERY')}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      proposalDeliveryOption === 'LENDER_DELIVERY'
-                        ? 'border-brand bg-brand-soft/30 text-ink'
-                        : 'border-divider bg-canvas text-ink-secondary hover:text-ink'
-                    }`}
-                  >
-                    <span className="text-xs font-bold block">Lender Delivers</span>
-                    <span className="text-[10px] text-brand font-bold block">+₹{proposalDeliveryFee} fee</span>
-                  </button>
-                </div>
-
-                {proposalDeliveryOption === 'LENDER_DELIVERY' && (
-                  <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-150">
-                    <span className="text-[11px] font-bold text-ink-secondary shrink-0">Delivery Fee (₹):</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={proposalDeliveryFee}
-                      onChange={(e) => setProposalDeliveryFee(Math.max(0, Number(e.target.value)))}
-                      className="w-24 bg-canvas border border-divider rounded-lg px-2 py-1 text-xs text-ink font-bold"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <input
-                    type="text"
-                    value={proposalLocation}
-                    onChange={(e) => setProposalLocation(e.target.value)}
-                    placeholder="Handover address or locality (e.g. Indiranagar, Gate 2)"
-                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs text-ink outline-none focus:border-brand font-medium placeholder:text-ink-muted mt-1"
-                  />
-                </div>
-              </div>
-
-              {/* Custom Agreement Notes */}
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1.5">
-                  Agreed Specifications & Inclusions
-                </label>
-                <textarea
-                  rows={2}
-                  value={proposalNotes}
-                  onChange={(e) => setProposalNotes(e.target.value)}
-                  placeholder="e.g. Includes 2 extra batteries, charger, and 128GB high-speed memory card. Return charged."
-                  className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs text-ink outline-none focus:border-brand font-medium resize-none placeholder:text-ink-muted"
-                />
-              </div>
-
-              {/* Cost Summary Banner */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-brand/10 to-brand/5 border border-brand/20 flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] text-ink-secondary block font-medium">Total Deal Value</span>
-                  <span className="text-xs font-black text-ink font-display">
-                    {proposalDays} days @ ₹{proposalRate}/day
-                    {proposalDeliveryOption === 'LENDER_DELIVERY' && ` + ₹${proposalDeliveryFee} delivery`}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-base sm:text-lg font-black text-brand font-display block">
-                    ₹{calculatedTotalDealCost}
-                  </span>
-                </div>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateProposalOpen(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-divider text-ink font-bold text-xs hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!proposalTitle.trim() || isSubmittingProposal}
-                  className="flex-1 btn-primary py-2.5 px-4 rounded-xl text-xs font-extrabold shadow-pink flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer"
-                >
-                  {isSubmittingProposal ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send Agreement</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <PersonalProposalModal
+        isOpen={isCreateProposalOpen}
+        onClose={() => setIsCreateProposalOpen(false)}
+        partnerName={activeConversation?.partner_name || 'Neighbor'}
+        partnerId={activeConversation?.partner_id || (selectedConvId?.startsWith('dm_') ? selectedConvId.replace('dm_', '') : '')}
+        bookingId={activeConversation?.booking_id}
+        onSubmitProposal={handleProposalSubmit}
+        initialType={proposalType}
+      />
 
     </div>
   );

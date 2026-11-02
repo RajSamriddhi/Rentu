@@ -823,3 +823,4 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
     </div>
   );
 };
+

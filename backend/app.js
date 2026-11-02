@@ -55637,8 +55637,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         pricePerDay,
         Math.max(durationDays, 3),
         proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-        lenderInfo.locality || "Bangalore",
-        lenderInfo.address_text || "Local pickup"
+        proposal.locality || lenderInfo.locality || "Bangalore",
+        proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
       ]
     );
     const createdItem = itemRes.rows[0];

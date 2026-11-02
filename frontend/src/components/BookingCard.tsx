@@ -200,3 +200,4 @@ export const BookingCard: React.FC<BookingCardProps> = ({ booking, onClick, onOp
     </div>
   );
 };
+
