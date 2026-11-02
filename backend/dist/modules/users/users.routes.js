@@ -923,12 +923,13 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         const ownerRating = parseFloat(user.owner_rating) || 5.0;
         const renterRating = parseFloat(user.renter_rating) || 5.0;
         const communityLenderRating = parseFloat(user.community_lender_rating) || 5.0;
+        const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
         return (0, response_1.sendSuccess)(res, {
             id: user.id,
             name: user.name || 'Community Member',
             locality: user.locality || 'Bengaluru',
-            address_text: user.address_text || '',
-            pincode: user.pincode || '',
+            address_text: isSelf ? (user.address_text || '') : '',
+            pincode: isSelf ? (user.pincode || '') : '',
             avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,
             banner_url: user.banner_url || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80',
             bio: user.bio || 'Neighbor & Gear Sharer ⚡ Passionate about circular economy and community access over ownership.',
@@ -943,7 +944,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
             created_at: user.created_at,
             notify_nearby_requests_5km: user.notify_nearby_requests_5km,
-            saved_locations: user.saved_locations || [],
+            saved_locations: isSelf ? (user.saved_locations || []) : [],
             is_following: isFollowing,
             is_blocked: isBlocked,
             is_blocked_by: isBlockedBy,

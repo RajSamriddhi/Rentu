@@ -52986,8 +52986,8 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
         COALESCE(u.locality, i.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
+        NULL AS address_text, 
+        NULL AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude, 
         CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
@@ -52998,8 +52998,8 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
-        COALESCE(u.address_text, i.address_text) AS owner_address_text,
-        COALESCE(u.pincode, i.pincode) AS owner_pincode,
+        NULL AS owner_address_text,
+        NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -53050,7 +53050,7 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-router2.get("/:id", async (req, res, next) => {
+router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await query(
@@ -53091,6 +53091,26 @@ router2.get("/:id", async (req, res, next) => {
         return sendError(res, "FORBIDDEN", "This item is not available", 403);
       }
     }
+    let canViewAddress = false;
+    if (currentViewerId) {
+      if (currentViewerId === item.owner_id) {
+        canViewAddress = true;
+      } else {
+        const acceptedBookingCheck = await query(
+          `SELECT 1 FROM bookings 
+           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           LIMIT 1`,
+          [item.id, currentViewerId]
+        );
+        canViewAddress = acceptedBookingCheck.rows.length > 0;
+      }
+    }
+    if (!canViewAddress) {
+      item.address_text = null;
+      item.owner_address_text = null;
+      item.pincode = null;
+      item.owner_pincode = null;
+    }
     const bookedRes = await query(
       `SELECT 
         id, 
@@ -53115,6 +53135,7 @@ router2.get("/:id", async (req, res, next) => {
     );
     return sendSuccess(res, {
       ...item,
+      can_view_address: canViewAddress,
       booked_dates: bookedRes.rows,
       related_items: relatedResult.rows
     });
@@ -54038,6 +54059,9 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.payment_status, b.payment_method,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
+        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
+        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
+        lender.address_text AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
         borrower.phone AS borrower_phone, borrower.email AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
@@ -55346,12 +55370,13 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const ownerRating = parseFloat(user.owner_rating) || 5;
     const renterRating = parseFloat(user.renter_rating) || 5;
     const communityLenderRating = parseFloat(user.community_lender_rating) || 5;
+    const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
     return sendSuccess(res, {
       id: user.id,
       name: user.name || "Community Member",
       locality: user.locality || "Bengaluru",
-      address_text: user.address_text || "",
-      pincode: user.pincode || "",
+      address_text: isSelf ? user.address_text || "" : "",
+      pincode: isSelf ? user.pincode || "" : "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
       bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
@@ -55366,7 +55391,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
-      saved_locations: user.saved_locations || [],
+      saved_locations: isSelf ? user.saved_locations || [] : [],
       is_following: isFollowing,
       is_blocked: isBlocked,
       is_blocked_by: isBlockedBy,

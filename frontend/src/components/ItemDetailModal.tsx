@@ -73,6 +73,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     user?.id && item?.owner_id && (user.id === item.owner_id || (user as any).firebase_uid === item.owner_id)
   );
 
+  // Privacy protection: only reveal full exact address if viewer is owner or has an accepted rental booking
+  const [hasAcceptedBooking, setHasAcceptedBooking] = useState(Boolean((item as any)?.can_view_address));
+
+  React.useEffect(() => {
+    if ((item as any)?.can_view_address) {
+      setHasAcceptedBooking(true);
+      return;
+    }
+    if (user?.id && item?.id && !isOwner) {
+      api.getBookings('borrower').then((bookings) => {
+        const hasAccepted = (bookings || []).some(
+          (b) => b.item_id === item.id && ['ACCEPTED', 'HANDED_OVER', 'COMPLETED'].includes(b.status)
+        );
+        if (hasAccepted) {
+          setHasAcceptedBooking(true);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.id, item?.id, isOwner]);
+
+  const canViewAddress = isOwner || hasAcceptedBooking || Boolean((item as any)?.can_view_address);
+
   const handleDeleteListing = async () => {
     if (!item) return;
     if (!window.confirm(`Are you sure you want to permanently delete "${item.title}"? This cannot be undone.`)) {
@@ -402,10 +424,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : null}
                     <div className="flex items-center gap-1.5 font-bold text-ink">
                       <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                      <span>{itemLocation}</span>
-                      <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                        {reachDistanceText}
-                      </span>
+                      {canViewAddress ? (
+                        <>
+                          <span>{itemLocation}</span>
+                          <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                            {reachDistanceText}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-1 rounded-full border border-brand/20">
+                          {reachDistanceText}
+                        </span>
+                      )}
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -455,7 +485,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       <span>•</span>
                       <span className="flex items-center gap-1 text-ink font-semibold">
                         <MapPin className="w-3 h-3 text-brand shrink-0" />
-                        <span className="truncate">{ownerLocation}</span>
+                        <span className="truncate">{canViewAddress ? ownerLocation : reachDistanceText}</span>
                       </span>
                     </div>
                   </div>
@@ -484,25 +514,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </div>
                   <div className="min-w-0">
                     <div className="font-bold text-ink flex items-center gap-1.5 truncate">
-                      <span>Owner Location:</span>
-                      <span className="text-brand font-extrabold truncate">{itemLocation}</span>
+                      <span>{canViewAddress ? 'Owner Pickup Location:' : 'Pickup Location:'}</span>
+                      <span className="text-brand font-extrabold truncate">
+                        {canViewAddress ? itemLocation : reachDistanceText}
+                      </span>
                     </div>
                     <div className="text-[11px] text-ink-secondary font-medium">
-                      Self pickup & return is within reach ({reachDistanceText})
+                      {canViewAddress
+                        ? `Self pickup & return is within reach (${reachDistanceText})`
+                        : 'Exact street address is shared securely once your booking proposal is accepted by owner'}
                     </div>
                   </div>
                 </div>
 
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address_text || itemLocation)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="px-2.5 py-1 rounded-lg border border-divider bg-canvas hover:border-brand text-brand text-[11px] font-bold shrink-0 transition-colors inline-flex items-center gap-1"
-                  title="Preview owner locality on Google Maps"
-                >
-                  <span>Map ↗</span>
-                </a>
+                {canViewAddress && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address_text || itemLocation)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="px-2.5 py-1 rounded-lg border border-divider bg-canvas hover:border-brand text-brand text-[11px] font-bold shrink-0 transition-colors inline-flex items-center gap-1"
+                    title="Preview owner locality on Google Maps"
+                  >
+                    <span>Map ↗</span>
+                  </a>
+                )}
               </div>
 
 
@@ -672,7 +708,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner in ${itemLocation} (${reachDistanceText})`}
+                                    {optForDelivery ? 'Owner delivers to your location' : canViewAddress ? `You pick up from owner in ${itemLocation} (${reachDistanceText})` : `You pick up from owner (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -737,7 +773,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner in ${itemLocation} (${reachDistanceText})`}
+                                    {optForPickup ? 'Owner collects from you on return' : canViewAddress ? `You return to owner in ${itemLocation} (${reachDistanceText})` : `You return to owner (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -802,7 +838,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : (
                       <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
                         <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                        <span>Self pickup & return: <strong className="text-ink font-bold">{itemLocation}</strong> ({reachDistanceText})</span>
+                        <span>Self pickup & return: {canViewAddress ? <><strong className="text-ink font-bold">{itemLocation}</strong> ({reachDistanceText})</> : <strong className="text-brand font-bold">{reachDistanceText}</strong>}</span>
                       </div>
                     )}
 

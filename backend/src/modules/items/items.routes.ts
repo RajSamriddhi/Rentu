@@ -174,8 +174,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         i.id, i.title, i.description, i.category, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
         COALESCE(u.locality, i.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
+        NULL AS address_text, 
+        NULL AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude, 
         CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
@@ -186,8 +186,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
-        COALESCE(u.address_text, i.address_text) AS owner_address_text,
-        COALESCE(u.pincode, i.pincode) AS owner_pincode,
+        NULL AS owner_address_text,
+        NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -249,7 +249,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
 
 
 // Get Single Item Detail
-router.get('/:id', async (req: Request, res: Response, next) => {
+router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params;
 
@@ -296,6 +296,29 @@ router.get('/:id', async (req: Request, res: Response, next) => {
       }
     }
 
+    // Privacy protection: Only show exact address to the item owner or renters who have an accepted/active booking
+    let canViewAddress = false;
+    if (currentViewerId) {
+      if (currentViewerId === item.owner_id) {
+        canViewAddress = true;
+      } else {
+        const acceptedBookingCheck = await query(
+          `SELECT 1 FROM bookings 
+           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           LIMIT 1`,
+          [item.id, currentViewerId]
+        );
+        canViewAddress = acceptedBookingCheck.rows.length > 0;
+      }
+    }
+
+    if (!canViewAddress) {
+      item.address_text = null;
+      item.owner_address_text = null;
+      item.pincode = null;
+      item.owner_pincode = null;
+    }
+
     // Fetch booked calendar dates for this item (Active / Confirmed rentals)
     const bookedRes = await query(
       `SELECT 
@@ -324,6 +347,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
 
     return sendSuccess(res, {
       ...item,
+      can_view_address: canViewAddress,
       booked_dates: bookedRes.rows,
       related_items: relatedResult.rows,
     });
