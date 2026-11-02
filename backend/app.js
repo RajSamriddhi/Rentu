@@ -52679,7 +52679,16 @@ router.post("/clerk-sync", handleSyncUser);
 router.get("/me", authMiddleware, async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`,
       [req.user.id]
     );
@@ -53724,7 +53733,8 @@ var verifyCodeSchema = external_exports.object({
 });
 var submitReviewSchema = external_exports.object({
   rating: external_exports.number().min(1).max(5),
-  comment: external_exports.string().optional().default("")
+  comment: external_exports.string().optional().default(""),
+  review_type: external_exports.enum(["OWNER_RENTAL", "RENTER", "COMMUNITY_LENDER"]).optional()
 });
 router4.post("/", authMiddleware, async (req, res, next) => {
   try {
@@ -54032,10 +54042,10 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
 router4.post("/:id/review", authMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { rating, comment } = submitReviewSchema.parse(req.body);
+    const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -54059,6 +54069,7 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
       return sendError(res, "BAD_REQUEST", "Review period has expired. Reviews are available for at most 3 days after completion.", 400);
     }
     const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
+    let resolvedReviewType = review_type || (isBorrower ? Number(booking.total_price) <= 0 || Number(booking.price_per_day) <= 0 ? "COMMUNITY_LENDER" : "OWNER_RENTAL" : "RENTER");
     const existing = await query(
       `SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`,
       [id, userId]
@@ -54067,26 +54078,48 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     if (existing.rows.length > 0) {
       reviewResult = await query(
         `UPDATE reviews 
-         SET rating = $1, comment = $2, created_at = CURRENT_TIMESTAMP 
-         WHERE booking_id = $3 AND reviewer_id = $4 
+         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
+         WHERE booking_id = $4 AND reviewer_id = $5 
          RETURNING *`,
-        [rating, comment || "", id, userId]
+        [rating, comment || "", resolvedReviewType, id, userId]
       );
     } else {
       reviewResult = await query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [id, userId, revieweeId, rating, comment || ""]
+        [id, userId, revieweeId, rating, comment || "", resolvedReviewType]
       );
     }
-    await query(
-      `UPDATE users 
-       SET rating = (SELECT ROUND(AVG(rating), 2) FROM reviews WHERE reviewee_id = $1),
-           trust_score = LEAST(100, COALESCE(trust_score, 95) + 1)
-       WHERE id = $1`,
-      [revieweeId]
-    ).catch(() => {
+    await query(`
+      WITH stats AS (
+        SELECT 
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 5.00), 2) AS owner_rating,
+          COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 5.00), 2) AS renter_rating,
+          COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 5.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(rating), 5.00), 2) AS trust_rating,
+          COUNT(*)::int AS total_reviews
+        FROM reviews
+        WHERE reviewee_id = $1
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = LEAST(100, GREATEST(80, 92 + stats.total_reviews))
+      FROM stats
+      WHERE users.id = $1
+    `, [revieweeId]).catch((err) => {
+      console.error("Failed to update ratings for reviewee:", err);
     });
     return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
   } catch (error) {
@@ -54197,8 +54230,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80",
     bio: "Fashion & textile creator @ NIFT \u{1F457} Sharing styling kits & ring lights with fellow students.",
     rating: 5,
+    trust_rating: 5,
+    owner_rating: 5,
+    renter_rating: 5,
+    community_lender_rating: 5,
     trust_score: 100,
     reviews_count: 38,
+    owner_reviews_count: 12,
+    renter_reviews_count: 14,
+    community_lender_reviews_count: 12,
     highlight_review: "Absolute 5-star experience! Even with just a few rentals, her gear is pristine and handover was effortless.",
     items_count: 4,
     free_items_count: 8,
@@ -54214,8 +54254,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80",
     bio: "Minimalist photographer \u{1F4F8} Best reviews because I obsess over gear hygiene and care.",
     rating: 5,
+    trust_rating: 5,
+    owner_rating: 5,
+    renter_rating: 4.98,
+    community_lender_rating: 5,
     trust_score: 100,
     reviews_count: 29,
+    owner_reviews_count: 10,
+    renter_reviews_count: 11,
+    community_lender_reviews_count: 8,
     highlight_review: "Highest rating well deserved! The camera lens had zero dust and came packed in a waterproof hardcase.",
     items_count: 3,
     free_items_count: 5,
@@ -54231,8 +54278,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80",
     bio: "Community Lead @ Rentu \u26A1 Building the anti-ownership gear sharing network.",
     rating: 5,
+    trust_rating: 5,
+    owner_rating: 5,
+    renter_rating: 5,
+    community_lender_rating: 4.98,
     trust_score: 100,
     reviews_count: 42,
+    owner_reviews_count: 16,
+    renter_reviews_count: 14,
+    community_lender_reviews_count: 12,
     highlight_review: "Legendary neighbor! Handed over his gimbal with 3 charged batteries and pro camera advice.",
     items_count: 9,
     free_items_count: 6,
@@ -54248,8 +54302,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80",
     bio: "Eco-conscious creator \u{1F33F} Free community borrowing advocate. Stop buying things you use once a year!",
     rating: 5,
+    trust_rating: 5,
+    owner_rating: 4.98,
+    renter_rating: 5,
+    community_lender_rating: 5,
     trust_score: 99,
     reviews_count: 44,
+    owner_reviews_count: 12,
+    renter_reviews_count: 16,
+    community_lender_reviews_count: 16,
     highlight_review: "Gave me her 4-person tent for free for a 3-day trek. The kindest and most generous neighbor!",
     items_count: 5,
     free_items_count: 10,
@@ -54265,8 +54326,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
     bio: "Indie filmmaker & camera nerd \u{1F4F8} Gear chills when I chill. Top lender in South Delhi.",
     rating: 4.98,
+    trust_rating: 4.98,
+    owner_rating: 5,
+    renter_rating: 4.96,
+    community_lender_rating: 4.95,
     trust_score: 99,
     reviews_count: 46,
+    owner_reviews_count: 26,
+    renter_reviews_count: 12,
+    community_lender_reviews_count: 8,
     highlight_review: "Canon 80D with pristine sensor, flip screen, and memory card. Smooth pickup near Saket Metro.",
     items_count: 13,
     free_items_count: 3,
@@ -54282,8 +54350,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80",
     bio: "Design student & visual artist \u{1F3A8} Borrow > Buy always. Active borrower & free sharer.",
     rating: 4.97,
+    trust_rating: 4.97,
+    owner_rating: 4.95,
+    renter_rating: 5,
+    community_lender_rating: 4.98,
     trust_score: 98,
     reviews_count: 34,
+    owner_reviews_count: 10,
+    renter_reviews_count: 14,
+    community_lender_reviews_count: 10,
     highlight_review: "Returned the mini projector spotlessly on time with extra batteries. Dream borrower to deal with!",
     items_count: 6,
     free_items_count: 7,
@@ -54299,8 +54374,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
     bio: "Audio engineer & DJ \u{1F3A7} Helping folks host legendary rooftop gigs and music jams.",
     rating: 4.96,
+    trust_rating: 4.96,
+    owner_rating: 4.98,
+    renter_rating: 4.94,
+    community_lender_rating: 4.95,
     trust_score: 98,
     reviews_count: 31,
+    owner_reviews_count: 15,
+    renter_reviews_count: 9,
+    community_lender_reviews_count: 7,
     highlight_review: "DJ controller was club-ready and came with high-end audio cables. Kabir gave great setup tips.",
     items_count: 10,
     free_items_count: 4,
@@ -54316,8 +54398,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80",
     bio: "Drone pilot & gadget hoarder \u{1F681} Rent my equipment so I can invest in newer tech.",
     rating: 4.95,
+    trust_rating: 4.95,
+    owner_rating: 4.97,
+    renter_rating: 4.92,
+    community_lender_rating: 4.94,
     trust_score: 98,
     reviews_count: 48,
+    owner_reviews_count: 28,
+    renter_reviews_count: 12,
+    community_lender_reviews_count: 8,
     highlight_review: "Top lender hands down. DJI Mavic was pre-calibrated with 3 fly-more batteries and SD card.",
     items_count: 15,
     free_items_count: 2,
@@ -54333,8 +54422,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80",
     bio: "Weekend trekker & DIY camper \u26FA Everything you need for the wild at student-friendly rates.",
     rating: 4.95,
+    trust_rating: 4.95,
+    owner_rating: 4.94,
+    renter_rating: 4.98,
+    community_lender_rating: 4.96,
     trust_score: 98,
     reviews_count: 28,
+    owner_reviews_count: 10,
+    renter_reviews_count: 10,
+    community_lender_reviews_count: 8,
     highlight_review: "Quechua tent, trekking poles, and sleeping bags were super fresh and clean. Saved us thousands!",
     items_count: 8,
     free_items_count: 6,
@@ -54350,8 +54446,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80",
     bio: "Keyboardist & music producer \u{1F3B9} Lending condenser mics, soundcards, and midi gear.",
     rating: 4.96,
+    trust_rating: 4.96,
+    owner_rating: 4.96,
+    renter_rating: 4.95,
+    community_lender_rating: 4.97,
     trust_score: 98,
     reviews_count: 27,
+    owner_reviews_count: 10,
+    renter_reviews_count: 9,
+    community_lender_reviews_count: 8,
     highlight_review: "Focusrite Scarlett interface was immaculate. Super friendly neighbor who loves music.",
     items_count: 8,
     free_items_count: 6,
@@ -54367,8 +54470,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80",
     bio: "DIY enthusiast & tool collector \u{1F528} Why buy power tools to use them for 10 minutes?",
     rating: 4.94,
+    trust_rating: 4.94,
+    owner_rating: 4.96,
+    renter_rating: 4.91,
+    community_lender_rating: 4.93,
     trust_score: 97,
     reviews_count: 32,
+    owner_reviews_count: 16,
+    renter_reviews_count: 9,
+    community_lender_reviews_count: 7,
     highlight_review: "Bosch hammer drill set made moving into our new apartment painless. Rapid 5-minute meetup.",
     items_count: 12,
     free_items_count: 4,
@@ -54384,8 +54494,15 @@ var SEED_COMMUNITY_CHAMPIONS = [
     avatar_url: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80",
     bio: "Action cam & sports enthusiast \u{1F6B4} GoPro mounts, underwater cases, and bike racks.",
     rating: 4.93,
+    trust_rating: 4.93,
+    owner_rating: 4.94,
+    renter_rating: 4.93,
+    community_lender_rating: 4.92,
     trust_score: 97,
     reviews_count: 30,
+    owner_reviews_count: 14,
+    renter_reviews_count: 10,
+    community_lender_reviews_count: 6,
     highlight_review: "GoPro Hero 11 worked flawlessly for our scuba trip. Hassle-free deposit and handover.",
     items_count: 10,
     free_items_count: 3,
@@ -54404,6 +54521,13 @@ router6.get("/leaderboard", async (req, res, next) => {
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer \u26A1') AS bio, 
+        COALESCE(u.trust_rating, u.rating, 5.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(u.owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(u.renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(u.community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 98)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
@@ -54420,7 +54544,14 @@ router6.get("/leaderboard", async (req, res, next) => {
       const email = u.email || "";
       const name = u.name || "Community Member";
       const avatar = u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
-      const rating = parseFloat(u.rating) || 5;
+      const trust_rating = parseFloat(u.trust_rating) || parseFloat(u.rating) || 5;
+      const owner_rating = parseFloat(u.owner_rating) || 5;
+      const renter_rating = parseFloat(u.renter_rating) || 5;
+      const community_lender_rating = parseFloat(u.community_lender_rating) || 5;
+      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
+      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
+      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+      const rating = trust_rating;
       const trust_score = parseInt(u.trust_score, 10) || 98;
       const items_count = parseInt(u.items_count, 10) || 0;
       const free_items_count = parseInt(u.free_items_count, 10) || 0;
@@ -54442,6 +54573,13 @@ router6.get("/leaderboard", async (req, res, next) => {
         avatar_url: avatar,
         bio: u.bio,
         rating,
+        trust_rating,
+        owner_rating,
+        renter_rating,
+        community_lender_rating,
+        owner_reviews_count,
+        renter_reviews_count,
+        community_lender_reviews_count,
         trust_score,
         reviews_count,
         highlight_review,
@@ -54461,58 +54599,66 @@ router6.get("/leaderboard", async (req, res, next) => {
       }
     }
     const topRatedSorted = [...combinedPool].sort((a, b) => {
-      if (b.rating !== a.rating) return b.rating - a.rating;
+      const bTr = b.trust_rating ?? b.rating ?? 5;
+      const aTr = a.trust_rating ?? a.rating ?? 5;
+      if (bTr !== aTr) return bTr - aTr;
       if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
       return b.reviews_count - a.reviews_count;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_rated",
-      metric_label: "Reputation Score",
-      metric_value: `${member.rating.toFixed(2)} \u2605 (${member.trust_score}% Trust)`,
-      badges: index === 0 ? ["\u{1F451} #1 Highest Rated", "\u{1F6E1}\uFE0F 100% Trust", "\u{1F31F} Flawless Reviews"] : index < 3 ? ["\u2B50 5-Star Neighbor", "\u{1F6E1}\uFE0F Verified Trust", "\u{1F4AC} Outstanding Feedback"] : ["\u2B50 Top Rated", "\u{1F6E1}\uFE0F Verified Neighbor"]
+      metric_label: "Overall Trust Rating",
+      metric_value: `${(member.trust_rating || member.rating || 5).toFixed(2)} \u2605 (${member.trust_score}% Trust)`,
+      badges: index === 0 ? ["\u{1F451} #1 Overall Trust", "\u{1F6E1}\uFE0F 100% Reputation", "\u{1F31F} Flawless Community Record"] : index < 3 ? ["\u2B50 Top Trust Neighbor", "\u{1F6E1}\uFE0F Verified Trust", "\u{1F4AC} Outstanding Feedback"] : ["\u2B50 Top Rated", "\u{1F6E1}\uFE0F Verified Neighbor"]
     }));
     const topLendersSorted = [...combinedPool].sort((a, b) => {
+      const bOr = b.owner_rating ?? 5;
+      const aOr = a.owner_rating ?? 5;
+      if (bOr !== aOr) return bOr - aOr;
       const scoreB = b.lent_count * 3 + b.items_count * 2;
       const scoreA = a.lent_count * 3 + a.items_count * 2;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.items_count !== a.items_count) return b.items_count - a.items_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_lenders",
-      metric_label: "Gear Lent for Rent",
-      metric_value: `${member.lent_count} Rentals (${member.items_count} listed)`,
-      badges: index === 0 ? ["\u{1F451} #1 Gear Lender", "\u{1F4E6} Mega Closet", "\u26A1 Instant Handover"] : index < 3 ? ["\u{1F3F7}\uFE0F Super Lender", "\u26A1 Instant Handover", "\u{1F4E6} Active Gear"] : ["\u{1F3F7}\uFE0F Top Lender", "\u{1F4E6} Gear Sharer"]
+      metric_label: "Gear Owner Rating",
+      metric_value: `${(member.owner_rating || 5).toFixed(2)} \u2605 (${member.lent_count} Rentals Lent)`,
+      badges: index === 0 ? ["\u{1F451} #1 Gear Owner", "\u{1F4E6} 5-Star Equipment", "\u26A1 Instant Handover"] : index < 3 ? ["\u{1F3F7}\uFE0F Super Gear Owner", "\u26A1 Verified Gear Care", "\u{1F4E6} Active Gear"] : ["\u{1F3F7}\uFE0F Top Gear Owner", "\u{1F4E6} Gear Sharer"]
     }));
     const topBorrowersSorted = [...combinedPool].sort((a, b) => {
+      const bRr = b.renter_rating ?? 5;
+      const aRr = a.renter_rating ?? 5;
+      if (bRr !== aRr) return bRr - aRr;
       const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
       const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.borrowed_count !== a.borrowed_count) return b.borrowed_count - a.borrowed_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_borrowers",
-      metric_label: "Gear Borrowed",
-      metric_value: `${member.borrowed_count} Rentals Borrowed`,
-      badges: index === 0 ? ["\u{1F451} #1 Circular Borrower", "\u23F1\uFE0F 100% Punctual", "\u{1F331} Zero Waste Hero"] : index < 3 ? ["\u{1F392} Eco Borrower", "\u23F1\uFE0F 100% On-Time Return", "\u{1F91D} Trusted Neighbor"] : ["\u{1F392} Active Borrower", "\u{1F91D} Verified Peer"]
+      metric_label: "Renter Rating",
+      metric_value: `${(member.renter_rating || 5).toFixed(2)} \u2605 (${member.borrowed_count} Rentals Borrowed)`,
+      badges: index === 0 ? ["\u{1F451} #1 Trusted Renter", "\u23F1\uFE0F 100% Punctual", "\u{1F331} Zero Waste Hero"] : index < 3 ? ["\u{1F392} 5-Star Renter", "\u23F1\uFE0F 100% On-Time Return", "\u{1F91D} Trusted Neighbor"] : ["\u{1F392} Verified Renter", "\u{1F91D} Verified Peer"]
     }));
     const topSharersSorted = [...combinedPool].sort((a, b) => {
+      const bClr = b.community_lender_rating ?? 5;
+      const aClr = a.community_lender_rating ?? 5;
+      if (bClr !== aClr) return bClr - aClr;
       const scoreB = b.free_items_count * 3 + b.requests_count;
       const scoreA = a.free_items_count * 3 + a.requests_count;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.free_items_count !== a.free_items_count) return b.free_items_count - a.free_items_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_sharers",
-      metric_label: "Free Gear Shared",
-      metric_value: `${member.free_items_count} Free Shares (\u20B90 Rent)`,
-      badges: index === 0 ? ["\u{1F451} #1 Community Angel", "\u{1F381} Gift Economy Pioneer", "\u2764\uFE0F Pure Generosity"] : index < 3 ? ["\u{1F381} Free Gear Angel", "\u{1F331} Anti-Ownership Champion", "\u2764\uFE0F Neighbor Favorite"] : ["\u{1F381} Community Sharer", "\u2764\uFE0F Generous Neighbor"]
+      metric_label: "Free Lender Rating",
+      metric_value: `${(member.community_lender_rating || 5).toFixed(2)} \u2605 (${member.free_items_count} Free Shares)`,
+      badges: index === 0 ? ["\u{1F451} #1 Community Angel", "\u{1F381} Gift Economy Pioneer", "\u2764\uFE0F Pure Generosity"] : index < 3 ? ["\u{1F381} Free Gear Angel", "\u{1F331} Community Champion", "\u2764\uFE0F Neighbor Favorite"] : ["\u{1F381} Community Lender", "\u2764\uFE0F Generous Neighbor"]
     }));
     return sendSuccess(res, {
       top_rated: topRatedSorted,
@@ -54655,6 +54801,7 @@ var getChampionSyntheticData = (champ) => {
       reviewer_avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
       reviewer_locality: "Indiranagar",
       rating: 5,
+      review_type: "OWNER_RENTAL",
       comment: champ.highlight_review || "Incredible experience! The gear was spotless and handover was super friendly.",
       created_at: "2 days ago"
     },
@@ -54664,6 +54811,7 @@ var getChampionSyntheticData = (champ) => {
       reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
       reviewer_locality: "Koramangala",
       rating: 5,
+      review_type: "RENTER",
       comment: "Super punctual and trustworthy neighbor. Everything returned in pristine shape. 10/10!",
       created_at: "1 week ago"
     },
@@ -54673,6 +54821,7 @@ var getChampionSyntheticData = (champ) => {
       reviewer_avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
       reviewer_locality: "HSR Layout",
       rating: 5,
+      review_type: "COMMUNITY_LENDER",
       comment: "Very polite, helpful, and took extra time to explain settings. Highly recommended community member!",
       created_at: "2 weeks ago"
     }
@@ -54714,7 +54863,14 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         avatar_url: champ.avatar_url,
         banner_url: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
         bio: champ.bio,
-        rating: champ.rating,
+        rating: champ.trust_rating || champ.rating,
+        trust_rating: champ.trust_rating || champ.rating,
+        owner_rating: champ.owner_rating || champ.rating,
+        renter_rating: champ.renter_rating || champ.rating,
+        community_lender_rating: champ.community_lender_rating || champ.rating,
+        owner_reviews_count: champ.owner_reviews_count || 12,
+        renter_reviews_count: champ.renter_reviews_count || 14,
+        community_lender_reviews_count: champ.community_lender_reviews_count || 10,
         trust_score: champ.trust_score,
         created_at: "2024-01-15T00:00:00.000Z",
         is_following: isFollowing,
@@ -54745,6 +54901,13 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         banner_url, 
         bio, 
         COALESCE(trust_score, 98)::int AS trust_score, 
+        COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
         created_at
@@ -54778,6 +54941,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         r.id, 
         r.rating, 
         r.comment, 
+        COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
         r.created_at, 
         COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
@@ -54797,6 +54961,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
           reviewer_avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
           reviewer_locality: user.locality || "Bengaluru",
           rating: 5,
+          review_type: "OWNER_RENTAL",
           comment: "Fantastic peer! Smooth coordination, very polite, and equipment was returned in immaculate condition.",
           created_at: "Recent Rental"
         },
@@ -54806,8 +54971,19 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
           reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
           reviewer_locality: "Koramangala",
           rating: 5,
+          review_type: "RENTER",
           comment: "Prompt communication and respectful neighbor. Highly recommended in our local sharing circle!",
           created_at: "2 weeks ago"
+        },
+        {
+          id: `rev-default-3-${id}`,
+          reviewer_name: "Ananya Sharma",
+          reviewer_avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+          reviewer_locality: "Indiranagar",
+          rating: 5,
+          review_type: "COMMUNITY_LENDER",
+          comment: "So kind to share equipment for free with the community! True local hero.",
+          created_at: "1 month ago"
         }
       ];
     }
@@ -54821,6 +54997,10 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       [id]
     );
     const stats = statsRes.rows[0];
+    const trustRating = parseFloat(user.trust_rating) || parseFloat(user.rating) || 5;
+    const ownerRating = parseFloat(user.owner_rating) || 5;
+    const renterRating = parseFloat(user.renter_rating) || 5;
+    const communityLenderRating = parseFloat(user.community_lender_rating) || 5;
     return sendSuccess(res, {
       id: user.id,
       name: user.name || "Community Member",
@@ -54831,7 +55011,14 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
       bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
       trust_score: parseInt(user.trust_score, 10) || 98,
-      rating: parseFloat(user.rating) || 5,
+      rating: trustRating,
+      trust_rating: trustRating,
+      owner_rating: ownerRating,
+      renter_rating: renterRating,
+      community_lender_rating: communityLenderRating,
+      owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
+      renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
+      community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
       is_following: isFollowing,

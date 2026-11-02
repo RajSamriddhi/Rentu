@@ -55,6 +55,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'items' | 'requests' | 'reviews' | 'about'>('items');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [reviewTypeFilter, setReviewTypeFilter] = useState<'ALL' | 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>('ALL');
 
   // Relationship states
   const [isFollowing, setIsFollowing] = useState(false);
@@ -644,17 +645,17 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   Community Reviews for {profile.name}
                 </h3>
                 <p className="text-xs text-ink-secondary">
-                  Every review is posted after a verified gear handover and return inspection.
+                  Combined Trust Rating across all 3 community roles: Gear Owner, Renter, and Free Community Lender.
                 </p>
               </div>
 
               <div className="flex items-center gap-4 bg-canvas p-4 rounded-2xl border border-divider shrink-0">
                 <div className="text-center">
                   <div className="text-3xl font-black text-amber-500 font-display">
-                    {profile.rating.toFixed(2)}
+                    {(profile.trust_rating || profile.rating).toFixed(2)}
                   </div>
                   <div className="text-[10px] font-bold text-ink-muted uppercase mt-0.5">
-                    Star Rating
+                    Trust Rating
                   </div>
                 </div>
 
@@ -671,45 +672,187 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               </div>
             </div>
 
-            {/* List of Reviews */}
-            <div className="space-y-3">
-              {profile.reviews.map((rev) => (
-                <div
-                  key={rev.id}
-                  className="p-5 bg-surface border border-divider rounded-2xl space-y-2.5 shadow-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full overflow-hidden bg-canvas border border-divider">
-                        <img
-                          src={rev.reviewer_avatar || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(rev.reviewer_name)}`}
-                          alt={rev.reviewer_name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div>
-                        <div className="text-xs font-extrabold text-ink flex items-center gap-1.5">
-                          <span>{rev.reviewer_name}</span>
-                          <span className="text-[10px] font-medium text-ink-muted">• {rev.reviewer_locality || 'Bengaluru'}</span>
-                        </div>
-                        <div className="text-[10px] text-ink-secondary">
-                          {rev.created_at}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs font-black">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{rev.rating} ★</span>
-                    </div>
+            {/* Three Distinct Review Ratings Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Type 1: Gear Owner Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Package className="w-5 h-5" />
                   </div>
-
-                  <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed pl-11">
-                    "{rev.comment}"
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 uppercase">
+                    Gear Owner
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{(profile.owner_rating || 5.0).toFixed(2)}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({profile.owner_reviews_count || profile.reviews.filter(r => r.review_type === 'OWNER_RENTAL').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Gear Owner Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From neighbors renting gear from their closet
                   </p>
                 </div>
+              </div>
+
+              {/* Type 2: Renter Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase">
+                    Renter
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{(profile.renter_rating || 5.0).toFixed(2)}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({profile.renter_reviews_count || profile.reviews.filter(r => r.review_type === 'RENTER').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Renter Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From gear owners for care, respect & timely returns
+                  </p>
+                </div>
+              </div>
+
+              {/* Type 3: Free Community Lender Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-brand flex items-center justify-center">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20 uppercase">
+                    Free Lender
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{(profile.community_lender_rating || 5.0).toFixed(2)}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({profile.community_lender_reviews_count || profile.reviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Free Lender Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From borrowers for sharing gear completely free (₹0)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Tabs by Review Type */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {[
+                { key: 'ALL', label: 'All Reviews', count: profile.reviews.length },
+                { key: 'OWNER_RENTAL', label: 'As Gear Owner', count: profile.reviews.filter(r => r.review_type === 'OWNER_RENTAL').length },
+                { key: 'RENTER', label: 'As Renter', count: profile.reviews.filter(r => r.review_type === 'RENTER').length },
+                { key: 'COMMUNITY_LENDER', label: 'Free Lending', count: profile.reviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length },
+              ].map((filterTab) => (
+                <button
+                  key={filterTab.key}
+                  onClick={() => setReviewTypeFilter(filterTab.key as any)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    reviewTypeFilter === filterTab.key
+                      ? 'bg-ink text-canvas shadow-xs'
+                      : 'bg-surface border border-divider text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  {filterTab.label} ({filterTab.count})
+                </button>
               ))}
             </div>
+
+            {/* List of Reviews */}
+            {(() => {
+              const displayedReviews = profile.reviews.filter(r => {
+                if (reviewTypeFilter === 'ALL') return true;
+                return r.review_type === reviewTypeFilter;
+              });
+
+              if (displayedReviews.length === 0) {
+                return (
+                  <div className="p-8 text-center bg-surface border border-divider rounded-2xl space-y-1">
+                    <p className="text-xs font-bold text-ink">No reviews in this category yet</p>
+                    <p className="text-xs text-ink-secondary">
+                      Reviews appear here once community members complete rentals in this role.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {displayedReviews.map((rev) => {
+                    const rType = rev.review_type || 'OWNER_RENTAL';
+                    return (
+                      <div
+                        key={rev.id}
+                        className="p-5 bg-surface border border-divider rounded-2xl space-y-2.5 shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-full overflow-hidden bg-canvas border border-divider">
+                              <img
+                                src={rev.reviewer_avatar || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(rev.reviewer_name)}`}
+                                alt={rev.reviewer_name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div>
+                              <div className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                <span>{rev.reviewer_name}</span>
+                                <span className="text-[10px] font-medium text-ink-muted">• {rev.reviewer_locality || 'Bengaluru'}</span>
+                              </div>
+                              <div className="text-[10px] text-ink-secondary">
+                                {rev.created_at}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs font-black">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>{rev.rating} ★</span>
+                          </div>
+                        </div>
+
+                        {/* Role Badge */}
+                        <div className="pt-0.5">
+                          {rType === 'OWNER_RENTAL' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                              📦 Gear Owner Review
+                            </span>
+                          )}
+                          {rType === 'RENTER' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              🎒 Renter Review
+                            </span>
+                          )}
+                          {rType === 'COMMUNITY_LENDER' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
+                              🎁 Free Community Lender Review
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed pl-1">
+                          "{rev.comment}"
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
           </div>
         )}

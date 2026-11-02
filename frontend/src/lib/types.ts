@@ -10,6 +10,13 @@ export interface User {
   latitude?: number;
   longitude?: number;
   rating?: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
@@ -230,6 +237,13 @@ export interface CommunityLeaderboardMember {
   avatar_url?: string;
   bio?: string;
   rating: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   trust_score: number;
   reviews_count: number;
   highlight_review?: string;
@@ -259,6 +273,7 @@ export interface UserReview {
   reviewer_avatar?: string;
   reviewer_locality?: string;
   rating: number;
+  review_type?: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER';
   comment: string;
   created_at: string;
 }
@@ -275,6 +290,13 @@ export interface PublicUserProfile {
   bio?: string;
   trust_score: number;
   rating: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   created_at?: string;
   is_following?: boolean;
   is_blocked?: boolean;

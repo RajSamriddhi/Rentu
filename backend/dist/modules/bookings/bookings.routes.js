@@ -33,6 +33,7 @@ const verifyCodeSchema = zod_1.z.object({
 const submitReviewSchema = zod_1.z.object({
     rating: zod_1.z.number().min(1).max(5),
     comment: zod_1.z.string().optional().default(''),
+    review_type: zod_1.z.enum(['OWNER_RENTAL', 'RENTER', 'COMMUNITY_LENDER']).optional(),
 });
 // Create Booking Proposal ("Snag for the Weekend")
 router.post('/', auth_1.authMiddleware, async (req, res, next) => {
@@ -325,9 +326,9 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
 router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { rating, comment } = submitReviewSchema.parse(req.body);
+        const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
         const userId = req.user.id;
-        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`, [id]);
@@ -350,25 +351,58 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Review period has expired. Reviews are available for at most 3 days after completion.', 400);
         }
         const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
+        // Resolve review type:
+        // 1) OWNER_RENTAL: Renter/borrower reviewing the gear owner for paid rental
+        // 2) COMMUNITY_LENDER: Borrower reviewing owner who gave item for free (₹0 price)
+        // 3) RENTER: Owner reviewing renter/borrower for punctuality, gear care, communication
+        let resolvedReviewType = review_type || (isBorrower
+            ? ((Number(booking.total_price) <= 0 || Number(booking.price_per_day) <= 0) ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL')
+            : 'RENTER');
         // Check if user already reviewed
         const existing = await (0, db_1.query)(`SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`, [id, userId]);
         let reviewResult;
         if (existing.rows.length > 0) {
             reviewResult = await (0, db_1.query)(`UPDATE reviews 
-         SET rating = $1, comment = $2, created_at = CURRENT_TIMESTAMP 
-         WHERE booking_id = $3 AND reviewer_id = $4 
-         RETURNING *`, [rating, comment || '', id, userId]);
+         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
+         WHERE booking_id = $4 AND reviewer_id = $5 
+         RETURNING *`, [rating, comment || '', resolvedReviewType, id, userId]);
         }
         else {
-            reviewResult = await (0, db_1.query)(`INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`, [id, userId, revieweeId, rating, comment || '']);
+            reviewResult = await (0, db_1.query)(`INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`, [id, userId, revieweeId, rating, comment || '', resolvedReviewType]);
         }
-        // Update reviewee rating & trust score in users table
-        await (0, db_1.query)(`UPDATE users 
-       SET rating = (SELECT ROUND(AVG(rating), 2) FROM reviews WHERE reviewee_id = $1),
-           trust_score = LEAST(100, COALESCE(trust_score, 95) + 1)
-       WHERE id = $1`, [revieweeId]).catch(() => { });
+        // Recalculate 3 review ratings + overall trust rating (average of all reviews) + trust score
+        await (0, db_1.query)(`
+      WITH stats AS (
+        SELECT 
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 5.00), 2) AS owner_rating,
+          COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 5.00), 2) AS renter_rating,
+          COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 5.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(rating), 5.00), 2) AS trust_rating,
+          COUNT(*)::int AS total_reviews
+        FROM reviews
+        WHERE reviewee_id = $1
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = LEAST(100, GREATEST(80, 92 + stats.total_reviews))
+      FROM stats
+      WHERE users.id = $1
+    `, [revieweeId]).catch((err) => {
+            console.error('Failed to update ratings for reviewee:', err);
+        });
         return (0, response_1.sendSuccess)(res, reviewResult.rows[0], 'Thank you! Your review and feedback has been recorded.');
     }
     catch (error) {

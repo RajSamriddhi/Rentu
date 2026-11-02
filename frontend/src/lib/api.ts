@@ -363,11 +363,16 @@ export const api = {
     return handleResponse(res);
   },
 
-  async submitReview(bookingId: string, rating: number, comment?: string): Promise<any> {
+  async submitReview(
+    bookingId: string, 
+    rating: number, 
+    comment?: string, 
+    reviewType?: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'
+  ): Promise<any> {
     const res = await fetch(`${API_BASE}/bookings/${bookingId}/review`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ rating, comment: comment || '' }),
+      body: JSON.stringify({ rating, comment: comment || '', review_type: reviewType }),
     });
     return handleResponse(res);
   },

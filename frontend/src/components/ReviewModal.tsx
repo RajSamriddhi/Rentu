@@ -27,8 +27,17 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
-  const isLender = booking.lender_id === user?.id;
-  const otherPartyName = isLender ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Lender');
+  const isLender = booking.lender_id === user?.id || (user as any)?.firebase_uid === booking.lender_id;
+  const isFreeItem = Number(booking.total_price) <= 0 || (booking as any).price_per_day === 0;
+
+  // Initial review type based on role and pricing
+  const defaultReviewType: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER' = isLender 
+    ? 'RENTER' 
+    : (isFreeItem ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL');
+
+  const [reviewType, setReviewType] = useState<'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>(defaultReviewType);
+
+  const otherPartyName = isLender ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Gear Owner');
 
   const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Exceptional!'];
 
@@ -43,7 +52,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
     setErrorMsg('');
 
     try {
-      await api.submitReview(booking.id, rating, comment.trim());
+      await api.submitReview(booking.id, rating, comment.trim(), reviewType);
       confetti({
         particleCount: 70,
         spread: 60,
@@ -69,7 +78,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface">
           <div>
             <h3 className="text-base sm:text-lg font-black text-ink font-display">
-              Review & Feedback
+              Review & Verified Trust
             </h3>
             <p className="text-xs text-ink-secondary">
               Rate your rental handoff with <strong className="text-ink">{otherPartyName}</strong>
@@ -91,6 +100,35 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               {errorMsg}
             </div>
           )}
+
+          {/* Review Type Badge & Guidance */}
+          <div className="p-3 bg-canvas rounded-2xl border border-divider space-y-2">
+            <div className="text-[10px] font-bold text-ink-muted uppercase tracking-wider">
+              Review Category
+            </div>
+            <div className="flex items-center gap-2">
+              {reviewType === 'OWNER_RENTAL' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  📦 Gear Owner Review (Paid Rental)
+                </span>
+              )}
+              {reviewType === 'COMMUNITY_LENDER' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
+                  🎁 Free Community Lender Review (₹0 Community Sharing)
+                </span>
+              )}
+              {reviewType === 'RENTER' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  🎒 Renter Review (Gear Care & Return)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-ink-secondary">
+              {reviewType === 'OWNER_RENTAL' && 'Reviewing the gear owner for equipment condition, communication, and handoff quality.'}
+              {reviewType === 'COMMUNITY_LENDER' && 'Reviewing the neighbor who generously lent this gear completely free of charge to support the community.'}
+              {reviewType === 'RENTER' && 'Reviewing the renter for prompt return, respectful handling of equipment, and clear communication.'}
+            </p>
+          </div>
 
           {/* Item Context Card */}
           <div className="p-3 bg-canvas rounded-2xl border border-divider flex items-center gap-3">
@@ -158,7 +196,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
           <div className="text-[10px] text-ink-secondary flex items-center justify-between">
             <span>⏳ Feedback window is open for 3 days post-return</span>
-            <span>Builds neighbor trust score</span>
+            <span>Contributes to Community Trust Rating</span>
           </div>
 
           {/* Submit CTA */}

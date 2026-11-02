@@ -85,14 +85,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return (
         <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2 text-xs">
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Star Rating</div>
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Trust Rating (Avg)</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{member.rating.toFixed(2)} ★ ({member.reviews_count} reviews)</span>
+              <span>{((member.trust_rating || member.rating) || 5.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Trust Score</div>
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Reputation Score</div>
             <div className="font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>{member.trust_score}% Verified</span>
@@ -105,15 +105,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return (
         <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2 text-xs">
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Rentals Completed</div>
-            <div className="font-black text-ink mt-0.5">
-              {member.lent_count} Rentals Lent
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Owner Rating</div>
+            <div className="font-black text-ink flex items-center gap-1 mt-0.5">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span>{(member.owner_rating || 5.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Closet</div>
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Lent</div>
             <div className="font-black text-brand mt-0.5">
-              {member.items_count} Items Listed
+              {member.lent_count} Rentals Lent
             </div>
           </div>
         </div>
@@ -123,15 +124,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return (
         <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2 text-xs">
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Borrowed</div>
-            <div className="font-black text-ink mt-0.5">
-              {member.borrowed_count} Rentals
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Renter Rating</div>
+            <div className="font-black text-ink flex items-center gap-1 mt-0.5">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span>{(member.renter_rating || 5.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-            <div className="text-[10px] text-ink-muted font-bold uppercase">Return Rate</div>
+            <div className="text-[10px] text-ink-muted font-bold uppercase">Rentals Borrowed</div>
             <div className="font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-              100% On-Time
+              {member.borrowed_count} Rentals
             </div>
           </div>
         </div>
@@ -140,15 +142,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     return (
       <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2 text-xs">
         <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-          <div className="text-[10px] text-ink-muted font-bold uppercase">Free Shares</div>
-          <div className="font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-            {member.free_items_count} Free Items (₹0)
+          <div className="text-[10px] text-ink-muted font-bold uppercase">Free Lender Rating</div>
+          <div className="font-black text-ink flex items-center gap-1 mt-0.5">
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            <span>{(member.community_lender_rating || 5.0).toFixed(2)} ★</span>
           </div>
         </div>
         <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
-          <div className="text-[10px] text-ink-muted font-bold uppercase">Generosity Score</div>
-          <div className="font-black text-ink mt-0.5">
-            {member.trust_score}% Karma
+          <div className="text-[10px] text-ink-muted font-bold uppercase">Free Gear Shared</div>
+          <div className="font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+            {member.free_items_count} Free Items (₹0)
           </div>
         </div>
       </div>
@@ -284,7 +287,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         {/* 4 Interactive Category Tabs */}
         <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
           
-          {/* Tab 1: Top Rated & Best Reviews */}
+          {/* Tab 1: Overall Trust Rating (Combined Average of all 3 reviews) */}
           <button
             id="tab-top-rated"
             onClick={() => setActiveCategory('top_rated')}
@@ -295,30 +298,30 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Star className="w-4 h-4 fill-current" />
-            <span>Best Reviews & Trust Score</span>
+            <span>Overall Trust Rating</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
           </button>
 
-          {/* Tab 2: Top Lenders (Renting Out) */}
+          {/* Tab 2: Top Gear Owners (Owner Rating from Renters) */}
           <button
             id="tab-top-lenders"
             onClick={() => setActiveCategory('top_lenders')}
             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
               activeCategory === 'top_lenders'
-                ? 'bg-brand text-white shadow-pink scale-105'
+                ? 'bg-blue-600 text-white shadow-md scale-105'
                 : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:bg-canvas'
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Top Lenders (Renting Out)</span>
+            <span>Top Gear Owners (5★ Owner)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
           </button>
 
-          {/* Tab 3: Top Borrowers */}
+          {/* Tab 3: Top Renters (Renter Rating from Owners) */}
           <button
             id="tab-top-borrowers"
             onClick={() => setActiveCategory('top_borrowers')}
@@ -329,13 +332,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Top Borrowers</span>
+            <span>Top Renters (5★ Renter)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
           </button>
 
-          {/* Tab 4: Top Free Sharers */}
+          {/* Tab 4: Top Free Community Lenders (Free Lender Rating) */}
           <button
             id="tab-top-sharers"
             onClick={() => setActiveCategory('top_sharers')}
@@ -346,7 +349,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
           >
             <Gift className="w-4 h-4" />
-            <span>Free Sharers (Borrowing)</span>
+            <span>Free Community Lenders (5★ Free)</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-black">
               Top 10
             </span>
@@ -358,27 +361,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         <div className="p-4 rounded-2xl bg-surface border border-divider shadow-xs text-center mb-8 max-w-3xl mx-auto animate-in fade-in duration-200">
           {activeCategory === 'top_rated' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              ⭐ <strong className="text-ink">Best Reviews & Score Rule:</strong> Ranked strictly by 
-              highest rating and trust score. Even if a neighbor has only rented gear a few times, 
-              having flawless 5-star reviews and top reputation places them right at the top of the leaderboard!
+              ⭐ <strong className="text-ink">Trust Rating Leaderboard:</strong> Ranked by combined 
+              average rating across all 3 community roles (Gear Owner, Renter, and Free Community Lender). 
+              Denotes overall peer reliability, participation, and stellar reputation in the community!
             </p>
           )}
           {activeCategory === 'top_lenders' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              🏷️ <strong className="text-ink">Top Gear Lenders:</strong> The generous creators who keep 
-              cameras, drones, projectors, and gear in active community circulation, providing neighbors with reliable rentals.
+              📦 <strong className="text-ink">Top Gear Owners Leaderboard:</strong> Ranked by Gear Owner Rating, 
+              awarded by renters for equipment quality, immaculate hygiene, prompt communication, and smooth rental handover.
             </p>
           )}
           {activeCategory === 'top_borrowers' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              🎒 <strong className="text-ink">Circular Borrowers:</strong> Passionate creators and students who 
-              frequently borrow gear, care for items meticulously, and boast a 100% on-time return track record.
+              🎒 <strong className="text-ink">Top Renters Leaderboard:</strong> Ranked by Renter Rating, 
+              awarded by gear owners for treating equipment with the utmost care, respect, and returning 100% on schedule.
             </p>
           )}
           {activeCategory === 'top_sharers' && (
             <p className="text-xs text-ink-secondary leading-relaxed">
-              🎁 <strong className="text-ink">Gift Economy Champions:</strong> Neighbors who give equipment for 
-              free borrowing (₹0/day) or fulfill open wishes freely to support students and neighborhood projects.
+              🎁 <strong className="text-ink">Top Free Community Lenders Leaderboard:</strong> Ranked by Free Lender Rating, 
+              awarded by neighbors for generous spirit and community support by lending gear completely free of charge (₹0).
             </p>
           )}
         </div>
@@ -707,7 +710,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <div className="text-right">
                             <div className="flex items-center justify-end gap-1 text-xs font-black text-ink">
                               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                              <span>{member.rating.toFixed(2)} ★</span>
+                              <span>
+                                {activeCategory === 'top_lenders'
+                                  ? (member.owner_rating || 5.0).toFixed(2)
+                                  : activeCategory === 'top_borrowers'
+                                  ? (member.renter_rating || 5.0).toFixed(2)
+                                  : activeCategory === 'top_sharers'
+                                  ? (member.community_lender_rating || 5.0).toFixed(2)
+                                  : ((member.trust_rating || member.rating) || 5.0).toFixed(2)} ★
+                              </span>
                             </div>
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
                               <ShieldCheck className="w-3 h-3" />

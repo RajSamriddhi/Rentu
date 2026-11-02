@@ -216,7 +216,16 @@ router.post('/clerk-sync', handleSyncUser);
 router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const result = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+      `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`,
       [req.user!.id]
     );

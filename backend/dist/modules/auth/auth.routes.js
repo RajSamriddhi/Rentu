@@ -175,7 +175,16 @@ router.post('/clerk-sync', handleSyncUser);
 // Get Current Profile
 router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
     try {
-        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at
+        const result = await (0, db_1.query)(`SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              avatar_url, banner_url, bio, trust_score, role, created_at
        FROM users WHERE id = $1`, [req.user.id]);
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'User profile not found', 404);
