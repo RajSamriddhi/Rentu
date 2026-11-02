@@ -54468,6 +54468,20 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     if (booking.status !== "ACCEPTED") {
       return sendError(res, "BAD_REQUEST", `Cannot verify handover for booking with status ${booking.status}`, 400);
     }
+    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const startTimestamp = parseToUtcTimestamp(
+      booking.start_date_str || booking.start_date,
+      booking.start_time || "10:00",
+      tzOffset
+    );
+    if (Date.now() < startTimestamp - 2 * 60 * 1e3) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Pickup handover code is not active yet. It will unlock at the scheduled pickup time (${booking.start_date_str || booking.start_date} at ${booking.start_time || "10:00"}).`,
+        400
+      );
+    }
     if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
       return sendError(res, "BAD_REQUEST", "Incorrect 6-digit handover code. Please check the code with the other party.", 400);
     }
@@ -54544,6 +54558,20 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     }
     if (booking.status !== "HANDED_OVER") {
       return sendError(res, "BAD_REQUEST", `Cannot verify return for booking with status ${booking.status}`, 400);
+    }
+    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const returnTimestamp = parseToUtcTimestamp(
+      booking.end_date_str || booking.start_date_str,
+      booking.end_time || "18:00",
+      tzOffset
+    );
+    if (Date.now() < returnTimestamp - 2 * 60 * 1e3) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Return handover code is not active yet. It will unlock at the scheduled return time (${booking.end_date_str || booking.start_date_str} at ${booking.end_time || "18:00"}).`,
+        400
+      );
     }
     if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
       return sendError(res, "BAD_REQUEST", "Incorrect 6-digit return code. Please check the code with the other party.", 400);

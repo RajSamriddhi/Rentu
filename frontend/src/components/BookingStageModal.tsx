@@ -14,7 +14,8 @@ import {
   ArrowRight, 
   ShieldCheck, 
   AlertCircle, 
-  Copy 
+  Copy,
+  Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
@@ -28,6 +29,61 @@ interface BookingStageModalProps {
   onUpdated: (updatedBooking: Booking) => void;
   onOpenChat?: (bookingId: string) => void;
   onLeaveReview?: (booking: Booking) => void;
+}
+
+function getHandoverWindowStatus(
+  dateStr?: string, 
+  timeStr?: string, 
+  windowMinutes: number = 60
+): {
+  isAvailable: boolean;
+  isBefore: boolean;
+  scheduledTimeFormatted: string;
+  windowEndFormatted: string;
+} {
+  if (!dateStr) {
+    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
+  }
+  try {
+    const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+    const cleanTime = (timeStr && timeStr.trim()) ? timeStr.slice(0, 5) : '10:00';
+    const [h, min] = cleanTime.split(':').map(Number);
+
+    const scheduled = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0);
+    const windowEnd = new Date(scheduled.getTime() + (windowMinutes * 60 * 1000));
+    const now = new Date();
+
+    const timeFormatted = scheduled.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    const windowEndFormatted = windowEnd.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    // The code only unlocks starting at the scheduled time!
+    if (now.getTime() < scheduled.getTime()) {
+      return {
+        isAvailable: false,
+        isBefore: true,
+        scheduledTimeFormatted: timeFormatted,
+        windowEndFormatted: windowEndFormatted,
+      };
+    }
+
+    return {
+      isAvailable: true,
+      isBefore: false,
+      scheduledTimeFormatted: timeFormatted,
+      windowEndFormatted: windowEndFormatted,
+    };
+  } catch {
+    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
+  }
 }
 
 function formatFriendlyDate(dateStr?: string): string {
@@ -95,6 +151,9 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const today = new Date();
   const currentDayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
+  const pickupWindow = getHandoverWindowStatus(booking.start_date, booking.start_time || '10:00', 60);
+  const returnWindow = getHandoverWindowStatus(booking.end_date || booking.start_date, booking.end_time || '18:00', 60);
+
   // Sequential 5-Stage computation
   let currentStage = 2; // Default for active ongoing booking awaiting pickup
   if (booking.status === 'COMPLETED') {
@@ -104,9 +163,9 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   } else if (booking.status === 'HANDED_OVER') {
     const endStr = (booking.end_date || booking.start_date || '').slice(0, 10);
     const isDeadlineReached = endStr && endStr <= currentDayStr;
-    currentStage = (isDeadlineReached || isReturnActive) ? 4 : 3;
+    currentStage = (isDeadlineReached || isReturnActive || returnWindow.isAvailable) ? 4 : 3;
   } else if (booking.status === 'ACCEPTED') {
-    currentStage = 2; // Accepted! Stage 2 (Pickup Handover) is active
+    currentStage = 2;
   } else {
     currentStage = 1;
   }
@@ -400,21 +459,115 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           {currentStage === 2 && (
             <div className="space-y-4 animate-in fade-in">
               <div className="text-center space-y-1">
-                <span className="text-[11px] font-black uppercase text-brand tracking-wider bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
-                  Stage 2: Pickup Handover Verification
-                </span>
+                <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
+                  <span className="text-[11px] font-black uppercase text-brand tracking-wider bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
+                    Stage 2: Pickup Handover Verification
+                  </span>
+                  {pickupWindow.isAvailable ? (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      1-Hour Window Active • {pickupWindow.scheduledTimeFormatted} - {pickupWindow.windowEndFormatted}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      Locked Until {pickupWindow.scheduledTimeFormatted}
+                    </span>
+                  )}
+                </div>
                 <h4 className="text-base font-extrabold text-ink font-display">
-                  {isBorrower ? 'Give your 6-digit pickup code to the owner' : 'Enter the pickup code received from the renter'}
+                  {!pickupWindow.isAvailable
+                    ? `Pickup Handover Opens at ${pickupWindow.scheduledTimeFormatted}`
+                    : isBorrower
+                    ? 'Give your 6-digit pickup code to the owner'
+                    : 'Enter the pickup code received from the renter'}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {isBorrower
+                  {!pickupWindow.isAvailable
+                    ? `Pickup code and verification unlock strictly at ${pickupWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.start_date)}.`
+                    : isBorrower
                     ? `Share this code with ${otherPartyName} when you meet to collect the gear.`
                     : `Enter the 6-digit pickup code received from ${otherPartyName} to complete pickup handover.`}
                 </p>
               </div>
 
-              {/* RENTER (BORROWER) VIEW: SHOWS PICKUP CODE */}
-              {isBorrower ? (
+              {/* TIMING WINDOW LOCK: If scheduled pickup time has not arrived yet */}
+              {!pickupWindow.isAvailable ? (
+                isBorrower ? (
+                  /* Renter View when locked */
+                  <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
+                    <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
+                      <Lock className="w-9 h-9 stroke-[2]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                        Pickup Code Locked
+                      </span>
+                      <h4 className="text-base font-extrabold text-ink font-display">
+                        Reveals at {pickupWindow.scheduledTimeFormatted}
+                      </h4>
+                      <p className="text-xs text-ink-secondary leading-relaxed">
+                        Your 6-digit pickup handover code will be visible starting at <span className="font-bold text-ink">{pickupWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.start_date)}</span>.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
+                      <div className="flex items-center justify-between font-medium">
+                        <span>1-Hour Pickup Window:</span>
+                        <span className="font-bold text-brand">{pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-medium">
+                        <span>Pickup Location:</span>
+                        <span className="font-bold text-ink truncate max-w-[170px]">
+                          {booking.pickup_locality || booking.item_locality || 'Designated place'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
+                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>Meet {otherPartyName} at the scheduled time to complete handover.</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Owner View when locked */
+                  <div className="p-6 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center shadow-sm">
+                    <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
+                      <Lock className="w-9 h-9 stroke-[2]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                        Pickup Verification Locked
+                      </span>
+                      <h4 className="text-base font-extrabold text-ink font-display">
+                        Opens at {pickupWindow.scheduledTimeFormatted}
+                      </h4>
+                      <p className="text-xs text-ink-secondary leading-relaxed">
+                        Pickup code entry and QR verification will unlock at <span className="font-bold text-ink">{pickupWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.start_date)}</span>.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
+                      <div className="flex items-center justify-between font-medium">
+                        <span>1-Hour Verification Window:</span>
+                        <span className="font-bold text-brand">{pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-medium">
+                        <span>Pickup Location:</span>
+                        <span className="font-bold text-ink truncate max-w-[200px]">
+                          {booking.pickup_locality || booking.item_locality || 'Designated place'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-2">
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>Verification opens when the scheduled meetup time arrives in the present.</span>
+                    </div>
+                  </div>
+                )
+              ) : isBorrower ? (
+                /* RENTER (BORROWER) VIEW: SHOWS PICKUP CODE */
                 <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
                   <div className="w-52 h-52 mx-auto rounded-2xl bg-white p-3 shadow-md border border-zinc-200 flex items-center justify-center">
                     <img
@@ -568,21 +721,115 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           {currentStage === 4 && (
             <div className="space-y-4 animate-in fade-in">
               <div className="text-center space-y-1">
-                <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
-                  Stage 4: Return Handover Verification
-                </span>
+                <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
+                  <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+                    Stage 4: Return Handover Verification
+                  </span>
+                  {returnWindow.isAvailable ? (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      1-Hour Window Active • {returnWindow.scheduledTimeFormatted} - {returnWindow.windowEndFormatted}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20 inline-flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      Locked Until {returnWindow.scheduledTimeFormatted}
+                    </span>
+                  )}
+                </div>
                 <h4 className="text-base font-extrabold text-ink font-display">
-                  {isBorrower ? 'Give your 6-digit return code to the owner' : 'Enter the return code received from the renter'}
+                  {!returnWindow.isAvailable
+                    ? `Return Handover Opens at ${returnWindow.scheduledTimeFormatted}`
+                    : isBorrower
+                    ? 'Give your 6-digit return code to the owner'
+                    : 'Enter the return code received from the renter'}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {isBorrower
+                  {!returnWindow.isAvailable
+                    ? `Return code and verification unlock strictly at ${returnWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.end_date || booking.start_date)}.`
+                    : isBorrower
                     ? `Give this return code to ${otherPartyName} once you hand back the gear in good condition.`
                     : `Inspect the gear first, then enter the 6-digit return code given by ${otherPartyName}.`}
                 </p>
               </div>
 
-              {/* RENTER (BORROWER) VIEW: SHOWS RETURN CODE */}
-              {isBorrower ? (
+              {/* TIMING WINDOW LOCK: If scheduled return time has not arrived yet */}
+              {!returnWindow.isAvailable ? (
+                isBorrower ? (
+                  /* Renter View when return locked */
+                  <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
+                    <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
+                      <Lock className="w-9 h-9 stroke-[2]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+                        Return Code Locked
+                      </span>
+                      <h4 className="text-base font-extrabold text-ink font-display">
+                        Reveals at {returnWindow.scheduledTimeFormatted}
+                      </h4>
+                      <p className="text-xs text-ink-secondary leading-relaxed">
+                        Your 6-digit return handover code will be visible starting at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
+                      <div className="flex items-center justify-between font-medium">
+                        <span>1-Hour Return Window:</span>
+                        <span className="font-bold text-brand">{returnWindow.scheduledTimeFormatted} – {returnWindow.windowEndFormatted}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-medium">
+                        <span>Return Location:</span>
+                        <span className="font-bold text-ink truncate max-w-[170px]">
+                          {booking.return_locality || booking.item_locality || 'Designated place'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
+                      <Clock className="w-4 h-4 text-purple-500 shrink-0" />
+                      <span>Return the gear to {otherPartyName} at the scheduled time to complete return.</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Owner View when return locked */
+                  <div className="p-6 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center shadow-sm">
+                    <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
+                      <Lock className="w-9 h-9 stroke-[2]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+                        Return Verification Locked
+                      </span>
+                      <h4 className="text-base font-extrabold text-ink font-display">
+                        Opens at {returnWindow.scheduledTimeFormatted}
+                      </h4>
+                      <p className="text-xs text-ink-secondary leading-relaxed">
+                        Return code entry and inspection verification will unlock at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
+                      <div className="flex items-center justify-between font-medium">
+                        <span>1-Hour Verification Window:</span>
+                        <span className="font-bold text-brand">{returnWindow.scheduledTimeFormatted} – {returnWindow.windowEndFormatted}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-medium">
+                        <span>Return Location:</span>
+                        <span className="font-bold text-ink truncate max-w-[200px]">
+                          {booking.return_locality || booking.item_locality || 'Designated place'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs font-semibold text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2">
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>Verification opens when the return handover time arrives in the present.</span>
+                    </div>
+                  </div>
+                )
+              ) : isBorrower ? (
+                /* RENTER (BORROWER) VIEW: SHOWS RETURN CODE */
                 <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
                   <div className="w-52 h-52 mx-auto rounded-2xl bg-white p-3 shadow-md border border-zinc-200 flex items-center justify-center">
                     <img

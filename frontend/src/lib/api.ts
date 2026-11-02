@@ -370,7 +370,10 @@ export const api = {
     const res = await fetch(`${API_BASE}/bookings/${id}/verify-pickup`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({
+        code,
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
+      }),
     });
     return handleResponse(res);
   },
@@ -379,7 +382,10 @@ export const api = {
     const res = await fetch(`${API_BASE}/bookings/${id}/verify-return`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({
+        code,
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
+      }),
     });
     return handleResponse(res);
   },

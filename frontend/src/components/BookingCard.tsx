@@ -59,13 +59,30 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
     };
   }
 
-  // Stage 2: Proposal has been accepted, pickup handover is left
+  // Stage 1 & 2: Proposal has been accepted
   if (booking.status === 'ACCEPTED') {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const startStr = (booking.start_date || '').slice(0, 10);
+    const startT = (booking.start_time || '10:00').slice(0, 5);
+    const currentHMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const isPickupTimeArrived = (startStr < todayStr) || (startStr === todayStr && currentHMin >= startT);
+
+    if (isPickupTimeArrived) {
+      return {
+        stageNumber: 2,
+        stageLabel: 'Stage 2: Pickup',
+        badgeClass: 'bg-brand-soft text-brand border-brand/20',
+        description: 'Pickup window active',
+      };
+    }
+
     return {
-      stageNumber: 2,
-      stageLabel: 'Stage 2: Pickup',
-      badgeClass: 'bg-brand-soft text-brand border-brand/20',
-      description: 'Pickup handover pending',
+      stageNumber: 1,
+      stageLabel: 'Stage 1: Accepted',
+      badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      description: `Pickup at ${booking.start_time || '10:00'}`,
     };
   }
 
