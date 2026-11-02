@@ -88,7 +88,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Trust Rating (Avg)</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{((member.trust_rating || member.rating) || 5.0).toFixed(2)} ★</span>
+              <span>{((member.trust_rating || member.rating) || 0.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -108,7 +108,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Owner Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.owner_rating || 5.0).toFixed(2)} ★</span>
+              <span>{(member.owner_rating || 0.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -127,7 +127,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Renter Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.renter_rating || 5.0).toFixed(2)} ★</span>
+              <span>{(member.renter_rating || 0.0).toFixed(2)} ★</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -145,7 +145,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className="text-[10px] text-ink-muted font-bold uppercase">Free Lender Rating</div>
           <div className="font-black text-ink flex items-center gap-1 mt-0.5">
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span>{(member.community_lender_rating || 5.0).toFixed(2)} ★</span>
+            <span>{(member.community_lender_rating || 0.0).toFixed(2)} ★</span>
           </div>
         </div>
         <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -243,9 +243,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
-              <div className="text-xl sm:text-2xl font-black text-amber-500 font-display">5.00 ★</div>
-              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Avg Neighbor Score</div>
-              <p className="text-[11px] text-ink-secondary mt-1">Flawless 5-star community</p>
+              <div className="text-xl sm:text-2xl font-black text-amber-500 font-display">100%</div>
+              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Verified Reviews</div>
+              <p className="text-[11px] text-ink-secondary mt-1">Genuine post-rental peer feedback</p>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
@@ -712,12 +712,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                               <span>
                                 {activeCategory === 'top_lenders'
-                                  ? (member.owner_rating || 5.0).toFixed(2)
+                                  ? (member.owner_rating || 0.0).toFixed(2)
                                   : activeCategory === 'top_borrowers'
-                                  ? (member.renter_rating || 5.0).toFixed(2)
+                                  ? (member.renter_rating || 0.0).toFixed(2)
                                   : activeCategory === 'top_sharers'
-                                  ? (member.community_lender_rating || 5.0).toFixed(2)
-                                  : ((member.trust_rating || member.rating) || 5.0).toFixed(2)} ★
+                                  ? (member.community_lender_rating || 0.0).toFixed(2)
+                                  : ((member.trust_rating || member.rating) || 0.0).toFixed(2)} ★
                               </span>
                             </div>
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
@@ -755,6 +755,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
             )}
 
+          </div>
+        )}
+
+        {/* Empty State when ranking list has no members yet */}
+        {!isLoading && !error && currentList.length === 0 && (
+          <div className="p-10 sm:p-14 rounded-3xl bg-surface border border-divider text-center space-y-4 max-w-xl mx-auto shadow-sm my-6">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto text-2xl font-bold">
+              ★
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-black text-ink font-display">
+                No Ranked Champions Yet
+              </h3>
+              <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed">
+                The community ranking list is reserved exclusively for members with actual, verified post-rental reviews. As neighbors complete rentals and review each other, our top champions will appear here!
+              </p>
+            </div>
           </div>
         )}
 

@@ -32,8 +32,8 @@ const verifyCodeSchema = zod_1.z.object({
     code: zod_1.z.string().min(4, 'Verification code is required'),
 });
 const submitReviewSchema = zod_1.z.object({
-    rating: zod_1.z.number().min(1).max(5),
-    comment: zod_1.z.string().optional().default(''),
+    rating: zod_1.z.number().int().min(1, 'Rating must be between 1 and 5 stars').max(5, 'Rating must be between 1 and 5 stars'),
+    comment: zod_1.z.string().max(1000, 'Comment cannot exceed 1000 characters').optional().default(''),
     review_type: zod_1.z.enum(['OWNER_RENTAL', 'RENTER', 'COMMUNITY_LENDER']).optional(),
 });
 // Create Booking Proposal ("Snag for the Weekend")
@@ -525,7 +525,10 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         const isLender = booking.lender_id === userId;
         const isBorrower = booking.borrower_id === userId;
         if (!isLender && !isBorrower) {
-            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only participants of this rental can leave reviews', 403);
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only verified participants of this rental can leave reviews', 403);
+        }
+        if (booking.lender_id === booking.borrower_id) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Self-reviews are strictly forbidden', 400);
         }
         if (booking.status !== 'COMPLETED') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Reviews can only be submitted after the product is returned and completed', 400);
@@ -537,13 +540,20 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Review period has expired. Reviews are available for at most 3 days after completion.', 400);
         }
         const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
-        // Resolve review type:
-        // 1) OWNER_RENTAL: Renter/borrower reviewing the gear owner for paid rental
-        // 2) COMMUNITY_LENDER: Borrower reviewing owner who gave item for free (₹0 price)
-        // 3) RENTER: Owner reviewing renter/borrower for punctuality, gear care, communication
-        let resolvedReviewType = review_type || (isBorrower
-            ? ((Number(booking.total_price) <= 0 || Number(booking.price_per_day) <= 0) ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL')
-            : 'RENTER');
+        if (!revieweeId || revieweeId === userId) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot review yourself', 400);
+        }
+        // Tamper-proof role-based review type:
+        // 1) Borrower reviewing owner: OWNER_RENTAL (for paid rental) or COMMUNITY_LENDER (for ₹0 / free borrow)
+        // 2) Owner reviewing borrower: RENTER
+        let resolvedReviewType;
+        if (isBorrower) {
+            const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
+            resolvedReviewType = isFree ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL';
+        }
+        else {
+            resolvedReviewType = 'RENTER';
+        }
         // Check if user already reviewed
         const existing = await (0, db_1.query)(`SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`, [id, userId]);
         let reviewResult;
@@ -558,17 +568,17 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`, [id, userId, revieweeId, rating, comment || '', resolvedReviewType]);
         }
-        // Recalculate 3 review ratings + overall trust rating (average of all reviews) + trust score
+        // Recalculate 3 review ratings + overall trust rating (strictly dynamically computed from actual reviews table)
         await (0, db_1.query)(`
       WITH stats AS (
         SELECT 
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 5.00), 2) AS owner_rating,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 0.00), 2) AS owner_rating,
           COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 5.00), 2) AS renter_rating,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 0.00), 2) AS renter_rating,
           COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 5.00), 2) AS community_lender_rating,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 0.00), 2) AS community_lender_rating,
           COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
-          ROUND(COALESCE(AVG(rating), 5.00), 2) AS trust_rating,
+          ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
           COUNT(*)::int AS total_reviews
         FROM reviews
         WHERE reviewee_id = $1
@@ -583,7 +593,7 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         community_lender_reviews_count = stats.community_lender_count,
         trust_rating = stats.trust_rating,
         rating = stats.trust_rating,
-        trust_score = LEAST(100, GREATEST(80, 92 + stats.total_reviews))
+        trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
       FROM stats
       WHERE users.id = $1
     `, [revieweeId]).catch((err) => {

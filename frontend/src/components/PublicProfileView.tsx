@@ -306,7 +306,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <div className="px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  <span>{profile.rating.toFixed(2)} ★ Rating</span>
+                  <span>{(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} ★ Rating</span>
                 </div>
 
                 <div className="px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
@@ -416,7 +416,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
               <div className="p-3 rounded-2xl bg-canvas border border-divider">
                 <div className="text-xl sm:text-2xl font-black text-amber-500 font-display">
-                  {profile.rating.toFixed(2)} ★
+                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} ★
                 </div>
                 <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Neighbor Score
@@ -633,7 +633,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{(profile.owner_rating || 5.0).toFixed(2)}</span>
+                    <span>{(Number(profile.owner_reviews_count || profile.reviews.filter(r => r.review_type === 'OWNER_RENTAL').length) > 0 ? (profile.owner_rating || 0.0) : 0.0).toFixed(2)}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({profile.owner_reviews_count || profile.reviews.filter(r => r.review_type === 'OWNER_RENTAL').length})
                     </span>
@@ -658,7 +658,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{(profile.renter_rating || 5.0).toFixed(2)}</span>
+                    <span>{(Number(profile.renter_reviews_count || profile.reviews.filter(r => r.review_type === 'RENTER').length) > 0 ? (profile.renter_rating || 0.0) : 0.0).toFixed(2)}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({profile.renter_reviews_count || profile.reviews.filter(r => r.review_type === 'RENTER').length})
                     </span>
@@ -683,7 +683,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{(profile.community_lender_rating || 5.0).toFixed(2)}</span>
+                    <span>{(Number(profile.community_lender_reviews_count || profile.reviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length) > 0 ? (profile.community_lender_rating || 0.0) : 0.0).toFixed(2)}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({profile.community_lender_reviews_count || profile.reviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length})
                     </span>

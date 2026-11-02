@@ -32,15 +32,15 @@ router.get('/leaderboard', async (req, res, next) => {
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer ⚡') AS bio, 
-        COALESCE(u.trust_rating, u.rating, 5.00)::numeric(3, 2) AS trust_rating,
-        COALESCE(u.owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-        COALESCE(u.renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-        COALESCE(u.community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(u.owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(u.renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(u.community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
         COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
         COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
         COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-        COALESCE(u.rating, 5.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 98)::int AS trust_score,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(u.trust_score, 90)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
         (SELECT COUNT(*)::int FROM bookings WHERE lender_id = u.id AND status = 'COMPLETED') AS lent_count,
@@ -58,22 +58,23 @@ router.get('/leaderboard', async (req, res, next) => {
             const avatar = u.avatar_url && u.avatar_url.trim() !== ''
                 ? u.avatar_url
                 : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
-            const trust_rating = parseFloat(u.trust_rating) || parseFloat(u.rating) || 5.0;
-            const owner_rating = parseFloat(u.owner_rating) || 5.0;
-            const renter_rating = parseFloat(u.renter_rating) || 5.0;
-            const community_lender_rating = parseFloat(u.community_lender_rating) || 5.0;
+            const reviews_count = parseInt(u.reviews_count, 10) || 0;
             const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
             const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
             const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+            // Without genuine reviews, ratings stay strictly 0.00
+            const trust_rating = reviews_count > 0 ? (parseFloat(u.trust_rating) || parseFloat(u.rating) || 0.0) : 0.0;
+            const owner_rating = owner_reviews_count > 0 ? (parseFloat(u.owner_rating) || 0.0) : 0.0;
+            const renter_rating = renter_reviews_count > 0 ? (parseFloat(u.renter_rating) || 0.0) : 0.0;
+            const community_lender_rating = community_lender_reviews_count > 0 ? (parseFloat(u.community_lender_rating) || 0.0) : 0.0;
             const rating = trust_rating;
-            const trust_score = parseInt(u.trust_score, 10) || 98;
+            const trust_score = parseInt(u.trust_score, 10) || 90;
             const items_count = parseInt(u.items_count, 10) || 0;
             const free_items_count = parseInt(u.free_items_count, 10) || 0;
             const lent_count = parseInt(u.lent_count, 10) || 0;
             const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
             const requests_count = parseInt(u.requests_count, 10) || 0;
-            const reviews_count = parseInt(u.reviews_count, 10) || 0;
-            const highlight_review = u.latest_review || '';
+            const highlight_review = reviews_count > 0 ? (u.latest_review || '') : '';
             return {
                 id: u.id,
                 name,
@@ -100,90 +101,106 @@ router.get('/leaderboard', async (req, res, next) => {
             };
         });
         const combinedPool = [...formattedRealUsers];
-        // 1. CATEGORY: TOP RATED & OVERALL TRUST RATING (Average of all reviews across roles)
-        const topRatedSorted = [...combinedPool].sort((a, b) => {
-            const bTr = b.trust_rating ?? b.rating ?? 5.0;
-            const aTr = a.trust_rating ?? a.rating ?? 5.0;
+        // 1. CATEGORY: TOP RATED & OVERALL TRUST RATING (Strictly members with reviews_count > 0)
+        const topRatedSorted = combinedPool
+            .filter((m) => m.reviews_count > 0)
+            .sort((a, b) => {
+            const bTr = b.trust_rating ?? b.rating ?? 0.0;
+            const aTr = a.trust_rating ?? a.rating ?? 0.0;
             if (bTr !== aTr)
                 return bTr - aTr;
             if (b.trust_score !== a.trust_score)
                 return b.trust_score - a.trust_score;
             return b.reviews_count - a.reviews_count;
-        }).slice(0, 10).map((member, index) => ({
+        })
+            .slice(0, 10)
+            .map((member, index) => ({
             ...member,
             rank: index + 1,
             category_type: 'top_rated',
             metric_label: 'Overall Trust Rating',
-            metric_value: `${(member.trust_rating || member.rating || 5.0).toFixed(2)} ★ (${member.trust_score}% Trust)`,
+            metric_value: `${(member.trust_rating || member.rating || 0.0).toFixed(2)} ★ (${member.reviews_count} Reviews)`,
             badges: index === 0
-                ? ['👑 #1 Overall Trust', '🛡️ 100% Reputation', '🌟 Flawless Community Record']
+                ? ['👑 #1 Overall Trust', '🛡️ Verified Reputation', '🌟 Flawless Community Record']
                 : index < 3
                     ? ['⭐ Top Trust Neighbor', '🛡️ Verified Trust', '💬 Outstanding Feedback']
                     : ['⭐ Top Rated', '🛡️ Verified Neighbor'],
         }));
-        // 2. CATEGORY: TOP GEAR OWNERS (Ranked by Owner Rating from renters who rented gear)
-        const topLendersSorted = [...combinedPool].sort((a, b) => {
-            const bOr = b.owner_rating ?? 5.0;
-            const aOr = a.owner_rating ?? 5.0;
+        // 2. CATEGORY: TOP GEAR OWNERS (Strictly members with owner_reviews_count > 0)
+        const topLendersSorted = combinedPool
+            .filter((m) => m.owner_reviews_count > 0)
+            .sort((a, b) => {
+            const bOr = b.owner_rating ?? 0.0;
+            const aOr = a.owner_rating ?? 0.0;
             if (bOr !== aOr)
                 return bOr - aOr;
             const scoreB = b.lent_count * 3 + b.items_count * 2;
             const scoreA = a.lent_count * 3 + a.items_count * 2;
             if (scoreB !== scoreA)
                 return scoreB - scoreA;
-            return b.trust_score - a.trust_score;
-        }).slice(0, 10).map((member, index) => ({
+            return b.owner_reviews_count - a.owner_reviews_count;
+        })
+            .slice(0, 10)
+            .map((member, index) => ({
             ...member,
             rank: index + 1,
             category_type: 'top_lenders',
             metric_label: 'Gear Owner Rating',
-            metric_value: `${(member.owner_rating || 5.0).toFixed(2)} ★ (${member.lent_count} Rentals Lent)`,
+            metric_value: `${(member.owner_rating || 0.0).toFixed(2)} ★ (${member.owner_reviews_count} Owner Reviews)`,
             badges: index === 0
                 ? ['👑 #1 Gear Owner', '📦 5-Star Equipment', '⚡ Instant Handover']
                 : index < 3
                     ? ['🏷️ Super Gear Owner', '⚡ Verified Gear Care', '📦 Active Gear']
                     : ['🏷️ Top Gear Owner', '📦 Gear Sharer'],
         }));
-        // 3. CATEGORY: TOP RENTERS (Ranked by Renter Rating from gear owners)
-        const topBorrowersSorted = [...combinedPool].sort((a, b) => {
-            const bRr = b.renter_rating ?? 5.0;
-            const aRr = a.renter_rating ?? 5.0;
+        // 3. CATEGORY: TOP RENTERS (Strictly members with renter_reviews_count > 0)
+        const topBorrowersSorted = combinedPool
+            .filter((m) => m.renter_reviews_count > 0)
+            .sort((a, b) => {
+            const bRr = b.renter_rating ?? 0.0;
+            const aRr = a.renter_rating ?? 0.0;
             if (bRr !== aRr)
                 return bRr - aRr;
             const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
             const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
             if (scoreB !== scoreA)
                 return scoreB - scoreA;
-            return b.trust_score - a.trust_score;
-        }).slice(0, 10).map((member, index) => ({
+            return b.renter_reviews_count - a.renter_reviews_count;
+        })
+            .slice(0, 10)
+            .map((member, index) => ({
             ...member,
             rank: index + 1,
             category_type: 'top_borrowers',
             metric_label: 'Renter Rating',
-            metric_value: `${(member.renter_rating || 5.0).toFixed(2)} ★ (${member.borrowed_count} Rentals Borrowed)`,
+            metric_value: `${(member.renter_rating || 0.0).toFixed(2)} ★ (${member.renter_reviews_count} Renter Reviews)`,
             badges: index === 0
                 ? ['👑 #1 Trusted Renter', '⏱️ 100% Punctual', '🌱 Zero Waste Hero']
                 : index < 3
                     ? ['🎒 5-Star Renter', '⏱️ 100% On-Time Return', '🤝 Trusted Neighbor']
                     : ['🎒 Verified Renter', '🤝 Verified Peer'],
         }));
-        // 4. CATEGORY: TOP FREE COMMUNITY LENDERS (Ranked by Free Lender Rating from community)
-        const topSharersSorted = [...combinedPool].sort((a, b) => {
-            const bClr = b.community_lender_rating ?? 5.0;
-            const aClr = a.community_lender_rating ?? 5.0;
+        // 4. CATEGORY: TOP FREE COMMUNITY LENDERS (Strictly members with community_lender_reviews_count > 0)
+        const topSharersSorted = combinedPool
+            .filter((m) => m.community_lender_reviews_count > 0)
+            .sort((a, b) => {
+            const bClr = b.community_lender_rating ?? 0.0;
+            const aClr = a.community_lender_rating ?? 0.0;
             if (bClr !== aClr)
                 return bClr - aClr;
             const scoreB = b.free_items_count * 3 + b.requests_count;
             const scoreA = a.free_items_count * 3 + a.requests_count;
             if (scoreB !== scoreA)
                 return scoreB - scoreA;
-            return b.trust_score - a.trust_score;
-        }).slice(0, 10).map((member, index) => ({
+            return b.community_lender_reviews_count - a.community_lender_reviews_count;
+        })
+            .slice(0, 10)
+            .map((member, index) => ({
             ...member,
             rank: index + 1,
             category_type: 'top_sharers',
             metric_label: 'Free Lender Rating',
-            metric_value: `${(member.community_lender_rating || 5.0).toFixed(2)} ★ (${member.free_items_count} Free Shares)`,
+            metric_value: `${(member.community_lender_rating || 0.0).toFixed(2)} ★ (${member.community_lender_reviews_count} Free Share Reviews)`,
             badges: index === 0
                 ? ['👑 #1 Community Angel', '🎁 Gift Economy Pioneer', '❤️ Pure Generosity']
                 : index < 3
@@ -218,8 +235,8 @@ router.get('/search', async (req, res, next) => {
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer ⚡') AS bio, 
-        COALESCE(u.rating, 5.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 98)::int AS trust_score,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(u.trust_score, 90)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
         (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
@@ -227,21 +244,24 @@ router.get('/search', async (req, res, next) => {
       WHERE u.name ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1 OR u.email ILIKE $1
       LIMIT 15
     `, [searchPattern]);
-        const formattedRealUsers = realUsersRes.rows.map((u) => ({
-            id: u.id,
-            name: u.name || 'Community Member',
-            email: u.email,
-            locality: u.locality,
-            avatar_url: u.avatar_url && u.avatar_url.trim() !== ''
-                ? u.avatar_url
-                : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || 'user')}`,
-            bio: u.bio,
-            rating: parseFloat(u.rating) || 5.0,
-            trust_score: parseInt(u.trust_score, 10) || 98,
-            items_count: parseInt(u.items_count, 10) || 0,
-            requests_count: parseInt(u.requests_count, 10) || 0,
-            reviews_count: parseInt(u.reviews_count, 10) || 0,
-        }));
+        const formattedRealUsers = realUsersRes.rows.map((u) => {
+            const revsCount = parseInt(u.reviews_count, 10) || 0;
+            return {
+                id: u.id,
+                name: u.name || 'Community Member',
+                email: u.email,
+                locality: u.locality,
+                avatar_url: u.avatar_url && u.avatar_url.trim() !== ''
+                    ? u.avatar_url
+                    : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || 'user')}`,
+                bio: u.bio,
+                rating: revsCount > 0 ? (parseFloat(u.rating) || 0.0) : 0.0,
+                trust_score: parseInt(u.trust_score, 10) || 90,
+                items_count: parseInt(u.items_count, 10) || 0,
+                requests_count: parseInt(u.requests_count, 10) || 0,
+                reviews_count: revsCount,
+            };
+        });
         return (0, response_1.sendSuccess)(res, formattedRealUsers);
     }
     catch (error) {
@@ -287,15 +307,15 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
           avatar_url, 
           banner_url, 
           bio, 
-          COALESCE(trust_score, 98)::int AS trust_score, 
-          COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-          COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-          COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-          COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+          COALESCE(trust_score, 90)::int AS trust_score, 
+          COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+          COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+          COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+          COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
           COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
           COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
           COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-          COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+          COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
           COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
           COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
           created_at
@@ -307,13 +327,13 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
                 try {
                     await (0, db_1.query)(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
           `);
                     userRes = await (0, db_1.query)(`SELECT 
@@ -325,15 +345,15 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
               avatar_url, 
               banner_url, 
               bio, 
-              COALESCE(trust_score, 98)::int AS trust_score, 
-              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(trust_score, 90)::int AS trust_score, 
+              COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
               COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
               COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
               COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
               COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
               COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
               created_at
@@ -411,10 +431,14 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count,
         (SELECT COUNT(*) FROM reviews WHERE reviewee_id = $1) AS reviews_count`, [id]);
         const stats = statsRes.rows[0];
-        const trustRating = parseFloat(user.trust_rating) || parseFloat(user.rating) || 5.0;
-        const ownerRating = parseFloat(user.owner_rating) || 5.0;
-        const renterRating = parseFloat(user.renter_rating) || 5.0;
-        const communityLenderRating = parseFloat(user.community_lender_rating) || 5.0;
+        const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
+        const ownerRevCount = parseInt(user.owner_reviews_count, 10) || 0;
+        const renterRevCount = parseInt(user.renter_reviews_count, 10) || 0;
+        const commLenderRevCount = parseInt(user.community_lender_reviews_count, 10) || 0;
+        const trustRating = revCount > 0 ? (parseFloat(user.trust_rating) || parseFloat(user.rating) || 0.0) : 0.0;
+        const ownerRating = ownerRevCount > 0 ? (parseFloat(user.owner_rating) || 0.0) : 0.0;
+        const renterRating = renterRevCount > 0 ? (parseFloat(user.renter_rating) || 0.0) : 0.0;
+        const communityLenderRating = commLenderRevCount > 0 ? (parseFloat(user.community_lender_rating) || 0.0) : 0.0;
         const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
         return (0, response_1.sendSuccess)(res, {
             id: user.id,

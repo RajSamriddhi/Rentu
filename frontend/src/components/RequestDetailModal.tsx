@@ -312,8 +312,13 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                 <div className="text-xs font-black text-ink">{request.seeker_name || 'Community Neighbor'}</div>
                 <div className="text-[11px] text-ink-secondary">{request.locality || 'Bengaluru'}</div>
                 <div className="text-[10px] font-bold text-amber-500 mt-0.5 flex items-center gap-1">
-                  <span>★ {request.seeker_trust_score ? Number(request.seeker_trust_score).toFixed(1) : '5.0'}</span>
-                  <span className="text-ink-secondary font-medium">• Verified Seeker</span>
+                  {(request as any).seeker_rating && Number((request as any).seeker_rating) > 0 ? (
+                    <>
+                      <span>★ {Number((request as any).seeker_rating).toFixed(1)}</span>
+                      <span className="text-ink-secondary font-medium">•</span>
+                    </>
+                  ) : null}
+                  <span className="text-ink-secondary font-medium">Verified Seeker</span>
                 </div>
               </div>
             </div>

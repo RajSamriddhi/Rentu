@@ -403,7 +403,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </div>
 
                   <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary flex-wrap">
-                    {item.owner_rating ? (
+                    {Number(item.owner_rating) > 0 ? (
                       <>
                         <div className="flex items-center gap-1 text-ink font-bold">
                           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />

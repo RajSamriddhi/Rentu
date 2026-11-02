@@ -126,13 +126,13 @@ const ensureUserColumns = async () => {
   try {
     await query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
     `);
   } catch (err: any) {
     console.warn('ensureUserColumns notice:', err?.message || err);
@@ -255,14 +255,14 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
     try {
       result = await query(
         `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-                COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
-                COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
-                COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
-                COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+                COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+                COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+                COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
                 COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
                 COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
                 COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-                COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE id = $1`,
@@ -273,17 +273,17 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
         await ensureUserColumns();
         result = await query(
           `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-                  COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                  COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                   avatar_url, banner_url, bio, trust_score, role, created_at
            FROM users WHERE id = $1`,
           [req.user!.id]
         );
         if (result.rows.length > 0) {
           result.rows[0].saved_locations = [];
-          result.rows[0].trust_rating = result.rows[0].rating;
-          result.rows[0].owner_rating = 5.00;
-          result.rows[0].renter_rating = 5.00;
-          result.rows[0].community_lender_rating = 5.00;
+          result.rows[0].trust_rating = 0.00;
+          result.rows[0].owner_rating = 0.00;
+          result.rows[0].renter_rating = 0.00;
+          result.rows[0].community_lender_rating = 0.00;
           result.rows[0].owner_reviews_count = 0;
           result.rows[0].renter_reviews_count = 0;
           result.rows[0].community_lender_reviews_count = 0;

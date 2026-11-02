@@ -62,8 +62,8 @@ export const runMigrations = async () => {
         pincode VARCHAR(10),
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
-        rating NUMERIC(3, 2) DEFAULT 5.00,
-        trust_score INT DEFAULT 98,
+        rating NUMERIC(3, 2) DEFAULT 0.00,
+        trust_score INT DEFAULT 90,
         role user_role DEFAULT 'USER',
         clerk_id VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -74,7 +74,7 @@ export const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
@@ -309,13 +309,13 @@ export const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
     `);
 
     // 4.4. NOTIFICATIONS (1NF: Eliminates non-atomic jsonb data object by storing explicit atomic scalar columns)

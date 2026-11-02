@@ -837,7 +837,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="text-right">
                   <div className="text-2xl font-black text-ink font-display flex items-center gap-1 justify-end">
                     <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                    <span>{user?.trust_rating ? Number(user.trust_rating).toFixed(2) : (ratingDisplay || '5.00')}</span>
+                    <span>{receivedReviews.length > 0 && user?.trust_rating ? Number(user.trust_rating).toFixed(2) : (receivedReviews.length > 0 ? (ratingDisplay || '0.00') : '0.00')}</span>
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
                     Trust Rating ({receivedReviews.length} reviews)
@@ -846,7 +846,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <div className="text-right border-l border-divider pl-6">
                   <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display">
-                    {user?.trust_score || 98}%
+                    {user?.trust_score || 90}%
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
                     Reputation Score
@@ -870,7 +870,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{user?.owner_rating ? Number(user.owner_rating).toFixed(2) : '5.00'}</span>
+                    <span>{Number(user?.owner_reviews_count || receivedReviews.filter(r => r.review_type === 'OWNER_RENTAL').length) > 0 && user?.owner_rating ? Number(user.owner_rating).toFixed(2) : '0.00'}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({user?.owner_reviews_count || receivedReviews.filter(r => r.review_type === 'OWNER_RENTAL').length})
                     </span>
@@ -895,7 +895,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{user?.renter_rating ? Number(user.renter_rating).toFixed(2) : '5.00'}</span>
+                    <span>{Number(user?.renter_reviews_count || receivedReviews.filter(r => r.review_type === 'RENTER').length) > 0 && user?.renter_rating ? Number(user.renter_rating).toFixed(2) : '0.00'}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({user?.renter_reviews_count || receivedReviews.filter(r => r.review_type === 'RENTER').length})
                     </span>
@@ -920,7 +920,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div>
                   <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
                     <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    <span>{user?.community_lender_rating ? Number(user.community_lender_rating).toFixed(2) : '5.00'}</span>
+                    <span>{Number(user?.community_lender_reviews_count || receivedReviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length) > 0 && user?.community_lender_rating ? Number(user.community_lender_rating).toFixed(2) : '0.00'}</span>
                     <span className="text-xs text-ink-secondary font-normal">
                       ({user?.community_lender_reviews_count || receivedReviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length})
                     </span>

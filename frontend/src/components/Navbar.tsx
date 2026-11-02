@@ -457,7 +457,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-bold text-ink group-hover:text-brand truncate">{u.name}</span>
                                 <span className="inline-flex items-center text-[10px] font-black text-amber-500">
-                                  ★ {u.rating ? u.rating.toFixed(1) : '5.0'}
+                                  ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'}
                                 </span>
                               </div>
                               <div className="text-[10px] text-ink-secondary truncate">
@@ -886,7 +886,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           <div className="min-w-0">
                             <div className="text-xs font-bold text-ink truncate">{u.name}</div>
                             <div className="text-[10px] text-ink-secondary truncate">
-                              ★ {u.rating ? u.rating.toFixed(1) : '5.0'} • {u.locality || 'Nearby'}
+                              ★ {Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {u.locality || 'Nearby'}
                             </div>
                           </div>
                         </div>

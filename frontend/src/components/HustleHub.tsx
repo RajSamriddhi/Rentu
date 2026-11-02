@@ -891,7 +891,7 @@ export const HustleHub: React.FC = () => {
                             <td className="p-3.5">
                               <div className="flex items-center gap-2">
                                 <span className="font-black text-ink">{u.trust_score || 95}%</span>
-                                <span className="text-amber-500 font-bold">★ {Number(u.rating || 5.0).toFixed(1)}</span>
+                                <span className="text-amber-500 font-bold">★ {Number(u.rating || 0.0).toFixed(1)}</span>
                               </div>
                             </td>
                             <td className="p-3.5 text-ink-secondary">
