@@ -9,14 +9,16 @@ import {
   Sparkles,
   MapPin,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
-import { Item } from '../lib/types';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
+import { Item, SavedLocation } from '../lib/types';
+import { AddLocationModal } from './AddLocationModal';
 
 interface DropGearModalProps {
   isOpen: boolean;
@@ -43,11 +45,15 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
   const [imageUrl, setImageUrl] = useState('');
-  const [availableForBorrowing, setAvailableForBorrowing] = useState(false);
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
   const [offersPickup, setOffersPickup] = useState(false);
   const [pickupFee, setPickupFee] = useState<number | ''>(0);
+
+  // Saved Pickup & Drop Locations
+  const savedLocations = getEffectiveSavedLocations(user);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('primary');
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   // States
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -217,8 +223,10 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       return;
     }
 
-    if (!locality.trim()) {
-      setErrorMsg('Please specify your pickup locality or use GPS.');
+    const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
+    const finalLocality = chosenLocation?.locality || locality.trim() || user?.locality || '';
+    if (!finalLocality) {
+      setErrorMsg('Please specify your pickup and drop location or add one to your profile.');
       return;
     }
 
@@ -226,6 +234,10 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
     setErrorMsg('');
 
     try {
+      const itemAddress = chosenLocation
+        ? [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ')
+        : '';
+
       const createdItem = await api.createItem({
         title: title.trim(),
         description: description.trim(),
@@ -234,8 +246,12 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         max_duration_days: Number(maxDurationDays),
         image_urls: [imageUrl],
         sticker_badge: '✨ Available',
-        locality: locality.trim() || user?.locality || '',
-        available_for_borrowing: listingType === 'Borrow' ? true : availableForBorrowing,
+        locality: finalLocality,
+        address_text: itemAddress || finalLocality,
+        pincode: chosenLocation?.pincode || user?.pincode || undefined,
+        latitude: chosenLocation?.latitude ?? user?.latitude,
+        longitude: chosenLocation?.longitude ?? user?.longitude,
+        available_for_borrowing: listingType === 'Borrow',
         offers_delivery: offersDelivery,
         delivery_fee: offersDelivery ? Number(deliveryFee || 0) : 0,
         offers_pickup: offersPickup,
@@ -615,39 +631,6 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
               </div>
             </div>
 
-            {/* Toggle: Also available for borrowing */}
-            {listingType === 'Rent' && (
-              <div className="p-4 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-ink">Also Available for Borrowing</span>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
-                      Option
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-ink-secondary">
-                    Allow neighbors to also request borrowing this gear for free when you agree.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setAvailableForBorrowing(!availableForBorrowing)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    availableForBorrowing ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-                  }`}
-                  role="switch"
-                  aria-checked={availableForBorrowing}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      availableForBorrowing ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            )}
-
             {/* Handover & Delivery Options by Owner */}
             <div className="space-y-3 pt-3 border-t border-divider">
               <div>
@@ -771,45 +754,80 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 4: Pickup Location */}
+          {/* SECTION 4: Pickup & Drop Location */}
           <div className="space-y-3 pt-2 border-t border-divider">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-ink-secondary">
-              4. Pickup Location
-            </h3>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-ink">
-                  Pickup Locality / Area <span className="text-brand">*</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={handleDetectLocation}
-                  disabled={isDetectingLocation}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-brand bg-brand-soft hover:bg-brand/20 active:scale-95 px-2.5 py-1 rounded-lg border border-brand/20 transition-all cursor-pointer disabled:opacity-50"
-                  title="Detect GPS location"
-                >
-                  {isDetectingLocation ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Detecting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Navigation className="w-3 h-3 text-brand" />
-                      <span>Use Current GPS 📍</span>
-                    </>
-                  )}
-                </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-ink flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-brand" />
+                  <span>4. Pickup & Drop Location</span>
+                  <span className="text-brand">*</span>
+                </h3>
+                <p className="text-[11px] text-ink-secondary mt-0.5">
+                  Choose where the renter will pick up the item and drop it back upon return.
+                </p>
               </div>
-              <input
-                type="text"
-                value={locality}
-                onChange={(e) => setLocality(e.target.value)}
-                placeholder="e.g. Indiranagar, Bengaluru"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
-                required
-              />
+
+              <button
+                type="button"
+                onClick={() => setIsAddLocationOpen(true)}
+                className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Another Location</span>
+              </button>
+            </div>
+
+            {/* List of Saved Locations in User's Profile */}
+            <div className="space-y-2.5">
+              {savedLocations.map((loc) => {
+                const isSelected = selectedLocationId === loc.id;
+                const formattedFull = formatSavedLocationFull(loc);
+                return (
+                  <div
+                    key={loc.id}
+                    onClick={() => {
+                      setSelectedLocationId(loc.id);
+                      setLocality(loc.locality);
+                    }}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                      isSelected
+                        ? 'bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs'
+                        : 'bg-canvas border-divider hover:border-brand/40'
+                    }`}
+                  >
+                    {/* Radio indicator */}
+                    <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      isSelected ? 'border-brand bg-brand' : 'border-divider bg-surface'
+                    }`}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-extrabold text-ink">
+                          {loc.label}
+                        </span>
+                        {loc.is_default && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                            Profile Primary
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            ✓ Selected for this listing
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-ink-secondary mt-1 font-medium leading-relaxed">
+                        <MapPin className="w-3.5 h-3.5 text-brand inline shrink-0 mr-1 -mt-0.5" />
+                        <span>{formattedFull}</span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </form>
@@ -845,6 +863,16 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Add Another Location Modal */}
+      <AddLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        onSuccess={(newLoc) => {
+          setSelectedLocationId(newLoc.id);
+          setLocality(newLoc.locality);
+        }}
+      />
     </div>
   );
 };

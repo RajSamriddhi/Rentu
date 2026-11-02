@@ -16168,17 +16168,6 @@ var require_utils = __commonJS({
     var setMaxIndex = function setMaxIndex2(obj, maxIndex) {
       overflowChannel.set(obj, maxIndex);
     };
-    var conflictChannel = getSideChannel();
-    var markConflict = function markConflict2(obj, maxIndex) {
-      conflictChannel.set(obj, maxIndex);
-      return obj;
-    };
-    var isConflict = function isConflict2(obj) {
-      return conflictChannel.has(obj);
-    };
-    var getConflictIndex = function getConflictIndex2(obj) {
-      return conflictChannel.get(obj);
-    };
     var hexTable = (function() {
       var array = [];
       for (var i = 0; i < 256; ++i) {
@@ -16222,27 +16211,6 @@ var require_utils = __commonJS({
         obj[key] = value;
       }
     };
-    var maxNumericIndex = function maxNumericIndex2(obj, min) {
-      var max = min;
-      var keys = Object.keys(obj);
-      for (var i = 0; i < keys.length; ++i) {
-        var num = parseInt(keys[i], 10);
-        if (String(num) === keys[i] && num > max) {
-          max = num;
-        }
-      }
-      return max;
-    };
-    var limitedPair = function limitedPair2(first, second, options) {
-      var pair = [first, second];
-      if (options && typeof options.arrayLimit === "number" && pair.length > options.arrayLimit) {
-        if (options.throwOnLimitExceeded) {
-          throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-        }
-        return markOverflow(arrayToObject(pair, options), 1);
-      }
-      return pair;
-    };
     var merge = function merge2(target, source, options) {
       if (!source) {
         return target;
@@ -16262,21 +16230,13 @@ var require_utils = __commonJS({
             var newIndex = getMaxIndex(target) + 1;
             target[newIndex] = source;
             setMaxIndex(target, newIndex);
-          } else if (options && options.strictMerge && isConflict(target)) {
-            var nextConflict = getConflictIndex(target) + 1;
-            if (options.throwOnLimitExceeded && typeof options.arrayLimit === "number" && nextConflict >= options.arrayLimit) {
-              throw new RangeError("Array limit exceeded. Only " + options.arrayLimit + " element" + (options.arrayLimit === 1 ? "" : "s") + " allowed in an array.");
-            }
-            target[nextConflict] = source;
-            markConflict(target, nextConflict);
           } else if (options && options.strictMerge) {
-            var conflict = limitedPair(target, source, options);
-            return isArray(conflict) ? markConflict(conflict, 1) : conflict;
+            return [target, source];
           } else if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
             target[source] = true;
           }
         } else {
-          return limitedPair(target, source, options);
+          return [target, source];
         }
         return target;
       }
@@ -16302,9 +16262,6 @@ var require_utils = __commonJS({
       var mergeTarget = target;
       if (isArray(target) && !isArray(source)) {
         mergeTarget = arrayToObject(target, options);
-        if (isConflict(target)) {
-          markConflict(mergeTarget, target.length - 1);
-        }
       }
       if (isArray(target) && isArray(source)) {
         source.forEach(function(item, i) {
@@ -16335,18 +16292,12 @@ var require_utils = __commonJS({
           setProperty(acc, key, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
-          markOverflow(acc, maxNumericIndex(acc, getMaxIndex(source)));
+          markOverflow(acc, getMaxIndex(source));
         }
         if (isOverflow(acc)) {
           var keyNum = parseInt(key, 10);
           if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
             setMaxIndex(acc, keyNum);
-          }
-        }
-        if (isConflict(acc)) {
-          var conflictKey = parseInt(key, 10);
-          if (String(conflictKey) === key && conflictKey > getConflictIndex(acc)) {
-            markConflict(acc, conflictKey);
           }
         }
         return acc;
@@ -16359,9 +16310,6 @@ var require_utils = __commonJS({
       }, target);
     };
     var decode = function(str, defaultDecoder, charset) {
-      if (typeof str === "string" && str.indexOf("%") === -1) {
-        return str.indexOf("+") === -1 ? str : str.replace(/\+/g, " ");
-      }
       var strWithoutPlus = str.replace(/\+/g, " ");
       if (charset === "iso-8859-1") {
         return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
@@ -16372,52 +16320,6 @@ var require_utils = __commonJS({
         return strWithoutPlus;
       }
     };
-    var hasToPrimitive = typeof Symbol === "function" && typeof Symbol.toPrimitive === "symbol";
-    var arrayJoin = Array.prototype.join;
-    var arrayToString = Array.prototype.toString;
-    var objectToString = Object.prototype.toString;
-    var toCoercible = function toCoercible2(value, joining) {
-      if (!value || typeof value !== "object" && typeof value !== "function") {
-        return value;
-      }
-      if (hasToPrimitive && value[Symbol.toPrimitive] != null) {
-        return value;
-      }
-      if (isArray(value) && value.toString === arrayToString && value.join === arrayJoin) {
-        var ancestors = joining || getSideChannel();
-        if (ancestors.has(value)) {
-          return "";
-        }
-        ancestors.set(value, true);
-        var copy;
-        for (var i = 0; i < value.length; i += 1) {
-          var item = value[i];
-          var coerced = toCoercible2(item, ancestors);
-          if (!copy && coerced !== item) {
-            copy = [];
-            for (var j = 0; j < i; j += 1) {
-              copy[j] = value[j];
-            }
-          }
-          if (copy) {
-            copy[i] = coerced;
-          }
-        }
-        ancestors["delete"](value);
-        return copy || value;
-      }
-      if (typeof value.toString === "function") {
-        return value;
-      }
-      var valueOf = value.valueOf;
-      if (typeof valueOf === "function") {
-        var primitive = valueOf.call(value);
-        if (!primitive || typeof primitive !== "object" && typeof primitive !== "function") {
-          return String(primitive);
-        }
-      }
-      return objectToString.call(value);
-    };
     var limit = 1024;
     var encode = function encode2(str, defaultEncoder, charset, kind, format) {
       if (str.length === 0) {
@@ -16427,12 +16329,12 @@ var require_utils = __commonJS({
       if (typeof str === "symbol") {
         string = Symbol.prototype.toString.call(str);
       } else if (typeof str !== "string") {
-        string = String(toCoercible(str));
+        string = String(str);
       }
       if (charset === "iso-8859-1") {
         return escape(string).replace(/%u[0-9a-f]{4}/gi, function($0) {
           return "%26%23" + parseInt($0.slice(2), 16) + "%3B";
-        }).replace(/\+/g, "%2B");
+        });
       }
       var out = "";
       for (var j = 0; j < string.length; j += limit) {
@@ -16544,8 +16446,7 @@ var require_utils = __commonJS({
       isRegExp,
       markOverflow,
       maybeMap,
-      merge,
-      toCoercible
+      merge
     };
   }
 });
@@ -16660,17 +16561,17 @@ var require_stringify = __commonJS({
       if (generateArrayPrefix === "comma" && isArray(obj)) {
         if (encodeValuesOnly && encoder) {
           obj = utils.maybeMap(obj, function(v) {
-            return v == null ? v : encoder(v, defaults2.encoder, charset, "value", format);
+            return v == null ? v : encoder(v);
           });
         }
-        objKeys = [{ value: obj.length > 0 ? utils.toCoercible(obj).join(",") || null : void 0 }];
+        objKeys = [{ value: obj.length > 0 ? obj.join(",") || null : void 0 }];
       } else if (isArray(filter)) {
         objKeys = filter;
       } else {
         var keys = Object.keys(obj);
         objKeys = sort ? keys.sort(sort) : keys;
       }
-      var encodedPrefix = String(prefix);
+      var encodedPrefix = encodeDotInKeys ? String(prefix).replace(/\./g, "%2E") : String(prefix);
       var adjustedPrefix = commaRoundTrip && isArray(obj) && obj.length === 1 ? encodedPrefix + "[]" : encodedPrefix;
       if (allowEmptyArrays && isArray(obj) && obj.length === 0 && Object.keys(obj).length === 0) {
         return adjustedPrefix + "[]";
@@ -16741,7 +16642,7 @@ var require_stringify = __commonJS({
         filter = opts.filter;
       }
       var arrayFormat;
-      if (has.call(arrayPrefixGenerators, opts.arrayFormat)) {
+      if (opts.arrayFormat in arrayPrefixGenerators) {
         arrayFormat = opts.arrayFormat;
       } else if ("indices" in opts) {
         arrayFormat = opts.indices ? "indices" : "repeat";
@@ -16851,53 +16752,9 @@ var require_stringify = __commonJS({
 var require_parse = __commonJS({
   "../node_modules/qs/lib/parse.js"(exports2, module2) {
     "use strict";
-    var getSideChannel = require_side_channel();
     var utils = require_utils();
     var has = Object.prototype.hasOwnProperty;
     var isArray = Array.isArray;
-    var getPrototypeOf = Object.getPrototypeOf;
-    var isPlainContainer = function isPlainContainer2(value) {
-      if (!value || typeof value !== "object") {
-        return false;
-      }
-      if (isArray(value)) {
-        return true;
-      }
-      var proto = getPrototypeOf(value);
-      return proto === Object.prototype || proto === null;
-    };
-    var emptyCopyOf = function emptyCopyOf2(value) {
-      if (isArray(value)) {
-        var arr = [];
-        arr.length = value.length;
-        return arr;
-      }
-      return getPrototypeOf(value) === null ? { __proto__: null } : {};
-    };
-    var copyInput = function copyInput2(input) {
-      var copies = getSideChannel();
-      var result = {};
-      var queue = [{ source: input, target: result }];
-      for (var i = 0; i < queue.length; ++i) {
-        var source = queue[i].source;
-        var target = queue[i].target;
-        var keys = Object.keys(source);
-        for (var j = 0; j < keys.length; ++j) {
-          var value = source[keys[j]];
-          if (isPlainContainer(value)) {
-            if (!copies.has(value)) {
-              var copy = emptyCopyOf(value);
-              copies.set(value, copy);
-              queue[queue.length] = { source: value, target: copy };
-            }
-            target[keys[j]] = copies.get(value);
-          } else {
-            target[keys[j]] = value;
-          }
-        }
-      }
-      return result;
-    };
     var defaults2 = {
       allowDots: false,
       allowEmptyArrays: false,
@@ -16984,7 +16841,6 @@ var require_parse = __commonJS({
         var part = parts[i];
         var bracketEqualsPos = part.indexOf("]=");
         var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
-        var isEmptyBracketKey = pos > 1 && part.slice(pos - 2, pos) === "[]";
         var key;
         var val;
         if (pos === -1) {
@@ -17008,7 +16864,7 @@ var require_parse = __commonJS({
         if (val && options.interpretNumericEntities && charset === "iso-8859-1") {
           val = interpretNumericEntities(String(val));
         }
-        if (isEmptyBracketKey) {
+        if (part.indexOf("[]=") > -1) {
           val = isArray(val) ? [val] : val;
         }
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
@@ -17016,7 +16872,7 @@ var require_parse = __commonJS({
         }
         if (key !== null) {
           var existing = has.call(obj, key);
-          if (existing && (options.duplicates === "combine" || isEmptyBracketKey)) {
+          if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
             obj[key] = utils.combine(
               obj[key],
               val,
@@ -17077,35 +16933,8 @@ var require_parse = __commonJS({
       }
       return leaf;
     };
-    var topLevelDotsToBrackets = function topLevelDotsToBrackets2(key) {
-      var result = "";
-      var depth = 0;
-      for (var i = 0; i < key.length; i += 1) {
-        var cu = key.charCodeAt(i);
-        if (cu === 91) {
-          depth += 1;
-          result += "[";
-        } else if (cu === 93) {
-          if (depth > 0) {
-            depth -= 1;
-          }
-          result += "]";
-        } else if (cu === 46 && depth === 0 && i + 1 < key.length && key.charCodeAt(i + 1) !== 46 && key.charCodeAt(i + 1) !== 91) {
-          var start = i + 1;
-          var j = start;
-          while (j < key.length && key.charCodeAt(j) !== 46 && key.charCodeAt(j) !== 91) {
-            j += 1;
-          }
-          result += "[" + key.slice(start, j) + "]";
-          i = j - 1;
-        } else {
-          result += key.charAt(i);
-        }
-      }
-      return result;
-    };
     var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
-      var key = options.allowDots ? topLevelDotsToBrackets(originalKey) : originalKey;
+      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
       if (options.depth <= 0) {
         if (!options.plainObjects && has.call(Object.prototype, key)) {
           if (!options.allowPrototypes) {
@@ -17231,7 +17060,7 @@ var require_parse = __commonJS({
       if (str === "" || str === null || typeof str === "undefined") {
         return options.plainObjects ? { __proto__: null } : {};
       }
-      var tempObj = typeof str === "string" ? parseValues(str, options) : copyInput(str);
+      var tempObj = typeof str === "string" ? parseValues(str, options) : str;
       var obj = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i = 0; i < keys.length; ++i) {
@@ -35551,7 +35380,7 @@ var require_version = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.version = void 0;
-    exports2.version = "2.118.0";
+    exports2.version = "2.117.3";
   }
 });
 
@@ -39792,7 +39621,7 @@ var require_version2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.version = void 0;
-    exports2.version = "2.118.0";
+    exports2.version = "2.117.3";
   }
 });
 
@@ -53817,6 +53646,22 @@ var firebaseSyncSchema = external_exports.object({
   locality: external_exports.string().optional(),
   phone: external_exports.string().optional()
 });
+var ensureUserColumns = async () => {
+  try {
+    await query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+    `);
+  } catch (err) {
+    console.warn("ensureUserColumns notice:", err?.message || err);
+  }
+};
 var handleSyncUser = async (req, res, next) => {
   try {
     const validated = firebaseSyncSchema.parse(req.body);
@@ -53824,41 +53669,90 @@ var handleSyncUser = async (req, res, next) => {
     const email = validated.email.toLowerCase();
     const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
     const locality = validated.locality || "";
-    const existing = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, created_at
-       FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
-      [uid, uid, email]
-    );
+    let existing;
+    try {
+      existing = await query(
+        `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
+        [uid, uid, email]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        await ensureUserColumns();
+        existing = await query(
+          `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
+           FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
+          [uid, uid, email]
+        );
+      } else {
+        throw err;
+      }
+    }
     let user;
     if (existing.rows.length > 0) {
-      const updated = await query(
-        `UPDATE users
-         SET firebase_uid = $1,
-             name = COALESCE(NULLIF($2, ''), name),
-             avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
-             updated_at = NOW()
-         WHERE id = $4
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
-        [uid, validated.name, avatar, existing.rows[0].id]
-      );
-      user = updated.rows[0];
+      try {
+        const updated = await query(
+          `UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+          [uid, validated.name, avatar, existing.rows[0].id]
+        );
+        user = updated.rows[0];
+      } catch (err) {
+        await ensureUserColumns();
+        const updated = await query(
+          `UPDATE users
+           SET firebase_uid = $1,
+               name = COALESCE(NULLIF($2, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+          [uid, validated.name, avatar, existing.rows[0].id]
+        );
+        user = { ...updated.rows[0], saved_locations: [] };
+      }
     } else {
-      const created = await query(
-        `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-         RETURNING id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
-        [
-          uid,
-          uid,
-          email,
-          validated.name,
-          validated.phone || null,
-          locality,
-          avatar,
-          "Member of the Rentu\u207A gear rental community \u26A1"
-        ]
-      );
-      user = created.rows[0];
+      try {
+        const created = await query(
+          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+          [
+            uid,
+            uid,
+            email,
+            validated.name,
+            validated.phone || null,
+            locality,
+            avatar,
+            "Member of the Rentu\u207A gear rental community \u26A1"
+          ]
+        );
+        user = created.rows[0];
+      } catch (err) {
+        await ensureUserColumns();
+        const created = await query(
+          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+           RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+          [
+            uid,
+            uid,
+            email,
+            validated.name,
+            validated.phone || null,
+            locality,
+            avatar,
+            "Member of the Rentu\u207A gear rental community \u26A1"
+          ]
+        );
+        user = { ...created.rows[0], saved_locations: [] };
+      }
     }
     const token = generateToken(user);
     return sendSuccess(res, { user, token }, "Firebase session synchronized with Rentu\u207A! \u{1F680}");
@@ -53870,11 +53764,47 @@ router.post("/firebase-sync", handleSyncUser);
 router.post("/clerk-sync", handleSyncUser);
 router.get("/me", authMiddleware, async (req, res, next) => {
   try {
-    const result = await query(
-      `SELECT id, email, name, phone, locality, address_text, pincode, rating, avatar_url, banner_url, bio, trust_score, role, created_at
-       FROM users WHERE id = $1`,
-      [req.user.id]
-    );
+    let result;
+    try {
+      result = await query(
+        `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+                COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+                COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+                COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+                COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+                COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+                COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                avatar_url, banner_url, bio, trust_score, role,
+                COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+         FROM users WHERE id = $1`,
+        [req.user.id]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        await ensureUserColumns();
+        result = await query(
+          `SELECT id, email, name, phone, locality, address_text, pincode, latitude, longitude, 
+                  COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+                  avatar_url, banner_url, bio, trust_score, role, created_at
+           FROM users WHERE id = $1`,
+          [req.user.id]
+        );
+        if (result.rows.length > 0) {
+          result.rows[0].saved_locations = [];
+          result.rows[0].trust_rating = result.rows[0].rating;
+          result.rows[0].owner_rating = 5;
+          result.rows[0].renter_rating = 5;
+          result.rows[0].community_lender_rating = 5;
+          result.rows[0].owner_reviews_count = 0;
+          result.rows[0].renter_reviews_count = 0;
+          result.rows[0].community_lender_reviews_count = 0;
+        }
+      } else {
+        throw err;
+      }
+    }
     if (result.rows.length === 0) {
       return sendError(res, "USER_NOT_FOUND", "User profile not found", 404);
     }
@@ -54093,12 +54023,23 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     let userLon = longitude ? parseFloat(String(longitude)) : NaN;
     if ((isNaN(userLat) || isNaN(userLon)) && req.user?.id) {
       const uRes = await query(
-        `SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+        `SELECT latitude, longitude, locality FROM users WHERE id::text = $1 OR firebase_uid = $1`,
         [req.user.id]
       );
-      if (uRes.rows.length > 0 && uRes.rows[0].latitude && uRes.rows[0].longitude) {
-        userLat = parseFloat(uRes.rows[0].latitude);
-        userLon = parseFloat(uRes.rows[0].longitude);
+      if (uRes.rows.length > 0) {
+        if (uRes.rows[0].latitude && uRes.rows[0].longitude) {
+          userLat = parseFloat(uRes.rows[0].latitude);
+          userLon = parseFloat(uRes.rows[0].longitude);
+        } else if (uRes.rows[0].locality) {
+          const loc = uRes.rows[0].locality.toLowerCase();
+          if (loc.includes("beml")) {
+            userLat = 12.914;
+            userLon = 77.4993;
+          } else if (loc.includes("mylasandra")) {
+            userLat = 12.885;
+            userLon = 77.505;
+          }
+        }
       }
     }
     if (!isNaN(userLat) && !isNaN(userLon)) {
@@ -54110,9 +54051,57 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         ROUND(
           6371000 * acos(
             LEAST(1.0, GREATEST(-1.0, 
-              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
-              cos(radians(i.longitude) - radians($${lonIdx})) +
-              sin(radians($${latIdx})) * sin(radians(i.latitude))
+              cos(radians($${latIdx})) * cos(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              )) *
+              cos(radians(
+                CASE 
+                  WHEN i.longitude IS NOT NULL AND i.longitude != 0 THEN i.longitude
+                  WHEN u.longitude IS NOT NULL AND u.longitude != 0 THEN u.longitude
+                  WHEN i.locality ILIKE '%beml%' THEN 77.4993
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 77.5050
+                  WHEN i.locality ILIKE '%kengeri%' THEN 77.4838
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 77.5150
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 77.5838
+                  WHEN i.locality ILIKE '%koramangala%' THEN 77.6245
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 77.6408
+                  WHEN i.locality ILIKE '%hsr%' THEN 77.6446
+                  WHEN i.locality ILIKE '%whitefield%' THEN 77.7500
+                  WHEN i.locality ILIKE '%electronic city%' THEN 77.6602
+                  ELSE $${lonIdx}
+                END
+              ) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              ))
             ))
           )
         ) AS distance_meters
@@ -54134,14 +54123,22 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     let sql = `
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        NULL AS address_text, 
+        NULL AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude, 
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
+        NULL AS owner_address_text,
+        NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -54192,16 +54189,25 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-router2.get("/:id", async (req, res, next) => {
+router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await query(
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude,
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
       JOIN users u ON i.owner_id = u.id
@@ -54223,6 +54229,26 @@ router2.get("/:id", async (req, res, next) => {
       if (blockCheck.rows.length > 0) {
         return sendError(res, "FORBIDDEN", "This item is not available", 403);
       }
+    }
+    let canViewAddress = false;
+    if (currentViewerId) {
+      if (currentViewerId === item.owner_id) {
+        canViewAddress = true;
+      } else {
+        const acceptedBookingCheck = await query(
+          `SELECT 1 FROM bookings 
+           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           LIMIT 1`,
+          [item.id, currentViewerId]
+        );
+        canViewAddress = acceptedBookingCheck.rows.length > 0;
+      }
+    }
+    if (!canViewAddress) {
+      item.address_text = null;
+      item.owner_address_text = null;
+      item.pincode = null;
+      item.owner_pincode = null;
     }
     const bookedRes = await query(
       `SELECT 
@@ -54248,6 +54274,7 @@ router2.get("/:id", async (req, res, next) => {
     );
     return sendSuccess(res, {
       ...item,
+      can_view_address: canViewAddress,
       booked_dates: bookedRes.rows,
       related_items: relatedResult.rows
     });
@@ -54318,10 +54345,40 @@ router2.post("/", authMiddleware, async (req, res, next) => {
       validated.locality || ""
     ]).catch(() => {
     });
-    const userRes = await query("SELECT locality FROM users WHERE id = $1", [req.user.id]);
+    const userRes = await query("SELECT locality, latitude, longitude FROM users WHERE id = $1", [req.user.id]);
     const userLocality = userRes.rows[0]?.locality || "";
     let finalLocality = validated.locality?.trim() || userLocality;
     const cleanPincode = validated.pincode?.trim() || null;
+    let itemLat = validated.latitude ?? (userRes.rows[0]?.latitude ? parseFloat(userRes.rows[0].latitude) : null);
+    let itemLon = validated.longitude ?? (userRes.rows[0]?.longitude ? parseFloat(userRes.rows[0].longitude) : null);
+    if ((itemLat === null || isNaN(itemLat)) && finalLocality) {
+      const lower = finalLocality.toLowerCase();
+      if (lower.includes("beml")) {
+        itemLat = 12.914;
+        itemLon = 77.4993;
+      } else if (lower.includes("mylasandra")) {
+        itemLat = 12.885;
+        itemLon = 77.505;
+      } else if (lower.includes("kengeri")) {
+        itemLat = 12.9177;
+        itemLon = 77.4838;
+      } else if (lower.includes("rajarajeshwari") || lower.includes("rr nagar")) {
+        itemLat = 12.9275;
+        itemLon = 77.515;
+      } else if (lower.includes("jayanagar")) {
+        itemLat = 12.9308;
+        itemLon = 77.5838;
+      } else if (lower.includes("koramangala")) {
+        itemLat = 12.9352;
+        itemLon = 77.6245;
+      } else if (lower.includes("indiranagar")) {
+        itemLat = 12.9784;
+        itemLon = 77.6408;
+      } else if (lower.includes("hsr")) {
+        itemLat = 12.9121;
+        itemLon = 77.6446;
+      }
+    }
     if (cleanPincode && finalLocality) {
       await query(
         `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
@@ -54347,8 +54404,8 @@ router2.post("/", authMiddleware, async (req, res, next) => {
         finalLocality,
         validated.address_text || finalLocality,
         cleanPincode,
-        validated.latitude ?? null,
-        validated.longitude ?? null,
+        itemLat ?? null,
+        itemLon ?? null,
         validated.available_for_borrowing ?? false,
         validated.offers_delivery ?? false,
         validated.delivery_fee ?? 0,
@@ -54526,7 +54583,10 @@ var createRequestSchema = external_exports.object({
   pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
   pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional().default("LENDER_LOCATION"),
-  return_locality: external_exports.string().optional()
+  return_locality: external_exports.string().optional(),
+  will_pickup: external_exports.boolean().optional().default(true),
+  will_drop_back: external_exports.boolean().optional().default(true),
+  delivery_fee: external_exports.number().min(0).optional().default(0)
 });
 var updateRequestSchema = external_exports.object({
   item_name: external_exports.string().min(3).optional(),
@@ -54539,12 +54599,17 @@ var updateRequestSchema = external_exports.object({
   duration_days: external_exports.number().int().positive().optional(),
   offered_amount: external_exports.number().min(0).optional(),
   locality: external_exports.string().optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
   status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
   image_url: external_exports.string().nullable().optional(),
   pickup_type: external_exports.string().optional(),
   pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional(),
-  return_locality: external_exports.string().optional()
+  return_locality: external_exports.string().optional(),
+  will_pickup: external_exports.boolean().optional(),
+  will_drop_back: external_exports.boolean().optional(),
+  delivery_fee: external_exports.number().min(0).optional()
 });
 router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
@@ -54553,7 +54618,9 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
@@ -54608,7 +54675,9 @@ router3.get("/:id", async (req, res, next) => {
       `SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
         u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
@@ -54651,9 +54720,9 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     }
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, status)
+        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, will_pickup, will_drop_back, delivery_fee, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 'OPEN')
        RETURNING *`,
       [
         req.user.id,
@@ -54675,7 +54744,10 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.pickup_type || "LENDER_LOCATION",
         validated.pickup_locality || null,
         validated.return_type || "LENDER_LOCATION",
-        validated.return_locality || null
+        validated.return_locality || null,
+        validated.will_pickup ?? true,
+        validated.will_drop_back ?? true,
+        validated.delivery_fee ?? 0
       ]
     );
     const createdRequest = result.rows[0];
@@ -54766,6 +54838,93 @@ router3.post("/", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
+router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user.id;
+    const lenderName = req.user.name || "A Neighbor";
+    const reqResult = await query(
+      `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
+       FROM requests r
+       JOIN users u ON r.seeker_id = u.id
+       WHERE r.id = $1`,
+      [id]
+    );
+    if (reqResult.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Request not found", 404);
+    }
+    const request = reqResult.rows[0];
+    if (request.seeker_id === lenderId) {
+      return sendError(res, "BAD_REQUEST", "You cannot lend gear to your own request", 400);
+    }
+    if (request.status !== "OPEN") {
+      return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
+    }
+    const durationDays = Math.max(1, Number(request.duration_days) || 1);
+    const offeredAmount = Number(request.offered_amount) || 0;
+    const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
+    const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
+    const totalDealPrice = offeredAmount + deliveryFee + returnFee;
+    const pricePerDay = Math.round(offeredAmount / durationDays);
+    const fullDestinationAddress = request.address_text || request.locality || "Handover location";
+    const proposalPayload = {
+      type: "REQUEST",
+      is_lend_offer: true,
+      request_id: request.id,
+      lender_id: lenderId,
+      borrower_id: request.seeker_id,
+      title: request.item_name,
+      description: request.description,
+      category: request.category || "Other",
+      price_per_day: pricePerDay,
+      total_price: totalDealPrice,
+      duration_days: durationDays,
+      start_date: request.start_date,
+      end_date: request.end_date,
+      start_time: request.start_time || "10:00:00",
+      end_time: request.end_time || "18:00:00",
+      delivery_option: !request.will_pickup ? "LENDER_DELIVERY" : "SELF",
+      delivery_fee: deliveryFee,
+      collection_option: !request.will_drop_back ? "LENDER_COLLECT" : "SELF",
+      collection_fee: returnFee,
+      delivery_location: fullDestinationAddress,
+      return_location: fullDestinationAddress,
+      notes: request.description,
+      image_url: request.image_url || null,
+      status: "PENDING"
+    };
+    const summaryText = `\u{1F91D} I Can Lend This! ${lenderName} offered to fulfill your request for "${request.item_name}" (\u20B9${totalDealPrice} for ${durationDays} days)`;
+    const msgResult = await query(
+      `INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
+       VALUES ($1, $2, $3, 'PROPOSAL', $4)
+       RETURNING *`,
+      [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]
+    );
+    const createdMessage = msgResult.rows[0];
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
+      [
+        request.seeker_id,
+        lenderId,
+        `\u{1F91D} ${lenderName} is ready to lend gear!`,
+        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+        request.id
+      ]
+    );
+    return sendSuccess(res, {
+      message: createdMessage,
+      proposal: proposalPayload,
+      partner: {
+        id: request.seeker_id,
+        name: request.seeker_name,
+        avatar: request.seeker_avatar
+      }
+    }, "Lend offer sent to seeker! When they accept, the booking will automatically start in Ongoing Bookings.");
+  } catch (error) {
+    next(error);
+  }
+});
 router3.put("/:id", authMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -54851,6 +55010,26 @@ router3.put("/:id", authMiddleware, async (req, res, next) => {
       values.push(validated.return_locality);
       fields.push(`return_locality = $${values.length}`);
     }
+    if (validated.address_text !== void 0) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== void 0) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.will_pickup !== void 0) {
+      values.push(validated.will_pickup);
+      fields.push(`will_pickup = $${values.length}`);
+    }
+    if (validated.will_drop_back !== void 0) {
+      values.push(validated.will_drop_back);
+      fields.push(`will_drop_back = $${values.length}`);
+    }
+    if (validated.delivery_fee !== void 0) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
+    }
     if (fields.length === 0) {
       return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
     }
@@ -54914,7 +55093,8 @@ var verifyCodeSchema = external_exports.object({
 });
 var submitReviewSchema = external_exports.object({
   rating: external_exports.number().min(1).max(5),
-  comment: external_exports.string().optional().default("")
+  comment: external_exports.string().optional().default(""),
+  review_type: external_exports.enum(["OWNER_RENTAL", "RENTER", "COMMUNITY_LENDER"]).optional()
 });
 router4.post("/", authMiddleware, async (req, res, next) => {
   try {
@@ -55059,9 +55239,13 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
-        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.completed_at, b.created_at,
+        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.payment_status, b.payment_method,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
+        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
+        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
+        lender.address_text AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
         borrower.phone AS borrower_phone, borrower.email AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
@@ -55138,7 +55322,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const sDate = booking.start_date_str || booking.start_date;
     const eDate = booking.end_date_str || booking.end_date;
     if (status === "ACCEPTED") {
-      await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
          VALUES ($1, $2, $3, '\u{1F389} Proposal accepted! Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
@@ -55267,7 +55451,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
        RETURNING *`,
       [returnCode, id]
     );
-    await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, '\u{1F91D} Product received & handed over successfully! The rental is now active. When returning, exchange the 6-digit return code.')`,
@@ -55333,10 +55517,95 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
       return sendError(res, "BAD_REQUEST", "Incorrect 6-digit return code. Please check the code with the other party.", 400);
     }
+    const isFree = Number(booking.total_price) === 0;
     const updateRes = await query(
       `UPDATE bookings 
-       SET status = 'COMPLETED', 
-           completed_at = CURRENT_TIMESTAMP, 
+       SET status = CASE WHEN $2::boolean THEN 'COMPLETED'::booking_status ELSE status END,
+           returned_at = CURRENT_TIMESTAMP,
+           completed_at = CASE WHEN $2::boolean THEN CURRENT_TIMESTAMP ELSE completed_at END,
+           payment_status = CASE WHEN $2::boolean THEN 'CONFIRMED' ELSE 'PENDING' END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id, isFree]
+    );
+    if (isFree) {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+    }
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        id,
+        userId,
+        isBorrower ? booking.lender_id : booking.borrower_id,
+        isFree ? "\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews for each other." : "\u{1F4E6} Product returned to owner! Stage 5: Payment settlement is now active."
+      ]
+    );
+    return sendSuccess(
+      res,
+      updateRes.rows[0],
+      isFree ? "Product returned successfully! Whole process completed." : "Product return verified! Please proceed to payment settlement."
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { payment_method = "UPI" } = req.body;
+    const userId = req.user.id;
+    const bookingRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.borrower_id !== userId && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the renter can submit payment", 403);
+    }
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET payment_status = 'SUBMITTED',
+           payment_method = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [payment_method, id]
+    );
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, '\u{1F4B3} Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+      [id, userId, booking.lender_id, payment_method]
+    );
+    return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, i.owner_id AS lender_id, b.item_id, i.title AS item_title
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.lender_id !== userId && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the owner can confirm receiving payment", 403);
+    }
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET status = 'COMPLETED',
+           completed_at = CURRENT_TIMESTAMP,
+           payment_status = 'CONFIRMED',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
@@ -55346,7 +55615,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, '\u{1F389} Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
-      [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
+      [id, userId, booking.borrower_id]
     );
     await createNotification({
       userId: booking.lender_id,
@@ -55384,10 +55653,10 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
 router4.post("/:id/review", authMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { rating, comment } = submitReviewSchema.parse(req.body);
+    const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -55411,6 +55680,7 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
       return sendError(res, "BAD_REQUEST", "Review period has expired. Reviews are available for at most 3 days after completion.", 400);
     }
     const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
+    let resolvedReviewType = review_type || (isBorrower ? Number(booking.total_price) <= 0 || Number(booking.price_per_day) <= 0 ? "COMMUNITY_LENDER" : "OWNER_RENTAL" : "RENTER");
     const existing = await query(
       `SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`,
       [id, userId]
@@ -55419,26 +55689,48 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     if (existing.rows.length > 0) {
       reviewResult = await query(
         `UPDATE reviews 
-         SET rating = $1, comment = $2, created_at = CURRENT_TIMESTAMP 
-         WHERE booking_id = $3 AND reviewer_id = $4 
+         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
+         WHERE booking_id = $4 AND reviewer_id = $5 
          RETURNING *`,
-        [rating, comment || "", id, userId]
+        [rating, comment || "", resolvedReviewType, id, userId]
       );
     } else {
       reviewResult = await query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [id, userId, revieweeId, rating, comment || ""]
+        [id, userId, revieweeId, rating, comment || "", resolvedReviewType]
       );
     }
-    await query(
-      `UPDATE users 
-       SET rating = (SELECT ROUND(AVG(rating), 2) FROM reviews WHERE reviewee_id = $1),
-           trust_score = LEAST(100, COALESCE(trust_score, 95) + 1)
-       WHERE id = $1`,
-      [revieweeId]
-    ).catch(() => {
+    await query(`
+      WITH stats AS (
+        SELECT 
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 5.00), 2) AS owner_rating,
+          COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 5.00), 2) AS renter_rating,
+          COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 5.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(rating), 5.00), 2) AS trust_rating,
+          COUNT(*)::int AS total_reviews
+        FROM reviews
+        WHERE reviewee_id = $1
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = LEAST(100, GREATEST(80, 92 + stats.total_reviews))
+      FROM stats
+      WHERE users.id = $1
+    `, [revieweeId]).catch((err) => {
+      console.error("Failed to update ratings for reviewee:", err);
     });
     const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [userId]);
     const reviewerName = reviewerRes.rows[0]?.name || "Your rental partner";
@@ -55550,214 +55842,9 @@ var updateProfileSchema = external_exports.object({
   pincode: external_exports.string().optional(),
   latitude: external_exports.number().optional(),
   longitude: external_exports.number().optional(),
-  notify_nearby_requests_5km: external_exports.boolean().optional()
+  notify_nearby_requests_5km: external_exports.boolean().optional(),
+  saved_locations: external_exports.array(external_exports.any()).optional()
 });
-var SEED_COMMUNITY_CHAMPIONS = [
-  {
-    id: "champ-sneha",
-    name: "Sneha Patel",
-    email: "sneha@nift.edu.in",
-    locality: "Jayanagar, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80",
-    bio: "Fashion & textile creator @ NIFT \u{1F457} Sharing styling kits & ring lights with fellow students.",
-    rating: 5,
-    trust_score: 100,
-    reviews_count: 38,
-    highlight_review: "Absolute 5-star experience! Even with just a few rentals, her gear is pristine and handover was effortless.",
-    items_count: 4,
-    free_items_count: 8,
-    lent_count: 6,
-    borrowed_count: 12,
-    requests_count: 7
-  },
-  {
-    id: "champ-meera",
-    name: "Meera Iyer",
-    email: "meera@lensminimal.in",
-    locality: "Adyar, Chennai",
-    avatar_url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80",
-    bio: "Minimalist photographer \u{1F4F8} Best reviews because I obsess over gear hygiene and care.",
-    rating: 5,
-    trust_score: 100,
-    reviews_count: 29,
-    highlight_review: "Highest rating well deserved! The camera lens had zero dust and came packed in a waterproof hardcase.",
-    items_count: 3,
-    free_items_count: 5,
-    lent_count: 5,
-    borrowed_count: 8,
-    requests_count: 4
-  },
-  {
-    id: "champ-aarav",
-    name: "Aarav Mehta",
-    email: "aarav@borrowflex.com",
-    locality: "Powai, Mumbai",
-    avatar_url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80",
-    bio: "Community Lead @ Rentu \u26A1 Building the anti-ownership gear sharing network.",
-    rating: 5,
-    trust_score: 100,
-    reviews_count: 42,
-    highlight_review: "Legendary neighbor! Handed over his gimbal with 3 charged batteries and pro camera advice.",
-    items_count: 9,
-    free_items_count: 6,
-    lent_count: 20,
-    borrowed_count: 14,
-    requests_count: 8
-  },
-  {
-    id: "champ-priya",
-    name: "Priya Sharma",
-    email: "priya@zerowaste.in",
-    locality: "Indiranagar, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80",
-    bio: "Eco-conscious creator \u{1F33F} Free community borrowing advocate. Stop buying things you use once a year!",
-    rating: 5,
-    trust_score: 99,
-    reviews_count: 44,
-    highlight_review: "Gave me her 4-person tent for free for a 3-day trek. The kindest and most generous neighbor!",
-    items_count: 5,
-    free_items_count: 10,
-    lent_count: 8,
-    borrowed_count: 24,
-    requests_count: 12
-  },
-  {
-    id: "champ-rohit",
-    name: "Rohit Verma",
-    email: "rohit@delhicrew.in",
-    locality: "Saket, New Delhi",
-    avatar_url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
-    bio: "Indie filmmaker & camera nerd \u{1F4F8} Gear chills when I chill. Top lender in South Delhi.",
-    rating: 4.98,
-    trust_score: 99,
-    reviews_count: 46,
-    highlight_review: "Canon 80D with pristine sensor, flip screen, and memory card. Smooth pickup near Saket Metro.",
-    items_count: 13,
-    free_items_count: 3,
-    lent_count: 28,
-    borrowed_count: 9,
-    requests_count: 5
-  },
-  {
-    id: "champ-ananya",
-    name: "Ananya Roy",
-    email: "ananya@designblore.in",
-    locality: "Koramangala, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80",
-    bio: "Design student & visual artist \u{1F3A8} Borrow > Buy always. Active borrower & free sharer.",
-    rating: 4.97,
-    trust_score: 98,
-    reviews_count: 34,
-    highlight_review: "Returned the mini projector spotlessly on time with extra batteries. Dream borrower to deal with!",
-    items_count: 6,
-    free_items_count: 7,
-    lent_count: 11,
-    borrowed_count: 20,
-    requests_count: 9
-  },
-  {
-    id: "champ-kabir",
-    name: "Kabir Sen",
-    email: "kabir@soundvault.in",
-    locality: "Bandra West, Mumbai",
-    avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
-    bio: "Audio engineer & DJ \u{1F3A7} Helping folks host legendary rooftop gigs and music jams.",
-    rating: 4.96,
-    trust_score: 98,
-    reviews_count: 31,
-    highlight_review: "DJ controller was club-ready and came with high-end audio cables. Kabir gave great setup tips.",
-    items_count: 10,
-    free_items_count: 4,
-    lent_count: 22,
-    borrowed_count: 11,
-    requests_count: 6
-  },
-  {
-    id: "champ-vikram",
-    name: "Vikram Malhotra",
-    email: "vikram@droneshare.in",
-    locality: "HSR Layout, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80",
-    bio: "Drone pilot & gadget hoarder \u{1F681} Rent my equipment so I can invest in newer tech.",
-    rating: 4.95,
-    trust_score: 98,
-    reviews_count: 48,
-    highlight_review: "Top lender hands down. DJI Mavic was pre-calibrated with 3 fly-more batteries and SD card.",
-    items_count: 15,
-    free_items_count: 2,
-    lent_count: 34,
-    borrowed_count: 7,
-    requests_count: 4
-  },
-  {
-    id: "champ-zoya",
-    name: "Zoya Khan",
-    email: "zoya@himalayantrek.in",
-    locality: "Hauz Khas, New Delhi",
-    avatar_url: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80",
-    bio: "Weekend trekker & DIY camper \u26FA Everything you need for the wild at student-friendly rates.",
-    rating: 4.95,
-    trust_score: 98,
-    reviews_count: 28,
-    highlight_review: "Quechua tent, trekking poles, and sleeping bags were super fresh and clean. Saved us thousands!",
-    items_count: 8,
-    free_items_count: 6,
-    lent_count: 18,
-    borrowed_count: 16,
-    requests_count: 7
-  },
-  {
-    id: "champ-ishaan",
-    name: "Ishaan Joshi",
-    email: "ishaan@synthcollective.in",
-    locality: "Malleshwaram, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80",
-    bio: "Keyboardist & music producer \u{1F3B9} Lending condenser mics, soundcards, and midi gear.",
-    rating: 4.96,
-    trust_score: 98,
-    reviews_count: 27,
-    highlight_review: "Focusrite Scarlett interface was immaculate. Super friendly neighbor who loves music.",
-    items_count: 8,
-    free_items_count: 6,
-    lent_count: 16,
-    borrowed_count: 14,
-    requests_count: 6
-  },
-  {
-    id: "champ-devansh",
-    name: "Devansh Nair",
-    email: "devansh@toolbank.in",
-    locality: "Whitefield, Bangalore",
-    avatar_url: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80",
-    bio: "DIY enthusiast & tool collector \u{1F528} Why buy power tools to use them for 10 minutes?",
-    rating: 4.94,
-    trust_score: 97,
-    reviews_count: 32,
-    highlight_review: "Bosch hammer drill set made moving into our new apartment painless. Rapid 5-minute meetup.",
-    items_count: 12,
-    free_items_count: 4,
-    lent_count: 26,
-    borrowed_count: 6,
-    requests_count: 3
-  },
-  {
-    id: "champ-arjun",
-    name: "Arjun Reddy",
-    email: "arjun@outdoorphoto.in",
-    locality: "Jubilee Hills, Hyderabad",
-    avatar_url: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80",
-    bio: "Action cam & sports enthusiast \u{1F6B4} GoPro mounts, underwater cases, and bike racks.",
-    rating: 4.93,
-    trust_score: 97,
-    reviews_count: 30,
-    highlight_review: "GoPro Hero 11 worked flawlessly for our scuba trip. Hassle-free deposit and handover.",
-    items_count: 10,
-    free_items_count: 3,
-    lent_count: 24,
-    borrowed_count: 12,
-    requests_count: 5
-  }
-];
 router6.get("/leaderboard", async (req, res, next) => {
   try {
     const realUsersRes = await query(`
@@ -55768,6 +55855,13 @@ router6.get("/leaderboard", async (req, res, next) => {
         COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer \u26A1') AS bio, 
+        COALESCE(u.trust_rating, u.rating, 5.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(u.owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(u.renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(u.community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 5.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 98)::int AS trust_score,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
@@ -55784,20 +55878,22 @@ router6.get("/leaderboard", async (req, res, next) => {
       const email = u.email || "";
       const name = u.name || "Community Member";
       const avatar = u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
-      const rating = parseFloat(u.rating) || 5;
+      const trust_rating = parseFloat(u.trust_rating) || parseFloat(u.rating) || 5;
+      const owner_rating = parseFloat(u.owner_rating) || 5;
+      const renter_rating = parseFloat(u.renter_rating) || 5;
+      const community_lender_rating = parseFloat(u.community_lender_rating) || 5;
+      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
+      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
+      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+      const rating = trust_rating;
       const trust_score = parseInt(u.trust_score, 10) || 98;
       const items_count = parseInt(u.items_count, 10) || 0;
       const free_items_count = parseInt(u.free_items_count, 10) || 0;
       const lent_count = parseInt(u.lent_count, 10) || 0;
       const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
       const requests_count = parseInt(u.requests_count, 10) || 0;
-      const reviews_count = Math.max(parseInt(u.reviews_count, 10) || 0, (lent_count + borrowed_count) * 2 + 5);
-      const defaultQuotes = [
-        "Super prompt communication, gear in mint condition. 10/10 neighborhood experience!",
-        "Very polite and reliable neighbor. Flexible pickup handover and punctual return.",
-        "Great gear owner! Took time to explain equipment settings on pickup."
-      ];
-      const highlight_review = u.latest_review || defaultQuotes[Math.abs(name.length) % defaultQuotes.length];
+      const reviews_count = parseInt(u.reviews_count, 10) || 0;
+      const highlight_review = u.latest_review || "";
       return {
         id: u.id,
         name,
@@ -55806,6 +55902,13 @@ router6.get("/leaderboard", async (req, res, next) => {
         avatar_url: avatar,
         bio: u.bio,
         rating,
+        trust_rating,
+        owner_rating,
+        renter_rating,
+        community_lender_rating,
+        owner_reviews_count,
+        renter_reviews_count,
+        community_lender_reviews_count,
         trust_score,
         reviews_count,
         highlight_review,
@@ -55816,67 +55919,68 @@ router6.get("/leaderboard", async (req, res, next) => {
         requests_count
       };
     });
-    const existingEmails = new Set(formattedRealUsers.map((u) => u.email.toLowerCase()));
-    const existingNames = new Set(formattedRealUsers.map((u) => u.name.toLowerCase()));
     const combinedPool = [...formattedRealUsers];
-    for (const champ of SEED_COMMUNITY_CHAMPIONS) {
-      if (!existingEmails.has(champ.email.toLowerCase()) && !existingNames.has(champ.name.toLowerCase())) {
-        combinedPool.push(champ);
-      }
-    }
     const topRatedSorted = [...combinedPool].sort((a, b) => {
-      if (b.rating !== a.rating) return b.rating - a.rating;
+      const bTr = b.trust_rating ?? b.rating ?? 5;
+      const aTr = a.trust_rating ?? a.rating ?? 5;
+      if (bTr !== aTr) return bTr - aTr;
       if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
       return b.reviews_count - a.reviews_count;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_rated",
-      metric_label: "Reputation Score",
-      metric_value: `${member.rating.toFixed(2)} \u2605 (${member.trust_score}% Trust)`,
-      badges: index === 0 ? ["\u{1F451} #1 Highest Rated", "\u{1F6E1}\uFE0F 100% Trust", "\u{1F31F} Flawless Reviews"] : index < 3 ? ["\u2B50 5-Star Neighbor", "\u{1F6E1}\uFE0F Verified Trust", "\u{1F4AC} Outstanding Feedback"] : ["\u2B50 Top Rated", "\u{1F6E1}\uFE0F Verified Neighbor"]
+      metric_label: "Overall Trust Rating",
+      metric_value: `${(member.trust_rating || member.rating || 5).toFixed(2)} \u2605 (${member.trust_score}% Trust)`,
+      badges: index === 0 ? ["\u{1F451} #1 Overall Trust", "\u{1F6E1}\uFE0F 100% Reputation", "\u{1F31F} Flawless Community Record"] : index < 3 ? ["\u2B50 Top Trust Neighbor", "\u{1F6E1}\uFE0F Verified Trust", "\u{1F4AC} Outstanding Feedback"] : ["\u2B50 Top Rated", "\u{1F6E1}\uFE0F Verified Neighbor"]
     }));
     const topLendersSorted = [...combinedPool].sort((a, b) => {
+      const bOr = b.owner_rating ?? 5;
+      const aOr = a.owner_rating ?? 5;
+      if (bOr !== aOr) return bOr - aOr;
       const scoreB = b.lent_count * 3 + b.items_count * 2;
       const scoreA = a.lent_count * 3 + a.items_count * 2;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.items_count !== a.items_count) return b.items_count - a.items_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_lenders",
-      metric_label: "Gear Lent for Rent",
-      metric_value: `${member.lent_count} Rentals (${member.items_count} listed)`,
-      badges: index === 0 ? ["\u{1F451} #1 Gear Lender", "\u{1F4E6} Mega Closet", "\u26A1 Instant Handover"] : index < 3 ? ["\u{1F3F7}\uFE0F Super Lender", "\u26A1 Instant Handover", "\u{1F4E6} Active Gear"] : ["\u{1F3F7}\uFE0F Top Lender", "\u{1F4E6} Gear Sharer"]
+      metric_label: "Gear Owner Rating",
+      metric_value: `${(member.owner_rating || 5).toFixed(2)} \u2605 (${member.lent_count} Rentals Lent)`,
+      badges: index === 0 ? ["\u{1F451} #1 Gear Owner", "\u{1F4E6} 5-Star Equipment", "\u26A1 Instant Handover"] : index < 3 ? ["\u{1F3F7}\uFE0F Super Gear Owner", "\u26A1 Verified Gear Care", "\u{1F4E6} Active Gear"] : ["\u{1F3F7}\uFE0F Top Gear Owner", "\u{1F4E6} Gear Sharer"]
     }));
     const topBorrowersSorted = [...combinedPool].sort((a, b) => {
+      const bRr = b.renter_rating ?? 5;
+      const aRr = a.renter_rating ?? 5;
+      if (bRr !== aRr) return bRr - aRr;
       const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
       const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.borrowed_count !== a.borrowed_count) return b.borrowed_count - a.borrowed_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_borrowers",
-      metric_label: "Gear Borrowed",
-      metric_value: `${member.borrowed_count} Rentals Borrowed`,
-      badges: index === 0 ? ["\u{1F451} #1 Circular Borrower", "\u23F1\uFE0F 100% Punctual", "\u{1F331} Zero Waste Hero"] : index < 3 ? ["\u{1F392} Eco Borrower", "\u23F1\uFE0F 100% On-Time Return", "\u{1F91D} Trusted Neighbor"] : ["\u{1F392} Active Borrower", "\u{1F91D} Verified Peer"]
+      metric_label: "Renter Rating",
+      metric_value: `${(member.renter_rating || 5).toFixed(2)} \u2605 (${member.borrowed_count} Rentals Borrowed)`,
+      badges: index === 0 ? ["\u{1F451} #1 Trusted Renter", "\u23F1\uFE0F 100% Punctual", "\u{1F331} Zero Waste Hero"] : index < 3 ? ["\u{1F392} 5-Star Renter", "\u23F1\uFE0F 100% On-Time Return", "\u{1F91D} Trusted Neighbor"] : ["\u{1F392} Verified Renter", "\u{1F91D} Verified Peer"]
     }));
     const topSharersSorted = [...combinedPool].sort((a, b) => {
+      const bClr = b.community_lender_rating ?? 5;
+      const aClr = a.community_lender_rating ?? 5;
+      if (bClr !== aClr) return bClr - aClr;
       const scoreB = b.free_items_count * 3 + b.requests_count;
       const scoreA = a.free_items_count * 3 + a.requests_count;
       if (scoreB !== scoreA) return scoreB - scoreA;
-      if (b.free_items_count !== a.free_items_count) return b.free_items_count - a.free_items_count;
       return b.trust_score - a.trust_score;
     }).slice(0, 10).map((member, index) => ({
       ...member,
       rank: index + 1,
       category_type: "top_sharers",
-      metric_label: "Free Gear Shared",
-      metric_value: `${member.free_items_count} Free Shares (\u20B90 Rent)`,
-      badges: index === 0 ? ["\u{1F451} #1 Community Angel", "\u{1F381} Gift Economy Pioneer", "\u2764\uFE0F Pure Generosity"] : index < 3 ? ["\u{1F381} Free Gear Angel", "\u{1F331} Anti-Ownership Champion", "\u2764\uFE0F Neighbor Favorite"] : ["\u{1F381} Community Sharer", "\u2764\uFE0F Generous Neighbor"]
+      metric_label: "Free Lender Rating",
+      metric_value: `${(member.community_lender_rating || 5).toFixed(2)} \u2605 (${member.free_items_count} Free Shares)`,
+      badges: index === 0 ? ["\u{1F451} #1 Community Angel", "\u{1F381} Gift Economy Pioneer", "\u2764\uFE0F Pure Generosity"] : index < 3 ? ["\u{1F381} Free Gear Angel", "\u{1F331} Community Champion", "\u2764\uFE0F Neighbor Favorite"] : ["\u{1F381} Community Lender", "\u2764\uFE0F Generous Neighbor"]
     }));
     return sendSuccess(res, {
       top_rated: topRatedSorted,
@@ -55924,125 +56028,13 @@ router6.get("/search", async (req, res, next) => {
       trust_score: parseInt(u.trust_score, 10) || 98,
       items_count: parseInt(u.items_count, 10) || 0,
       requests_count: parseInt(u.requests_count, 10) || 0,
-      reviews_count: parseInt(u.reviews_count, 10) || 5
+      reviews_count: parseInt(u.reviews_count, 10) || 0
     }));
-    const queryLower = q.toLowerCase();
-    const matchedChampions = SEED_COMMUNITY_CHAMPIONS.filter(
-      (c) => c.name.toLowerCase().includes(queryLower) || c.locality.toLowerCase().includes(queryLower) || c.bio.toLowerCase().includes(queryLower)
-    ).map((c) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      locality: c.locality,
-      avatar_url: c.avatar_url,
-      bio: c.bio,
-      rating: c.rating,
-      trust_score: c.trust_score,
-      items_count: c.items_count,
-      requests_count: c.requests_count,
-      reviews_count: c.reviews_count
-    }));
-    const existingNames = new Set(formattedRealUsers.map((u) => u.name.toLowerCase()));
-    const results = [...formattedRealUsers];
-    for (const champ of matchedChampions) {
-      if (!existingNames.has(champ.name.toLowerCase())) {
-        results.push(champ);
-      }
-    }
-    return sendSuccess(res, results);
+    return sendSuccess(res, formattedRealUsers);
   } catch (error) {
     next(error);
   }
 });
-var getChampionSyntheticData = (champ) => {
-  const mockItems = [
-    {
-      id: `${champ.id}-item-1`,
-      title: champ.id === "champ-sneha" ? "Godox SL60W Studio Video Light Kit" : champ.id === "champ-meera" ? "Sony FE 24-70mm f/2.8 GM Lens" : champ.id === "champ-aarav" ? "DJI RS3 Pro Gimbal Stabilizer" : champ.id === "champ-priya" ? "Quechua 4-Person Waterproof Camping Tent" : champ.id === "champ-rohit" ? "Canon EOS 80D DSLR with 18-135mm" : "Portable Studio Audio Interface",
-      category: champ.id === "champ-priya" ? "Outdoor & Camping" : "Camera & Photo",
-      price_per_day: champ.free_items_count > 0 ? 0 : 350,
-      max_duration_days: 7,
-      image_urls: [
-        champ.id === "champ-priya" ? "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=800&q=80" : champ.id === "champ-aarav" ? "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80" : "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=800&q=80"
-      ],
-      sticker_badge: champ.free_items_count > 0 ? "Free Share" : "Verified Gear",
-      status: "AVAILABLE",
-      locality: champ.locality,
-      owner_id: champ.id,
-      owner_name: champ.name,
-      owner_avatar: champ.avatar_url,
-      owner_rating: champ.rating,
-      created_at: (/* @__PURE__ */ new Date()).toISOString()
-    },
-    {
-      id: `${champ.id}-item-2`,
-      title: champ.id === "champ-sneha" ? "Ring Light Stand with Bluetooth Remote" : champ.id === "champ-meera" ? "Manfrotto Carbon Fiber Tripod" : champ.id === "champ-aarav" ? "Rode Wireless GO II Dual Mic" : champ.id === "champ-priya" ? "Trekking Poles & Sleeping Bag Set" : "Heavy-Duty Cordless Drill Set",
-      category: champ.id === "champ-priya" ? "Outdoor & Camping" : "Electronics",
-      price_per_day: 150,
-      max_duration_days: 5,
-      image_urls: [
-        "https://images.unsplash.com/photo-1543512214-318c7553f230?auto=format&fit=crop&w=800&q=80"
-      ],
-      sticker_badge: "Community Favorite",
-      status: "AVAILABLE",
-      locality: champ.locality,
-      owner_id: champ.id,
-      owner_name: champ.name,
-      owner_avatar: champ.avatar_url,
-      owner_rating: champ.rating,
-      created_at: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  ];
-  const mockRequests = [
-    {
-      id: `${champ.id}-req-1`,
-      item_name: champ.id === "champ-sneha" ? "Portable Garment Steamer for shoot" : champ.id === "champ-priya" ? "Portable Solar Charger 24W" : "GoPro Hero 11 Black for weekend travel",
-      description: "Looking to borrow or rent for 2 days from a verified neighbor.",
-      category: "Electronics",
-      start_date: "This Weekend",
-      start_time: "10:00 AM",
-      end_date: "Sunday Evening",
-      end_time: "07:00 PM",
-      duration_days: 2,
-      offered_amount: 300,
-      locality: champ.locality,
-      status: "OPEN",
-      pickup_type: "CUSTOM_LOCATION",
-      return_type: "LENDER_LOCATION",
-      created_at: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  ];
-  const mockReviews = [
-    {
-      id: `${champ.id}-rev-1`,
-      reviewer_name: "Aditi Rao",
-      reviewer_avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
-      reviewer_locality: "Indiranagar",
-      rating: 5,
-      comment: champ.highlight_review || "Incredible experience! The gear was spotless and handover was super friendly.",
-      created_at: "2 days ago"
-    },
-    {
-      id: `${champ.id}-rev-2`,
-      reviewer_name: "Karan Mehra",
-      reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
-      reviewer_locality: "Koramangala",
-      rating: 5,
-      comment: "Super punctual and trustworthy neighbor. Everything returned in pristine shape. 10/10!",
-      created_at: "1 week ago"
-    },
-    {
-      id: `${champ.id}-rev-3`,
-      reviewer_name: "Sonia Gupta",
-      reviewer_avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
-      reviewer_locality: "HSR Layout",
-      rating: 5,
-      comment: "Very polite, helpful, and took extra time to explain settings. Highly recommended community member!",
-      created_at: "2 weeks ago"
-    }
-  ];
-  return { mockItems, mockRequests, mockReviews };
-};
 router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -56067,52 +56059,107 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     `, [id]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
     const followersCount = countsRes.rows[0]?.followers_count || 0;
     const followingCount = countsRes.rows[0]?.following_count || 0;
-    const champ = SEED_COMMUNITY_CHAMPIONS.find((c) => c.id === id);
-    if (champ) {
-      const { mockItems, mockRequests, mockReviews } = getChampionSyntheticData(champ);
-      return sendSuccess(res, {
-        id: champ.id,
-        name: champ.name,
-        email: champ.email,
-        locality: champ.locality,
-        avatar_url: champ.avatar_url,
-        banner_url: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
-        bio: champ.bio,
-        rating: champ.rating,
-        trust_score: champ.trust_score,
-        created_at: "2024-01-15T00:00:00.000Z",
-        is_following: isFollowing,
-        is_blocked: isBlocked,
-        is_blocked_by: isBlockedBy,
-        followers_count: followersCount || 12,
-        following_count: followingCount || 4,
-        items: isBlocked || isBlockedBy ? [] : mockItems,
-        requests: isBlocked || isBlockedBy ? [] : mockRequests,
-        reviews: mockReviews,
-        stats: {
-          listings_count: isBlocked || isBlockedBy ? 0 : champ.items_count,
-          requests_count: isBlocked || isBlockedBy ? 0 : champ.requests_count,
-          completed_lent: champ.lent_count,
-          completed_borrowed: champ.borrowed_count,
-          reviews_count: champ.reviews_count
+    let userRes;
+    try {
+      userRes = await query(
+        `SELECT 
+          id, 
+          name, 
+          locality, 
+          address_text,
+          pincode,
+          avatar_url, 
+          banner_url, 
+          bio, 
+          COALESCE(trust_score, 98)::int AS trust_score, 
+          COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+          COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+          COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+          COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+          COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+          COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+          COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+          COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+          COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+          COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+          created_at
+         FROM users WHERE id = $1`,
+        [id]
+      );
+    } catch (err) {
+      if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
+        console.warn("Auto-repairing missing user columns on query error...", err.message);
+        try {
+          await query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+          `);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text,
+              pincode,
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(trust_rating, rating, 5.00)::numeric(3, 2) AS trust_rating,
+              COALESCE(owner_rating, 5.00)::numeric(3, 2) AS owner_rating,
+              COALESCE(renter_rating, 5.00)::numeric(3, 2) AS renter_rating,
+              COALESCE(community_lender_rating, 5.00)::numeric(3, 2) AS community_lender_rating,
+              COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+              COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+              COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+              COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+        } catch (retryErr) {
+          console.warn("Fallback to baseline user columns query:", retryErr.message);
+          userRes = await query(
+            `SELECT 
+              id, 
+              name, 
+              locality, 
+              address_text, 
+              pincode, 
+              avatar_url, 
+              banner_url, 
+              bio, 
+              COALESCE(trust_score, 98)::int AS trust_score, 
+              COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
+              created_at
+             FROM users WHERE id = $1`,
+            [id]
+          );
+          if (userRes && userRes.rows.length > 0) {
+            userRes.rows[0].saved_locations = [];
+            userRes.rows[0].trust_rating = userRes.rows[0].rating;
+            userRes.rows[0].owner_rating = 5;
+            userRes.rows[0].renter_rating = 5;
+            userRes.rows[0].community_lender_rating = 5;
+            userRes.rows[0].owner_reviews_count = 0;
+            userRes.rows[0].renter_reviews_count = 0;
+            userRes.rows[0].community_lender_reviews_count = 0;
+            userRes.rows[0].notify_nearby_requests_5km = true;
+          }
         }
-      });
+      } else {
+        throw err;
+      }
     }
-    const userRes = await query(
-      `SELECT 
-        id, 
-        name, 
-        locality, 
-        avatar_url, 
-        banner_url, 
-        bio, 
-        COALESCE(trust_score, 98)::int AS trust_score, 
-        COALESCE(rating, 5.00)::numeric(3, 2) AS rating, 
-        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-        created_at
-       FROM users WHERE id = $1`,
-      [id]
-    );
     if (userRes.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "User not found", 404);
     }
@@ -56121,7 +56168,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     let userRequests = [];
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
-        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, status, locality, created_at
+        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
          FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
         [id]
@@ -56140,6 +56187,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         r.id, 
         r.rating, 
         r.comment, 
+        COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
         r.created_at, 
         COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
@@ -56150,29 +56198,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
        ORDER BY r.created_at DESC`,
       [id]
     );
-    let reviewsList = reviewsRes.rows;
-    if (reviewsList.length === 0) {
-      reviewsList = [
-        {
-          id: `rev-default-1-${id}`,
-          reviewer_name: "Pooja Hegde",
-          reviewer_avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
-          reviewer_locality: user.locality || "Bengaluru",
-          rating: 5,
-          comment: "Fantastic peer! Smooth coordination, very polite, and equipment was returned in immaculate condition.",
-          created_at: "Recent Rental"
-        },
-        {
-          id: `rev-default-2-${id}`,
-          reviewer_name: "Rahul Sen",
-          reviewer_avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
-          reviewer_locality: "Koramangala",
-          rating: 5,
-          comment: "Prompt communication and respectful neighbor. Highly recommended in our local sharing circle!",
-          created_at: "2 weeks ago"
-        }
-      ];
-    }
+    const reviewsList = reviewsRes.rows;
     const statsRes = await query(
       `SELECT 
         (SELECT COUNT(*) FROM items WHERE owner_id = $1) AS listings_count,
@@ -56183,17 +56209,32 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       [id]
     );
     const stats = statsRes.rows[0];
+    const trustRating = parseFloat(user.trust_rating) || parseFloat(user.rating) || 5;
+    const ownerRating = parseFloat(user.owner_rating) || 5;
+    const renterRating = parseFloat(user.renter_rating) || 5;
+    const communityLenderRating = parseFloat(user.community_lender_rating) || 5;
+    const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
     return sendSuccess(res, {
       id: user.id,
       name: user.name || "Community Member",
       locality: user.locality || "Bengaluru",
+      address_text: isSelf ? user.address_text || "" : "",
+      pincode: isSelf ? user.pincode || "" : "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
       bio: user.bio || "Neighbor & Gear Sharer \u26A1 Passionate about circular economy and community access over ownership.",
       trust_score: parseInt(user.trust_score, 10) || 98,
-      rating: parseFloat(user.rating) || 5,
+      rating: trustRating,
+      trust_rating: trustRating,
+      owner_rating: ownerRating,
+      renter_rating: renterRating,
+      community_lender_rating: communityLenderRating,
+      owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
+      renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
+      community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+      saved_locations: isSelf ? user.saved_locations || [] : [],
       is_following: isFollowing,
       is_blocked: isBlocked,
       is_blocked_by: isBlockedBy,
@@ -56273,6 +56314,10 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       values.push(validated.notify_nearby_requests_5km);
       fields.push(`notify_nearby_requests_5km = $${values.length}`);
     }
+    if (validated.saved_locations !== void 0) {
+      values.push(JSON.stringify(validated.saved_locations));
+      fields.push(`saved_locations = $${values.length}::jsonb`);
+    }
     if (fields.length === 0) {
       return sendError(res, "BAD_REQUEST", "No fields to update", 400);
     }
@@ -56281,10 +56326,23 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
+    if (validated.locality !== void 0 || validated.address_text !== void 0 || validated.latitude !== void 0 || validated.longitude !== void 0 || cleanPincode !== void 0) {
+      await query(
+        `UPDATE items 
+         SET locality = COALESCE($1, locality),
+             address_text = COALESCE($2, address_text),
+             pincode = COALESCE($3, pincode),
+             latitude = COALESCE($4, latitude),
+             longitude = COALESCE($5, longitude),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE owner_id = $6`,
+        [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]
+      ).catch((err) => console.error("Failed to sync items location:", err));
+    }
     return sendSuccess(res, updatedUser, "Profile updated successfully \u2728");
   } catch (error) {
     next(error);
@@ -56385,6 +56443,18 @@ var isUuid = (val) => {
 router7.get("/conversations", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
+    await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE (is_delivered = false OR is_delivered IS NULL)
+        AND receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)`,
+      [userId]
+    ).catch(() => {
+    });
     const result = await query(
       `WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -56394,7 +56464,7 @@ router7.get("/conversations", authMiddleware, async (req, res, next) => {
         SELECT 
           b.id::text AS conversation_id,
           b.id AS booking_id,
-          b.status AS booking_status,
+          b.status::text AS booking_status,
           b.start_date,
           b.duration_days,
           b.total_price,
@@ -56445,12 +56515,12 @@ router7.get("/conversations", authMiddleware, async (req, res, next) => {
         SELECT
           'dm_' || partner.id::text AS conversation_id,
           NULL::uuid AS booking_id,
-          'DIRECT_DM' AS booking_status,
+          'DIRECT_DM'::text AS booking_status,
           NULL::date AS start_date,
           NULL::integer AS duration_days,
-          0 AS total_price,
+          0::numeric AS total_price,
           'Direct Chat' AS item_title,
-          ARRAY[]::text[] AS item_images,
+          '[]'::jsonb AS item_images,
           partner.locality AS item_locality,
           partner.id::text AS partner_id,
           partner.name AS partner_name,
@@ -56531,9 +56601,24 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       if (blockCheck.rows.length > 0) {
         return sendError(res, "FORBIDDEN", "Communication with this user is blocked.", 403);
       }
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND receiver_id = ANY($1::text[])
+           AND sender_id = ANY($2::text[])`,
+        [myIds, pIds]
+      ).catch(() => {
+      });
       const messagesRes2 = await query(
         `SELECT 
-          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+          COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+          COALESCE(m.is_read, false) AS is_read, m.read_at,
+          m.created_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
          FROM messages m
          LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -56564,9 +56649,24 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
         const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
         const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
         const pIds = [conversationId, partner.id, partner.firebase_uid].filter(Boolean);
+        await query(
+          `UPDATE messages
+           SET is_read = true,
+               read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+               is_delivered = true,
+               delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+           WHERE (is_read = false OR is_read IS NULL)
+             AND receiver_id = ANY($1::text[])
+             AND sender_id = ANY($2::text[])`,
+          [myIds, pIds]
+        ).catch(() => {
+        });
         const messagesRes2 = await query(
           `SELECT 
-            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+            m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+            COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+            COALESCE(m.is_read, false) AS is_read, m.read_at,
+            m.created_at,
             COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
            FROM messages m
            LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -56585,9 +56685,30 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       }
       return sendError(res, "NOT_FOUND", "Conversation not found or access denied", 404);
     }
+    await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $2::text OR firebase_uid = $2::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_read = true,
+          read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+          is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE booking_id::text = $1
+        AND (is_read = false OR is_read IS NULL)
+        AND (
+          receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+          OR (receiver_id IS NULL AND sender_id NOT IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL))
+        )`,
+      [conversationId, userId]
+    ).catch(() => {
+    });
     const messagesRes = await query(
       `SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited, m.created_at,
+        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+        COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+        COALESCE(m.is_read, false) AS is_read, m.read_at,
+        m.created_at,
         COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar
        FROM messages m
        LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
@@ -56599,6 +56720,52 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       booking: bookingRes.rows[0],
       messages: messagesRes.rows
     });
+  } catch (error) {
+    next(error);
+  }
+});
+router7.post("/:conversationId/read", authMiddleware, async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
+    const rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
+    if (isDm && rawPartnerId) {
+      const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+      const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+      const pRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+      const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND receiver_id = ANY($1::text[])
+           AND sender_id = ANY($2::text[])`,
+        [myIds, pIds]
+      );
+    } else {
+      await query(
+        `WITH me AS (
+          SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $2::text OR firebase_uid = $2::text LIMIT 1
+        )
+        UPDATE messages
+        SET is_read = true,
+            read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+            is_delivered = true,
+            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+        WHERE booking_id::text = $1
+          AND (is_read = false OR is_read IS NULL)
+          AND (
+            receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)
+            OR (receiver_id IS NULL AND sender_id NOT IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL))
+          )`,
+        [conversationId, userId]
+      );
+    }
+    return sendSuccess(res, { marked_read: true });
   } catch (error) {
     next(error);
   }
@@ -56638,8 +56805,8 @@ router7.post("/", authMiddleware, async (req, res, next) => {
       return sendError(res, "FORBIDDEN", "Cannot send message. Communication between these users is blocked.", 403);
     }
     const result = await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+       VALUES ($1, $2, $3, $4, $5, $6, false, false)
        RETURNING *`,
       [
         targetBookingId,
@@ -56653,6 +56820,8 @@ router7.post("/", authMiddleware, async (req, res, next) => {
     const inserted = result.rows[0];
     return sendSuccess(res, {
       ...inserted,
+      is_delivered: false,
+      is_read: false,
       sender_name: req.user.name || "You",
       sender_avatar: req.user?.avatar_url || null
     }, "Message sent");
@@ -56679,7 +56848,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     if (proposal.status === "ACCEPTED") {
       return sendError(res, "BAD_REQUEST", "This agreement has already been accepted", 400);
     }
-    const isOffer = proposal.type === "LISTING";
+    const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
     const lenderId = isOffer ? message.sender_id : currentUserId;
     const borrowerId = isOffer ? currentUserId : message.sender_id;
     const lenderUserRes = await query(`SELECT locality, address_text FROM users WHERE id = $1`, [lenderId]);
@@ -56693,7 +56862,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       `INSERT INTO items (
         owner_id, title, description, category, price_per_day, max_duration_days, 
         image_urls, locality, address_text, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'RENTED')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`,
       [
         lenderId,
@@ -56703,8 +56872,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         pricePerDay,
         Math.max(durationDays, 3),
         proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-        lenderInfo.locality || "Bangalore",
-        lenderInfo.address_text || "Local pickup"
+        proposal.locality || lenderInfo.locality || "Bangalore",
+        proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
       ]
     );
     const createdItem = itemRes.rows[0];
@@ -56769,6 +56938,25 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         `\u{1F389} Agreement Accepted! Confirmed booking for "${itemTitle}" (\u20B9${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings & Handoffs!`
       ]
     );
+    if (proposal.request_id) {
+      await query(
+        `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [proposal.request_id]
+      ).catch(() => {
+      });
+    }
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', '\u{1F389} Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+      [message.sender_id, currentUserId, itemTitle, createdBooking.id]
+    ).catch(() => {
+    });
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', '\u{1F389} Booking Confirmed: ' || $3, 'Rental agreement confirmed! Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+      [currentUserId, message.sender_id, itemTitle, createdBooking.id]
+    ).catch(() => {
+    });
     return sendSuccess(res, {
       booking: createdBooking,
       item: createdItem,
@@ -61746,7 +61934,6 @@ var StorageFileApi = class extends BaseApiClient {
         body = fileBody;
         headers["cache-control"] = `max-age=${options.cacheControl}`;
         headers["content-type"] = options.contentType;
-        if (options.contentEncoding) headers["content-encoding"] = options.contentEncoding;
         if (metadata) headers["x-metadata"] = _this.toBase64(_this.encodeMetadata(metadata));
         if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
       }
@@ -61768,7 +61955,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions Optional file upload options including cacheControl, contentType, contentEncoding, upsert, and metadata.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, upsert, and metadata.
   * @returns Promise with response containing file path, id, and fullPath or error
   *
   * @example Upload file
@@ -61839,7 +62026,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
   * @param token The token generated from `createSignedUploadUrl`
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions HTTP headers (cacheControl, contentType, contentEncoding, etc.).
+  * @param fileOptions HTTP headers (cacheControl, contentType, etc.).
   * **Note:** The `upsert` option has no effect here. To enable upsert behavior,
   * pass `{ upsert: true }` when calling `createSignedUploadUrl()` instead.
   * @returns Promise with response containing file path and fullPath or error
@@ -61885,7 +62072,6 @@ var StorageFileApi = class extends BaseApiClient {
         body = fileBody;
         headers["cache-control"] = `max-age=${options.cacheControl}`;
         headers["content-type"] = options.contentType;
-        if (options.contentEncoding) headers["content-encoding"] = options.contentEncoding;
         if (metadata) headers["x-metadata"] = _this3.toBase64(_this3.encodeMetadata(metadata));
         if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
       }
@@ -61957,7 +62143,7 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to update.
   * @param fileBody The body of the file to be stored in the bucket.
-  * @param fileOptions Optional file upload options including cacheControl, contentType, contentEncoding, and metadata.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, and metadata.
   * **Note:** The `upsert` option has no effect here. `update()` always replaces the
   * file at the given path, so the `x-upsert` header is not sent. To control upsert
   * behavior, use `upload()` instead.
@@ -62062,10 +62248,8 @@ var StorageFileApi = class extends BaseApiClient {
   * @subcategory File Buckets
   * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
   * @param toPath The new file path, including the new file name. For example `folder/image-copy.png`.
-  * @param options The destination and metadata options.
+  * @param options The destination options.
   * @param options.sourceVersionId The version id of the source object to copy.
-  * @param options.copyMetadata Whether to copy the source metadata. Defaults to true. Set to false to apply metadata overrides; custom user metadata is not copied when false.
-  * @param options.metadata File metadata overrides, applied only when copyMetadata is false. Unspecified fields retain their source values.
   * @returns Promise with response containing copied file path or error
   *
   * @example Copy file
@@ -62086,18 +62270,6 @@ var StorageFileApi = class extends BaseApiClient {
   * }
   * ```
   *
-  * @example Copy file with content encoding
-  * ```js
-  * const { data, error } = await supabase
-  *   .storage
-  *   .from('documents')
-  *   .copy('source.txt.gz', 'copy.txt.gz', {
-  *     copyMetadata: false,
-  *     metadata: { contentEncoding: 'gzip' },
-  *   })
-  * ```
-  * The source must already contain gzip-encoded bytes. Copying changes metadata only.
-  *
   * @remarks
   * - RLS policy permissions required:
   *   - `buckets` table permissions: none
@@ -62107,15 +62279,12 @@ var StorageFileApi = class extends BaseApiClient {
   async copy(fromPath, toPath, options) {
     var _this7 = this;
     return _this7.handleOperation(async () => {
-      const copyOptions = options;
       return { path: (await post(_this7.fetch, `${_this7.url}/object/copy`, {
         bucketId: _this7.bucketId,
         sourceKey: fromPath,
         destinationKey: toPath,
         destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
-        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId,
-        copyMetadata: typeof (copyOptions === null || copyOptions === void 0 ? void 0 : copyOptions.copyMetadata) === "boolean" ? copyOptions.copyMetadata : void 0,
-        metadata: (copyOptions === null || copyOptions === void 0 ? void 0 : copyOptions.copyMetadata) === false ? copyOptions.metadata : void 0
+        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
       }, { headers: _this7.headers })).Key };
     });
   }
@@ -62741,7 +62910,6 @@ var StorageFileApi = class extends BaseApiClient {
     else files.push(["", fileBody]);
     if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
     if (options.metadata && !body.has("metadata")) body.append("metadata", this.encodeMetadata(options.metadata));
-    if (options.contentEncoding && !body.has("contentEncoding")) body.append("contentEncoding", options.contentEncoding);
     for (const [name, file] of files) body.append(name, file);
     return body;
   }
@@ -62768,7 +62936,7 @@ var StorageFileApi = class extends BaseApiClient {
     return query2;
   }
 };
-var version = "2.118.0";
+var version = "2.117.3";
 var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version}` };
 var StorageBucketApi = class extends BaseApiClient {
   constructor(url, headers = {}, fetch$1, opts) {
@@ -64329,7 +64497,7 @@ var StorageClient = class extends StorageBucketApi {
 var import_auth_js = __toESM(require_main4(), 1);
 __reExport(dist_exports, __toESM(require_main3(), 1));
 __reExport(dist_exports, __toESM(require_main4(), 1));
-var version2 = "2.118.0";
+var version2 = "2.117.3";
 var JS_ENV = "";
 var JS_RUNTIME_VERSION;
 if (typeof Deno !== "undefined") {
@@ -66887,12 +67055,466 @@ var errorHandler = (err, req, res, next) => {
   );
 };
 
+// src/db/migrate.ts
+var runMigrations = async () => {
+  console.log("Running database migrations (Supabase Compatible)...");
+  const client = await pool.connect();
+  try {
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`).catch(() => {
+    });
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis";`).catch(() => {
+      console.log("PostGIS extension not available locally; using Haversine proximity formulas.");
+    });
+    await client.query("BEGIN");
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+          CREATE TYPE user_role AS ENUM ('USER', 'ADMIN');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'item_status') THEN
+          CREATE TYPE item_status AS ENUM ('AVAILABLE', 'RENTED', 'UNAVAILABLE');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'request_status') THEN
+          CREATE TYPE request_status AS ENUM ('OPEN', 'FULFILLED', 'CANCELLED');
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'HANDED_OVER');
+        ELSE
+          ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'HANDED_OVER';
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        name VARCHAR(120) NOT NULL,
+        email VARCHAR(255) UNIQUE,
+        password_hash VARCHAR(255),
+        phone VARCHAR(20),
+        bio TEXT DEFAULT 'Creator & Gear Sharer',
+        avatar_url TEXT,
+        address_text TEXT,
+        locality VARCHAR(120),
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        rating NUMERIC(3, 2) DEFAULT 5.00,
+        trust_score INT DEFAULT 98,
+        role user_role DEFAULT 'USER',
+        clerk_id VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address_text TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_users_locality ON users(locality);
+      CREATE INDEX IF NOT EXISTS idx_users_coords ON users(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_id TEXT NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        description TEXT,
+        category VARCHAR(60) NOT NULL,
+        price_per_day NUMERIC(10, 2) NOT NULL CHECK (price_per_day >= 0),
+        max_duration_days INTEGER DEFAULT 3 CHECK (max_duration_days > 0),
+        image_urls JSONB DEFAULT '[]'::JSONB,
+        sticker_badge VARCHAR(50) DEFAULT '\u2728 Weekend Flex',
+        locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        status item_status DEFAULT 'AVAILABLE',
+        available_for_borrowing BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+
+      CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+      CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+      CREATE INDEX IF NOT EXISTS idx_items_coords ON items(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_items_borrowing ON items(available_for_borrowing);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        seeker_id TEXT NOT NULL,
+        item_name VARCHAR(150) NOT NULL,
+        description TEXT,
+        category VARCHAR(60),
+        start_date DATE NOT NULL,
+        start_time TIME,
+        duration_days INTEGER NOT NULL DEFAULT 1 CHECK (duration_days > 0),
+        offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount >= 0),
+        locality VARCHAR(120),
+        address_text TEXT DEFAULT 'South Delhi',
+        pincode VARCHAR(10),
+        latitude DOUBLE PRECISION DEFAULT 28.5355,
+        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        status request_status DEFAULT 'OPEN',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_pickup BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_drop_back BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+
+      CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
+      CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
+      CREATE INDEX IF NOT EXISTS idx_requests_coords ON requests(latitude, longitude);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id UUID NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+        borrower_id TEXT NOT NULL,
+        lender_id TEXT NOT NULL,
+        start_date DATE NOT NULL,
+        start_time TIME,
+        duration_days INTEGER NOT NULL CHECK (duration_days > 0),
+        total_price NUMERIC(10, 2) NOT NULL CHECK (total_price >= 0),
+        status booking_status DEFAULT 'PENDING',
+        message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
+
+      CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_lender ON bookings(lender_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+        sender_id TEXT NOT NULL,
+        receiver_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_booking ON messages(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
+      ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_delivered BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS postal_codes (
+        pincode VARCHAR(10) PRIMARY KEY,
+        locality VARCHAR(120) NOT NULL,
+        city VARCHAR(120),
+        state VARCHAR(120),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_postal_codes_locality ON postal_codes(locality);
+
+      -- Backfill postal_codes from existing distinct pincodes and localities
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM users 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM items 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality)
+      SELECT DISTINCT pincode, locality FROM requests 
+      WHERE pincode IS NOT NULL AND locality IS NOT NULL AND pincode != ''
+      ON CONFLICT (pincode) DO NOTHING;
+
+      INSERT INTO postal_codes (pincode, locality, city, state)
+      VALUES 
+        ('560001', 'MG Road / Central', 'Bangalore', 'Karnataka'),
+        ('560038', 'Indiranagar', 'Bangalore', 'Karnataka'),
+        ('560034', 'Koramangala', 'Bangalore', 'Karnataka'),
+        ('560059', 'Mylasandra / Global Village', 'Bangalore', 'Karnataka'),
+        ('560060', 'Kengeri Satellite Town', 'Bangalore', 'Karnataka'),
+        ('110017', 'Saket', 'New Delhi', 'Delhi'),
+        ('110016', 'Hauz Khas', 'New Delhi', 'Delhi'),
+        ('400050', 'Bandra West', 'Mumbai', 'Maharashtra'),
+        ('400076', 'Powai', 'Mumbai', 'Maharashtra')
+      ON CONFLICT (pincode) DO NOTHING;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS item_images (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        image_url TEXT NOT NULL,
+        display_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_item_images_item_id ON item_images(item_id);
+
+      -- Backfill item_images from existing items.image_urls JSON array
+      INSERT INTO item_images (item_id, image_url, display_order)
+      SELECT i.id, img.val, img.ord - 1
+      FROM items i,
+      LATERAL jsonb_array_elements_text(COALESCE(NULLIF(i.image_urls, 'null'::jsonb), '[]'::jsonb)) WITH ORDINALITY AS img(val, ord)
+      WHERE NOT EXISTS (SELECT 1 FROM item_images WHERE item_id = i.id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE,
+        reviewer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reviewee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating NUMERIC(3, 2) NOT NULL CHECK (rating >= 1.00 AND rating <= 5.00),
+        comment TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
+      CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        body TEXT NOT NULL,
+        sender_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+        message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+        reference_id TEXT,
+        reference_type VARCHAR(50),
+        data JSONB,
+        read_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id UUID;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
+
+      -- Backfill notifications atomic columns from data JSON
+      UPDATE notifications
+      SET sender_id = COALESCE(sender_id, data->>'sender_id'),
+          booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
+          message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
+      WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_follows (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(follower_id, following_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
+      CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows(following_id);
+
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(blocker_id, blocked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id);
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        user_email TEXT,
+        type TEXT NOT NULL, -- 'CONCERN' | 'FEEDBACK'
+        category TEXT NOT NULL, -- 'BOOKING' | 'ITEM_QUALITY' | 'PAYMENT' | 'USER_BEHAVIOR' | 'FEATURE_REQUEST' | 'BUG' | 'GENERAL'
+        subject TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'OPEN', -- 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED'
+        priority TEXT DEFAULT 'NORMAL', -- 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+        admin_notes TEXT,
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+    `);
+    await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
+    await client.query(`UPDATE users SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE items SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    await client.query(`UPDATE requests SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);
+    const relationalConstraints = [
+      { name: "fk_items_owner", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_requests_seeker", sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_seeker FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_bookings_borrower", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: "fk_bookings_lender", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: "fk_messages_sender", sql: `ALTER TABLE messages ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_users_pincode", sql: `ALTER TABLE users ADD CONSTRAINT fk_users_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: "fk_items_pincode", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
+      { name: "fk_requests_pincode", sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` }
+    ];
+    for (const c of relationalConstraints) {
+      const check = await client.query(`
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = $1 AND table_schema = 'public'
+      `, [c.name]);
+      if (check.rows.length === 0) {
+        await client.query(c.sql);
+      }
+    }
+    await client.query(`
+      UPDATE items 
+      SET latitude = 12.9255, longitude = 77.5355 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      UPDATE users 
+      SET latitude = 12.9240, longitude = 77.5340 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
+      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+    `);
+    await client.query("COMMIT");
+    console.log("Database migrations completed successfully!");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Migration failed:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+if (require.main === module) {
+  runMigrations().then(() => process.exit(0)).catch(() => process.exit(1));
+}
+
 // src/app.ts
+var migrationsPromise = null;
+var ensureMigrations = async () => {
+  if (!migrationsPromise) {
+    migrationsPromise = runMigrations().catch((err) => {
+      console.warn("Auto migration error on startup:", err.message || err);
+      migrationsPromise = null;
+    });
+  }
+  return migrationsPromise;
+};
 var createApp = () => {
   const app2 = (0, import_express13.default)();
   app2.use((0, import_cors.default)({ origin: true, credentials: true }));
   app2.use(import_express13.default.json({ limit: "10mb" }));
   app2.use(import_express13.default.urlencoded({ extended: true }));
+  app2.use(async (req, res, next) => {
+    try {
+      await ensureMigrations();
+    } catch (e) {
+      console.warn("Migration check warning:", e?.message || e);
+    }
+    next();
+  });
   app2.get(["/api/health", "/health"], async (req, res) => {
     let dbStatus = "disconnected";
     try {
@@ -66916,6 +67538,14 @@ var createApp = () => {
       },
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
+  });
+  app2.get(["/api/migrate", "/migrate"], async (req, res) => {
+    try {
+      await runMigrations();
+      return sendSuccess(res, { migrated: true, timestamp: (/* @__PURE__ */ new Date()).toISOString() }, "Database schema updated successfully.");
+    } catch (err) {
+      return sendError(res, "MIGRATION_FAILED", err.message, 500);
+    }
   });
   app2.use(["/api/auth", "/auth"], auth_routes_default);
   app2.use(["/api/items", "/items"], items_routes_default);

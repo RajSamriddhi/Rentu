@@ -396,17 +396,7 @@ export const HustleHub: React.FC = () => {
   ];
 
   if (!isAuthorizedAdmin(currentUserEmail)) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-150">
-        <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
-          🔒
-        </div>
-        <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
-        <p className="text-xs text-ink-secondary leading-relaxed">
-          The Admin console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
-        </p>
-      </div>
-    );
+    return null;
   }
 
   return (

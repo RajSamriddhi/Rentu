@@ -16,13 +16,14 @@ import { CommunityView } from './components/CommunityView';
 import { HowItWorksSection } from './components/HowItWorksSection';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
-import { AiAssistantModal } from './components/AiAssistantModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
+import { SettingsModal } from './components/SettingsModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
+import confetti from 'canvas-confetti';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
@@ -65,6 +66,10 @@ export const App: React.FC = () => {
   const [viewingUserId, setViewingUserId] = useState<string | null>(getUserIdFromUrl);
 
   const setActiveTab = (tab: TabType) => {
+    // Non-admin users cannot access 'hustle' (admin dashboard)
+    if (tab === 'hustle' && !isUserAdmin) {
+      tab = 'home';
+    }
     setActiveTabState(tab);
     const targetPath = tab === 'home' ? '/' : tab === 'hustle' ? '/admin' : `/${tab}`;
     if (window.location.pathname !== targetPath) {
@@ -72,6 +77,13 @@ export const App: React.FC = () => {
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Strictly prevent any non-admin user from remaining on the admin dashboard
+  useEffect(() => {
+    if (activeTab === 'hustle' && !isUserAdmin) {
+      setActiveTab('home');
+    }
+  }, [activeTab, isUserAdmin]);
 
   const handleOpenUserProfile = (userId: string) => {
     setViewingUserId(userId);
@@ -112,8 +124,8 @@ export const App: React.FC = () => {
   const [chatBookingId, setChatBookingId] = useState<string | null>(null);
   const [chatPartner, setChatPartner] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isAiOpen, setIsAiOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     loadFeed();
@@ -153,13 +165,16 @@ export const App: React.FC = () => {
       return;
     }
     try {
-      await api.updateRequestStatus(req.id, 'FULFILLED');
-      setRequests((prev) =>
-        prev.map((r) => (r.id === req.id ? { ...r, status: 'FULFILLED' } : r))
-      );
-      alert(`Awesome! You've connected to lend gear for "${req.item_name}". Reach out to ${req.seeker_name}!`);
+      await api.offerLendOnRequest(req.id);
+      try {
+        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+      } catch {}
+      alert(`🤝 Offer sent! We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`);
+      if (req.seeker_id) {
+        handleOpenChatWithUser(req.seeker_id, req.seeker_name || 'Neighbor', req.seeker_avatar);
+      }
     } catch (err: any) {
-      alert(err.message || 'Could not fulfill request.');
+      alert(err.message || 'Could not send lend offer.');
     }
   };
 
@@ -193,6 +208,7 @@ export const App: React.FC = () => {
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
         onOpenHelpSupport={() => setIsHelpOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main View Router */}
@@ -292,6 +308,7 @@ export const App: React.FC = () => {
                 initialSubView={activeTab === 'requests' ? 'requests' : 'items'}
                 onOpenUserProfile={handleOpenUserProfile}
                 searchQuery={searchQuery}
+                onOpenChatWithUser={handleOpenChatWithUser}
               />
             )}
 
@@ -324,27 +341,9 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 10: ADMIN DASHBOARD (Protected to falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com) */}
-            {activeTab === 'hustle' && (
-              isUserAdmin ? (
-                <HustleHub />
-              ) : (
-                <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4 animate-in fade-in duration-200">
-                  <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto text-2xl">
-                    🔒
-                  </div>
-                  <h2 className="text-xl font-black text-ink font-display">Admin Portal Restricted</h2>
-                  <p className="text-xs text-ink-secondary leading-relaxed">
-                    This management console is restricted exclusively to authorized platform administrators (falaksadiqua786@gmail.com & rajsamriddhi60@gmail.com).
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('explore')}
-                    className="btn-primary text-xs px-6 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <span>Back to Marketplace</span>
-                  </button>
-                </div>
-              )
+            {/* VIEW 10: ADMIN DASHBOARD (Exclusively available to authorized platform administrators) */}
+            {activeTab === 'hustle' && isUserAdmin && (
+              <HustleHub />
             )}
 
             {/* VIEW 11: COMMUNITY & TOP 10 LEADERBOARD (Replaces How It Works) */}
@@ -430,22 +429,16 @@ export const App: React.FC = () => {
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
-      {/* Rentu AI Assistant Modal & Floating Launcher */}
-      <AiAssistantModal
-        isOpen={isAiOpen}
-        onOpen={() => setIsAiOpen(true)}
-        onClose={() => setIsAiOpen(false)}
-        onSelectItem={(item) => setSelectedItem(item)}
-        context={{
-          itemId: selectedItem?.id || null,
-          locality: selectedItem?.locality || null,
-        }}
-      />
-
       {/* Help & Community Support Modal */}
       <HelpSupportModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      {/* Account & Radar Alert Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
 
     </div>

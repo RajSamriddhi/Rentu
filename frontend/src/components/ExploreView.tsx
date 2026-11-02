@@ -19,8 +19,10 @@ import {
 } from 'lucide-react';
 import { Item, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
+import { RequestCard } from './RequestCard';
+import { RequestDetailModal } from './RequestDetailModal';
 import { useAuth } from '../lib/authContext';
-import { getReachDistance } from '../lib/distance';
+import { getReachDistance, getReachDistanceKm } from '../lib/distance';
 
 interface ExploreViewProps {
   items: Item[];
@@ -36,6 +38,7 @@ interface ExploreViewProps {
   initialSubView?: 'items' | 'requests';
   onOpenUserProfile?: (userId: string) => void;
   searchQuery?: string;
+  onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
 }
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
@@ -52,6 +55,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   initialSubView = 'items',
   onOpenUserProfile,
   searchQuery,
+  onOpenChatWithUser,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -60,6 +64,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   // Requests sub-filter tab
   const [requestSubTab, setRequestSubTab] = useState<'all' | 'my'>('all');
+  const [selectedRequest, setSelectedRequest] = useState<CommunityRequest | null>(null);
 
 
   // Sidebar Filters State for Items
@@ -105,6 +110,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     if (selectedType === 'Rent' && Number(item.price_per_day) <= 0) return false;
     if (selectedType === 'Borrow' && Number(item.price_per_day) > 0) return false;
     if (selectedCondition !== 'Any' && item.condition && item.condition !== selectedCondition) return false;
+    const distanceKm = getReachDistanceKm(item, user);
+    if (radiusKm && distanceKm > radiusKm) return false;
     return true;
   });
 
@@ -495,131 +502,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   )}
                 </div>
               ) : (
-                filteredRequests.map((req) => {
-                  const isFulfilled = req.status === 'FULFILLED';
-                  return (
-                    <div
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredRequests.map((req) => (
+                    <RequestCard
                       key={req.id}
-                      className="bg-surface border border-divider hover:border-zinc-300 dark:hover:border-zinc-700 rounded-2xl p-4 sm:p-5 shadow-xs transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                    >
-                      {/* Left Icon or Attached Photo + Text info */}
-                      <div className="flex items-start gap-4 flex-1">
-                        {req.image_url ? (
-                          <img
-                            src={req.image_url}
-                            alt={req.item_name}
-                            className="w-14 h-14 rounded-2xl object-cover border border-divider shrink-0 shadow-xs"
-                          />
-                        ) : (
-                          <div className={`w-12 h-12 rounded-2xl ${getCategoryBg(req.category)} flex items-center justify-center shrink-0`}>
-                            {getCategoryIcon(req.category)}
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5 flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-extrabold text-base text-ink tracking-tight">
-                              {req.item_name}
-                            </h3>
-                            <span className="text-xs font-extrabold text-brand font-display bg-brand-soft/60 px-2 py-0.5 rounded-md">
-                              ₹{Number(req.offered_amount)} budget
-                            </span>
-                          </div>
-
-                          {/* Rental Timeline (Start date -> Return date & duration) */}
-                          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-ink-secondary">
-                            <span className="inline-flex items-center gap-1 bg-canvas border border-divider px-2 py-0.5 rounded-md text-ink">
-                              <Clock className="w-3 h-3 text-brand" />
-                              <span>
-                                {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                                {req.end_date ? ` ➔ ${new Date(req.end_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}` : ''}
-                                {` (${req.duration_days} ${req.duration_days === 1 ? 'day' : 'days'})`}
-                              </span>
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-ink-secondary line-clamp-2 font-medium">
-                            {req.description}
-                          </p>
-
-                          {/* Pickup & Return Logistics Summary */}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[11px] font-medium text-ink-secondary">
-                            <span className="flex items-center gap-1">
-                              <span className="font-bold text-ink">Pickup:</span>
-                              <span>
-                                {req.pickup_type === 'MY_LOCATION' 
-                                  ? `📍 Deliver to current location (${req.locality})` 
-                                  : req.pickup_type === 'CUSTOM_LOCATION'
-                                  ? `🤝 Meet at ${req.pickup_locality || req.locality || 'Custom Spot'}`
-                                  : `🚶 Pickup from Lender's place`}
-                              </span>
-                            </span>
-
-                            <span>•</span>
-
-                            <span className="flex items-center gap-1">
-                              <span className="font-bold text-ink">Return:</span>
-                              <span>
-                                {req.return_type === 'MY_LOCATION'
-                                  ? `🏠 Lender collects (${req.return_locality || req.locality})`
-                                  : req.return_type === 'CUSTOM_LOCATION'
-                                  ? `🤝 Meet at ${req.return_locality || 'Custom Spot'}`
-                                  : `🚶 Return to Lender's place`}
-                              </span>
-                            </span>
-                          </div>
-
-                          {/* Seeker Info */}
-                          <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onOpenUserProfile && req.seeker_id) {
-                                  onOpenUserProfile(req.seeker_id);
-                                }
-                              }}
-                              className="flex items-center gap-1.5 hover:text-brand hover:underline cursor-pointer group text-left transition-colors"
-                              title={`View ${req.seeker_name || 'Neighbor'}'s public profile`}
-                            >
-                              <img
-                                src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
-                                alt={req.seeker_name}
-                                className="w-4 h-4 rounded-full object-cover ring-1 ring-border group-hover:ring-brand"
-                              />
-                              <span className="font-semibold text-ink group-hover:text-brand">{req.seeker_name || 'Neighbor'}</span>
-                            </button>
-                            <span>•</span>
-                            <span className="flex items-center gap-0.5">
-                              <MapPin className="w-3 h-3 text-brand" />
-                              <span>{getReachDistance(req, user)}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Action + Badge */}
-                      <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 shrink-0">
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EDE9FE] dark:bg-purple-950/40 text-[#6D28D9] dark:text-purple-300 border border-[#DDD6FE] dark:border-purple-800/40">
-                          Active Request
-                        </span>
-
-                        {isFulfilled ? (
-                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Fulfilled
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => onClaimRequest(req)}
-                            className="px-4 py-2 rounded-full text-xs font-bold bg-brand text-white hover:bg-brand-hover shadow-xs transition-all cursor-pointer active:scale-95"
-                          >
-                            I Can Lend This
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
+                      request={req}
+                      onClick={() => setSelectedRequest(req)}
+                      onClaim={(r) => onClaimRequest(r)}
+                      onOpenUserProfile={onOpenUserProfile}
+                    />
+                  ))}
+                </div>
               )}
             </main>
 
@@ -697,6 +590,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Request Details Modal */}
+      <RequestDetailModal
+        request={selectedRequest}
+        isOpen={Boolean(selectedRequest)}
+        onClose={() => setSelectedRequest(null)}
+        onClaim={(r) => {
+          setSelectedRequest(null);
+          onClaimRequest(r);
+        }}
+        onOpenAuth={onOpenAuth}
+        onOpenUserProfile={onOpenUserProfile}
+        onOpenChatWithUser={onOpenChatWithUser}
+      />
 
     </div>
   );

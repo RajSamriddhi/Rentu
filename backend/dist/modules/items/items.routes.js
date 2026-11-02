@@ -57,10 +57,23 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         let userLat = latitude ? parseFloat(String(latitude)) : NaN;
         let userLon = longitude ? parseFloat(String(longitude)) : NaN;
         if ((isNaN(userLat) || isNaN(userLon)) && req.user?.id) {
-            const uRes = await (0, db_1.query)(`SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`, [req.user.id]);
-            if (uRes.rows.length > 0 && uRes.rows[0].latitude && uRes.rows[0].longitude) {
-                userLat = parseFloat(uRes.rows[0].latitude);
-                userLon = parseFloat(uRes.rows[0].longitude);
+            const uRes = await (0, db_1.query)(`SELECT latitude, longitude, locality FROM users WHERE id::text = $1 OR firebase_uid = $1`, [req.user.id]);
+            if (uRes.rows.length > 0) {
+                if (uRes.rows[0].latitude && uRes.rows[0].longitude) {
+                    userLat = parseFloat(uRes.rows[0].latitude);
+                    userLon = parseFloat(uRes.rows[0].longitude);
+                }
+                else if (uRes.rows[0].locality) {
+                    const loc = uRes.rows[0].locality.toLowerCase();
+                    if (loc.includes('beml')) {
+                        userLat = 12.9140;
+                        userLon = 77.4993;
+                    }
+                    else if (loc.includes('mylasandra')) {
+                        userLat = 12.8850;
+                        userLon = 77.5050;
+                    }
+                }
             }
         }
         if (!isNaN(userLat) && !isNaN(userLon)) {
@@ -68,14 +81,62 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             const latIdx = params.length;
             params.push(userLon);
             const lonIdx = params.length;
-            // Exact Haversine formula from SCHEMA.md
+            // Exact Haversine formula from profile coordinates and accurate localities
             distanceField = `
         ROUND(
           6371000 * acos(
             LEAST(1.0, GREATEST(-1.0, 
-              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
-              cos(radians(i.longitude) - radians($${lonIdx})) +
-              sin(radians($${latIdx})) * sin(radians(i.latitude))
+              cos(radians($${latIdx})) * cos(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              )) *
+              cos(radians(
+                CASE 
+                  WHEN i.longitude IS NOT NULL AND i.longitude != 0 THEN i.longitude
+                  WHEN u.longitude IS NOT NULL AND u.longitude != 0 THEN u.longitude
+                  WHEN i.locality ILIKE '%beml%' THEN 77.4993
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 77.5050
+                  WHEN i.locality ILIKE '%kengeri%' THEN 77.4838
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 77.5150
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 77.5838
+                  WHEN i.locality ILIKE '%koramangala%' THEN 77.6245
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 77.6408
+                  WHEN i.locality ILIKE '%hsr%' THEN 77.6446
+                  WHEN i.locality ILIKE '%whitefield%' THEN 77.7500
+                  WHEN i.locality ILIKE '%electronic city%' THEN 77.6602
+                  ELSE $${lonIdx}
+                END
+              ) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              ))
             ))
           )
         ) AS distance_meters
@@ -97,14 +158,22 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         let sql = `
       SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.address_text, i.latitude, i.longitude, i.status, i.available_for_borrowing,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        NULL AS address_text, 
+        NULL AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude, 
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
+        NULL AS owner_address_text,
+        NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
@@ -161,15 +230,24 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     }
 });
 // Get Single Item Detail
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await (0, db_1.query)(`SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
-        i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude,
+        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
       JOIN users u ON i.owner_id = u.id
@@ -187,6 +265,25 @@ router.get('/:id', async (req, res, next) => {
             if (blockCheck.rows.length > 0) {
                 return (0, response_1.sendError)(res, 'FORBIDDEN', 'This item is not available', 403);
             }
+        }
+        // Privacy protection: Only show exact address to the item owner or renters who have an accepted/active booking
+        let canViewAddress = false;
+        if (currentViewerId) {
+            if (currentViewerId === item.owner_id) {
+                canViewAddress = true;
+            }
+            else {
+                const acceptedBookingCheck = await (0, db_1.query)(`SELECT 1 FROM bookings 
+           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           LIMIT 1`, [item.id, currentViewerId]);
+                canViewAddress = acceptedBookingCheck.rows.length > 0;
+            }
+        }
+        if (!canViewAddress) {
+            item.address_text = null;
+            item.owner_address_text = null;
+            item.pincode = null;
+            item.owner_pincode = null;
         }
         // Fetch booked calendar dates for this item (Active / Confirmed rentals)
         const bookedRes = await (0, db_1.query)(`SELECT 
@@ -208,6 +305,7 @@ router.get('/:id', async (req, res, next) => {
        LIMIT 4`, [item.category, item.id, `%${itemCity}%`]);
         return (0, response_1.sendSuccess)(res, {
             ...item,
+            can_view_address: canViewAddress,
             booked_dates: bookedRes.rows,
             related_items: relatedResult.rows,
         });
@@ -276,10 +374,48 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             req.user.email || `${req.user.id}@firebase.rentu.internal`,
             validated.locality || ''
         ]).catch(() => { });
-        const userRes = await (0, db_1.query)('SELECT locality FROM users WHERE id = $1', [req.user.id]);
+        const userRes = await (0, db_1.query)('SELECT locality, latitude, longitude FROM users WHERE id = $1', [req.user.id]);
         const userLocality = userRes.rows[0]?.locality || '';
         let finalLocality = validated.locality?.trim() || userLocality;
         const cleanPincode = validated.pincode?.trim() || null;
+        // Resolve accurate coordinates from item input, owner profile, or locality
+        let itemLat = validated.latitude ?? (userRes.rows[0]?.latitude ? parseFloat(userRes.rows[0].latitude) : null);
+        let itemLon = validated.longitude ?? (userRes.rows[0]?.longitude ? parseFloat(userRes.rows[0].longitude) : null);
+        if ((itemLat === null || isNaN(itemLat)) && finalLocality) {
+            const lower = finalLocality.toLowerCase();
+            if (lower.includes('beml')) {
+                itemLat = 12.9140;
+                itemLon = 77.4993;
+            }
+            else if (lower.includes('mylasandra')) {
+                itemLat = 12.8850;
+                itemLon = 77.5050;
+            }
+            else if (lower.includes('kengeri')) {
+                itemLat = 12.9177;
+                itemLon = 77.4838;
+            }
+            else if (lower.includes('rajarajeshwari') || lower.includes('rr nagar')) {
+                itemLat = 12.9275;
+                itemLon = 77.5150;
+            }
+            else if (lower.includes('jayanagar')) {
+                itemLat = 12.9308;
+                itemLon = 77.5838;
+            }
+            else if (lower.includes('koramangala')) {
+                itemLat = 12.9352;
+                itemLon = 77.6245;
+            }
+            else if (lower.includes('indiranagar')) {
+                itemLat = 12.9784;
+                itemLon = 77.6408;
+            }
+            else if (lower.includes('hsr')) {
+                itemLat = 12.9121;
+                itemLon = 77.6446;
+            }
+        }
         // 3NF: Upsert into postal_codes table before referencing it
         if (cleanPincode && finalLocality) {
             await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, finalLocality]).catch(() => { });
@@ -300,8 +436,8 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             finalLocality,
             validated.address_text || finalLocality,
             cleanPincode,
-            validated.latitude ?? null,
-            validated.longitude ?? null,
+            itemLat ?? null,
+            itemLon ?? null,
             validated.available_for_borrowing ?? false,
             validated.offers_delivery ?? false,
             validated.delivery_fee ?? 0,

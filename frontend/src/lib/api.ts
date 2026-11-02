@@ -10,6 +10,7 @@ import {
   CommunityLeaderboardData,
   PublicUserProfile,
   UserSearchResult,
+  SavedLocation,
   AiChatResponse,
   AiChatContext,
   AppNotification
@@ -177,6 +178,10 @@ export const api = {
     image_urls: string[];
     sticker_badge: string;
     locality: string;
+    address_text?: string;
+    pincode?: string;
+    latitude?: number;
+    longitude?: number;
     available_for_borrowing?: boolean;
     offers_delivery?: boolean;
     delivery_fee?: number;
@@ -262,6 +267,11 @@ export const api = {
     duration_days: number;
     offered_amount: number;
     locality: string;
+    address_text?: string;
+    pincode?: string;
+    will_pickup?: boolean;
+    will_drop_back?: boolean;
+    delivery_fee?: number;
     pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
     pickup_locality?: string;
     return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
@@ -292,6 +302,14 @@ export const api = {
   async deleteRequest(id: string): Promise<{ id: string }> {
     const res = await fetch(`${API_BASE}/requests/${id}`, {
       method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async offerLendOnRequest(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/requests/${id}/offer-lend`, {
+      method: 'POST',
       headers: getHeaders(),
     });
     return handleResponse(res);
@@ -359,11 +377,34 @@ export const api = {
     return handleResponse(res);
   },
 
-  async submitReview(bookingId: string, rating: number, comment?: string): Promise<any> {
+  async submitBookingPayment(id: string, payment_method: string = 'UPI'): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/submit-payment`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ payment_method }),
+    });
+    return handleResponse(res);
+  },
+
+  async confirmBookingPayment(id: string): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/confirm-payment`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return handleResponse(res);
+  },
+
+  async submitReview(
+    bookingId: string, 
+    rating: number, 
+    comment?: string, 
+    reviewType?: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'
+  ): Promise<any> {
     const res = await fetch(`${API_BASE}/bookings/${bookingId}/review`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ rating, comment: comment || '' }),
+      body: JSON.stringify({ rating, comment: comment || '', review_type: reviewType }),
     });
     return handleResponse(res);
   },
@@ -390,6 +431,14 @@ export const api = {
 
   async getMessages(conversationId: string): Promise<{ booking?: Booking | null; partner?: any; messages: Message[] }> {
     const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async markConversationRead(conversationId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}/read`, {
+      method: 'POST',
       headers: getHeaders(),
     });
     return handleResponse(res);
@@ -472,6 +521,22 @@ export const api = {
       body: JSON.stringify(data),
     });
     return handleResponse(res);
+  },
+
+  async addSavedLocation(location: Omit<SavedLocation, 'id'>, currentUser?: User | null): Promise<User> {
+    const newLoc: SavedLocation = {
+      ...location,
+      id: `loc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    };
+    const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
+    const updatedList = [...currentList, newLoc];
+    return await this.updateProfile({ saved_locations: updatedList });
+  },
+
+  async deleteSavedLocation(locationId: string, currentUser?: User | null): Promise<User> {
+    const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
+    const updatedList = currentList.filter(l => l.id !== locationId);
+    return await this.updateProfile({ saved_locations: updatedList });
   },
 
   async getCommunityLeaderboard(): Promise<CommunityLeaderboardData> {

@@ -33,15 +33,18 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
+import { formatFullAddress } from '../lib/location';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
 import { Item, Booking, CommunityRequest, UserReview } from '../lib/types';
 import { ItemCard } from './ItemCard';
+import { RequestCard } from './RequestCard';
 import { EditProfileModal } from './EditProfileModal';
 import { HelpSupportModal } from './HelpSupportModal';
 import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
+import { ReviewModal } from './ReviewModal';
 import { BookingScheduleCalendar } from './BookingScheduleCalendar';
 import { getReachDistance } from '../lib/distance';
 
@@ -65,6 +68,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [myRequests, setMyRequests] = useState<CommunityRequest[]>([]);
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [receivedReviews, setReceivedReviews] = useState<UserReview[]>([]);
+  const [reviewTypeFilter, setReviewTypeFilter] = useState<'ALL' | 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -85,10 +89,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Review submission modal state
   const [reviewingBooking, setReviewingBooking] = useState<Booking | null>(null);
-  const [reviewRating, setReviewRating] = useState<number>(5);
-  const [reviewComment, setReviewComment] = useState<string>('');
-  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
-  const [reviewError, setReviewError] = useState<string>('');
 
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -385,26 +385,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  // Handle Review Submission for completed booking
-  const handleSubmitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reviewingBooking) return;
-    setIsSubmittingReview(true);
-    setReviewError('');
-    try {
-      await api.submitReview(reviewingBooking.id, reviewRating, reviewComment.trim());
-      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-      setReviewingBooking(null);
-      setReviewComment('');
-      setReviewRating(5);
-      await loadData();
-    } catch (err: any) {
-      setReviewError(err.message || 'Failed to submit review.');
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  };
-
   if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center animate-in fade-in">
@@ -445,10 +425,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
 
           {/* Top Left: Locality Pill */}
-          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10">
-            <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md">
-              <MapPin className="w-3.5 h-3.5 text-brand" />
-              <span>{user?.locality || user?.address_text || 'Location not set'}</span>
+          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 max-w-[85%]">
+            <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md max-w-full">
+              <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+              <span className="truncate">{formatFullAddress(user)}</span>
             </div>
           </div>
 
@@ -527,15 +507,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Edit Profile</span>
               </button>
 
-              <button 
-                onClick={() => setIsHelpModalOpen(true)}
-                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-amber-500 hover:text-amber-500 transition-all flex-1 sm:flex-initial"
-                title="Raise a Concern or Feedback to Admin"
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-                <span>Help & Concerns</span>
-              </button>
-
               <button
                 onClick={onOpenDropGear}
                 className="btn-primary text-xs px-4 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-pink font-bold flex-1 sm:flex-initial"
@@ -591,11 +562,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <button
                 onClick={() => setIsEditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer max-w-full"
                 title="Click to update your location"
               >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{user?.locality || user?.address_text || 'Set Your Location'}</span>
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{formatFullAddress(user)}</span>
               </button>
             </div>
 
@@ -658,12 +629,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           refreshUser();
           loadData();
         }}
-      />
-
-      {/* Help & Support Modal */}
-      <HelpSupportModal
-        isOpen={isHelpModalOpen}
-        onClose={() => setIsHelpModalOpen(false)}
       />
 
       {/* Product Detail Preview Modal (Owner Preview as seen by other users) */}
@@ -822,81 +787,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
             ) : (
-              myRequests.map((req) => (
-                <div 
-                  key={req.id} 
-                  onClick={() => setEditingRequest(req)}
-                  className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:border-brand hover:shadow-sm transition-all cursor-pointer group"
-                >
-                  <div className="flex items-start gap-3.5">
-                    {/* Always display an image container; if no picture was uploaded, show a clean "No image" placeholder */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-canvas border border-divider overflow-hidden shrink-0 flex flex-col items-center justify-center text-ink-secondary">
-                      {req.image_url ? (
-                        <img 
-                          src={req.image_url} 
-                          alt={req.item_name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-1 text-center">
-                          <Package className="w-5 h-5 text-ink-secondary/60 mb-0.5" />
-                          <span className="text-[9px] font-bold text-ink-secondary">No image</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <h4 className="font-extrabold text-ink text-sm sm:text-base group-hover:text-brand transition-colors">
-                          {req.item_name}
-                        </h4>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
-                          req.status === 'OPEN'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : req.status === 'FULFILLED'
-                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                            : 'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20'
-                        }`}>
-                          {req.status}
-                        </span>
-                        {req.category && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-canvas text-ink-secondary border border-divider">
-                            {req.category}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-ink-secondary flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-ink">₹{Number(req.offered_amount)} proposed budget</span>
-                        <span>•</span>
-                        <span>Needed by {req.start_date ? new Date(req.start_date).toLocaleDateString() : 'Flexible'}</span>
-                        {req.duration_days ? (
-                          <>
-                            <span>•</span>
-                            <span>{req.duration_days} {req.duration_days === 1 ? 'day' : 'days'}</span>
-                          </>
-                        ) : null}
-                        <span>•</span>
-                        <span>{getReachDistance(req, user)}</span>
-                      </p>
-                      {req.description && (
-                        <p className="text-xs text-ink-secondary/80 line-clamp-2 max-w-xl pt-0.5">
-                          {req.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    <span className="text-xs font-bold text-ink-secondary group-hover:text-brand transition-colors hidden sm:inline">
-                      Edit Request
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0" />
-                  </div>
-                </div>
-              ))
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {myRequests.map((req) => (
+                  <RequestCard
+                    key={req.id}
+                    request={req}
+                    onClick={() => setEditingRequest(req)}
+                    onEdit={(r) => setEditingRequest(r)}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -929,7 +829,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-ink-secondary mt-1">
-                  Leave feedback for your renters within 3 days after rental completion.
+                  Overall Trust Rating is the combined average across all 3 community roles: Gear Owner, Renter, and Free Community Lender.
                 </p>
               </div>
 
@@ -937,10 +837,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="text-right">
                   <div className="text-2xl font-black text-ink font-display flex items-center gap-1 justify-end">
                     <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                    <span>{ratingDisplay || '5.0'}</span>
+                    <span>{user?.trust_rating ? Number(user.trust_rating).toFixed(2) : (ratingDisplay || '5.00')}</span>
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
-                    {receivedReviews.length} Community Reviews
+                    Trust Rating ({receivedReviews.length} reviews)
                   </div>
                 </div>
 
@@ -949,8 +849,86 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     {user?.trust_score || 98}%
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
-                    Trust Score
+                    Reputation Score
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Three Distinct Review Ratings Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Type 1: Gear Owner Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 uppercase">
+                    Gear Owner
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{user?.owner_rating ? Number(user.owner_rating).toFixed(2) : '5.00'}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({user?.owner_reviews_count || receivedReviews.filter(r => r.review_type === 'OWNER_RENTAL').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Gear Owner Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From neighbors renting gear from your closet
+                  </p>
+                </div>
+              </div>
+
+              {/* Type 2: Renter Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase">
+                    Renter
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{user?.renter_rating ? Number(user.renter_rating).toFixed(2) : '5.00'}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({user?.renter_reviews_count || receivedReviews.filter(r => r.review_type === 'RENTER').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Renter Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From gear owners for care, respect & timely returns
+                  </p>
+                </div>
+              </div>
+
+              {/* Type 3: Free Community Lender Rating */}
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-brand flex items-center justify-center">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20 uppercase">
+                    Free Lender
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-ink font-display flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>{user?.community_lender_rating ? Number(user.community_lender_rating).toFixed(2) : '5.00'}</span>
+                    <span className="text-xs text-ink-secondary font-normal">
+                      ({user?.community_lender_reviews_count || receivedReviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length})
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-ink mt-0.5">Free Lender Rating</div>
+                  <p className="text-[11px] text-ink-secondary mt-1">
+                    From borrowers for sharing gear for free (₹0)
+                  </p>
                 </div>
               </div>
             </div>
@@ -1033,9 +1011,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           type="button"
                           onClick={() => {
                             setReviewingBooking(b);
-                            setReviewRating(b.user_rating || 5);
-                            setReviewComment(b.user_comment || '');
-                            setReviewError('');
                           }}
                           disabled={!isWithin3Days}
                           className="btn-primary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-pink disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1051,60 +1026,121 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Section 2: Reviews People Have Given Me */}
-            <div className="space-y-3 pt-4 border-t border-divider">
-              <div className="px-1">
-                <h4 className="text-sm font-extrabold text-ink font-display flex items-center gap-2">
-                  <Star className="w-4 h-4 text-amber-500" />
-                  <span>Reviews Received From Community</span>
-                </h4>
-                <p className="text-xs text-ink-secondary">
-                  What other renters and lenders say about dealing with you
-                </p>
-              </div>
-
-              {receivedReviews.length === 0 ? (
-                <div className="p-8 text-center bg-surface border border-divider rounded-2xl space-y-2">
-                  <p className="text-xs font-bold text-ink">No community reviews received yet</p>
-                  <p className="text-xs text-ink-secondary max-w-sm mx-auto">
-                    Once people rent items from you or receive your returns, their verified reviews will be published here.
+            <div className="space-y-4 pt-4 border-t border-divider">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+                <div>
+                  <h4 className="text-sm font-extrabold text-ink font-display flex items-center gap-2">
+                    <Star className="w-4 h-4 text-amber-500" />
+                    <span>Reviews Received From Community</span>
+                  </h4>
+                  <p className="text-xs text-ink-secondary">
+                    What neighbors say about your gear, handoffs, and care
                   </p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {receivedReviews.map((rev) => (
-                    <div
-                      key={rev.id}
-                      className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl space-y-2 shadow-xs"
+
+                {/* Filter Tabs by Review Type */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  {[
+                    { key: 'ALL', label: 'All Reviews', count: receivedReviews.length },
+                    { key: 'OWNER_RENTAL', label: 'As Gear Owner', count: receivedReviews.filter(r => r.review_type === 'OWNER_RENTAL').length },
+                    { key: 'RENTER', label: 'As Renter', count: receivedReviews.filter(r => r.review_type === 'RENTER').length },
+                    { key: 'COMMUNITY_LENDER', label: 'Free Lending', count: receivedReviews.filter(r => r.review_type === 'COMMUNITY_LENDER').length },
+                  ].map((filterTab) => (
+                    <button
+                      key={filterTab.key}
+                      onClick={() => setReviewTypeFilter(filterTab.key as any)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        reviewTypeFilter === filterTab.key
+                          ? 'bg-ink text-canvas shadow-xs'
+                          : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                      }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={rev.reviewer_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(rev.reviewer_name)}&background=0F172A&color=fff&bold=true`}
-                            alt={rev.reviewer_name}
-                            className="w-8 h-8 rounded-full object-cover border border-divider"
-                          />
-                          <div>
-                            <div className="text-xs font-extrabold text-ink">{rev.reviewer_name}</div>
-                            <div className="text-[10px] text-ink-secondary">
-                              {rev.reviewer_locality || 'Verified Neighbor'} • {new Date(rev.created_at).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 text-amber-500">
-                          {Array.from({ length: Math.round(rev.rating || 5) }).map((_, i) => (
-                            <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          ))}
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-ink leading-relaxed font-medium">
-                        "{rev.comment || 'Smooth rental handover! Very polite and returned on time.'}"
-                      </p>
-                    </div>
+                      {filterTab.label} ({filterTab.count})
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
+
+              {(() => {
+                const displayedReviews = receivedReviews.filter(r => {
+                  if (reviewTypeFilter === 'ALL') return true;
+                  return r.review_type === reviewTypeFilter;
+                });
+
+                if (displayedReviews.length === 0) {
+                  return (
+                    <div className="p-8 text-center bg-surface border border-divider rounded-2xl space-y-2">
+                      <p className="text-xs font-bold text-ink">
+                        {reviewTypeFilter === 'ALL'
+                          ? 'No community reviews received yet'
+                          : `No reviews found for this role category`}
+                      </p>
+                      <p className="text-xs text-ink-secondary max-w-sm mx-auto">
+                        Once neighbors rent items from you or receive returns, their verified reviews will be published here.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {displayedReviews.map((rev) => {
+                      const rType = rev.review_type || 'OWNER_RENTAL';
+                      return (
+                        <div
+                          key={rev.id}
+                          className="p-4 sm:p-5 bg-surface border border-divider rounded-2xl space-y-2 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={rev.reviewer_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(rev.reviewer_name)}&background=0F172A&color=fff&bold=true`}
+                                alt={rev.reviewer_name}
+                                className="w-8 h-8 rounded-full object-cover border border-divider"
+                              />
+                              <div>
+                                <div className="text-xs font-extrabold text-ink">{rev.reviewer_name}</div>
+                                <div className="text-[10px] text-ink-secondary">
+                                  {rev.reviewer_locality || 'Verified Neighbor'} • {new Date(rev.created_at).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 text-amber-500">
+                              {Array.from({ length: Math.round(rev.rating || 5) }).map((_, i) => (
+                                <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Role Badge */}
+                          <div className="pt-0.5">
+                            {rType === 'OWNER_RENTAL' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                📦 Gear Owner Review
+                              </span>
+                            )}
+                            {rType === 'RENTER' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                🎒 Renter Review
+                              </span>
+                            )}
+                            {rType === 'COMMUNITY_LENDER' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/10 text-brand border border-pink-500/20">
+                                🎁 Free Community Lender Review
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-ink leading-relaxed font-medium">
+                            "{rev.comment || 'Smooth rental handover! Very polite and returned on time.'}"
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
           </div>
@@ -1320,82 +1356,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       )}
 
       {/* Write Review Modal */}
-      {reviewingBooking && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div
-            className="relative bg-surface w-full max-w-md rounded-3xl border border-divider shadow-2xl overflow-hidden my-auto text-ink"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface">
-              <h3 className="text-base font-extrabold text-ink font-display">
-                Write Rental Review
-              </h3>
-              <button
-                onClick={() => setReviewingBooking(null)}
-                className="p-1.5 rounded-full hover:bg-canvas text-ink transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitReview} className="p-6 space-y-4 text-xs">
-              {reviewError && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 font-bold">
-                  {reviewError}
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <span className="font-bold text-ink">Rating (1 to 5 Stars)</span>
-                <div className="flex items-center gap-2 pt-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className="p-1 cursor-pointer transition-transform hover:scale-125"
-                    >
-                      <Star
-                        className={`w-7 h-7 ${
-                          star <= reviewRating
-                            ? 'fill-amber-400 text-amber-400'
-                            : 'text-zinc-400 dark:text-zinc-600'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                  <span className="font-extrabold text-sm text-ink ml-2">{reviewRating}.0</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-ink block">Your Review & Feedback</label>
-                <textarea
-                  rows={4}
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="How was your experience? (e.g. Gear was in immaculate condition, polite communication, returned right on time!)"
-                  className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs font-semibold text-ink outline-none focus:border-brand"
-                  required
-                />
-              </div>
-
-              <p className="text-[11px] text-ink-secondary">
-                Your feedback directly impacts your neighbor's trust score and public rating.
-              </p>
-
-              <button
-                type="submit"
-                disabled={isSubmittingReview}
-                className="btn-primary w-full py-3 text-xs font-extrabold cursor-pointer shadow-pink flex items-center justify-center gap-1.5"
-              >
-                {isSubmittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4 fill-white" />}
-                <span>{isSubmittingReview ? 'Submitting...' : 'Submit Review'}</span>
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <ReviewModal
+        booking={reviewingBooking}
+        isOpen={Boolean(reviewingBooking)}
+        onClose={() => setReviewingBooking(null)}
+        onSuccess={() => {
+          setReviewingBooking(null);
+          loadData();
+          refreshUser();
+        }}
+      />
 
     </div>
   );

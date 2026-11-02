@@ -37,6 +37,7 @@ const verifyCodeSchema = z.object({
 const submitReviewSchema = z.object({
   rating: z.number().min(1).max(5),
   comment: z.string().optional().default(''),
+  review_type: z.enum(['OWNER_RENTAL', 'RENTER', 'COMMUNITY_LENDER']).optional(),
 });
 
 // Create Booking Proposal ("Snag for the Weekend")
@@ -215,9 +216,13 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
-        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.completed_at, b.created_at,
+        b.status, b.message, b.pickup_code, b.return_code, b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.payment_status, b.payment_method,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
         i.locality AS item_locality, i.price_per_day AS item_rate,
+        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
+        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
+        lender.address_text AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
         borrower.phone AS borrower_phone, borrower.email AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
@@ -313,7 +318,8 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
 
     // Sync item status & trigger lifecycle notifications
     if (status === 'ACCEPTED') {
-      await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+      // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       // Add notification chat message
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
@@ -471,8 +477,8 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
       [returnCode, id]
     );
 
-    // Keep item status as RENTED
-    await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [booking.item_id]);
+    // Keep item status as AVAILABLE since item is rented only for agreed dates
+    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
 
     // Send chat system message
     await query(
@@ -555,10 +561,115 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
       return sendError(res, 'BAD_REQUEST', 'Incorrect 6-digit return code. Please check the code with the other party.', 400);
     }
 
+    const isFree = Number(booking.total_price) === 0;
+
     const updateRes = await query(
       `UPDATE bookings 
-       SET status = 'COMPLETED', 
-           completed_at = CURRENT_TIMESTAMP, 
+       SET status = CASE WHEN $2::boolean THEN 'COMPLETED'::booking_status ELSE status END,
+           returned_at = CURRENT_TIMESTAMP,
+           completed_at = CASE WHEN $2::boolean THEN CURRENT_TIMESTAMP ELSE completed_at END,
+           payment_status = CASE WHEN $2::boolean THEN 'CONFIRMED' ELSE 'PENDING' END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id, isFree]
+    );
+
+    if (isFree) {
+      // Release item back to AVAILABLE
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+    }
+
+    // Send chat system message
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        id, 
+        userId, 
+        isBorrower ? booking.lender_id : booking.borrower_id,
+        isFree 
+          ? '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews for each other.'
+          : '📦 Product returned to owner! Stage 5: Payment settlement is now active.'
+      ]
+    );
+
+    return sendSuccess(
+      res, 
+      updateRes.rows[0], 
+      isFree 
+        ? 'Product returned successfully! Whole process completed.' 
+        : 'Product return verified! Please proceed to payment settlement.'
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Stage 5: Renter marks payment as sent
+router.post('/:id/submit-payment', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const { payment_method = 'UPI' } = req.body;
+    const userId = req.user!.id;
+
+    const bookingRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Booking not found', 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.borrower_id !== userId && req.user!.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Only the renter can submit payment', 403);
+    }
+
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET payment_status = 'SUBMITTED',
+           payment_method = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [payment_method, id]
+    );
+
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
+       VALUES ($1, $2, $3, '💳 Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+      [id, userId, booking.lender_id, payment_method]
+    );
+
+    return sendSuccess(res, updateRes.rows[0], 'Payment marked as sent! Waiting for owner verification.');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Stage 5: Owner confirms payment received -> Marks whole process COMPLETED
+router.post('/:id/confirm-payment', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const bookingRes = await query(
+      `SELECT b.*, i.owner_id AS lender_id, b.item_id, i.title AS item_title
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Booking not found', 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (booking.lender_id !== userId && req.user!.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Only the owner can confirm receiving payment', 403);
+    }
+
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET status = 'COMPLETED',
+           completed_at = CURRENT_TIMESTAMP,
+           payment_status = 'CONFIRMED',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
@@ -568,11 +679,10 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
     // Release item back to AVAILABLE
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
 
-    // Send chat system message
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
        VALUES ($1, $2, $3, '🎉 Product returned to owner! The whole rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
-      [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
+      [id, userId, booking.borrower_id]
     );
 
     // 1. Notify Lender: Gear Received Back
@@ -619,11 +729,11 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
 router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { id } = req.params;
-    const { rating, comment } = submitReviewSchema.parse(req.body);
+    const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
     const userId = req.user!.id;
 
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id
+      `SELECT b.*, i.title AS item_title, i.owner_id AS lender_id, i.price_per_day
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -655,6 +765,16 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
 
     const revieweeId = isBorrower ? booking.lender_id : booking.borrower_id;
 
+    // Resolve review type:
+    // 1) OWNER_RENTAL: Renter/borrower reviewing the gear owner for paid rental
+    // 2) COMMUNITY_LENDER: Borrower reviewing owner who gave item for free (₹0 price)
+    // 3) RENTER: Owner reviewing renter/borrower for punctuality, gear care, communication
+    let resolvedReviewType: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER' = review_type || (
+      isBorrower
+        ? ((Number(booking.total_price) <= 0 || Number(booking.price_per_day) <= 0) ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL')
+        : 'RENTER'
+    );
+
     // Check if user already reviewed
     const existing = await query(
       `SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2`,
@@ -665,28 +785,51 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
     if (existing.rows.length > 0) {
       reviewResult = await query(
         `UPDATE reviews 
-         SET rating = $1, comment = $2, created_at = CURRENT_TIMESTAMP 
-         WHERE booking_id = $3 AND reviewer_id = $4 
+         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
+         WHERE booking_id = $4 AND reviewer_id = $5 
          RETURNING *`,
-        [rating, comment || '', id, userId]
+        [rating, comment || '', resolvedReviewType, id, userId]
       );
     } else {
       reviewResult = await query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [id, userId, revieweeId, rating, comment || '']
+        [id, userId, revieweeId, rating, comment || '', resolvedReviewType]
       );
     }
 
-    // Update reviewee rating & trust score in users table
-    await query(
-      `UPDATE users 
-       SET rating = (SELECT ROUND(AVG(rating), 2) FROM reviews WHERE reviewee_id = $1),
-           trust_score = LEAST(100, COALESCE(trust_score, 95) + 1)
-       WHERE id = $1`,
-      [revieweeId]
-    ).catch(() => {});
+    // Recalculate 3 review ratings + overall trust rating (average of all reviews) + trust score
+    await query(`
+      WITH stats AS (
+        SELECT 
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 5.00), 2) AS owner_rating,
+          COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 5.00), 2) AS renter_rating,
+          COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 5.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(rating), 5.00), 2) AS trust_rating,
+          COUNT(*)::int AS total_reviews
+        FROM reviews
+        WHERE reviewee_id = $1
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = LEAST(100, GREATEST(80, 92 + stats.total_reviews))
+      FROM stats
+      WHERE users.id = $1
+    `, [revieweeId]).catch((err) => {
+      console.error('Failed to update ratings for reviewee:', err);
+    });
 
     // Notify reviewee about new feedback
     const reviewerRes = await query('SELECT name FROM users WHERE id = $1', [userId]);

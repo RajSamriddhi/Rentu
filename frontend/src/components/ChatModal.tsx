@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Search, ArrowLeft, MessageSquare, Check, AlertCircle } from 'lucide-react';
+import { X, Send, Search, ArrowLeft, MessageSquare, Check, CheckCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { Conversation, Message } from '../lib/types';
@@ -41,6 +41,29 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
   };
 
+  // Status ticks: 1 tick = sent, 2 ticks = reached recipient (delivered), 2 blue ticks = read
+  const renderMessageTicks = (m: Message) => {
+    if (m.is_read) {
+      return (
+        <span title="Read" className="inline-flex items-center text-sky-400 drop-shadow-xs">
+          <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+        </span>
+      );
+    }
+    if (m.is_delivered) {
+      return (
+        <span title="Delivered" className="inline-flex items-center text-white/75">
+          <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+        </span>
+      );
+    }
+    return (
+      <span title="Sent" className="inline-flex items-center text-white/75">
+        <Check className="w-3 h-3 stroke-[2.5]" />
+      </span>
+    );
+  };
+
   useEffect(() => {
     if (isOpen) {
       loadConversations();
@@ -76,7 +99,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         .then((data) => {
           if (data?.messages && Array.isArray(data.messages)) {
             setMessages((prev) => {
-              if (prev.length !== data.messages.length || prev[prev.length - 1]?.id !== data.messages[data.messages.length - 1]?.id) {
+              const prevSig = prev.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
+              const nextSig = data.messages.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
+              if (prevSig !== nextSig) {
                 return data.messages;
               }
               return prev;
@@ -453,7 +478,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                               }`}
                             >
                               <span>{formattedTime}</span>
-                              {isMe && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                              {isMe && renderMessageTicks(m)}
                             </div>
                           </div>
                         </div>

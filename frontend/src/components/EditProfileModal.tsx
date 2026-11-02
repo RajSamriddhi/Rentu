@@ -12,13 +12,16 @@ import {
   ImageIcon,
   Sparkles,
   Navigation,
-  Bell
+  Bell,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
+import { AddLocationModal } from './AddLocationModal';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -85,7 +88,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [bannerUrl, setBannerUrl] = useState(
     user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
   );
-  const [notifyNearby5km, setNotifyNearby5km] = useState<boolean>(user?.notify_nearby_requests_5km ?? true);
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadStatus, setAvatarUploadStatus] = useState('');
@@ -94,6 +96,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -115,7 +118,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setBannerUrl(
         user.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80'
       );
-      setNotifyNearby5km(user.notify_nearby_requests_5km ?? true);
     }
   }, [user]);
 
@@ -183,9 +185,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      if (loc.building_no) {
-        setBuildingHouseNo(loc.building_no);
-      }
+      // DO NOT overwrite buildingHouseNo - user must manually type or keep their building/flat/house
       if (loc.address_text) {
         setStreetArea(loc.address_text);
       }
@@ -197,7 +197,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       }
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
-      setLocationSuccessMsg(`Current location detected (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
+
+      // Clean friendly location summary without exposing raw latitude/longitude coordinates
+      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
+      setLocationSuccessMsg(`✓ Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
       } catch {}
@@ -210,22 +213,27 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setErrorMsg('');
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      const fullAddress = [buildingHouseNo.trim(), streetArea.trim()].filter(Boolean).join(', ');
+      const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
 
       await api.updateProfile({
         name: name.trim(),
         bio: bio.trim(),
         phone: phone.trim() || undefined,
         locality: locality.trim() || undefined,
-        address_text: fullAddress || undefined,
+        address_text: fullAddress,
         pincode: pincode.trim() || undefined,
         latitude,
         longitude,
-        notify_nearby_requests_5km: notifyNearby5km,
         avatar_url: avatarUrl || undefined,
         banner_url: bannerUrl || undefined,
       });
@@ -499,7 +507,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in">
                     <Check className="w-3.5 h-3.5 stroke-[3] shrink-0" />
                     <span>
-                      {locationSuccessMsg || `Coordinates active (${latitude?.toFixed(4)}, ${longitude?.toFixed(4)})`}
+                      {locationSuccessMsg || 'GPS Location pinpointed & verified'}
                     </span>
                   </div>
                 )}
@@ -510,13 +518,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 {/* Building / House / Flat No. */}
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
-                    Building / Flat / House No.
+                    Building / Flat / House No. <span className="text-brand font-black">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={buildingHouseNo}
                     onChange={(e) => setBuildingHouseNo(e.target.value)}
-                    placeholder="e.g. Flat 304, Sunshine Apts / House #12"
+                    placeholder="e.g. Stanza Living Kimberly / Flat 304, Sunshine Apts"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -566,31 +575,68 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 </div>
               </div>
 
-              {/* 5 km Radius Nearby Gear Request Alerts */}
-              <div className="p-4 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Bell className="w-4 h-4 text-brand" />
-                    <span className="text-xs font-bold text-ink">5 km Nearby Request Alerts</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-brand/10 text-brand">RADAR</span>
+              {/* Additional Saved Pickup & Drop Locations */}
+              <div className="pt-3 border-t border-divider space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-brand" />
+                      <span>Additional Saved Locations</span>
+                    </h4>
+                    <p className="text-[11px] text-ink-secondary">
+                      Save alternative locations (e.g. Office, Studio) to quickly select when listing products.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-ink-secondary">
-                    Get an instant notification whenever someone within 5 km posts a gear wish. Turn off anytime.
-                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddLocationOpen(true)}
+                    className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Another Location</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setNotifyNearby5km(!notifyNearby5km)}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                    notifyNearby5km ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-700'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform absolute top-0.5 ${
-                      notifyNearby5km ? 'translate-x-6' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
+
+                {/* Render User's Saved Locations */}
+                {Array.isArray(user?.saved_locations) && user.saved_locations.length > 0 ? (
+                  <div className="space-y-2">
+                    {user.saved_locations.map((loc) => (
+                      <div
+                        key={loc.id}
+                        className="p-3 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-ink">{loc.label}</span>
+                            <span className="text-[10px] text-ink-secondary font-medium">({loc.locality})</span>
+                          </div>
+                          <p className="text-[11px] text-ink-secondary truncate mt-0.5">
+                            {formatSavedLocationFull(loc)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm(`Remove saved location "${loc.label}"?`)) {
+                              await api.deleteSavedLocation(loc.id, user);
+                              await refreshUser();
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                          title="Remove location"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-canvas border border-divider/60 text-center text-[11px] text-ink-secondary">
+                    No additional locations saved yet. Click "+ Add Another Location" to add an office, studio, or warehouse address.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -621,8 +667,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </button>
           </div>
         </form>
-
       </div>
+
+      {/* Add Another Location Modal */}
+      <AddLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        onSuccess={async () => {
+          await refreshUser();
+        }}
+      />
     </div>
   );
 };

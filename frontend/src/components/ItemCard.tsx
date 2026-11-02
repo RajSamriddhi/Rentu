@@ -20,7 +20,6 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
   const hasImage = images.length > 0 && Boolean(images[0]);
   const primaryImage = images[0] || '';
 
-  const isAvailable = item.status === 'AVAILABLE';
   const reachDistanceText = getReachDistance(item, user);
 
   return (
@@ -40,10 +39,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-canvas text-ink-secondary">
-              <Package className="w-8 h-8 text-ink-secondary/60 mb-1" />
-              <span className="text-[11px] font-bold text-ink-secondary">No image</span>
-            </div>
+            <div className="w-full h-full bg-zinc-100 dark:bg-zinc-800/60" />
           )}
 
           {/* Floating Favorite Heart Icon */}
@@ -62,15 +58,6 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               }`}
             />
           </button>
-
-          {/* Status Tag Overlay if Rented */}
-          {!isAvailable && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
-              <span className="bg-ink text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                Currently Rented
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Content Info matching Screen 2 */}
@@ -136,15 +123,9 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               </span>
             </button>
 
-            {isAvailable ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
-                <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                Rented
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
+              <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
+            </span>
           </div>
         </div>
       </div>

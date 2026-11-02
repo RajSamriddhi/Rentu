@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles } from 'lucide-react';
-import { Item } from '../lib/types';
+import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles, Plus } from 'lucide-react';
+import { Item, SavedLocation } from '../lib/types';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/authContext';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
+import { AddLocationModal } from './AddLocationModal';
 
 interface EditItemModalProps {
   item: Item | null;
@@ -21,12 +23,15 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
+  const { user } = useAuth();
+  const savedLocations = getEffectiveSavedLocations(user);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('primary');
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
   const [pricePerDay, setPricePerDay] = useState<number | ''>('');
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [locality, setLocality] = useState('');
   const [status, setStatus] = useState<'AVAILABLE' | 'RENTED' | 'UNAVAILABLE'>('AVAILABLE');
   const [imageUrl, setImageUrl] = useState('');
-  const [availableForBorrowing, setAvailableForBorrowing] = useState(false);
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
   const [offersPickup, setOffersPickup] = useState(false);
@@ -49,7 +54,6 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       setLocality(item.locality || '');
       setStatus(item.status || 'AVAILABLE');
       setImageUrl(item.image_urls?.[0] || '');
-      setAvailableForBorrowing(Boolean(item.available_for_borrowing));
       setOffersDelivery(Boolean(item.offers_delivery));
       setDeliveryFee(item.delivery_fee !== undefined ? Number(item.delivery_fee) : 0);
       setOffersPickup(Boolean(item.offers_pickup));
@@ -103,15 +107,25 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     setIsSaving(true);
     setErrorMsg('');
     try {
+      const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
+      const itemAddress = chosenLocation
+        ? [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ')
+        : '';
+      const finalLocality = chosenLocation?.locality || locality.trim() || user?.locality || '';
+
       await api.updateItem(item.id, {
         title: title.trim(),
         description: description.trim(),
         category,
         price_per_day: Number(pricePerDay),
         max_duration_days: Number(maxDurationDays),
-        locality: locality.trim(),
+        locality: finalLocality,
+        address_text: itemAddress || finalLocality,
+        pincode: chosenLocation?.pincode || user?.pincode || undefined,
+        latitude: chosenLocation?.latitude ?? user?.latitude,
+        longitude: chosenLocation?.longitude ?? user?.longitude,
         status,
-        available_for_borrowing: availableForBorrowing,
+        available_for_borrowing: item.available_for_borrowing ?? false,
         offers_delivery: offersDelivery,
         delivery_fee: offersDelivery ? Number(deliveryFee || 0) : 0,
         offers_pickup: offersPickup,
@@ -299,58 +313,81 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
             </div>
           </div>
 
-          {/* Locality */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-ink">Locality / Neighborhood</label>
+          {/* Pickup & Drop Location */}
+          <div className="space-y-3 pt-2 border-t border-divider">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-brand" />
+                  <span>Pickup & Drop Location</span>
+                  <span className="text-brand">*</span>
+                </label>
+                <p className="text-[11px] text-ink-secondary mt-0.5">
+                  Choose where the renter will meet you to pick up and return the gear.
+                </p>
+              </div>
+
               <button
                 type="button"
-                onClick={handleDetectLocation}
-                disabled={isDetectingLocation}
-                className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+                onClick={() => setIsAddLocationOpen(true)}
+                className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
               >
-                <MapPin className="w-3 h-3" />
-                <span>{isDetectingLocation ? 'Detecting...' : 'Detect GPS'}</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Another Location</span>
               </button>
             </div>
-            <input
-              type="text"
-              value={locality}
-              onChange={(e) => setLocality(e.target.value)}
-              placeholder="e.g. Indiranagar, Bangalore"
-              className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-            />
-          </div>
 
-          {/* Toggle: Also available for borrowing */}
-          <div className="p-3.5 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-ink">Available for Borrowing</span>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
-                  Option
-                </span>
-              </div>
-              <p className="text-[11px] text-ink-secondary">
-                Tell everyone this item can also be borrowed for free when you agree.
-              </p>
+            {/* List of Saved Locations in User's Profile */}
+            <div className="space-y-2.5">
+              {savedLocations.map((loc) => {
+                const isSelected = selectedLocationId === loc.id;
+                const formattedFull = formatSavedLocationFull(loc);
+                return (
+                  <div
+                    key={loc.id}
+                    onClick={() => {
+                      setSelectedLocationId(loc.id);
+                      setLocality(loc.locality);
+                    }}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                      isSelected
+                        ? 'bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs'
+                        : 'bg-canvas border-divider hover:border-brand/40'
+                    }`}
+                  >
+                    {/* Radio indicator */}
+                    <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      isSelected ? 'border-brand bg-brand' : 'border-divider bg-surface'
+                    }`}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-extrabold text-ink">
+                          {loc.label}
+                        </span>
+                        {loc.is_default && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                            Profile Primary
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            ✓ Selected for this listing
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-ink-secondary mt-1 font-medium leading-relaxed">
+                        <MapPin className="w-3.5 h-3.5 text-brand inline shrink-0 mr-1 -mt-0.5" />
+                        <span>{formattedFull}</span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setAvailableForBorrowing(!availableForBorrowing)}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                availableForBorrowing ? 'bg-brand' : 'bg-zinc-300 dark:bg-zinc-700'
-              }`}
-              role="switch"
-              aria-checked={availableForBorrowing}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  availableForBorrowing ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
           </div>
 
           {/* Delivery & Return Collection Options by Owner */}
@@ -524,6 +561,16 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Add Another Location Modal */}
+      <AddLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        onSuccess={(newLoc) => {
+          setSelectedLocationId(newLoc.id);
+          setLocality(newLoc.locality);
+        }}
+      />
     </div>
   );
 };

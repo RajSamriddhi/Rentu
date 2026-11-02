@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   Star,
   ArrowRight,
-  HelpCircle
+  HelpCircle,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -41,6 +42,7 @@ interface NavbarProps {
   onOpenHowItWorks?: () => void;
   onOpenUserProfile?: (userId: string) => void;
   onOpenHelpSupport?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -56,6 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHowItWorks,
   onOpenUserProfile,
   onOpenHelpSupport,
+  onOpenSettings,
 }) => {
   const { user, firebaseUser, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -232,6 +235,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       notif.type.startsWith('REMINDER_')
     ) {
       setActiveTab('bookings');
+    } else if (notif.reference_type === 'PROPOSAL' || notif.reference_type === 'MESSAGE') {
+      setActiveTab('messages');
     } else if (notif.reference_type === 'REQUEST' || notif.type.includes('REQUEST')) {
       setActiveTab('requests');
     } else if (notif.reference_type === 'ITEM' || notif.type.startsWith('ITEM_')) {
@@ -643,6 +648,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                       )}
 
                       <button
+                        onClick={() => { onOpenSettings?.(); setShowUserMenu(false); }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                      >
+                        <Settings className="w-4 h-4 text-ink-secondary" />
+                        <span>Settings</span>
+                      </button>
+
+                      <button
                         onClick={() => { onOpenHelpSupport?.(); setShowUserMenu(false); }}
                         className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
                       >
@@ -859,6 +872,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <Calendar className="w-4 h-4 text-ink-secondary" />
                   <span>Bookings & Activity</span>
+                </button>
+
+                <button
+                  onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-ink-secondary" />
+                  <span>Settings</span>
                 </button>
 
                 <button

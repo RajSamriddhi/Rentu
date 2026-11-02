@@ -74,6 +74,7 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -150,6 +151,9 @@ const runMigrations = async () => {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_pickup BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_drop_back BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
       CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
@@ -185,6 +189,9 @@ const runMigrations = async () => {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_pickup BOOLEAN DEFAULT false;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
 
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);
@@ -208,6 +215,10 @@ const runMigrations = async () => {
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_delivered BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
     `);
         // 4. NORMALIZATION TABLES (1NF & 3NF Compliance)
         // 4.1. POSTAL CODES (3NF: Eliminates transitive dependency pincode -> locality in users, items, requests)
@@ -284,6 +295,15 @@ const runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 5.00;
     `);
         // 4.4. NOTIFICATIONS (1NF: Eliminates non-atomic jsonb data object by storing explicit atomic scalar columns)
         await client.query(`
@@ -402,6 +422,21 @@ const runMigrations = async () => {
                 await client.query(c.sql);
             }
         }
+        // Align Bangalore/Bengaluru items and users away from Delhi default (28.5355)
+        await client.query(`
+      UPDATE items 
+      SET latitude = 12.9255, longitude = 77.5355 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      UPDATE users 
+      SET latitude = 12.9240, longitude = 77.5340 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
+      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+    `);
         await client.query('COMMIT');
         console.log('Database migrations completed successfully!');
     }

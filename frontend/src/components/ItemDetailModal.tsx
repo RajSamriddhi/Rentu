@@ -22,7 +22,7 @@ import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, formatFullAddress } from '../lib/location';
 import { RentalCalendar } from './RentalCalendar';
 import { getReachDistance } from '../lib/distance';
 
@@ -62,6 +62,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const isOwner = Boolean(
     user?.id && item?.owner_id && (user.id === item.owner_id || (user as any).firebase_uid === item.owner_id)
   );
+
+  // Privacy protection: only reveal full exact address if viewer is owner or has an accepted rental booking
+  const [hasAcceptedBooking, setHasAcceptedBooking] = useState(Boolean((item as any)?.can_view_address));
+
+  React.useEffect(() => {
+    if ((item as any)?.can_view_address) {
+      setHasAcceptedBooking(true);
+      return;
+    }
+    if (user?.id && item?.id && !isOwner) {
+      api.getBookings('borrower').then((bookings) => {
+        const hasAccepted = (bookings || []).some(
+          (b) => b.item_id === item.id && ['ACCEPTED', 'HANDED_OVER', 'COMPLETED'].includes(b.status)
+        );
+        if (hasAccepted) {
+          setHasAcceptedBooking(true);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.id, item?.id, isOwner]);
+
+  const canViewAddress = isOwner || hasAcceptedBooking || Boolean((item as any)?.can_view_address);
 
   const handleDeleteListing = async () => {
     if (!item) return;
@@ -380,7 +402,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     )}
                   </div>
 
-                  <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary">
+                  <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary flex-wrap">
                     {item.owner_rating ? (
                       <>
                         <div className="flex items-center gap-1 text-ink font-bold">
@@ -390,9 +412,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <span>•</span>
                       </>
                     ) : null}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 font-bold text-ink">
                       <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                      <span>{reachDistanceText}</span>
+                      <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2.5 py-1 rounded-full border border-brand/20">
+                        {reachDistanceText}
+                      </span>
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -429,15 +453,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 className="bg-canvas border border-divider hover:border-brand/40 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors group"
                 title={`View ${item.owner_name || 'Owner'}'s community profile`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <img
                     src={item.owner_avatar || (item.owner_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(item.owner_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                     alt={item.owner_name || 'Owner'}
-                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform"
+                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform shrink-0"
                   />
-                  <div>
-                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors">{item.owner_name || 'Verified Owner'}</h4>
-                    <p className="text-xs text-ink-secondary font-medium">Verified Lender • Click to view profile</p>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors truncate">{item.owner_name || 'Verified Owner'}</h4>
+                    <div className="text-xs text-ink-secondary font-medium flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span>Verified Lender</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-ink font-semibold">
+                        <MapPin className="w-3 h-3 text-brand shrink-0" />
+                        <span className="truncate">{reachDistanceText}</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -450,10 +481,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       onOpenUserProfile(item.owner_id);
                     }
                   }}
-                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs shrink-0"
                 >
                   View profile
                 </button>
+              </div>
+
+              {/* Distance & Pickup Info Box */}
+              <div className="p-3.5 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-ink flex items-center gap-1.5 truncate">
+                      <span>Distance:</span>
+                      <span className="text-brand font-extrabold truncate">{reachDistanceText}</span>
+                    </div>
+                    <div className="text-[11px] text-ink-secondary font-medium">
+                      Self pickup & return is available
+                    </div>
+                  </div>
+                </div>
               </div>
 
 
@@ -753,7 +802,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : (
                       <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
                         <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                        <span>Self pickup & return ({reachDistanceText})</span>
+                        <span>Self pickup & return: <strong className="text-brand font-bold">{reachDistanceText}</strong></span>
                       </div>
                     )}
 

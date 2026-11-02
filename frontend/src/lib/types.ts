@@ -10,13 +10,33 @@ export interface User {
   latitude?: number;
   longitude?: number;
   rating?: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
   trust_score?: number;
   role: 'USER' | 'ADMIN';
   notify_nearby_requests_5km?: boolean;
+  saved_locations?: SavedLocation[];
   created_at: string;
+}
+
+export interface SavedLocation {
+  id: string;
+  label: string; // e.g. "Primary Profile Address", "Office", "Studio", "Storage"
+  building_flat_house: string; // compulsory
+  street_road_landmark: string;
+  locality: string;
+  pincode: string;
+  latitude?: number;
+  longitude?: number;
+  is_default?: boolean;
 }
 
 export interface Item {
@@ -55,6 +75,8 @@ export interface Item {
   owner_name?: string;
   owner_avatar?: string;
   owner_locality?: string;
+  owner_address_text?: string;
+  owner_pincode?: string;
   owner_trust_score?: number;
   owner_bio?: string;
   owner_phone?: string;
@@ -76,6 +98,11 @@ export interface CommunityRequest {
   duration_days: number;
   offered_amount: number | string;
   locality: string;
+  address_text?: string;
+  pincode?: string;
+  will_pickup?: boolean;
+  will_drop_back?: boolean;
+  delivery_fee?: number;
   pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
   pickup_locality?: string;
   return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
@@ -114,7 +141,10 @@ export interface Booking {
   pickup_code?: string;
   return_code?: string;
   handed_over_at?: string;
+  returned_at?: string;
   completed_at?: string;
+  payment_status?: 'PENDING' | 'SUBMITTED' | 'CONFIRMED';
+  payment_method?: string;
   user_review_id?: string;
   user_rating?: number;
   user_comment?: string;
@@ -171,6 +201,10 @@ export interface Message {
   message_type?: 'TEXT' | 'PROPOSAL' | 'SYSTEM';
   proposal_data?: MessageProposalData | any;
   is_edited?: boolean;
+  is_delivered?: boolean;
+  delivered_at?: string | null;
+  is_read?: boolean;
+  read_at?: string | null;
   created_at: string;
   sender_name?: string;
   sender_avatar?: string;
@@ -218,9 +252,18 @@ export interface CommunityLeaderboardMember {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   bio?: string;
   rating: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   trust_score: number;
   reviews_count: number;
   highlight_review?: string;
@@ -250,6 +293,7 @@ export interface UserReview {
   reviewer_avatar?: string;
   reviewer_locality?: string;
   rating: number;
+  review_type?: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER';
   comment: string;
   created_at: string;
 }
@@ -259,11 +303,20 @@ export interface PublicUserProfile {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
   trust_score: number;
   rating: number;
+  trust_rating?: number;
+  owner_rating?: number;
+  renter_rating?: number;
+  community_lender_rating?: number;
+  owner_reviews_count?: number;
+  renter_reviews_count?: number;
+  community_lender_reviews_count?: number;
   created_at?: string;
   is_following?: boolean;
   is_blocked?: boolean;
@@ -335,6 +388,8 @@ export interface UserSearchResult {
   name: string;
   email?: string;
   locality?: string;
+  address_text?: string;
+  pincode?: string;
   avatar_url?: string;
   bio?: string;
   rating: number;
