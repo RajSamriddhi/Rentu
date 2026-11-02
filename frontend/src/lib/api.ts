@@ -12,7 +12,8 @@ import {
   UserSearchResult,
   SavedLocation,
   AiChatResponse,
-  AiChatContext
+  AiChatContext,
+  AppNotification
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL 
@@ -591,7 +592,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getNotifications(): Promise<any[]> {
+  async getNotifications(): Promise<{ notifications: AppNotification[]; unread_count: number } | AppNotification[]> {
     const res = await fetch(`${API_BASE}/notifications`, {
       headers: getHeaders(),
     });

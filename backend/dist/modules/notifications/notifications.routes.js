@@ -4,11 +4,16 @@ const express_1 = require("express");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
+const notifications_service_1 = require("./notifications.service");
 const router = (0, express_1.Router)();
 // GET /notifications - Get current user notifications
 router.get('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
+        // Automatically check and generate active reminders for upcoming pickups and returns
+        await (0, notifications_service_1.checkAndGenerateReminders)(userId).catch(err => {
+            console.warn('Notification reminder check error:', err);
+        });
         const result = await (0, db_1.query)(`SELECT 
         n.id, 
         n.user_id, 
@@ -16,9 +21,12 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         n.title, 
         n.body, 
         n.sender_id, 
+        n.booking_id,
+        n.message_id,
         n.reference_id, 
         n.reference_type, 
         n.read_at, 
+        (n.read_at IS NOT NULL) AS is_read,
         n.created_at,
         u.name AS sender_name,
         u.avatar_url AS sender_avatar

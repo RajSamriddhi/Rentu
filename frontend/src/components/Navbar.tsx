@@ -27,7 +27,7 @@ import {
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 import { api } from '../lib/api';
-import { UserSearchResult, isAuthorizedAdmin } from '../lib/types';
+import { UserSearchResult, isAuthorizedAdmin, AppNotification } from '../lib/types';
 
 interface NavbarProps {
   activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
@@ -77,9 +77,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   // Live Notifications State
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [latestToast, setLatestToast] = useState<AppNotification | null>(null);
 
   const postMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -89,10 +90,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const fetchNotifications = async () => {
     if (!isAuthenticated) return;
-    setIsLoadingNotifications(true);
     try {
-      const data = await api.getNotifications();
-      setNotifications(Array.isArray(data) ? data : []);
+      const data: any = await api.getNotifications();
+      const list: AppNotification[] = Array.isArray(data)
+        ? data
+        : (data?.notifications || []);
+
+      setNotifications((prev) => {
+        if (prev.length > 0 && list.length > 0) {
+          const newest = list[0];
+          const prevIds = new Set(prev.map((p) => p.id));
+          if (!prevIds.has(newest.id) && !newest.is_read && !newest.read_at) {
+            setLatestToast(newest);
+            setTimeout(() => setLatestToast(null), 6000);
+          }
+        }
+        return list;
+      });
     } catch (err) {
       console.error('Failed to load notifications:', err);
     } finally {
@@ -103,9 +117,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications();
-      const interval = setInterval(fetchNotifications, 15000);
+      const interval = setInterval(fetchNotifications, 12000);
       return () => clearInterval(interval);
     }
+  }, [isAuthenticated]);
+
+  // Listen for real-time notification update events triggered anywhere in app
+  useEffect(() => {
+    const handleUpdate = () => {
+      fetchNotifications();
+    };
+    window.addEventListener('rentu:notifications-updated', handleUpdate);
+    return () => window.removeEventListener('rentu:notifications-updated', handleUpdate);
   }, [isAuthenticated]);
 
   // Debounced user search
@@ -157,20 +180,67 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read && !n.read_at).length;
 
-  const handleNotificationClick = async (notif: any) => {
-    if (!notif.is_read) {
+  const getNotificationMeta = (type: string) => {
+    switch (type) {
+      case 'BOOKING_PROPOSAL':
+      case 'BOOKING_PENDING':
+        return { icon: '📅', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30', badge: 'Pending' };
+      case 'BOOKING_ACCEPTED':
+      case 'BOOKING_ACCEPTED_CONFIRM':
+        return { icon: '🤝', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30', badge: 'Accepted' };
+      case 'BOOKING_REJECTED':
+        return { icon: '❌', color: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30', badge: 'Declined' };
+      case 'BOOKING_RECEIVED':
+      case 'BOOKING_HANDED_OVER':
+        return { icon: '📦', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', badge: 'Received' };
+      case 'BOOKING_RETURNED':
+      case 'BOOKING_COMPLETED':
+        return { icon: '✅', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30', badge: 'Rec Back' };
+      case 'REMINDER_PICKUP':
+      case 'REMINDER_RETURN':
+      case 'BOOKING_REMINDER_PICKUP':
+      case 'BOOKING_REMINDER_RETURN':
+        return { icon: '⏰', color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30', badge: 'Reminder' };
+      case 'ITEM_UNAVAILABLE':
+        return { icon: '🔒', color: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/30', badge: 'Unavailable' };
+      case 'ITEM_AVAILABLE':
+        return { icon: '✨', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', badge: 'Available' };
+      case 'BOOKING_REVIEW':
+        return { icon: '⭐', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30', badge: 'Review' };
+      case 'NEARBY_REQUEST_ANNOUNCEMENT':
+        return { icon: '📍', color: 'bg-brand/10 text-brand border-brand/30', badge: 'Nearby' };
+      case 'NEW_FOLLOWER':
+        return { icon: '🎉', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30', badge: 'Follower' };
+      default:
+        return { icon: '⚡', color: 'bg-brand/10 text-brand border-brand/30', badge: 'Alert' };
+    }
+  };
+
+  const handleNotificationClick = async (notif: AppNotification) => {
+    if (!notif.is_read && !notif.read_at) {
       await api.markNotificationRead(notif.id).catch(() => {});
-      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n))
+      );
     }
     setShowNotifications(false);
-    if (notif.reference_type === 'BOOKING') {
+    setLatestToast(null);
+
+    if (
+      notif.reference_type === 'BOOKING' ||
+      notif.booking_id ||
+      notif.type.startsWith('BOOKING_') ||
+      notif.type.startsWith('REMINDER_')
+    ) {
       setActiveTab('bookings');
     } else if (notif.reference_type === 'PROPOSAL' || notif.reference_type === 'MESSAGE') {
       setActiveTab('messages');
-    } else if (notif.reference_type === 'REQUEST') {
+    } else if (notif.reference_type === 'REQUEST' || notif.type.includes('REQUEST')) {
       setActiveTab('requests');
+    } else if (notif.reference_type === 'ITEM' || notif.type.startsWith('ITEM_')) {
+      setActiveTab('explore');
     } else if (notif.sender_id && onOpenUserProfile) {
       onOpenUserProfile(notif.sender_id);
     }
@@ -178,7 +248,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleMarkAllRead = async () => {
     await api.markAllNotificationsRead().catch(() => {});
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
   };
 
   return (
@@ -264,7 +334,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Live Search Flyout Dropdown */}
             {showUserDropdown && searchQuery.trim().length >= 2 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-surface/98 backdrop-blur-xl border border-divider rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-divider">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#171821] border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-[0_16px_48px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.6)] p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-zinc-100 dark:divide-zinc-800/80">
                 {/* Community Members section */}
                 <div>
                   <div className="flex items-center justify-between px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-ink-muted">
@@ -298,13 +368,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                             }
                             setShowUserDropdown(false);
                           }}
-                          className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors group"
+                          className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/70 text-left cursor-pointer transition-colors group"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
                               src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                               alt={u.name}
-                              className="w-8 h-8 rounded-full object-cover border border-divider group-hover:border-brand shrink-0"
+                              className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 group-hover:border-brand shrink-0"
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -431,34 +501,43 @@ export const Navbar: React.FC<NavbarProps> = ({
                         ) : notifications.length === 0 ? (
                           <div className="py-8 text-center text-ink-secondary text-xs px-4">
                             <p className="font-bold text-ink mb-1">All caught up! 🎉</p>
-                            <p className="text-[11px]">When people you follow or neighbors within 5 km post a wish, you'll see alerts here.</p>
+                            <p className="text-[11px]">When bookings are requested, accepted, received, or scheduled, you'll see alerts here.</p>
                           </div>
                         ) : (
-                          notifications.map((n) => (
-                            <div
-                              key={n.id}
-                              onClick={() => handleNotificationClick(n)}
-                              className={`p-3.5 hover:bg-canvas transition-colors cursor-pointer flex items-start gap-2.5 ${
-                                !n.is_read ? 'bg-brand/5 dark:bg-brand/10' : ''
-                              }`}
-                            >
-                              <div className="w-7 h-7 rounded-full bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5 text-xs">
-                                {n.type === 'NEARBY_REQUEST_ANNOUNCEMENT' ? '📍' : n.type === 'NEW_FOLLOWER' ? '🎉' : '⚡'}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-1 mb-0.5">
-                                  <span className="font-bold text-ink truncate">{n.title}</span>
-                                  {!n.is_read && (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
-                                  )}
+                          notifications.map((n) => {
+                            const meta = getNotificationMeta(n.type);
+                            const isUnread = !n.is_read && !n.read_at;
+                            return (
+                              <div
+                                key={n.id}
+                                onClick={() => handleNotificationClick(n)}
+                                className={`p-3.5 hover:bg-canvas transition-colors cursor-pointer flex items-start gap-2.5 ${
+                                  isUnread ? 'bg-brand/5 dark:bg-brand/10' : ''
+                                }`}
+                              >
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-sm border ${meta.color}`}>
+                                  {meta.icon}
                                 </div>
-                                <p className="text-ink-secondary line-clamp-2 leading-relaxed text-[11px]">{n.body}</p>
-                                <span className="text-[10px] text-ink-muted mt-1 block">
-                                  {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="font-bold text-ink truncate text-xs">{n.title}</span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${meta.color}`}>
+                                        {meta.badge}
+                                      </span>
+                                    </div>
+                                    {isUnread && (
+                                      <span className="w-2 h-2 rounded-full bg-brand shrink-0 animate-pulse" />
+                                    )}
+                                  </div>
+                                  <p className="text-ink-secondary line-clamp-2 leading-relaxed text-[11px]">{n.body}</p>
+                                  <span className="text-[10px] text-ink-muted mt-1 block">
+                                    {new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -658,7 +737,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile User Search Dropdown */}
             {showUserDropdown && searchQuery.trim().length >= 2 && (
-              <div className="mt-2 bg-surface border border-divider rounded-2xl shadow-xl p-2.5 z-50 divide-y divide-divider max-h-72 overflow-y-auto">
+              <div className="mt-2 bg-white dark:bg-[#171821] border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-xl p-2.5 z-50 divide-y divide-zinc-100 dark:divide-zinc-800 max-h-72 overflow-y-auto">
                 <div className="flex items-center justify-between px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
                   <span className="flex items-center gap-1">
                     <Users className="w-3 h-3 text-brand" />
@@ -688,13 +767,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                           setShowUserDropdown(false);
                           setShowMobileSearch(false);
                         }}
-                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-canvas text-left cursor-pointer transition-colors"
+                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/70 text-left cursor-pointer transition-colors"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
                             src={u.avatar_url || (u.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                             alt={u.name}
-                            className="w-7 h-7 rounded-full object-cover border border-divider shrink-0"
+                            className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0"
                           />
                           <div className="min-w-0">
                             <div className="text-xs font-bold text-ink truncate">{u.name}</div>
@@ -719,7 +798,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div className="md:hidden border-t border-divider/60 bg-surface/95 dark:bg-[#111218]/95 backdrop-blur-md px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
+          <div className="md:hidden border-t border-divider/60 bg-white dark:bg-[#111218] px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
 
             {/* Navigation Links */}
             <div className="space-y-1">
@@ -773,6 +852,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
 
                 <button
+                  onClick={() => { setShowNotifications(true); setShowMobileMenu(false); }}
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <Bell className="w-4 h-4 text-brand" />
+                    <span>Notifications & Alerts</span>
+                  </div>
+                  {unreadCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </button>
+
+                <button
                   onClick={() => { setActiveTab('bookings'); setShowMobileMenu(false); }}
                   className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
                 >
@@ -818,6 +912,37 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Real-Time Floating Notification Toast */}
+      {latestToast && (
+        <div 
+          onClick={() => handleNotificationClick(latestToast)}
+          className="fixed top-20 right-4 sm:right-8 z-50 max-w-sm w-full bg-white/95 dark:bg-[#181920]/95 backdrop-blur-md border border-divider shadow-2xl rounded-2xl p-4 flex items-start gap-3 cursor-pointer animate-in slide-in-from-top-4 duration-200 hover:scale-[1.01] transition-transform"
+        >
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base border ${getNotificationMeta(latestToast.type).color}`}>
+            {getNotificationMeta(latestToast.type).icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-bold text-ink truncate">{latestToast.title}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getNotificationMeta(latestToast.type).color}`}>
+                  {getNotificationMeta(latestToast.type).badge}
+                </span>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setLatestToast(null); }}
+                className="text-ink-muted hover:text-ink text-xs p-1 cursor-pointer leading-none"
+                aria-label="Dismiss toast"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[11px] text-ink-secondary line-clamp-2 mt-0.5 leading-relaxed">{latestToast.body}</p>
+            <span className="text-[10px] text-brand font-bold mt-1 inline-block">Click to view on Bookings →</span>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

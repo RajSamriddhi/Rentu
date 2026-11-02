@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { checkAndGenerateReminders } from './notifications.service';
 
 const router = Router();
 
@@ -9,6 +10,11 @@ const router = Router();
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.id;
+
+    // Automatically check and generate active reminders for upcoming pickups and returns
+    await checkAndGenerateReminders(userId).catch(err => {
+      console.warn('Notification reminder check error:', err);
+    });
 
     const result = await query(
       `SELECT 
@@ -18,9 +24,12 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         n.title, 
         n.body, 
         n.sender_id, 
+        n.booking_id,
+        n.message_id,
         n.reference_id, 
         n.reference_type, 
         n.read_at, 
+        (n.read_at IS NOT NULL) AS is_read,
         n.created_at,
         u.name AS sender_name,
         u.avatar_url AS sender_avatar
