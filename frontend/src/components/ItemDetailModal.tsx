@@ -57,6 +57,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   // Available for borrowing status (set by owner during listing/editing)
   const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
   const reachDistanceText = item ? getReachDistance(item, user) : 'Nearby';
+  const itemLocation = item?.locality || item?.owner_locality || item?.address_text || 'Bengaluru';
+  const ownerLocation = item?.owner_locality || item?.locality || 'Bengaluru';
 
   // Owner detection: checks user id or firebase_uid against item.owner_id
   const isOwner = Boolean(
@@ -380,7 +382,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     )}
                   </div>
 
-                  <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary">
+                  <div className="mt-2 flex items-center gap-2.5 text-xs font-medium text-ink-secondary flex-wrap">
                     {item.owner_rating ? (
                       <>
                         <div className="flex items-center gap-1 text-ink font-bold">
@@ -390,9 +392,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <span>•</span>
                       </>
                     ) : null}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 font-bold text-ink">
                       <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                      <span>{reachDistanceText}</span>
+                      <span>{itemLocation}</span>
+                      <span className="text-[11px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                        {reachDistanceText}
+                      </span>
                     </div>
                     <span>•</span>
                     <span>{item.category}</span>
@@ -429,15 +434,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 className="bg-canvas border border-divider hover:border-brand/40 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors group"
                 title={`View ${item.owner_name || 'Owner'}'s community profile`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <img
                     src={item.owner_avatar || (item.owner_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(item.owner_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
                     alt={item.owner_name || 'Owner'}
-                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform"
+                    className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform shrink-0"
                   />
-                  <div>
-                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors">{item.owner_name || 'Verified Owner'}</h4>
-                    <p className="text-xs text-ink-secondary font-medium">Verified Lender • Click to view profile</p>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors truncate">{item.owner_name || 'Verified Owner'}</h4>
+                    <div className="text-xs text-ink-secondary font-medium flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span>Verified Lender</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-ink font-semibold">
+                        <MapPin className="w-3 h-3 text-brand shrink-0" />
+                        <span className="truncate">{ownerLocation}</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -450,10 +462,39 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                       onOpenUserProfile(item.owner_id);
                     }
                   }}
-                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                  className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs shrink-0"
                 >
                   View profile
                 </button>
+              </div>
+
+              {/* Owner Location & Pickup Info Box */}
+              <div className="p-3.5 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-ink flex items-center gap-1.5 truncate">
+                      <span>Owner Location:</span>
+                      <span className="text-brand font-extrabold truncate">{itemLocation}</span>
+                    </div>
+                    <div className="text-[11px] text-ink-secondary font-medium">
+                      Self pickup & return is within reach ({reachDistanceText})
+                    </div>
+                  </div>
+                </div>
+
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address_text || itemLocation)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="px-2.5 py-1 rounded-lg border border-divider bg-canvas hover:border-brand text-brand text-[11px] font-bold shrink-0 transition-colors inline-flex items-center gap-1"
+                  title="Preview owner locality on Google Maps"
+                >
+                  <span>Map ↗</span>
+                </a>
               </div>
 
 
@@ -623,7 +664,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner (${reachDistanceText})`}
+                                    {optForDelivery ? 'Owner delivers to your location' : `You pick up from owner in ${itemLocation} (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -688,7 +729,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-ink-secondary">
-                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner (${reachDistanceText})`}
+                                    {optForPickup ? 'Owner collects from you on return' : `You return to owner in ${itemLocation} (${reachDistanceText})`}
                                   </div>
                                 </div>
                               </div>
@@ -753,7 +794,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     ) : (
                       <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
                         <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                        <span>Self pickup & return ({reachDistanceText})</span>
+                        <span>Self pickup & return: <strong className="text-ink font-bold">{itemLocation}</strong> ({reachDistanceText})</span>
                       </div>
                     )}
 

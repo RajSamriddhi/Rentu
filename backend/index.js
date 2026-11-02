@@ -52947,7 +52947,7 @@ router2.get("/:id", async (req, res, next) => {
     const result = await query(
       `SELECT 
         i.id, i.title, i.description, i.category, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, 
+        i.max_duration_days, i.image_urls, i.sticker_badge, i.locality, i.address_text, i.latitude, i.longitude,
         i.status, i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, u.locality AS owner_locality,
