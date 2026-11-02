@@ -45,7 +45,6 @@ import { EditItemModal } from './EditItemModal';
 import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
 import { ReviewModal } from './ReviewModal';
-import { BookingScheduleCalendar } from './BookingScheduleCalendar';
 import { getReachDistance } from '../lib/distance';
 
 interface ProfileViewProps {
@@ -63,7 +62,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 }) => {
   const { user, refreshUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'listings' | 'requests' | 'bookings' | 'reviews'>('listings');
+  const [activeTab, setActiveTab] = useState<'listings' | 'requests' | 'reviews'>('listings');
   const [myItems, setMyItems] = useState<Item[]>([]);
   const [myRequests, setMyRequests] = useState<CommunityRequest[]>([]);
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
@@ -75,17 +74,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [previewItem, setPreviewItem] = useState<Item | null>(null);
   const [editingRequest, setEditingRequest] = useState<CommunityRequest | null>(null);
-
-  // Bookings Calendar & Detail Modal state
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  });
-  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   // Review submission modal state
   const [reviewingBooking, setReviewingBooking] = useState<Booking | null>(null);
@@ -165,225 +153,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const bannerSrc = user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80';
   const avatarSrc = user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu');
-
-  // Format YYYY-MM-DD
-  const formatYMD = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
-  // Get calendar events for a specific date
-  const getEventsForDate = (dateStr: string) => {
-    if (!user) return [];
-    const events: Array<{
-      booking: Booking;
-      type: 'DELIVER' | 'COLLECT' | 'PICKUP' | 'RETURN' | 'ACTIVE';
-      label: string;
-      role: 'Lender' | 'Borrower';
-      badgeColor: string;
-    }> = [];
-
-    myBookings.forEach((b) => {
-      const isLender = b.lender_id === user.id || (user as any).firebase_uid === b.lender_id;
-      const bStart = b.start_date?.slice(0, 10);
-      const bEnd = (b.end_date || b.start_date)?.slice(0, 10);
-
-      // Start Date events
-      if (bStart === dateStr) {
-        if (isLender) {
-          if (b.requires_delivery) {
-            events.push({
-              booking: b,
-              type: 'DELIVER',
-              label: `🚗 Deliver to ${b.borrower_name || 'renter'}`,
-              role: 'Lender',
-              badgeColor: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
-            });
-          } else {
-            events.push({
-              booking: b,
-              type: 'PICKUP',
-              label: `🚶 ${b.borrower_name || 'Renter'} picks up`,
-              role: 'Lender',
-              badgeColor: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-            });
-          }
-        } else {
-          if (b.requires_delivery) {
-            events.push({
-              booking: b,
-              type: 'DELIVER',
-              label: `🚗 Owner delivers to you`,
-              role: 'Borrower',
-              badgeColor: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
-            });
-          } else {
-            events.push({
-              booking: b,
-              type: 'PICKUP',
-              label: `🚶 Pick up from ${b.lender_name || 'owner'}`,
-              role: 'Borrower',
-              badgeColor: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30',
-            });
-          }
-        }
-      }
-
-      // End Date events
-      if (bEnd === dateStr) {
-        if (isLender) {
-          if (b.requires_pickup) {
-            events.push({
-              booking: b,
-              type: 'COLLECT',
-              label: `🔄 Collect from ${b.borrower_name || 'renter'}`,
-              role: 'Lender',
-              badgeColor: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-            });
-          } else {
-            events.push({
-              booking: b,
-              type: 'RETURN',
-              label: `📥 Receive return`,
-              role: 'Lender',
-              badgeColor: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-            });
-          }
-        } else {
-          if (b.requires_pickup) {
-            events.push({
-              booking: b,
-              type: 'COLLECT',
-              label: `🔄 Owner collects from you`,
-              role: 'Borrower',
-              badgeColor: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-            });
-          } else {
-            events.push({
-              booking: b,
-              type: 'RETURN',
-              label: `🚶 Return to ${b.lender_name || 'owner'}`,
-              role: 'Borrower',
-              badgeColor: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30',
-            });
-          }
-        }
-      }
-
-      // Active intermediate days
-      if (bStart && bEnd && dateStr > bStart && dateStr < bEnd) {
-        events.push({
-          booking: b,
-          type: 'ACTIVE',
-          label: `🔒 Active: ${b.item_title || 'Item'}`,
-          role: isLender ? 'Lender' : 'Borrower',
-          badgeColor: 'bg-brand/10 text-brand border-brand/20',
-        });
-      }
-    });
-
-    return events;
-  };
-
-  // Generate calendar days for month
-  const calendarDays = React.useMemo(() => {
-    const year = calendarMonth.getFullYear();
-    const month = calendarMonth.getMonth();
-    const firstDayIndex = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const todayStr = formatYMD(new Date());
-
-    const days: Array<{
-      dateStr: string;
-      dayNum: number;
-      isCurrentMonth: boolean;
-      isToday: boolean;
-      isSelected: boolean;
-      events: ReturnType<typeof getEventsForDate>;
-    }> = [];
-
-    // Empty slots before 1st
-    for (let i = 0; i < firstDayIndex; i++) {
-      days.push({
-        dateStr: '',
-        dayNum: 0,
-        isCurrentMonth: false,
-        isToday: false,
-        isSelected: false,
-        events: [],
-      });
-    }
-
-    // Month days
-    for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(year, month, day);
-      const dateStr = formatYMD(d);
-      const events = getEventsForDate(dateStr);
-      days.push({
-        dateStr,
-        dayNum: day,
-        isCurrentMonth: true,
-        isToday: dateStr === todayStr,
-        isSelected: dateStr === selectedCalendarDate,
-        events,
-      });
-    }
-
-    return days;
-  }, [calendarMonth, myBookings, selectedCalendarDate, user]);
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
-  const handlePrevMonth = () => {
-    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
-  };
-
-  const handleNextMonth = () => {
-    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
-  };
-
-  const handleBookingStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED') => {
-    try {
-      const updated = await api.updateBookingStatus(bookingId, status);
-      setMyBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status } : b))
-      );
-      if (status === 'ACCEPTED') {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to update booking status.');
-    }
-  };
-
-  const handleVerifyPickup = async (bookingId: string, code: string) => {
-    try {
-      const updated = await api.verifyPickup(bookingId, code);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-      setMyBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'HANDED_OVER' } : b))
-      );
-    } catch (err: any) {
-      alert(err.message || 'Incorrect verification code.');
-    }
-  };
-
-  const handleVerifyReturn = async (bookingId: string, code: string) => {
-    try {
-      const updated = await api.verifyReturn(bookingId, code);
-      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
-      setMyBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status: 'COMPLETED' } : b))
-      );
-    } catch (err: any) {
-      alert(err.message || 'Incorrect return code.');
-    }
-  };
 
   if (!user) {
     return (
@@ -598,12 +367,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           <div className="p-4 sm:p-5 flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
-              <Calendar className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{myBookings.length}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">Total Handoffs</div>
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{myRequests.length}</div>
+              <div className="text-[11px] font-bold text-ink-secondary">Wishes & Requests</div>
             </div>
           </div>
 
@@ -676,7 +445,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {[
           { key: 'listings', label: 'My Listings', count: myItems.length, icon: Package },
           { key: 'requests', label: 'My Requests', count: myRequests.length, icon: Sparkles },
-          { key: 'bookings', label: 'Bookings & Handoffs', count: myBookings.length, icon: Calendar },
           { key: 'reviews', label: 'Reviews & Trust', count: receivedReviews.length, icon: Star },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -798,20 +566,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Bookings & Handoffs Tab: Full Interactive Schedule Calendar & Details */}
-        {activeTab === 'bookings' && (
-          <div className="pt-2">
-            <BookingScheduleCalendar
-              bookings={myBookings}
-              onOpenChat={onOpenChatWithBooking}
-              onStatusUpdate={handleBookingStatusUpdate}
-              onVerifyPickup={handleVerifyPickup}
-              onVerifyReturn={handleVerifyReturn}
-              onOpenReview={(b) => setReviewingBooking(b)}
-            />
           </div>
         )}
 
@@ -1147,213 +901,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )}
 
       </div>
-
-      {/* Booking Detail Modal (Shows who booked it, deadline, how long, payment status) */}
-      {selectedBooking && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div
-            className="relative bg-surface w-full max-w-lg rounded-3xl border border-divider shadow-2xl overflow-hidden my-auto text-ink"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-ink font-display">
-                  Booking & Handoff Details
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-brand-soft text-brand border border-brand/20">
-                  {selectedBooking.status}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedBooking(null)}
-                className="p-1.5 rounded-full hover:bg-canvas text-ink transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
-              
-              {/* Product Info */}
-              <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-canvas border border-divider">
-                <div className="w-16 h-16 rounded-xl bg-surface border border-divider overflow-hidden shrink-0 flex flex-col items-center justify-center text-ink-secondary">
-                  {selectedBooking.item_images?.[0] ? (
-                    <img src={selectedBooking.item_images[0]} alt={selectedBooking.item_title} className="w-full h-full object-cover" />
-                  ) : (
-                    <Package className="w-6 h-6 text-ink-secondary/60" />
-                  )}
-                </div>
-                <div className="space-y-0.5">
-                  <h4 className="font-extrabold text-ink text-sm sm:text-base">{selectedBooking.item_title}</h4>
-                  <p className="text-ink-secondary font-medium">Category: {selectedBooking.item_category || 'General Gear'}</p>
-                  <p className="text-brand font-bold">Duration: {selectedBooking.duration_days} Days</p>
-                </div>
-              </div>
-
-              {/* Who Booked It / Counterparty Details */}
-              {(() => {
-                const isLender = selectedBooking.lender_id === user?.id || (user as any)?.firebase_uid === selectedBooking.lender_id;
-                const counterName = isLender ? (selectedBooking.borrower_name || 'Renter') : (selectedBooking.lender_name || 'Owner');
-                const counterAvatar = isLender ? selectedBooking.borrower_avatar : selectedBooking.lender_avatar;
-                const counterPhone = isLender ? selectedBooking.borrower_phone : selectedBooking.lender_phone;
-                const counterEmail = isLender ? selectedBooking.borrower_email : selectedBooking.lender_email;
-
-                return (
-                  <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
-                    <span className="text-[10px] font-black uppercase text-ink-secondary tracking-wider block">
-                      {isLender ? 'Renter (Who Booked It)' : 'Product Owner'}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={counterAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(counterName)}&background=0F172A&color=fff&bold=true`}
-                        alt={counterName}
-                        className="w-10 h-10 rounded-full object-cover border border-divider"
-                      />
-                      <div>
-                        <div className="font-extrabold text-ink text-sm">{counterName}</div>
-                        <div className="text-[11px] text-ink-secondary">
-                          {isLender ? 'Verified Renter' : 'Verified Lender'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {(counterPhone || counterEmail) && (
-                      <div className="pt-2 border-t border-divider/60 flex flex-wrap gap-3 text-[11px] text-ink-secondary">
-                        {counterPhone && (
-                          <div className="flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-brand" />
-                            <span>{counterPhone}</span>
-                          </div>
-                        )}
-                        {counterEmail && (
-                          <div className="flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-brand" />
-                            <span>{counterEmail}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Schedule & Return Deadline */}
-              <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
-                <span className="text-[10px] font-black uppercase text-ink-secondary tracking-wider block">
-                  Rental Schedule & Deadline
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-2.5 rounded-xl bg-surface border border-divider">
-                    <div className="text-[10px] text-ink-secondary font-bold uppercase">Pickup / Start</div>
-                    <div className="font-extrabold text-ink mt-0.5">{selectedBooking.start_date}</div>
-                    <div className="text-[11px] text-brand font-bold mt-0.5">{selectedBooking.start_time || '10:00 AM'}</div>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-surface border border-divider">
-                    <div className="text-[10px] text-ink-secondary font-bold uppercase">Return Deadline</div>
-                    <div className="font-extrabold text-ink mt-0.5">{selectedBooking.end_date || selectedBooking.start_date}</div>
-                    <div className="text-[11px] text-brand font-bold mt-0.5">{selectedBooking.end_time || '06:00 PM'}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* What You Need to Do (Action Task) */}
-              <div className="p-3.5 rounded-2xl bg-brand-soft/30 border border-brand/20 space-y-1">
-                <div className="text-xs font-bold text-ink flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-brand" />
-                  <span>What You Need To Do:</span>
-                </div>
-                <p className="text-[11px] text-ink-secondary leading-relaxed">
-                  {(() => {
-                    const isLender = selectedBooking.lender_id === user?.id || (user as any)?.firebase_uid === selectedBooking.lender_id;
-                    if (selectedBooking.status === 'ACCEPTED' || selectedBooking.status === 'PENDING') {
-                      if (isLender) {
-                        return selectedBooking.requires_delivery
-                          ? `🚗 Deliver the product to the renter's address (${selectedBooking.pickup_locality || 'Renter Address'}) on ${selectedBooking.start_date}.`
-                          : `🚶 The renter will come to your locality (${selectedBooking.pickup_locality || 'Your Locality'}) to pick up the product.`;
-                      } else {
-                        return selectedBooking.requires_delivery
-                          ? `🚗 The owner will deliver the product to your address (${selectedBooking.pickup_locality}) on ${selectedBooking.start_date}.`
-                          : `🚶 Go to the owner's locality (${selectedBooking.pickup_locality}) to collect the product.`;
-                      }
-                    } else if (selectedBooking.status === 'HANDED_OVER') {
-                      if (isLender) {
-                        return selectedBooking.requires_pickup
-                          ? `🔄 On return deadline (${selectedBooking.end_date}), you must collect the gear from the renter (${selectedBooking.return_locality}).`
-                          : `📥 On return deadline (${selectedBooking.end_date}), the renter will bring the gear back to you.`;
-                      } else {
-                        return selectedBooking.requires_pickup
-                          ? `🔄 On return deadline (${selectedBooking.end_date}), the owner will collect the gear from your location (${selectedBooking.return_locality}).`
-                          : `🚶 On return deadline (${selectedBooking.end_date}), return the product back to the owner.`;
-                      }
-                    } else {
-                      return 'Rental completed. Please exchange reviews.';
-                    }
-                  })()}
-                </p>
-              </div>
-
-              {/* Payment Status & Total */}
-              <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-2">
-                <span className="text-[10px] font-black uppercase text-ink-secondary tracking-wider block">
-                  Payment Status
-                </span>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-ink">
-                    <CreditCard className="w-4 h-4 text-emerald-500" />
-                    <span>{Number(selectedBooking.total_price) === 0 ? 'Free Community Borrowing' : 'Paid & Secured in Escrow'}</span>
-                  </div>
-                  <span className="text-sm font-black text-ink font-display">
-                    {Number(selectedBooking.total_price) === 0 ? '₹0' : `₹${selectedBooking.total_price}`}
-                  </span>
-                </div>
-                {Number(selectedBooking.delivery_fee) > 0 && (
-                  <div className="flex items-center justify-between text-[11px] text-ink-secondary">
-                    <span>Delivery Fee:</span>
-                    <span>₹{selectedBooking.delivery_fee}</span>
-                  </div>
-                )}
-                {Number(selectedBooking.pickup_fee) > 0 && (
-                  <div className="flex items-center justify-between text-[11px] text-ink-secondary">
-                    <span>Return Collection Fee:</span>
-                    <span>₹{selectedBooking.pickup_fee}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Security Exchange Code */}
-              {(selectedBooking.pickup_code || selectedBooking.return_code) && (
-                <div className="p-3.5 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[10px] font-black uppercase text-ink-secondary tracking-wider block">
-                    Security Exchange Code
-                  </span>
-                  <div className="text-base font-black tracking-widest text-brand font-display">
-                    {selectedBooking.status === 'ACCEPTED' ? selectedBooking.pickup_code : selectedBooking.return_code}
-                  </div>
-                  <p className="text-[10px] text-ink-secondary">
-                    Share this 6-digit code only upon physical gear inspection.
-                  </p>
-                </div>
-              )}
-
-              {/* Action Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedBooking(null);
-                  onOpenChatWithBooking(selectedBooking.id);
-                }}
-                className="btn-primary w-full py-3 text-xs font-extrabold cursor-pointer shadow-pink flex items-center justify-center gap-1.5"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Open Coordination Chat 💬</span>
-              </button>
-
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Write Review Modal */}
       <ReviewModal
