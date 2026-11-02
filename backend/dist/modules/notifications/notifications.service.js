@@ -58,7 +58,7 @@ async function checkAndGenerateReminders(userId) {
            AND created_at >= CURRENT_DATE`, [userId, b.id]);
             if (alreadyNotified.rows.length === 0) {
                 const isBorrower = b.borrower_id === userId;
-                const dayLabel = b.is_today ? 'Today' : 'Tomorrow';
+                const dayLabel = b.is_today ? 'today' : 'tomorrow';
                 await createNotification({
                     userId,
                     senderId: isBorrower ? b.lender_id : b.borrower_id,
@@ -66,10 +66,10 @@ async function checkAndGenerateReminders(userId) {
                     referenceId: b.id,
                     referenceType: 'BOOKING',
                     type: 'REMINDER_PICKUP',
-                    title: `⏰ Pickup ${dayLabel}!`,
+                    title: `Pickup ${b.is_today ? 'Today' : 'Tomorrow'}`,
                     body: isBorrower
-                        ? `Your pickup for "${b.item_title}" is scheduled ${dayLabel.toLowerCase()} (${b.start_date} at ${b.start_time || '10:00'}). Have your 6-digit code ready!`
-                        : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel.toLowerCase()} (${b.start_date} at ${b.start_time || '10:00'}).`,
+                        ? `Pickup for "${b.item_title}" with ${b.lender_name} is scheduled ${dayLabel}.`
+                        : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel}.`,
                 });
             }
         }
@@ -99,7 +99,7 @@ async function checkAndGenerateReminders(userId) {
            AND created_at >= CURRENT_DATE`, [userId, b.id]);
             if (alreadyNotified.rows.length === 0) {
                 const isBorrower = b.borrower_id === userId;
-                const dayLabel = b.is_today ? 'Today' : 'Tomorrow';
+                const dayLabel = b.is_today ? 'today' : 'tomorrow';
                 await createNotification({
                     userId,
                     senderId: isBorrower ? b.lender_id : b.borrower_id,
@@ -107,10 +107,10 @@ async function checkAndGenerateReminders(userId) {
                     referenceId: b.id,
                     referenceType: 'BOOKING',
                     type: 'REMINDER_RETURN',
-                    title: `⏰ Return Due ${dayLabel}!`,
+                    title: `Return Due ${b.is_today ? 'Today' : 'Tomorrow'}`,
                     body: isBorrower
-                        ? `Your rental of "${b.item_title}" is due for return ${dayLabel.toLowerCase()} (${b.end_date} at ${b.end_time || '18:00'}). Meet ${b.lender_name} to verify exchange!`
-                        : `Scheduled return collection for "${b.item_title}" from ${b.borrower_name} is ${dayLabel.toLowerCase()} (${b.end_date} at ${b.end_time || '18:00'}).`,
+                        ? `Return for "${b.item_title}" to ${b.lender_name} is due ${dayLabel}.`
+                        : `Scheduled return for "${b.item_title}" from ${b.borrower_name} is ${dayLabel}.`,
                 });
             }
         }
