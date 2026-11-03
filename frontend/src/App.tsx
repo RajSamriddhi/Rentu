@@ -230,7 +230,13 @@ export const App: React.FC = () => {
 
   const handleCloseUserProfile = () => {
     setViewingUserId(null);
-    const targetPath = activeTab === 'home' ? '/' : activeTab === 'hustle' ? '/admin' : `/${activeTab}`;
+    const targetPath = activeTab === 'home'
+      ? '/'
+      : activeTab === 'hustle'
+      ? '/admin'
+      : (activeTab === 'bookings' || activeTab === 'profile')
+      ? '/profile'
+      : `/${activeTab}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }

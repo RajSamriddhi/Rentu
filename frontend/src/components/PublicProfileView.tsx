@@ -154,14 +154,28 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     const shareUrl = profile?.username
       ? `${window.location.origin}/${profile.username}`
       : (window.location.href || `${window.location.origin}/user/${userId}`);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${profile?.name || 'User'}'s Profile on Rentu`,
+          text: `Check out ${profile?.name || 'this'}'s gear closet and rental profile on Rentu!`,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      } catch {}
     }
   };
 
