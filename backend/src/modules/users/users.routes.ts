@@ -74,7 +74,7 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
         u.username,
         u.name, 
         u.email,
-        COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
@@ -284,7 +284,7 @@ router.get('/search', async (req: Request, res: Response, next) => {
         u.username,
         u.name, 
         u.email,
-        COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
@@ -423,7 +423,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         r.created_at, 
         COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
-        COALESCE(u.locality, 'Bengaluru') AS reviewer_locality
+        COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
        LEFT JOIN users u ON r.reviewer_id = u.id
        WHERE r.reviewee_id = $1
@@ -462,7 +462,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       id: user.id,
       username: user.username || '',
       name: user.name || 'Community Member',
-      locality: user.locality || 'Bengaluru',
+      locality: user.locality || '',
       address_text: isSelf ? (user.address_text || '') : '',
       pincode: isSelf ? (user.pincode || '') : '',
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,

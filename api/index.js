@@ -54204,6 +54204,18 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         400
       );
     }
+    const borrowerRes = await query("SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1", [borrowerId]);
+    const borrower = borrowerRes.rows[0];
+    const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== "Bengaluru, India";
+    const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
+    if (!hasAddressText && !hasSavedLocations) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "Address required: Please set your address in your profile before requesting to rent or order items.",
+        400
+      );
+    }
     const totalPrice = validated.total_price !== void 0 ? Number(validated.total_price) : Number(item.price_per_day) * validated.duration_days;
     const pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
     const bookingRes = await query(
@@ -55027,7 +55039,7 @@ router6.get("/leaderboard", async (req, res, next) => {
         u.username,
         u.name, 
         u.email,
-        COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
@@ -55183,7 +55195,7 @@ router6.get("/search", async (req, res, next) => {
         u.username,
         u.name, 
         u.email,
-        COALESCE(NULLIF(TRIM(u.locality), ''), 'Bengaluru') AS locality, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
@@ -55301,7 +55313,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         r.created_at, 
         COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
-        COALESCE(u.locality, 'Bengaluru') AS reviewer_locality
+        COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
        LEFT JOIN users u ON r.reviewer_id = u.id
        WHERE r.reviewee_id = $1
@@ -55332,7 +55344,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       id: user.id,
       username: user.username || "",
       name: user.name || "Community Member",
-      locality: user.locality || "Bengaluru",
+      locality: user.locality || "",
       address_text: isSelf ? user.address_text || "" : "",
       pincode: isSelf ? user.pincode || "" : "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,

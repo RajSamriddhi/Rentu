@@ -528,7 +528,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                   required
                   value={buildingHouseNo}
                   onChange={(e) => setBuildingHouseNo(e.target.value)}
-                  placeholder="e.g. Flat 304 / Stanza Kimberly"
+                  placeholder="e.g. Flat 402, Building 3B / House #12"
                   className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
                 />
               </div>
@@ -539,7 +539,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                   type="text"
                   value={streetArea}
                   onChange={(e) => setStreetArea(e.target.value)}
-                  placeholder="e.g. Mylasandra Main Rd"
+                  placeholder="e.g. 5th Main Road, Near Metro Station / Landmark"
                   className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
                 />
               </div>
@@ -553,7 +553,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                   required
                   value={locality}
                   onChange={(e) => setLocality(e.target.value)}
-                  placeholder="e.g. BEML Layout 7th Phase, Bengaluru"
+                  placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                   className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
                 />
               </div>

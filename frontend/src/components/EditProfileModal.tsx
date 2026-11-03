@@ -82,7 +82,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [phone, setPhone] = useState(user?.phone || '');
   const [buildingHouseNo, setBuildingHouseNo] = useState(initialAddr.building);
   const [streetArea, setStreetArea] = useState(initialAddr.street);
-  const [locality, setLocality] = useState(user?.locality || '');
+  const isLegacyDefaultLocality = (user?.locality === 'Bengaluru' || user?.locality === 'Bengaluru, India') && !user?.address_text;
+  const [locality, setLocality] = useState(isLegacyDefaultLocality ? '' : (user?.locality || ''));
   const [pincode, setPincode] = useState(user?.pincode || '');
   const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
   const [longitude, setLongitude] = useState<number | undefined>(user?.longitude);
@@ -115,7 +116,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       const addr = parseAddress(user.address_text);
       setBuildingHouseNo(addr.building);
       setStreetArea(addr.street);
-      setLocality(user.locality || '');
+      const isLegacy = (user.locality === 'Bengaluru' || user.locality === 'Bengaluru, India') && !user.address_text;
+      setLocality(isLegacy ? '' : (user.locality || ''));
       setPincode(user.pincode || '');
       setLatitude(user.latitude);
       setLongitude(user.longitude);
@@ -625,7 +627,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     required
                     value={buildingHouseNo}
                     onChange={(e) => setBuildingHouseNo(e.target.value)}
-                    placeholder="e.g. Stanza Living Kimberly / Flat 304, Sunshine Apts"
+                    placeholder="e.g. Flat 402, Building 3B / House #12"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -639,7 +641,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     type="text"
                     value={streetArea}
                     onChange={(e) => setStreetArea(e.target.value)}
-                    placeholder="e.g. 5th Main, Near Metro Station"
+                    placeholder="e.g. 5th Main Road, Near Metro Station / Landmark"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -655,7 +657,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     type="text"
                     value={locality}
                     onChange={(e) => setLocality(e.target.value)}
-                    placeholder="e.g. Indiranagar / Koramangala"
+                    placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>

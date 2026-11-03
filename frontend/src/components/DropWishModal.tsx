@@ -982,7 +982,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   required
                   value={buildingHouseNo}
                   onChange={(e) => setBuildingHouseNo(e.target.value)}
-                  placeholder="e.g. Stanza Living Kimberly / Flat 402"
+                  placeholder="e.g. Flat 402, Building 3B / House #12"
                   className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                 />
               </div>
@@ -996,7 +996,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   type="text"
                   value={streetArea}
                   onChange={(e) => setStreetArea(e.target.value)}
-                  placeholder="e.g. Mylasandra, BEML Layout 7th Phase"
+                  placeholder="e.g. 5th Main Road, Near Metro Station / Landmark"
                   className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                 />
               </div>
@@ -1011,7 +1011,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                   required
                   value={locality}
                   onChange={(e) => setLocality(e.target.value)}
-                  placeholder="e.g. BEML Layout 7th Phase, Bengaluru"
+                  placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                   className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                 />
               </div>

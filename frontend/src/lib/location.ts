@@ -216,7 +216,7 @@ export function formatFullAddress(entity?: {
   pincode?: string | null;
   owner_locality?: string | null;
 } | null): string {
-  if (!entity) return 'Bengaluru, India';
+  if (!entity) return '';
 
   const address = (entity.address_text || '').trim();
   const locality = (entity.locality || entity.owner_locality || '').trim();
@@ -241,7 +241,7 @@ export function formatFullAddress(entity?: {
     parts.push(pincode);
   }
 
-  return parts.join(', ') || locality || address || 'Bengaluru, India';
+  return parts.join(', ') || locality || address || '';
 }
 
 /**

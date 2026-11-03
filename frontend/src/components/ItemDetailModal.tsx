@@ -19,7 +19,9 @@ import {
   Trash2,
   Truck,
   RotateCcw,
-  Eye
+  Eye,
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Item } from '../lib/types';
@@ -28,6 +30,7 @@ import { api } from '../lib/api';
 import { getEffectiveSavedLocations, formatSavedLocationFull, formatFullAddress } from '../lib/location';
 import { RentalCalendar, formatTime12 } from './RentalCalendar';
 import { getReachDistance } from '../lib/distance';
+import { AddLocationModal } from './AddLocationModal';
 
 interface ItemDetailModalProps {
   item: Item | null;
@@ -166,14 +169,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   // Delivery & Return Collection options based on lender listing
   const savedLocations = getEffectiveSavedLocations(user);
-  const defaultSavedAddr = savedLocations.length > 0 && (savedLocations[0].building_flat_house || savedLocations[0].locality)
-    ? formatSavedLocationFull(savedLocations[0])
-    : (user?.address_text || user?.locality || '');
+  const validSavedLocations = savedLocations.filter(loc =>
+    Boolean((loc.building_flat_house && loc.building_flat_house.trim()) || (loc.street_road_landmark && loc.street_road_landmark.trim()))
+  );
+  const hasUserAddress = Boolean(
+    (user?.address_text && user.address_text.trim() && user.address_text.trim() !== 'Bengaluru, India') ||
+    validSavedLocations.length > 0
+  );
+
+  const defaultSavedAddr = validSavedLocations.length > 0
+    ? formatSavedLocationFull(validSavedLocations[0])
+    : (user?.address_text && user.address_text.trim() !== 'Bengaluru, India' ? user.address_text.trim() : '');
 
   const [optForDelivery, setOptForDelivery] = useState(false);
   const [optForPickup, setOptForPickup] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState(defaultSavedAddr);
   const [pickupAddress, setPickupAddress] = useState(defaultSavedAddr);
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   React.useEffect(() => {
     if (defaultSavedAddr) {
@@ -219,6 +231,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     e.preventDefault();
     if (!isAuthenticated) {
       onOpenAuth();
+      return;
+    }
+
+    if (!hasUserAddress) {
+      setErrorMsg('You must first set your address before placing a rental order.');
+      setIsAddLocationOpen(true);
       return;
     }
 
@@ -654,6 +672,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 ) : (
                   <form onSubmit={handleBookingSubmit} className="space-y-4">
                     
+                    {/* Address Requirement Banner */}
+                    {!hasUserAddress && isAuthenticated && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-2 animate-in fade-in">
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-xs font-bold">Address Required to Order</div>
+                            <div className="text-[11px] text-ink-secondary mt-0.5">
+                              You must add your address before ordering or requesting rent. We do not assume your address.
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddLocationOpen(true)}
+                          className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Your Address First</span>
+                        </button>
+                      </div>
+                    )}
+                    
                     {/* Chosen Rental Schedule (synced live from the calendar & time selectors on the left) */}
                     <div className="p-3 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -957,6 +998,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           </button>
                         </div>
                       </div>
+                    ) : !hasUserAddress && isAuthenticated ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddLocationOpen(true)}
+                        className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold mt-2 cursor-pointer shadow-pink flex items-center justify-center gap-2"
+                      >
+                        <MapPin className="w-4 h-4" />
+                        <span>Set Address to Order</span>
+                      </button>
                     ) : (
                       <button
                         type="submit"
@@ -989,6 +1039,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         </div>
 
       </div>
+
+      {/* Add Location Modal */}
+      {isAddLocationOpen && (
+        <AddLocationModal
+          isOpen={isAddLocationOpen}
+          onClose={() => setIsAddLocationOpen(false)}
+          onSuccess={(newLoc) => {
+            setIsAddLocationOpen(false);
+            if (newLoc) {
+              const full = formatSavedLocationFull(newLoc);
+              setDeliveryAddress(full);
+              setPickupAddress(full);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -119,7 +119,7 @@ export function getReachDistanceMeters(
 
   // 3. Locality proximity matching fallback
   const itemLoc = (item.locality || '').toLowerCase().trim();
-  const userLoc = (user?.locality || 'beml layout').toLowerCase().trim();
+  const userLoc = (user?.locality || '').toLowerCase().trim();
 
   if (itemLoc && userLoc) {
     if (itemLoc === userLoc || itemLoc.includes(userLoc) || userLoc.includes(itemLoc)) {

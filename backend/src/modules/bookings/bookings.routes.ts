@@ -163,6 +163,21 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       );
     }
 
+    // ADDRESS CHECK:
+    // Borrower must have set their address (address_text or saved_locations) before placing a rental order
+    const borrowerRes = await query('SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1', [borrowerId]);
+    const borrower = borrowerRes.rows[0];
+    const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== 'Bengaluru, India';
+    const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc: any) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
+    if (!hasAddressText && !hasSavedLocations) {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'Address required: Please set your address in your profile before requesting to rent or order items.',
+        400
+      );
+    }
+
     const totalPrice = validated.total_price !== undefined 
       ? Number(validated.total_price) 
       : Number(item.price_per_day) * validated.duration_days;

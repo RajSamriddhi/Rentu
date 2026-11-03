@@ -119,6 +119,15 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         if (validated.total_price === 0 && Number(item.price_per_day) > 0 && !item.available_for_borrowing) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The owner has not made this item available for free borrowing. It is only available for paid rent.', 400);
         }
+        // ADDRESS CHECK:
+        // Borrower must have set their address (address_text or saved_locations) before placing a rental order
+        const borrowerRes = await (0, db_1.query)('SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1', [borrowerId]);
+        const borrower = borrowerRes.rows[0];
+        const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== 'Bengaluru, India';
+        const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
+        if (!hasAddressText && !hasSavedLocations) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Address required: Please set your address in your profile before requesting to rent or order items.', 400);
+        }
         const totalPrice = validated.total_price !== undefined
             ? Number(validated.total_price)
             : Number(item.price_per_day) * validated.duration_days;
