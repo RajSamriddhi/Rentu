@@ -20,7 +20,6 @@ import { HelpSupportModal } from './components/HelpSupportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
-import { SetUsernameModal } from './components/SetUsernameModal';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
@@ -512,11 +511,6 @@ export const App: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
-
-      {/* Required Unique Username Modal for All Users */}
-      {isAuthenticated && user && !user.username && (
-        <SetUsernameModal />
-      )}
 
     </div>
   );

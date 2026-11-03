@@ -38,6 +38,22 @@ const generateToken = (user: { id: string; email: string; role: 'USER' | 'ADMIN'
   );
 };
 
+const generateUniqueUsername = async (email: string, name?: string): Promise<string> => {
+  let base = (email ? email.split('@')[0] : (name || 'member'))
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '');
+  if (!base || base.length < 3) base = `user_${Date.now().toString(36)}`;
+  base = base.slice(0, 24);
+
+  let candidate = base;
+  let counter = 1;
+  while (true) {
+    const existing = await query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [candidate]);
+    if (existing.rows.length === 0) return candidate;
+    candidate = `${base.slice(0, 18)}_${counter++}`;
+  }
+};
+
 // Register
 router.post('/register', async (req: Request, res: Response, next) => {
   try {
@@ -45,7 +61,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
     const email = validated.email.toLowerCase();
     const displayName = validated.name || email.split('@')[0];
     const locality = validated.locality || '';
-    const cleanUsername = validated.username ? validated.username.trim().toLowerCase() : null;
+    let cleanUsername = validated.username ? validated.username.trim().toLowerCase() : null;
 
     const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
@@ -57,6 +73,8 @@ router.post('/register', async (req: Request, res: Response, next) => {
       if (existingUser.rows.length > 0) {
         return sendError(res, 'USERNAME_TAKEN', 'This username is already taken. Please choose another.', 409);
       }
+    } else {
+      cleanUsername = await generateUniqueUsername(email, displayName);
     }
 
     const passwordHash = await bcrypt.hash(validated.password, 10);
@@ -79,6 +97,13 @@ router.post('/register', async (req: Request, res: Response, next) => {
     );
 
     const user = result.rows[0];
+
+    // Ensure user always has a unique username set
+    if (!user.username) {
+      const generated = await generateUniqueUsername(user.email, user.name);
+      await query('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
+      user.username = generated;
+    }
     const token = generateToken(user);
 
     return sendSuccess(res, { user, token }, 'Registration successful. Welcome to Rentu.', 201);
@@ -103,6 +128,13 @@ router.post('/login', async (req: Request, res: Response, next) => {
     }
 
     const user = result.rows[0];
+
+    // Ensure user always has a unique username set
+    if (!user.username) {
+      const generated = await generateUniqueUsername(user.email, user.name);
+      await query('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
+      user.username = generated;
+    }
     const isMatch = await bcrypt.compare(validated.password, user.password_hash);
     if (!isMatch) {
       return sendError(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
@@ -183,17 +215,22 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
 
     let user;
     if (existing.rows.length > 0) {
+      let assignedUsername = existing.rows[0].username;
+      if (!assignedUsername) {
+        assignedUsername = await generateUniqueUsername(email, validated.name);
+      }
       // Update existing user with firebase_uid and keep custom avatar if set
       try {
         const updated = await query(
           `UPDATE users
            SET firebase_uid = $1,
-               name = COALESCE(NULLIF($2, ''), name),
-               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               username = COALESCE(username, $2),
+               name = COALESCE(NULLIF($3, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
-           WHERE id = $4
+           WHERE id = $5
            RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
-          [uid, validated.name, avatar, existing.rows[0].id]
+          [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]
         );
         user = updated.rows[0];
       } catch (err: any) {
@@ -201,27 +238,30 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
         const updated = await query(
           `UPDATE users
            SET firebase_uid = $1,
-               name = COALESCE(NULLIF($2, ''), name),
-               avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+               username = COALESCE(username, $2),
+               name = COALESCE(NULLIF($3, ''), name),
+               avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
-           WHERE id = $4
+           WHERE id = $5
            RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
-          [uid, validated.name, avatar, existing.rows[0].id]
+          [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]
         );
         user = { ...updated.rows[0], saved_locations: [] };
       }
     } else {
       // Create new user for this Firebase account
+      const newUsername = await generateUniqueUsername(email, validated.name);
       try {
         const created = await query(
-          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+          `INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
            RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
           [
             uid,
             uid,
             email,
             validated.name,
+            newUsername,
             validated.phone || null,
             locality,
             avatar,
@@ -232,14 +272,15 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
       } catch (err: any) {
         await ensureUserColumns();
         const created = await query(
-          `INSERT INTO users (id, firebase_uid, email, name, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
+          `INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
            RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
           [
             uid,
             uid,
             email,
             validated.name,
+            newUsername,
             validated.phone || null,
             locality,
             avatar,
@@ -310,6 +351,13 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
     }
 
     const user = result.rows[0];
+
+    // Ensure user always has a unique username set
+    if (!user.username) {
+      const generated = await generateUniqueUsername(user.email, user.name);
+      await query('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
+      user.username = generated;
+    }
 
     // Compute stats
     const statsResult = await query(

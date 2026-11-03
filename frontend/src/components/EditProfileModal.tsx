@@ -486,9 +486,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             {/* Username / Custom Link */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
+                <label className="text-xs font-bold text-ink flex items-center gap-1.5 flex-wrap">
                   <AtSign className="w-3.5 h-3.5 text-brand" />
-                  Unique Username & Profile Link *
+                  <span>Unique Username & Handle *</span>
+                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Guaranteed Unique
+                  </span>
                 </label>
                 {isCheckingUsername ? (
                   <span className="text-[11px] text-zinc-400 flex items-center gap-1">
@@ -496,7 +499,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   </span>
                 ) : usernameStatus?.available ? (
                   <span className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Available
+                    <Check className="w-3 h-3" /> Unique & Available
                   </span>
                 ) : usernameStatus && !usernameStatus.available ? (
                   <span className="text-[11px] text-red-500 font-bold flex items-center gap-1">
@@ -522,6 +525,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 Your dedicated page:{' '}
                 <span className="text-brand font-mono font-bold">
                   rentu.site/{username || 'username'}
+                </span>
+                <span className="block text-[10px] text-ink-muted mt-0.5">
+                  Your username is verified unique across Rentu and cannot be shared or duplicated by any other member.
                 </span>
               </p>
             </div>

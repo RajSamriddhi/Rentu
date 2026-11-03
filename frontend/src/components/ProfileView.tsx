@@ -29,7 +29,9 @@ import {
   Lock,
   Phone,
   HelpCircle,
-  Mail
+  Mail,
+  AtSign,
+  Copy
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -80,6 +82,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [copiedProfileLink, setCopiedProfileLink] = useState(false);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -300,6 +303,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Verified Peer</span>
               </span>
             </div>
+
+            {/* Prominent Unique Username & Handle Badges */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-0.5">
+              <span className="font-mono text-xs sm:text-sm font-bold text-brand bg-brand-soft px-3 py-1 rounded-full border border-brand/20 inline-flex items-center gap-1.5 shadow-2xs">
+                <AtSign className="w-3.5 h-3.5" />
+                <span>{user?.username || user?.email?.split('@')[0] || 'member'}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                <Sparkles className="w-3 h-3 text-emerald-500" />
+                <span>Unique Community Handle</span>
+              </span>
+            </div>
             
             {user?.bio ? (
               <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed">
@@ -311,8 +326,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             )}
 
+            {/* Dedicated Unique Profile URL Banner */}
+            <div className="mt-3 p-3.5 rounded-2xl bg-canvas border border-divider flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="w-9 h-9 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0 border border-brand/20">
+                  <AtSign className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-ink uppercase tracking-wider">Your Unique Profile URL</span>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Unique Across Rentu
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ink-secondary truncate">
+                    Share your dedicated page: <span className="font-mono font-bold text-brand">rentu.site/{user?.username || user?.email?.split('@')[0]}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const handle = user?.username || user?.email?.split('@')[0];
+                    const url = `https://rentu.site/${handle}`;
+                    navigator.clipboard?.writeText(url);
+                    setCopiedProfileLink(true);
+                    setTimeout(() => setCopiedProfileLink(false), 2000);
+                  }}
+                  className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5 shrink-0"
+                >
+                  {copiedProfileLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-emerald-500 font-bold">Link Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Unique Link</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="text-xs font-bold text-brand hover:underline cursor-pointer shrink-0"
+                >
+                  Edit Handle
+                </button>
+              </div>
+            </div>
+
             {/* Metadata Badges */}
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs font-semibold text-ink-secondary pt-1">
+              <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider text-xs font-bold text-ink">
+                <AtSign className="w-3.5 h-3.5 text-brand" />
+                <span>Unique Handle: <span className="text-brand font-mono">@{user?.username || user?.email?.split('@')[0]}</span></span>
+              </span>
+
               {ratingDisplay ? (
                 <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-3 py-1 rounded-full border border-divider">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
