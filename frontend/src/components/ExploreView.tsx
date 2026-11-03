@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   SlidersHorizontal, 
   ChevronDown, 
@@ -19,7 +19,10 @@ import {
 } from 'lucide-react';
 import { Item, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
+import { RequestCard } from './RequestCard';
+import { RequestDetailModal } from './RequestDetailModal';
 import { useAuth } from '../lib/authContext';
+import { getReachDistance, getReachDistanceKm } from '../lib/distance';
 
 interface ExploreViewProps {
   items: Item[];
@@ -33,6 +36,9 @@ interface ExploreViewProps {
   onClaimRequest: (request: CommunityRequest) => void;
   onOpenAuth: () => void;
   initialSubView?: 'items' | 'requests';
+  onOpenUserProfile?: (userId: string) => void;
+  searchQuery?: string;
+  onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
 }
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
@@ -47,6 +53,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   onClaimRequest,
   onOpenAuth,
   initialSubView = 'items',
+  onOpenUserProfile,
+  searchQuery,
+  onOpenChatWithUser,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -55,6 +64,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   // Requests sub-filter tab
   const [requestSubTab, setRequestSubTab] = useState<'all' | 'my'>('all');
+  const [selectedRequest, setSelectedRequest] = useState<CommunityRequest | null>(null);
+
 
   // Sidebar Filters State for Items
   const [maxPrice, setMaxPrice] = useState<number>(2000);
@@ -99,6 +110,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     if (selectedType === 'Rent' && Number(item.price_per_day) <= 0) return false;
     if (selectedType === 'Borrow' && Number(item.price_per_day) > 0) return false;
     if (selectedCondition !== 'Any' && item.condition && item.condition !== selectedCondition) return false;
+    const distanceKm = getReachDistanceKm(item, user);
+    if (radiusKm && distanceKm > radiusKm) return false;
     return true;
   });
 
@@ -198,6 +211,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         })}
       </div>
 
+
+
       {/* ========================================================================= */}
       {/* VIEW 1: PRODUCTS / GEAR LISTINGS                                          */}
       {/* ========================================================================= */}
@@ -214,7 +229,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 <span>Filters & Distance</span>
               </span>
               <span className="text-xs font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full">
-                {showMobileFilters ? 'Hide ▲' : 'Show Filters ▼'}
+                {showMobileFilters ? 'Hide' : 'Show Filters'}
               </span>
             </button>
           </div>
@@ -383,7 +398,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                         onClick={onOpenDropGear}
                         className="btn-primary text-xs cursor-pointer font-bold px-4 py-2 shadow-pink"
                       >
-                        List an Item 💸
+                        List an Item
                       </button>
                     ) : (
                       <button
@@ -396,12 +411,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                   {sortedItems.map((item) => (
                     <ItemCard
                       key={item.id}
                       item={item}
                       onClick={() => onSelectItem(item)}
+                      onOpenUserProfile={onOpenUserProfile}
                     />
                   ))}
                 </div>
@@ -486,7 +502,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       onClick={onOpenDropWish}
                       className="mt-4 btn-primary text-xs cursor-pointer font-bold px-5 py-2 shadow-pink"
                     >
-                      Post a Request 🎯
+                      Post a Request
                     </button>
                   ) : (
                     <button
@@ -498,83 +514,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   )}
                 </div>
               ) : (
-                filteredRequests.map((req) => {
-                  const isFulfilled = req.status === 'FULFILLED';
-                  return (
-                    <div
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredRequests.map((req) => (
+                    <RequestCard
                       key={req.id}
-                      className="bg-surface border border-divider hover:border-zinc-300 dark:hover:border-zinc-700 rounded-2xl p-4 sm:p-5 shadow-xs transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                    >
-                      {/* Left Icon or Attached Photo + Text info */}
-                      <div className="flex items-start gap-4 flex-1">
-                        {req.image_url ? (
-                          <img
-                            src={req.image_url}
-                            alt={req.item_name}
-                            className="w-14 h-14 rounded-2xl object-cover border border-divider shrink-0 shadow-xs"
-                          />
-                        ) : (
-                          <div className={`w-12 h-12 rounded-2xl ${getCategoryBg(req.category)} flex items-center justify-center shrink-0`}>
-                            {getCategoryIcon(req.category)}
-                          </div>
-                        )}
-
-                        <div className="space-y-1 flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-extrabold text-base text-ink tracking-tight">
-                              {req.item_name}
-                            </h3>
-                            <span className="text-xs font-extrabold text-brand font-display bg-brand-soft/60 px-2 py-0.5 rounded-md">
-                              ₹{Number(req.offered_amount)} budget
-                            </span>
-                            <span className="text-zinc-300">•</span>
-                            <span className="text-xs font-medium text-ink-secondary">
-                              {new Date(req.start_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-ink-secondary line-clamp-2 font-medium">
-                            {req.description}
-                          </p>
-
-                          <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
-                            <img
-                              src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
-                              alt={req.seeker_name}
-                              className="w-4 h-4 rounded-full object-cover"
-                            />
-                            <span>{req.seeker_name || 'Neighbor'}</span>
-                            <span>•</span>
-                            <span className="flex items-center gap-0.5">
-                              <MapPin className="w-3 h-3 text-brand" />
-                              <span>{req.locality || 'Nearby'}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Action + Badge */}
-                      <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 shrink-0">
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EDE9FE] dark:bg-purple-950/40 text-[#6D28D9] dark:text-purple-300 border border-[#DDD6FE] dark:border-purple-800/40">
-                          Active Request
-                        </span>
-
-                        {isFulfilled ? (
-                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Fulfilled
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => onClaimRequest(req)}
-                            className="px-4 py-2 rounded-full text-xs font-bold bg-brand text-white hover:bg-brand-hover shadow-xs transition-all cursor-pointer active:scale-95"
-                          >
-                            I Can Lend This
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
+                      request={req}
+                      onClick={() => setSelectedRequest(req)}
+                      onClaim={(r) => onClaimRequest(r)}
+                      onOpenUserProfile={onOpenUserProfile}
+                    />
+                  ))}
+                </div>
               )}
             </main>
 
@@ -652,6 +602,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Request Details Modal */}
+      <RequestDetailModal
+        request={selectedRequest}
+        isOpen={Boolean(selectedRequest)}
+        onClose={() => setSelectedRequest(null)}
+        onClaim={(r) => {
+          setSelectedRequest(null);
+          onClaimRequest(r);
+        }}
+        onOpenAuth={onOpenAuth}
+        onOpenUserProfile={onOpenUserProfile}
+        onOpenChatWithUser={onOpenChatWithUser}
+      />
 
     </div>
   );

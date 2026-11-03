@@ -3,6 +3,8 @@
  * High-accuracy GPS detection with OpenStreetMap Nominatim + BigDataCloud fallback
  */
 
+import { User, SavedLocation } from './types';
+
 export interface ResolvedLocation {
   locality: string;
   city: string;
@@ -11,6 +13,7 @@ export interface ResolvedLocation {
   pincode: string;
   latitude: number;
   longitude: number;
+  accuracy?: number;
   full_address: string;
   state?: string;
 }
@@ -19,8 +22,8 @@ export interface ResolvedLocation {
  * Request GPS coordinates from browser Geolocation API
  */
 export const getCoordinates = (
-  options: PositionOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-): Promise<{ latitude: number; longitude: number }> => {
+  options: PositionOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+): Promise<{ latitude: number; longitude: number; accuracy?: number }> => {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       return reject(new Error('Geolocation is not supported by your browser.'));
@@ -31,6 +34,7 @@ export const getCoordinates = (
         resolve({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 10),
         });
       },
       (err) => {
@@ -170,7 +174,133 @@ export const reverseGeocode = async (
 /**
  * 1-Click Detect Location: Gets coordinates and parses into address
  */
-export const detectCurrentLocation = async (): Promise<ResolvedLocation> => {
-  const coords = await getCoordinates();
-  return await reverseGeocode(coords.latitude, coords.longitude);
+export const detectCurrentLocation = async (
+  options: PositionOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+): Promise<ResolvedLocation> => {
+  const coords = await getCoordinates(options);
+  const resolved = await reverseGeocode(coords.latitude, coords.longitude);
+  return {
+    ...resolved,
+    accuracy: coords.accuracy,
+  };
 };
+
+/**
+ * Returns exact Google Maps URL pointing directly to coordinate pin
+ */
+export const getGoogleMapsUrl = (latitude?: number | null, longitude?: number | null, fallbackQuery?: string): string => {
+  if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude) && (latitude !== 0 || longitude !== 0)) {
+    return `https://www.google.com/maps?q=${latitude},${longitude}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fallbackQuery || 'Bengaluru')}`;
+};
+
+/**
+ * Returns exact Google Maps Directions URL navigating directly to the meetup spot
+ */
+export const getGoogleMapsDirectionsUrl = (latitude?: number | null, longitude?: number | null, fallbackQuery?: string): string => {
+  if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude) && (latitude !== 0 || longitude !== 0)) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+  }
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fallbackQuery || 'Bengaluru')}`;
+};
+
+/**
+ * Formats the full complete location string of a user, owner, or item:
+ * Includes Building/Flat/House, Street/Road, Locality/Neighborhood, and PIN code.
+ * De-duplicates redundant sub-strings cleanly.
+ */
+export function formatFullAddress(entity?: {
+  address_text?: string | null;
+  locality?: string | null;
+  pincode?: string | null;
+  owner_locality?: string | null;
+} | null): string {
+  if (!entity) return '';
+
+  const address = (entity.address_text || '').trim();
+  let locality = (entity.locality || entity.owner_locality || '').trim();
+  const pincode = (entity.pincode || '').trim();
+
+  // Do NOT assume address: if user never set address_text and locality is Bengaluru, ignore it
+  if ((locality.toLowerCase() === 'bengaluru' || locality.toLowerCase() === 'bengaluru, india' || locality.toLowerCase() === 'bangalore') && !address) {
+    locality = '';
+  }
+
+  const rawParts = `${address}, ${locality}`
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const part of rawParts) {
+    const lower = part.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      parts.push(part);
+    }
+  }
+
+  if (pincode && !seen.has(pincode.toLowerCase())) {
+    parts.push(pincode);
+  }
+
+  const result = parts.join(', ') || locality || address || '';
+  if (result.toLowerCase() === 'bengaluru' || result.toLowerCase() === 'bengaluru, india') {
+    return '';
+  }
+  return result;
+}
+
+/**
+ * Returns all saved locations for a user, ensuring their Primary Profile Address
+ * is always the default first entry.
+ */
+export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] {
+  if (!user) return [];
+
+  // Parse building and street from user.address_text
+  let building = '';
+  let street = '';
+  if (user.address_text) {
+    const parts = user.address_text.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      building = parts[0];
+      street = parts.slice(1).join(', ');
+    } else {
+      building = parts[0] || '';
+    }
+  }
+
+  const cleanLocality = (user.locality?.toLowerCase() === 'bengaluru' && !user.address_text) ? '' : (user.locality || '');
+
+  const primaryLoc: SavedLocation = {
+    id: 'primary',
+    label: 'Primary Profile Address',
+    building_flat_house: building,
+    street_road_landmark: street,
+    locality: cleanLocality,
+    pincode: user.pincode || '',
+    latitude: user.latitude,
+    longitude: user.longitude,
+    is_default: true,
+  };
+
+  const otherLocations = Array.isArray(user.saved_locations) ? user.saved_locations : [];
+  return [primaryLoc, ...otherLocations];
+}
+
+/**
+ * Formats a single SavedLocation object into its full clean address line
+ */
+export function formatSavedLocationFull(loc: SavedLocation): string {
+  const parts = [
+    loc.building_flat_house,
+    loc.street_road_landmark,
+    loc.locality,
+    loc.pincode
+  ].map(s => (s || '').trim()).filter(Boolean);
+
+  return parts.join(', ') || loc.locality || '';
+}

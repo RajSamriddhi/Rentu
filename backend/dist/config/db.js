@@ -7,9 +7,11 @@ const isRemote = env_1.ENV.DATABASE_URL.includes('supabase.co') || env_1.ENV.DAT
 exports.pool = new pg_1.Pool({
     connectionString: env_1.ENV.DATABASE_URL,
     ssl: isRemote ? { rejectUnauthorized: false } : undefined,
-    max: 10,
+    max: 15,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    statement_timeout: 10000, // 10s query timeout prevents runaway queries from locking database tables
+    query_timeout: 10000,
 });
 exports.pool.on('error', (err) => {
     console.error('Unexpected error on idle PostgreSQL client:', err);

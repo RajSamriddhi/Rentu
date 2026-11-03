@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { AlertTriangle, RotateCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -28,8 +29,8 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-canvas px-4 font-sans text-ink">
           <div className="max-w-md w-full bg-surface border border-line rounded-3xl p-8 shadow-card text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-brand/10 text-brand rounded-2xl flex items-center justify-center text-3xl">
-              ⚡
+            <div className="w-16 h-16 mx-auto mb-4 bg-brand/10 text-brand rounded-2xl flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-brand" />
             </div>
             <h1 className="text-2xl font-black font-display text-ink mb-2">
               Something went slightly off
@@ -45,9 +46,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 localStorage.removeItem('borrowflex_token');
                 window.location.reload();
               }}
-              className="w-full py-3.5 px-6 bg-brand hover:bg-brand-hover text-white font-bold rounded-2xl shadow-glow transition-all active:scale-[0.98] cursor-pointer"
+              className="w-full py-3.5 px-6 bg-brand hover:bg-brand-hover text-white font-bold rounded-2xl shadow-glow transition-all active:scale-[0.98] cursor-pointer inline-flex items-center justify-center gap-2"
             >
-              Refresh Application 🔄
+              <RotateCw className="w-4 h-4" />
+              <span>Refresh Application</span>
             </button>
           </div>
         </div>

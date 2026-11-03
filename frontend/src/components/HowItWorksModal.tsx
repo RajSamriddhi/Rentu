@@ -27,7 +27,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-divider">
           <div className="flex items-center gap-2">
-            <span className="text-xl">⚡</span>
+            <Sparkles className="w-5 h-5 text-brand" />
             <h2 className="text-lg font-black text-ink font-display">How Rentu Works</h2>
           </div>
           <button
@@ -103,7 +103,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({
                   onClick={() => { onClose(); onOpenDropWish(); }}
                   className="btn-primary text-xs shadow-pink cursor-pointer"
                 >
-                  Post a Request 🎯
+                  Post a Request
                 </button>
               </>
             ) : (

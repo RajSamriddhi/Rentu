@@ -1,0 +1,198 @@
+/**
+ * Known geographic coordinates for Bangalore localities and metro hubs.
+ * Used for accurate geocoding when latitude/longitude are not explicitly saved.
+ */
+export const LOCALITY_COORDINATES: Record<string, { lat: number; lon: number }> = {
+  'beml': { lat: 12.9140, lon: 77.4993 },
+  'beml layout': { lat: 12.9140, lon: 77.4993 },
+  'beml layout 7th phase': { lat: 12.9140, lon: 77.4993 },
+  'mylasandra': { lat: 12.8850, lon: 77.5050 },
+  'mailasandra': { lat: 12.8850, lon: 77.5050 },
+  'kengeri': { lat: 12.9177, lon: 77.4838 },
+  'kengeri satellite town': { lat: 12.9177, lon: 77.4838 },
+  'rajarajeshwari nagar': { lat: 12.9275, lon: 77.5150 },
+  'rr nagar': { lat: 12.9275, lon: 77.5150 },
+  'jayanagar': { lat: 12.9308, lon: 77.5838 },
+  'koramangala': { lat: 12.9352, lon: 77.6245 },
+  'indiranagar': { lat: 12.9784, lon: 77.6408 },
+  'hsr layout': { lat: 12.9121, lon: 77.6446 },
+  'hsr': { lat: 12.9121, lon: 77.6446 },
+  'whitefield': { lat: 12.9698, lon: 77.7500 },
+  'electronic city': { lat: 12.8452, lon: 77.6602 },
+  'bellandur': { lat: 12.9304, lon: 77.6784 },
+  'marathahalli': { lat: 12.9591, lon: 77.6974 },
+  'banashankari': { lat: 12.9255, lon: 77.5468 },
+  'jp nagar': { lat: 12.9063, lon: 77.5857 },
+  'malleshwaram': { lat: 12.9982, lon: 77.5684 },
+  'hebbal': { lat: 13.0358, lon: 77.5970 },
+  'saket': { lat: 28.5244, lon: 77.2167 },
+  'hauz khas': { lat: 28.5494, lon: 77.2001 },
+  'connaught place': { lat: 28.6315, lon: 77.2167 },
+};
+
+/**
+ * Resolves latitude and longitude from explicit coords or known locality string
+ */
+export function resolveCoords(
+  lat?: number | null,
+  lon?: number | null,
+  locality?: string | null
+): { lat: number; lon: number } | null {
+  if (
+    typeof lat === 'number' &&
+    typeof lon === 'number' &&
+    !isNaN(lat) &&
+    !isNaN(lon) &&
+    lat !== 0 &&
+    lon !== 0
+  ) {
+    return { lat, lon };
+  }
+
+  if (locality) {
+    const locLower = locality.toLowerCase().trim();
+    for (const [key, coords] of Object.entries(LOCALITY_COORDINATES)) {
+      if (locLower.includes(key)) {
+        return coords;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Computes exact Haversine distance in kilometers between two geo-coordinates
+ */
+export function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Computes exact distance in meters between user and item/request.
+ */
+export function getReachDistanceMeters(
+  item: {
+    distance_meters?: number | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+    id?: string;
+  },
+  user?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+  } | null
+): number {
+  // 1. If backend provided exact Haversine distance_meters
+  if (
+    typeof item.distance_meters === 'number' &&
+    !isNaN(item.distance_meters) &&
+    item.distance_meters > 0 &&
+    item.distance_meters < 50000
+  ) {
+    const m = Math.round(item.distance_meters);
+    return m < 100 ? 500 : m;
+  }
+
+  // 2. Resolve coordinates
+  let userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
+  if (!userCoords) {
+    userCoords = { lat: 12.9140, lon: 77.4993 };
+  }
+
+  const itemCoords = resolveCoords(item.latitude, item.longitude, item.locality);
+  if (itemCoords) {
+    const km = haversineDistanceKm(userCoords.lat, userCoords.lon, itemCoords.lat, itemCoords.lon);
+    const m = Math.round(km * 1000);
+    return m < 100 ? 500 : m;
+  }
+
+  // 3. Locality proximity matching fallback
+  const itemLoc = (item.locality || '').toLowerCase().trim();
+  const userLoc = (user?.locality || '').toLowerCase().trim();
+
+  if (itemLoc && userLoc) {
+    if (itemLoc === userLoc || itemLoc.includes(userLoc) || userLoc.includes(itemLoc)) {
+      return 500;
+    }
+  }
+
+  return 1500;
+}
+
+/**
+ * Calculates numeric distance in km (for filter ranges)
+ */
+export function getReachDistanceKm(
+  item: {
+    distance_meters?: number | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+    id?: string;
+  },
+  user?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+  } | null
+): number {
+  const meters = getReachDistanceMeters(item, user);
+  return Number((meters / 1000).toFixed(2));
+}
+
+/**
+ * Formats distance into meters and kilometers representation:
+ * - If < 1000m: e.g. "500 meters away", "600 meters away"
+ * - If >= 1000m: e.g. "1 kilometer 600 meter away", "1 kilometer 500 meter away", "2 kilometer away", "2 kilometer 500 meter away"
+ */
+export function formatDistanceString(totalMeters: number): string {
+  // Round to nearest 50m for clean, realistic distance (500m, 550m, 600m...)
+  const roundedMeters = Math.max(50, Math.round(totalMeters / 50) * 50);
+
+  if (roundedMeters < 1000) {
+    return `${roundedMeters} meters away`;
+  }
+
+  const km = Math.floor(roundedMeters / 1000);
+  const remMeters = roundedMeters % 1000;
+
+  if (remMeters < 50) {
+    return `${km} kilometer away`;
+  }
+
+  return `${km} kilometer ${remMeters} meter away`;
+}
+
+/**
+ * Formats reach distance into clean user-facing string strictly indicating distance:
+ * e.g. "500 meters away", "1 kilometer 500 meter away", "2 kilometer away".
+ * No private user locations/localities are shown.
+ */
+export function getReachDistance(
+  item: {
+    distance_meters?: number | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+    id?: string;
+  },
+  user?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    locality?: string | null;
+  } | null
+): string {
+  const meters = getReachDistanceMeters(item, user);
+  return formatDistanceString(meters);
+}

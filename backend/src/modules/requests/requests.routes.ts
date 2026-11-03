@@ -13,6 +13,8 @@ const createRequestSchema = z.object({
   category: z.string().default('Other'),
   start_date: z.string().min(1, 'Needed date is required'),
   start_time: z.string().optional(),
+  end_date: z.string().optional(),
+  end_time: z.string().optional(),
   duration_days: z.number().int().positive().default(1),
   offered_amount: z.number().min(0, 'Offered budget cannot be negative'),
   locality: z.string().optional(),
@@ -21,6 +23,13 @@ const createRequestSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   image_url: z.string().nullable().optional(),
+  pickup_type: z.string().optional().default('LENDER_LOCATION'),
+  pickup_locality: z.string().optional(),
+  return_type: z.string().optional().default('LENDER_LOCATION'),
+  return_locality: z.string().optional(),
+  will_pickup: z.boolean().optional().default(true),
+  will_drop_back: z.boolean().optional().default(true),
+  delivery_fee: z.number().min(0).optional().default(0),
 });
 
 const updateRequestSchema = z.object({
@@ -29,27 +38,78 @@ const updateRequestSchema = z.object({
   category: z.string().optional(),
   start_date: z.string().optional(),
   start_time: z.string().optional(),
+  end_date: z.string().optional(),
+  end_time: z.string().optional(),
   duration_days: z.number().int().positive().optional(),
   offered_amount: z.number().min(0).optional(),
   locality: z.string().optional(),
+  address_text: z.string().optional(),
+  pincode: z.string().optional(),
   status: z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
   image_url: z.string().nullable().optional(),
+  pickup_type: z.string().optional(),
+  pickup_locality: z.string().optional(),
+  return_type: z.string().optional(),
+  return_locality: z.string().optional(),
+  will_pickup: z.boolean().optional(),
+  will_drop_back: z.boolean().optional(),
+  delivery_fee: z.number().min(0).optional(),
 });
 
+
+/**
+ * Automatically checks and cancels any OPEN gear requests where the acceptance / needed start time has already passed.
+ */
+async function autoCancelExpiredRequests(): Promise<void> {
+  try {
+    const expiredRes = await query(`
+      SELECT r.id, 
+             TO_CHAR(r.start_date, 'YYYY-MM-DD') AS start_date_str,
+             r.start_time
+      FROM requests r
+      WHERE r.status = 'OPEN'
+    `);
+
+    const now = Date.now();
+    for (const row of expiredRes.rows) {
+      const sDate = row.start_date_str;
+      if (!sDate) continue;
+      const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
+      const [y, m, d] = sDate.split('-').map(Number);
+      const [h, min] = sTime.split(':').map(Number);
+      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+
+      if (now > startMs) {
+        await query(
+          `UPDATE requests 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'OPEN'`,
+          [row.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('autoCancelExpiredRequests error:', err);
+  }
+}
 
 // Browse Community Wishes / Bounties
 router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
+    await autoCancelExpiredRequests();
     const { category, locality, status = 'OPEN', seekerId } = req.query;
 
     let sql = `
       SELECT 
         r.id, r.item_name, r.description, r.category, 
-        r.start_date, r.start_time, r.duration_days, 
-        r.offered_amount, r.locality, r.status, r.created_at,
-        r.image_url,
+        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
+        r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
+        u.username AS seeker_username,
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
         u.trust_score AS seeker_trust_score,
@@ -82,6 +142,17 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       }
     }
 
+    // Exclude requests from blocked users
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND r.seeker_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
+
     sql += ` ORDER BY r.created_at DESC`;
 
     const result = await query(sql, params);
@@ -94,15 +165,18 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
 // Get Single Request
 router.get('/:id', async (req: Request, res: Response, next) => {
   try {
+    await autoCancelExpiredRequests();
     const { id } = req.params;
 
     const result = await query(
       `SELECT 
         r.id, r.item_name, r.description, r.category, 
-        r.start_date, r.start_time, r.duration_days, 
-        r.offered_amount, r.locality, r.status, r.created_at,
-        r.image_url,
-        u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
+        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
+        r.status, r.created_at, r.image_url,
+        u.id AS seeker_id, u.name AS seeker_name, u.username AS seeker_username, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r
@@ -151,9 +225,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, status)
+        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, will_pickup, will_drop_back, delivery_fee, status)
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'OPEN')
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 'OPEN')
        RETURNING *`,
       [
         req.user!.id,
@@ -162,6 +236,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.category,
         validated.start_date,
         validated.start_time || '10:00',
+        validated.end_date || null,
+        validated.end_time || '18:00',
         validated.duration_days,
         validated.offered_amount,
         finalLocality,
@@ -170,10 +246,213 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         validated.latitude ?? null,
         validated.longitude ?? null,
         validated.image_url ?? null,
+        validated.pickup_type || 'LENDER_LOCATION',
+        validated.pickup_locality || null,
+        validated.return_type || 'LENDER_LOCATION',
+        validated.return_locality || null,
+        validated.will_pickup ?? true,
+        validated.will_drop_back ?? true,
+        validated.delivery_fee ?? 0,
       ]);
     const createdRequest = result.rows[0];
+    const seekerId = req.user!.id;
+    const seekerName = req.user!.name || 'A neighbor';
 
-    return sendSuccess(res, createdRequest, 'Wish dropped to community feed! 🎯 Nearby owners will see your bounty.', 201);
+    // 1. Send announcement to all followers of seeker
+    try {
+      const followersRes = await query(
+        `SELECT uf.follower_id FROM user_follows uf
+         WHERE uf.following_id = $1
+         AND uf.follower_id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+
+      const notifiedUserIds = new Set<string>();
+      notifiedUserIds.add(seekerId);
+
+      for (const f of followersRes.rows) {
+        notifiedUserIds.add(f.follower_id);
+        await query(
+          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+           VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+          [
+            f.follower_id,
+            seekerId,
+            `New Request from ${seekerName}`,
+            `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: ₹${validated.offered_amount})`,
+            createdRequest.id,
+          ]
+        ).catch(() => {});
+      }
+
+      // 2. Send notification to all neighbors within 5 km who haven't disabled the 5km alert setting
+      const nearbyUsersRes = await query(
+        `SELECT id, locality, latitude, longitude FROM users
+         WHERE id != $1
+         AND COALESCE(notify_nearby_requests_5km, TRUE) = TRUE
+         AND id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+
+      const seekerLat = validated.latitude;
+      const seekerLon = validated.longitude;
+
+      for (const u of nearbyUsersRes.rows) {
+        if (notifiedUserIds.has(u.id)) continue;
+
+        let isWithin5Km = false;
+        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+          const R = 6371; // Earth radius in km
+          const dLat = (u.latitude - seekerLat) * Math.PI / 180;
+          const dLon = (u.longitude - seekerLon) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(seekerLat * Math.PI / 180) * Math.cos(u.latitude * Math.PI / 180) * 
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distKm = R * c;
+          if (distKm <= 5) {
+            isWithin5Km = true;
+          }
+        } else if (finalLocality && u.locality) {
+          const sCity = extractCity(finalLocality)?.toLowerCase();
+          const uCity = extractCity(u.locality)?.toLowerCase();
+          if (sCity && uCity && sCity === uCity) {
+            isWithin5Km = true;
+          }
+        }
+
+        if (isWithin5Km) {
+          notifiedUserIds.add(u.id);
+          await query(
+            `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+             VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+            [
+              u.id,
+              seekerId,
+              `Nearby Gear Request`,
+              `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || 'nearby'})`,
+              createdRequest.id,
+            ]
+          ).catch(() => {});
+        }
+      }
+    } catch (announcementErr) {
+      console.warn('Failed to dispatch request announcements:', announcementErr);
+    }
+
+    return sendSuccess(res, createdRequest, 'Wish dropped to community feed. Nearby owners will see your request.', 201);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Send "I Can Lend This" Offer & Notification to Seeker
+router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user!.id;
+    const lenderName = req.user!.name || 'A Neighbor';
+
+    const reqResult = await query(
+      `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
+       FROM requests r
+       JOIN users u ON r.seeker_id = u.id
+       WHERE r.id = $1`,
+      [id]
+    );
+
+    if (reqResult.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Request not found', 404);
+    }
+
+    const request = reqResult.rows[0];
+
+    if (request.seeker_id === lenderId) {
+      return sendError(res, 'BAD_REQUEST', 'You cannot lend gear to your own request', 400);
+    }
+
+    if (request.status !== 'OPEN') {
+      return sendError(res, 'BAD_REQUEST', 'This request is no longer open', 400);
+    }
+
+    const durationDays = Math.max(1, Number(request.duration_days) || 1);
+    const offeredAmount = Number(request.offered_amount) || 0;
+    const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
+    const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
+    const totalDealPrice = offeredAmount + deliveryFee + returnFee;
+    const pricePerDay = Math.round(offeredAmount / durationDays);
+
+    const fullDestinationAddress = request.address_text || request.locality || 'Handover location';
+
+    const proposalPayload = {
+      type: 'REQUEST',
+      is_lend_offer: true,
+      request_id: request.id,
+      lender_id: lenderId,
+      borrower_id: request.seeker_id,
+      title: request.item_name,
+      description: request.description,
+      category: request.category || 'Other',
+      price_per_day: pricePerDay,
+      total_price: totalDealPrice,
+      duration_days: durationDays,
+      start_date: request.start_date,
+      end_date: request.end_date,
+      start_time: request.start_time || '10:00:00',
+      end_time: request.end_time || '18:00:00',
+      delivery_option: !request.will_pickup ? 'LENDER_DELIVERY' : 'SELF',
+      delivery_fee: deliveryFee,
+      collection_option: !request.will_drop_back ? 'LENDER_COLLECT' : 'SELF',
+      collection_fee: returnFee,
+      delivery_location: fullDestinationAddress,
+      return_location: fullDestinationAddress,
+      notes: request.description,
+      image_url: request.image_url || null,
+      status: 'PENDING',
+    };
+
+    const summaryText = `I Can Lend This: ${lenderName} offered to fulfill your request for "${request.item_name}" (₹${totalDealPrice} for ${durationDays} days)`;
+
+    // Insert proposal message in chat between lender and seeker
+    const msgResult = await query(
+      `INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
+       VALUES ($1, $2, $3, 'PROPOSAL', $4)
+       RETURNING *`,
+      [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]
+    );
+    const createdMessage = msgResult.rows[0];
+
+    // Insert high-priority notification for seeker
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
+      [
+        request.seeker_id,
+        lenderId,
+        `${lenderName} is ready to lend gear`,
+        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+        request.id,
+      ]
+    );
+
+    return sendSuccess(res, {
+      message: createdMessage,
+      proposal: proposalPayload,
+      partner: {
+        id: request.seeker_id,
+        name: request.seeker_name,
+        avatar: request.seeker_avatar,
+      }
+    }, 'Lend offer sent to seeker! When they accept, the booking will automatically start in Ongoing Bookings.');
   } catch (error) {
     next(error);
   }
@@ -199,7 +478,7 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
           `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
           [id]
         );
-        return sendSuccess(res, result.rows[0], 'Wish marked as fulfilled! 🤝');
+        return sendSuccess(res, result.rows[0], 'Wish marked as fulfilled.');
       }
       return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
     }
@@ -227,6 +506,14 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       values.push(validated.start_time);
       fields.push(`start_time = $${values.length}`);
     }
+    if (validated.end_date !== undefined) {
+      values.push(validated.end_date);
+      fields.push(`end_date = $${values.length}`);
+    }
+    if (validated.end_time !== undefined) {
+      values.push(validated.end_time);
+      fields.push(`end_time = $${values.length}`);
+    }
     if (validated.duration_days !== undefined) {
       values.push(validated.duration_days);
       fields.push(`duration_days = $${values.length}`);
@@ -246,6 +533,42 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.image_url !== undefined) {
       values.push(validated.image_url);
       fields.push(`image_url = $${values.length}`);
+    }
+    if (validated.pickup_type !== undefined) {
+      values.push(validated.pickup_type);
+      fields.push(`pickup_type = $${values.length}`);
+    }
+    if (validated.pickup_locality !== undefined) {
+      values.push(validated.pickup_locality);
+      fields.push(`pickup_locality = $${values.length}`);
+    }
+    if (validated.return_type !== undefined) {
+      values.push(validated.return_type);
+      fields.push(`return_type = $${values.length}`);
+    }
+    if (validated.return_locality !== undefined) {
+      values.push(validated.return_locality);
+      fields.push(`return_locality = $${values.length}`);
+    }
+    if (validated.address_text !== undefined) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== undefined) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.will_pickup !== undefined) {
+      values.push(validated.will_pickup);
+      fields.push(`will_pickup = $${values.length}`);
+    }
+    if (validated.will_drop_back !== undefined) {
+      values.push(validated.will_drop_back);
+      fields.push(`will_drop_back = $${values.length}`);
+    }
+    if (validated.delivery_fee !== undefined) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
     }
 
     if (fields.length === 0) {

@@ -20,7 +20,9 @@ DO $$ BEGIN
         CREATE TYPE request_status AS ENUM ('OPEN', 'FULFILLED', 'CANCELLED');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
-        CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED');
+        CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'HANDED_OVER');
+    ELSE
+        ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'HANDED_OVER';
     END IF;
 END $$;
 
@@ -77,6 +79,11 @@ CREATE TABLE IF NOT EXISTS items (
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
     status item_status DEFAULT 'AVAILABLE',
+    available_for_borrowing BOOLEAN DEFAULT false,
+    offers_delivery BOOLEAN DEFAULT false,
+    delivery_fee NUMERIC(10, 2) DEFAULT 0,
+    offers_pickup BOOLEAN DEFAULT false,
+    pickup_fee NUMERIC(10, 2) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -135,6 +142,14 @@ CREATE TABLE IF NOT EXISTS bookings (
     duration_days INTEGER NOT NULL CHECK (duration_days > 0),
     total_price NUMERIC(10, 2) CHECK (total_price >= 0),   -- Computed dynamically in 3NF view
     status booking_status DEFAULT 'PENDING',
+    pickup_code VARCHAR(6),
+    return_code VARCHAR(6),
+    handed_over_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    requires_delivery BOOLEAN DEFAULT false,
+    delivery_fee NUMERIC(10, 2) DEFAULT 0,
+    requires_pickup BOOLEAN DEFAULT false,
+    pickup_fee NUMERIC(10, 2) DEFAULT 0,
     message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

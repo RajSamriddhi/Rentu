@@ -39,7 +39,7 @@ function formatItemRow(row) {
         price_per_day: Number(row.price_per_day || 0),
         max_duration_days: Number(row.max_duration_days || 3),
         image_urls: images,
-        sticker_badge: row.sticker_badge || '✨ Available',
+        sticker_badge: row.sticker_badge || 'Available',
         locality: row.locality || '',
         address_text: row.address_text || '',
         pincode: row.pincode || '',

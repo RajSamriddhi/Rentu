@@ -9,18 +9,20 @@ import {
   MessageSquare, 
   Sparkles, 
   X, 
-  LogIn 
+  LogIn,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
   onOpenAuth: () => void;
   onOpenHowItWorks?: () => void;
+  unreadMessagesCount?: number;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -31,6 +33,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenChat,
   onOpenAuth,
   onOpenHowItWorks,
+  unreadMessagesCount,
 }) => {
   const { user, isAuthenticated } = useAuth();
   const [showPostSheet, setShowPostSheet] = useState(false);
@@ -65,8 +68,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 }}
                 className="w-full text-left p-3.5 rounded-2xl bg-canvas hover:bg-pink-50 dark:hover:bg-pink-950/30 border border-divider flex items-center gap-3 transition-colors cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-full bg-brand-soft text-brand flex items-center justify-center text-lg shrink-0">
-                  💸
+                <div className="w-10 h-10 rounded-full bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                  <Plus className="w-5 h-5 text-brand" />
                 </div>
                 <div>
                   <div className="font-bold text-sm text-ink">List Gear for Rent</div>
@@ -81,8 +84,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 }}
                 className="w-full text-left p-3.5 rounded-2xl bg-canvas hover:bg-purple-50 dark:hover:bg-purple-950/30 border border-divider flex items-center gap-3 transition-colors cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 flex items-center justify-center text-lg shrink-0">
-                  🎯
+                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 flex items-center justify-center shrink-0">
+                  <Target className="w-5 h-5 text-purple-600" />
                 </div>
                 <div>
                   <div className="font-bold text-sm text-ink">Post a Request</div>
@@ -136,10 +139,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
             {/* Tab 4: Messages */}
             <button
-              onClick={onOpenChat}
-              className="flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold text-ink-secondary hover:text-ink transition-all cursor-pointer relative"
+              onClick={() => setActiveTab('messages')}
+              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer relative ${
+                activeTab === 'messages' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              }`}
             >
-              <MessageSquare className="w-5 h-5" />
+              <div className="relative">
+                <MessageSquare className="w-5 h-5" />
+                {Boolean(unreadMessagesCount && unreadMessagesCount > 0) && (
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-3.5 px-1 rounded-full bg-brand text-[9px] font-black text-white flex items-center justify-center leading-none shadow-sm animate-in zoom-in-75 duration-200">
+                    {(unreadMessagesCount ?? 0) > 9 ? '9+' : unreadMessagesCount}
+                  </span>
+                )}
+              </div>
               <span>Chat</span>
             </button>
 
@@ -167,13 +179,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         ) : (
           /* LOGGED OUT: No post button, show How it Works and Log In */
           <>
-            {/* Tab 3: How it Works */}
+            {/* Tab 3: Community */}
             <button
-              onClick={() => onOpenHowItWorks?.()}
-              className="flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold text-ink-secondary hover:text-ink transition-all cursor-pointer"
+              onClick={() => setActiveTab('community')}
+              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
+                activeTab === 'community' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              }`}
             >
-              <Sparkles className="w-5 h-5" />
-              <span>How it works</span>
+              <Users className="w-5 h-5" />
+              <span>Community</span>
             </button>
 
             {/* Tab 4: Sign In */}

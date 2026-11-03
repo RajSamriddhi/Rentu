@@ -22,9 +22,22 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
   const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [durationDays, setDurationDays] = useState<number | ''>('');
   const [offeredAmount, setOfferedAmount] = useState<number | ''>('');
+  
+  // Pickup & Drop Toggles & Extra Fee
+  const [willPickup, setWillPickup] = useState<boolean>(true);
+  const [willDropBack, setWillDropBack] = useState<boolean>(true);
+  const [deliveryFee, setDeliveryFee] = useState<number | ''>('');
+
+  // Destination Location Fields
+  const [buildingHouseNo, setBuildingHouseNo] = useState('');
+  const [streetArea, setStreetArea] = useState('');
   const [locality, setLocality] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
+
   const [status, setStatus] = useState<'OPEN' | 'FULFILLED' | 'CANCELLED'>('OPEN');
   const [imageUrl, setImageUrl] = useState('');
 
@@ -43,21 +56,53 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       // Format start_date to YYYY-MM-DD for date input
       const dateVal = request.start_date ? new Date(request.start_date).toISOString().split('T')[0] : '';
       setStartDate(dateVal);
+      const endDateVal = request.end_date ? new Date(request.end_date).toISOString().split('T')[0] : '';
+      setEndDate(endDateVal);
       setDurationDays(request.duration_days || 1);
       setOfferedAmount(Number(request.offered_amount) || '');
+      
+      setWillPickup(request.will_pickup ?? (request.pickup_type !== 'MY_LOCATION'));
+      setWillDropBack(request.will_drop_back ?? (request.return_type !== 'MY_LOCATION'));
+      setDeliveryFee(Number(request.delivery_fee) || '');
+
+      if (request.address_text) {
+        const parts = request.address_text.split(',').map(p => p.trim()).filter(Boolean);
+        if (parts.length > 0) {
+          setBuildingHouseNo(parts[0]);
+          if (parts.length > 1) {
+            setStreetArea(parts.slice(1).join(', '));
+          }
+        } else {
+          setStreetArea(request.address_text);
+        }
+      }
       setLocality(request.locality || '');
+      setPincode(request.pincode || '');
+
       setStatus(request.status || 'OPEN');
       setImageUrl(request.image_url || '');
       setErrorMsg('');
+      setLocationSuccessMsg('');
     }
   }, [request, isOpen]);
 
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
+    setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      setLocality(loc.locality);
+      if (loc.address_text) {
+        setStreetArea(loc.address_text);
+      }
+      if (loc.locality) {
+        setLocality(loc.locality);
+      }
+      if (loc.pincode) {
+        setPincode(loc.pincode);
+      }
+      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Location detected';
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect location.');
     } finally {
@@ -94,17 +139,45 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       return;
     }
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory.');
+      return;
+    }
+    if (!locality.trim()) {
+      setErrorMsg('Locality / Neighborhood is compulsory.');
+      return;
+    }
+
+    if ((!willPickup || !willDropBack) && (deliveryFee === '' || Number(deliveryFee) < 0)) {
+      setErrorMsg('Please write down the extra amount you will pay for someone to pick and drop for you.');
+      return;
+    }
+
     setIsSaving(true);
     setErrorMsg('');
     try {
+      const fullDestinationAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
+      const extraFeeNumber = (!willPickup || !willDropBack) ? Number(deliveryFee || 0) : 0;
+
       await api.updateRequest(request.id, {
         item_name: itemName.trim(),
         description: description.trim(),
         category,
         start_date: startDate || undefined,
+        end_date: endDate || undefined,
         duration_days: Number(durationDays || 1),
         offered_amount: Number(offeredAmount),
         locality: locality.trim(),
+        address_text: fullDestinationAddress,
+        pincode: pincode.trim() || undefined,
+        will_pickup: willPickup,
+        will_drop_back: willDropBack,
+        delivery_fee: extraFeeNumber,
+        pickup_type: willPickup ? 'LENDER_LOCATION' : 'MY_LOCATION',
+        pickup_locality: willPickup ? 'Lender Location' : fullDestinationAddress,
+        return_type: willDropBack ? 'LENDER_LOCATION' : 'MY_LOCATION',
+        return_locality: willDropBack ? 'Lender Location' : fullDestinationAddress,
         status,
         image_url: imageUrl || null,
       });
@@ -256,7 +329,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
               >
                 <option value="Electronics & Tech">Electronics & Tech</option>
                 <option value="Camping & Outdoor">Camping & Outdoor</option>
-                <option value="Clothing & Accessories">Clothing & Accessories</option>
+                <option value="Clothing & Fits">Clothing & Fits</option>
                 <option value="Tools & DIY">Tools & DIY</option>
                 <option value="Home & Appliances">Home & Appliances</option>
                 <option value="Sports & Fitness">Sports & Fitness</option>
@@ -272,17 +345,17 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none cursor-pointer"
               >
-                <option value="OPEN">🎯 Open (Seeking Gear)</option>
-                <option value="FULFILLED">✅ Fulfilled</option>
-                <option value="CANCELLED">❌ Cancelled</option>
+                <option value="OPEN">Open (Seeking Gear)</option>
+                <option value="FULFILLED">Fulfilled</option>
+                <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
           </div>
 
-          {/* Date & Duration */}
+          {/* Date & Return Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-ink mb-1">Needed By Date *</label>
+              <label className="block text-xs font-bold text-ink mb-1">Needed From Date *</label>
               <input
                 type="date"
                 value={startDate}
@@ -293,11 +366,25 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
             </div>
 
             <div>
+              <label className="block text-xs font-bold text-ink mb-1">Return Date *</label>
+              <input
+                type="date"
+                min={startDate}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+              />
+            </div>
+          </div>
+
+          {/* Duration & Budget */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <label className="block text-xs font-bold text-ink mb-1">Duration (Days)</label>
               <input
                 type="number"
                 min="1"
-                max="30"
+                max="60"
                 value={durationDays}
                 onChange={(e) => setDurationDays(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="e.g. 2"
@@ -305,10 +392,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 required
               />
             </div>
-          </div>
 
-          {/* Offered Budget & Locality */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Offered Budget (₹) *</label>
               <input
@@ -321,27 +405,169 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
                 required
               />
             </div>
+          </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-ink">Locality</label>
-                <button
-                  type="button"
-                  onClick={handleDetectLocation}
-                  disabled={isDetectingLocation}
-                  className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <MapPin className="w-3 h-3" />
-                  <span>{isDetectingLocation ? '...' : 'GPS'}</span>
-                </button>
+          {/* Transport & Handover Preference Toggles */}
+          <div className="space-y-3 pt-1 border-t border-divider">
+            <label className="block text-xs font-bold text-ink">Transport & Handover Preference</label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Pickup Toggle */}
+              <div className={`p-3 rounded-2xl border transition-all ${
+                willPickup
+                  ? 'bg-emerald-500/5 border-emerald-500/30'
+                  : 'bg-brand/5 border-brand/30'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-ink block">
+                      {willPickup ? 'Pick up myself' : 'Need delivery'}
+                    </span>
+                    <span className="text-[10px] text-ink-secondary block">
+                      {willPickup ? 'Go to lender to collect' : 'Lender delivers to you'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={willPickup}
+                    onClick={() => setWillPickup(!willPickup)}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
+                      willPickup ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span className={`block w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-transform ${
+                      willPickup ? 'translate-x-4.5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
               </div>
-              <input
-                type="text"
-                value={locality}
-                onChange={(e) => setLocality(e.target.value)}
-                placeholder="e.g. BEML Layout, Bengaluru"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-              />
+
+              {/* Drop / Return Toggle */}
+              <div className={`p-3 rounded-2xl border transition-all ${
+                willDropBack
+                  ? 'bg-emerald-500/5 border-emerald-500/30'
+                  : 'bg-brand/5 border-brand/30'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-ink block">
+                      {willDropBack ? 'Drop back myself' : 'Need collection'}
+                    </span>
+                    <span className="text-[10px] text-ink-secondary block">
+                      {willDropBack ? 'Return to lender yourself' : 'Lender collects from you'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={willDropBack}
+                    onClick={() => setWillDropBack(!willDropBack)}
+                    className={`w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer p-0.5 ${
+                      willDropBack ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span className={`block w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-transform ${
+                      willDropBack ? 'translate-x-4.5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Extra Amount if not picking up or dropping back */}
+            {(!willPickup || !willDropBack) && (
+              <div className="p-3 rounded-2xl bg-brand/5 border border-brand/20 space-y-1.5 animate-in fade-in">
+                <label className="block text-xs font-bold text-ink">
+                  Extra amount you'll pay for transport / delivery service (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-secondary">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 50 or 100"
+                    className="w-full bg-surface border border-divider rounded-xl pl-7 pr-3 py-1.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                    required={!willPickup || !willDropBack}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Destination Location */}
+          <div className="space-y-2 pt-1 border-t border-divider">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-ink">Item Destination Location</label>
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={isDetectingLocation}
+                className="text-[11px] font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <MapPin className="w-3 h-3" />
+                <span>{isDetectingLocation ? 'Detecting...' : 'Use current location'}</span>
+              </button>
+            </div>
+
+            {locationSuccessMsg && (
+              <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                {locationSuccessMsg}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">
+                  Building / Flat / House No. <span className="text-brand">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={buildingHouseNo}
+                  onChange={(e) => setBuildingHouseNo(e.target.value)}
+                  placeholder="e.g. Flat 402, Building 3B / House #12"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">Street / Landmark</label>
+                <input
+                  type="text"
+                  value={streetArea}
+                  onChange={(e) => setStreetArea(e.target.value)}
+                  placeholder="e.g. 5th Main Road, Near Metro Station / Landmark"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">
+                  Locality / City <span className="text-brand">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={locality}
+                  onChange={(e) => setLocality(e.target.value)}
+                  placeholder="e.g. Indiranagar, Koramangala, Whitefield"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-ink mb-0.5">PIN Code</label>
+                <input
+                  type="text"
+                  value={pincode}
+                  onChange={(e) => setPincode(e.target.value)}
+                  placeholder="e.g. 560060"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                />
+              </div>
             </div>
           </div>
 

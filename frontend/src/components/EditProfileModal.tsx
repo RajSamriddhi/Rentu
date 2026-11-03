@@ -1,23 +1,28 @@
 import React, { useState, useRef } from 'react';
-import { 
-  X, 
-  Upload, 
-  Loader2, 
-  Check, 
-  User, 
-  MapPin, 
-  Phone, 
-  FileText, 
-  Camera, 
+import {
+  X,
+  Upload,
+  Loader2,
+  Check,
+  User,
+  MapPin,
+  Phone,
+  FileText,
+  Camera,
   ImageIcon,
   Sparkles,
-  Navigation
+  Navigation,
+  Bell,
+  Plus,
+  Trash2,
+  AtSign
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
+import { AddLocationModal } from './AddLocationModal';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -70,11 +75,15 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const initialAddr = parseAddress(user?.address_text);
   const [name, setName] = useState(user?.name || '');
+  const [username, setUsername] = useState(user?.username || '');
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<{ available: boolean; message: string } | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [buildingHouseNo, setBuildingHouseNo] = useState(initialAddr.building);
   const [streetArea, setStreetArea] = useState(initialAddr.street);
-  const [locality, setLocality] = useState(user?.locality || '');
+  const isLegacyDefaultLocality = (user?.locality === 'Bengaluru' || user?.locality === 'Bengaluru, India') && !user?.address_text;
+  const [locality, setLocality] = useState(isLegacyDefaultLocality ? '' : (user?.locality || ''));
   const [pincode, setPincode] = useState(user?.pincode || '');
   const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
   const [longitude, setLongitude] = useState<number | undefined>(user?.longitude);
@@ -92,6 +101,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -100,12 +110,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   React.useEffect(() => {
     if (user) {
       setName(user.name || '');
+      setUsername(user.username || '');
       setBio(user.bio || '');
       setPhone(user.phone || '');
       const addr = parseAddress(user.address_text);
       setBuildingHouseNo(addr.building);
       setStreetArea(addr.street);
-      setLocality(user.locality || '');
+      const isLegacy = (user.locality === 'Bengaluru' || user.locality === 'Bengaluru, India') && !user.address_text;
+      setLocality(isLegacy ? '' : (user.locality || ''));
       setPincode(user.pincode || '');
       setLatitude(user.latitude);
       setLongitude(user.longitude);
@@ -115,6 +127,47 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       );
     }
   }, [user]);
+
+  // Debounced check for username
+  React.useEffect(() => {
+    const clean = username.trim().toLowerCase();
+    if (!clean) {
+      setUsernameStatus(null);
+      setIsCheckingUsername(false);
+      return;
+    }
+    if (user?.username && clean === user.username.toLowerCase()) {
+      setUsernameStatus({ available: true, message: 'This is your current handle' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    if (clean.length < 3) {
+      setUsernameStatus({ available: false, message: 'Username must be at least 3 characters' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,30}$/.test(clean)) {
+      setUsernameStatus({ available: false, message: 'Only lowercase letters, numbers, and underscores allowed' });
+      setIsCheckingUsername(false);
+      return;
+    }
+
+    setIsCheckingUsername(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.checkUsername(clean);
+        setUsernameStatus(res);
+      } catch (err: any) {
+        setUsernameStatus({ available: false, message: err.message || 'Error checking username' });
+      } finally {
+        setIsCheckingUsername(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [username, user?.username]);
 
   if (!isOpen) return null;
 
@@ -130,7 +183,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       if (supabase) {
         const publicUrl = await uploadItemPhoto(file, 'avatars');
         setAvatarUrl(publicUrl);
-        setAvatarUploadStatus('✓ Profile picture uploaded!');
+        setAvatarUploadStatus('Profile picture uploaded successfully.');
       } else {
         const previewUrl = URL.createObjectURL(file);
         setAvatarUrl(previewUrl);
@@ -158,7 +211,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       if (supabase) {
         const publicUrl = await uploadItemPhoto(file, 'banners');
         setBannerUrl(publicUrl);
-        setBannerUploadStatus('✓ Background banner uploaded!');
+        setBannerUploadStatus('Background banner uploaded successfully.');
       } else {
         const previewUrl = URL.createObjectURL(file);
         setBannerUrl(previewUrl);
@@ -180,9 +233,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      if (loc.building_no) {
-        setBuildingHouseNo(loc.building_no);
-      }
+      // DO NOT overwrite buildingHouseNo - user must manually type or keep their building/flat/house
       if (loc.address_text) {
         setStreetArea(loc.address_text);
       }
@@ -194,10 +245,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       }
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
-      setLocationSuccessMsg(`Current location detected (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
+
+      // Clean friendly location summary without exposing raw latitude/longitude coordinates
+      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
+      setLocationSuccessMsg(`Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
-      } catch {}
+      } catch { }
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect current location.');
     } finally {
@@ -207,18 +261,33 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setErrorMsg('');
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+      return;
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    if (cleanUsername && cleanUsername !== user?.username?.toLowerCase()) {
+      if (usernameStatus && !usernameStatus.available) {
+        setErrorMsg(usernameStatus.message || 'Username is not available. Please choose another one.');
+        return;
+      }
+    }
+
+    setIsSaving(true);
     try {
-      const fullAddress = [buildingHouseNo.trim(), streetArea.trim()].filter(Boolean).join(', ');
+      const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
 
       await api.updateProfile({
         name: name.trim(),
+        username: cleanUsername || undefined,
         bio: bio.trim(),
         phone: phone.trim() || undefined,
         locality: locality.trim() || undefined,
-        address_text: fullAddress || undefined,
+        address_text: fullAddress,
         pincode: pincode.trim() || undefined,
         latitude,
         longitude,
@@ -243,7 +312,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-4 border border-divider">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-canvas/30">
           <div className="flex items-center gap-2">
@@ -321,11 +390,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     key={preset.name}
                     type="button"
                     onClick={() => setBannerUrl(preset.url)}
-                    className={`relative rounded-xl overflow-hidden h-14 border-2 transition-all cursor-pointer group ${
-                      bannerUrl === preset.url
-                        ? 'border-brand ring-2 ring-brand/30'
-                        : 'border-divider hover:border-ink-secondary'
-                    }`}
+                    className={`relative rounded-xl overflow-hidden h-14 border-2 transition-all cursor-pointer group ${bannerUrl === preset.url
+                      ? 'border-brand ring-2 ring-brand/30'
+                      : 'border-divider hover:border-ink-secondary'
+                      }`}
                   >
                     <img
                       src={preset.url}
@@ -416,6 +484,52 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
           {/* 3. Basic Info Fields */}
           <div className="space-y-3 pt-2 border-t border-divider">
+            {/* Username / Custom Link */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-ink flex items-center gap-1.5 flex-wrap">
+                  <AtSign className="w-3.5 h-3.5 text-brand" />
+                  <span>Username *</span>
+                </label>
+                {isCheckingUsername ? (
+                  <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Checking...
+                  </span>
+                ) : usernameStatus?.available ? (
+                  <span className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Available
+                  </span>
+                ) : usernameStatus && !usernameStatus.available ? (
+                  <span className="text-[11px] text-red-500 font-bold flex items-center gap-1">
+                    <X className="w-3 h-3" /> {usernameStatus.message}
+                  </span>
+                ) : null}
+              </div>
+              <div className="relative flex items-center">
+                <span className="absolute left-3.5 text-xs font-bold text-ink-secondary select-none">
+                  @
+                </span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="username"
+                  maxLength={30}
+                  className="w-full bg-canvas border border-divider rounded-xl pl-8 pr-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
+                  required
+                />
+              </div>
+              <p className="text-[11px] text-ink-secondary mt-1">
+                Your dedicated page:{' '}
+                <span className="text-brand font-mono font-bold">
+                  rentu.site/{username || 'username'}
+                </span>
+                <span className="block text-[10px] text-ink-muted mt-0.5">
+                  Your username is verified unique across Rentu and cannot be shared or duplicated by any other member.
+                </span>
+              </p>
+            </div>
+
             {/* Full Name */}
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Full Name *</label>
@@ -495,7 +609,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in">
                     <Check className="w-3.5 h-3.5 stroke-[3] shrink-0" />
                     <span>
-                      {locationSuccessMsg || `Coordinates active (${latitude?.toFixed(4)}, ${longitude?.toFixed(4)})`}
+                      {locationSuccessMsg || 'GPS Location pinpointed & verified'}
                     </span>
                   </div>
                 )}
@@ -506,13 +620,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 {/* Building / House / Flat No. */}
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
-                    Building / Flat / House No.
+                    Building / Flat / House No. <span className="text-brand font-black">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     value={buildingHouseNo}
                     onChange={(e) => setBuildingHouseNo(e.target.value)}
-                    placeholder="e.g. Flat 304, Sunshine Apts / House #12"
+                    placeholder="e.g. Flat 402, Building 3B / House #12"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -526,7 +641,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     type="text"
                     value={streetArea}
                     onChange={(e) => setStreetArea(e.target.value)}
-                    placeholder="e.g. 5th Main, Near Metro Station"
+                    placeholder="e.g. 5th Main Road, Near Metro Station / Landmark"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -542,7 +657,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     type="text"
                     value={locality}
                     onChange={(e) => setLocality(e.target.value)}
-                    placeholder="e.g. Indiranagar / Koramangala"
+                    placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
@@ -560,6 +675,70 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />
                 </div>
+              </div>
+
+              {/* Additional Saved Pickup & Drop Locations */}
+              <div className="pt-3 border-t border-divider space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-brand" />
+                      <span>Additional Saved Locations</span>
+                    </h4>
+                    <p className="text-[11px] text-ink-secondary">
+                      Save alternative locations (e.g. Office, Studio) to quickly select when listing products.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddLocationOpen(true)}
+                    className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Another Location</span>
+                  </button>
+                </div>
+
+                {/* Render User's Saved Locations */}
+                {Array.isArray(user?.saved_locations) && user.saved_locations.length > 0 ? (
+                  <div className="space-y-2">
+                    {user.saved_locations.map((loc) => (
+                      <div
+                        key={loc.id}
+                        className="p-3 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-ink">{loc.label}</span>
+                            <span className="text-[10px] text-ink-secondary font-medium">({loc.locality})</span>
+                          </div>
+                          <p className="text-[11px] text-ink-secondary truncate mt-0.5">
+                            {formatSavedLocationFull(loc)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm(`Remove saved location "${loc.label}"?`)) {
+                              await api.deleteSavedLocation(loc.id, user);
+                              await refreshUser();
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                          title="Remove location"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-canvas border border-divider/60 text-center text-[11px] text-ink-secondary">
+                    No additional locations saved yet. Click "+ Add Another Location" to add an office, studio, or warehouse address.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -590,8 +769,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </button>
           </div>
         </form>
-
       </div>
+
+      {/* Add Another Location Modal */}
+      <AddLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        onSuccess={async () => {
+          await refreshUser();
+        }}
+      />
     </div>
   );
 };

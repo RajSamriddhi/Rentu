@@ -1,6 +1,7 @@
 import React from 'react';
 import { MapPin, ArrowRight, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { Item } from '../lib/types';
+import { getReachDistance } from '../lib/distance';
 
 interface AiListingCardProps {
   item: Item & {
@@ -70,7 +71,7 @@ export const AiListingCard: React.FC<AiListingCardProps> = ({ item, onSelectItem
             <span>•</span>
             <span className="flex items-center gap-0.5 truncate">
               <MapPin className="w-3 h-3 text-ink-muted shrink-0" />
-              <span className="truncate">{item.locality || 'Nearby'}</span>
+              <span className="truncate">{getReachDistance(item)}</span>
             </span>
           </div>
         </div>

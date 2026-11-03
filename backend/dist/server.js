@@ -12,9 +12,9 @@ const startServer = async () => {
             console.warn('Migrations notice on startup:', err.message);
         });
         const server = exports.app.listen(env_1.ENV.PORT, () => {
-            console.log(`⚡ Rentu⁺ API Service listening on http://localhost:${env_1.ENV.PORT}`);
-            console.log(`🌱 Environment: ${env_1.ENV.NODE_ENV}`);
-            console.log(`📡 Ready for rental requests!`);
+            console.log(`Rentu⁺ API Service listening on http://localhost:${env_1.ENV.PORT}`);
+            console.log(`Environment: ${env_1.ENV.NODE_ENV}`);
+            console.log(`Ready for rental requests.`);
         });
         const shutdown = () => {
             console.log('\nShutting down Rentu⁺ API server gracefully...');

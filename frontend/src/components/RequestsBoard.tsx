@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { getReachDistance } from '../lib/distance';
 
 interface RequestsBoardProps {
   requests: CommunityRequest[];
@@ -22,6 +23,7 @@ interface RequestsBoardProps {
   onOpenDropWish: () => void;
   onClaimRequest: (request: CommunityRequest) => void;
   onOpenAuth?: () => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const RequestsBoard: React.FC<RequestsBoardProps> = ({
@@ -32,6 +34,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
   onOpenDropWish,
   onClaimRequest,
   onOpenAuth,
+  onOpenUserProfile,
 }) => {
   const { user, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'my' | 'offers'>('all');
@@ -155,7 +158,7 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                   onClick={onOpenDropWish}
                   className="mt-4 btn-primary text-xs cursor-pointer"
                 >
-                  Post a Request 🎯
+                  Post a Request
                 </button>
               ) : (
                 <button
@@ -199,16 +202,28 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                       </p>
 
                       <div className="flex items-center gap-2 pt-1 text-[11px] font-semibold text-ink-secondary">
-                        <img
-                          src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
-                          alt={req.seeker_name}
-                          className="w-4 h-4 rounded-full object-cover"
-                        />
-                        <span>{req.seeker_name}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onOpenUserProfile && (req.seeker_username || req.seeker_id)) {
+                              onOpenUserProfile(req.seeker_username || req.seeker_id);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 hover:text-brand cursor-pointer group text-left transition-colors"
+                          title={`View ${req.seeker_name}'s public profile`}
+                        >
+                          <img
+                            src={req.seeker_avatar || (req.seeker_name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(req.seeker_name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                            alt={req.seeker_name}
+                            className="w-4 h-4 rounded-full object-cover ring-1 ring-border group-hover:ring-brand"
+                          />
+                          <span className="group-hover:underline text-ink group-hover:text-brand">{req.seeker_name}</span>
+                        </button>
                         <span>•</span>
                         <span className="flex items-center gap-0.5">
                           <MapPin className="w-3 h-3 text-brand" />
-                          <span>Nearby</span>
+                          <span>{getReachDistance(req, user)}</span>
                         </span>
                       </div>
                     </div>
@@ -227,9 +242,10 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                     ) : (
                       <button
                         onClick={() => onClaimRequest(req)}
-                        className="px-4 py-2 rounded-full text-xs font-bold bg-brand text-white hover:bg-brand-hover shadow-xs transition-all cursor-pointer"
+                        className="px-4 py-2 rounded-full text-xs font-bold bg-surface border border-divider hover:border-brand text-ink hover:text-brand shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
                       >
-                        I Can Lend This
+                        <span>See More</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>

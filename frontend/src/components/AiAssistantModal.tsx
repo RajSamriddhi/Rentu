@@ -103,7 +103,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
       const assistantMessage: AiChatMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content: res.reply || 'Here is what I found in the marketplace! ✨',
+        content: res.reply || 'Here is what I found in the marketplace.',
         items: res.items || [],
         suggestions: res.suggestions || [],
         mode: res.mode || 'fallback',
@@ -159,8 +159,8 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
 
           if (isBullet) {
             return (
-              <div key={idx} className="flex items-start gap-1.5 pl-1">
-                <span className="text-[#E11D74] font-black text-xs leading-5">💗</span>
+              <div key={idx} className="flex items-start gap-2 pl-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0 mt-2" />
                 <span className="flex-1">{parsedContent}</span>
               </div>
             );
@@ -200,7 +200,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <span className="text-[10px] text-brand font-bold block -mt-0.5">
-                Ask anything ✨
+                Ask anything
               </span>
             </div>
           </button>
@@ -232,12 +232,12 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
                       : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
                   }`}>
                     {messages.length === 0
-                      ? '🌸 Rentu AI Ready'
+                      ? 'Rentu AI Ready'
                       : !isFallback && (lastMsg?.mode === 'ai' || activeProvider.includes('Gemini'))
-                      ? '✨ Gemini Active'
+                      ? 'Gemini Active'
                       : activeProvider.includes('quota')
-                      ? '⚠️ Quota Fallback'
-                      : '🌸 Fallback Mode'}
+                      ? 'Fallback Mode'
+                      : 'Standard Mode'}
                   </span>
                 </div>
                 <p className="text-[11px] text-ink-secondary truncate max-w-[210px] sm:max-w-xs">
@@ -288,10 +288,10 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
                     <CuteBotAvatar size="lg" expression="happy" showSparkle />
                     <div>
                       <h4 className="text-sm font-black text-ink font-display">
-                        Hi neighbor! I'm Rentu AI 💗
+                        Hi neighbor! I'm Rentu AI
                       </h4>
                       <p className="text-xs text-brand font-bold mt-0.5">
-                        Your cute peer-to-peer gear finder
+                        Your peer-to-peer gear finder
                       </p>
                     </div>
                   </div>
@@ -374,7 +374,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
 
                       <div className="flex items-center justify-end gap-2 mt-1.5 text-[9px] opacity-70">
                         <span>
-                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(m.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                         </span>
                         
                         {!isUser && (

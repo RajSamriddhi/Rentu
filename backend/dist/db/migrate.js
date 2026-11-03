@@ -37,7 +37,9 @@ const runMigrations = async () => {
         await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
-          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED');
+          CREATE TYPE booking_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'HANDED_OVER');
+        ELSE
+          ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'HANDED_OVER';
         END IF;
       END $$;
     `);
@@ -56,8 +58,8 @@ const runMigrations = async () => {
         pincode VARCHAR(10),
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
-        rating NUMERIC(3, 2) DEFAULT 5.00,
-        trust_score INT DEFAULT 98,
+        rating NUMERIC(3, 2) DEFAULT 0.00,
+        trust_score INT DEFAULT 90,
         role user_role DEFAULT 'USER',
         clerk_id VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -68,10 +70,11 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -89,13 +92,14 @@ const runMigrations = async () => {
         price_per_day NUMERIC(10, 2) NOT NULL CHECK (price_per_day >= 0),
         max_duration_days INTEGER DEFAULT 3 CHECK (max_duration_days > 0),
         image_urls JSONB DEFAULT '[]'::JSONB,
-        sticker_badge VARCHAR(50) DEFAULT '✨ Weekend Flex',
+        sticker_badge VARCHAR(50) DEFAULT 'Available',
         locality VARCHAR(120),
         address_text TEXT DEFAULT 'South Delhi',
         pincode VARCHAR(10),
         latitude DOUBLE PRECISION DEFAULT 28.5355,
         longitude DOUBLE PRECISION DEFAULT 77.2167,
         status item_status DEFAULT 'AVAILABLE',
+        available_for_borrowing BOOLEAN DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -104,11 +108,17 @@ const runMigrations = async () => {
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
       CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
       CREATE INDEX IF NOT EXISTS idx_items_coords ON items(latitude, longitude);
+      CREATE INDEX IF NOT EXISTS idx_items_borrowing ON items(available_for_borrowing);
     `);
         await client.query(`
       CREATE TABLE IF NOT EXISTS requests (
@@ -134,8 +144,16 @@ const runMigrations = async () => {
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_pickup BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS will_drop_back BOOLEAN DEFAULT TRUE;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
 
       CREATE INDEX IF NOT EXISTS idx_requests_seeker ON requests(seeker_id);
       CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
@@ -157,6 +175,24 @@ const runMigrations = async () => {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_date DATE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_type VARCHAR(60) DEFAULT 'LENDER_LOCATION';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_locality VARCHAR(120);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_code VARCHAR(6);
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_delivery BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requires_pickup BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
+
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_lender ON bookings(lender_id);
@@ -176,6 +212,13 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
       ALTER TABLE messages ALTER COLUMN receiver_id DROP NOT NULL;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type TEXT DEFAULT 'TEXT';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS proposal_data JSONB;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_delivered BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
     `);
         // 4. NORMALIZATION TABLES (1NF & 3NF Compliance)
         // 4.1. POSTAL CODES (3NF: Eliminates transitive dependency pincode -> locality in users, items, requests)
@@ -252,6 +295,15 @@ const runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+
+      ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
     `);
         // 4.4. NOTIFICATIONS (1NF: Eliminates non-atomic jsonb data object by storing explicit atomic scalar columns)
         await client.query(`
@@ -298,6 +350,52 @@ const runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
     `);
+        // 4.6. USER FOLLOWS & BLOCKS
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS user_follows (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(follower_id, following_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
+      CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows(following_id);
+
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(blocker_id, blocked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id);
+      CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_nearby_requests_5km BOOLEAN DEFAULT TRUE;
+    `);
+        // 4.8. SUPPORT TICKETS, CONCERNS & USER FEEDBACK
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        user_email TEXT,
+        type TEXT NOT NULL, -- 'CONCERN' | 'FEEDBACK'
+        category TEXT NOT NULL, -- 'BOOKING' | 'ITEM_QUALITY' | 'PAYMENT' | 'USER_BEHAVIOR' | 'FEATURE_REQUEST' | 'BUG' | 'GENERAL'
+        subject TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'OPEN', -- 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED'
+        priority TEXT DEFAULT 'NORMAL', -- 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+        admin_notes TEXT,
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+    `);
         // Clean up unnecessary helper views to maintain clean database tables
         await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
         // 4.7. RELATIONAL FOREIGN KEY CONSTRAINTS (SCHEMA.md Full Relational Integrity)
@@ -324,6 +422,28 @@ const runMigrations = async () => {
                 await client.query(c.sql);
             }
         }
+        // Align Bangalore/Bengaluru items and users away from Delhi default (28.5355)
+        await client.query(`
+      UPDATE items 
+      SET latitude = 12.9255, longitude = 77.5355 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      UPDATE users 
+      SET latitude = 12.9240, longitude = 77.5340 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
+        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Clear assumed 'Bengaluru' / 'Bangalore' locality from users who never entered an address
+      UPDATE users 
+      SET locality = NULL, latitude = NULL, longitude = NULL 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%')
+        AND (address_text IS NULL OR TRIM(address_text) = '' OR address_text ILIKE '%bengaluru%')
+        AND (saved_locations IS NULL OR saved_locations = '[]'::jsonb);
+
+      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
+      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+    `);
         await client.query('COMMIT');
         console.log('Database migrations completed successfully!');
     }
