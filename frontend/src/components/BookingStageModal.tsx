@@ -38,11 +38,12 @@ function getHandoverWindowStatus(
 ): {
   isAvailable: boolean;
   isBefore: boolean;
+  isExpired: boolean;
   scheduledTimeFormatted: string;
   windowEndFormatted: string;
 } {
   if (!dateStr) {
-    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
+    return { isAvailable: true, isBefore: false, isExpired: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
   }
   try {
     const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
@@ -70,6 +71,18 @@ function getHandoverWindowStatus(
       return {
         isAvailable: false,
         isBefore: true,
+        isExpired: false,
+        scheduledTimeFormatted: timeFormatted,
+        windowEndFormatted: windowEndFormatted,
+      };
+    }
+
+    // After 1 hour from start time, the window expires
+    if (now.getTime() > windowEnd.getTime()) {
+      return {
+        isAvailable: false,
+        isBefore: false,
+        isExpired: true,
         scheduledTimeFormatted: timeFormatted,
         windowEndFormatted: windowEndFormatted,
       };
@@ -78,11 +91,12 @@ function getHandoverWindowStatus(
     return {
       isAvailable: true,
       isBefore: false,
+      isExpired: false,
       scheduledTimeFormatted: timeFormatted,
       windowEndFormatted: windowEndFormatted,
     };
   } catch {
-    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
+    return { isAvailable: true, isBefore: false, isExpired: false, scheduledTimeFormatted: '10:00 AM', windowEndFormatted: '11:00 AM' };
   }
 }
 
@@ -122,6 +136,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const [pickupCodeInput, setPickupCodeInput] = useState('');
   const [returnCodeInput, setReturnCodeInput] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isCopied, setIsCopied] = useState(false);
@@ -139,8 +155,39 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       setPickupCodeInput('');
       setReturnCodeInput('');
       setIsReturnActive(false);
+      setShowCancelConfirm(false);
+      setIsCancelling(false);
     }
   }, [booking?.id, isOpen]);
+
+  const pickupWindow = getHandoverWindowStatus(booking?.start_date, booking?.start_time || '10:00', 60);
+
+  // Auto-cancellation effect: If the pickup handover code was not provided within 1 hour of the start time
+  useEffect(() => {
+    if (booking && booking.status === 'ACCEPTED' && pickupWindow.isExpired && !booking.handed_over_at) {
+      api.updateBookingStatus(booking.id, 'CANCELLED')
+        .then((updated) => {
+          onUpdated({ ...booking, ...updated, status: 'CANCELLED' });
+        })
+        .catch(() => {});
+    }
+  }, [booking?.id, booking?.status, pickupWindow.isExpired]);
+
+  const handleCancelBooking = async () => {
+    if (!booking) return;
+    setIsCancelling(true);
+    setErrorMessage('');
+    try {
+      const updated = await api.updateBookingStatus(booking.id, 'CANCELLED');
+      setShowCancelConfirm(false);
+      onUpdated({ ...booking, ...updated, status: 'CANCELLED' });
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to cancel rental request.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   if (!isOpen || !booking) return null;
 
@@ -151,7 +198,6 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const today = new Date();
   const currentDayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const pickupWindow = getHandoverWindowStatus(booking.start_date, booking.start_time || '10:00', 60);
   const returnWindow = getHandoverWindowStatus(booking.end_date || booking.start_date, booking.end_time || '18:00', 60);
 
   // Sequential 5-Stage computation
@@ -450,6 +496,20 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   Both parties have agreed on the booking dates and details. At the agreed start date and time, Stage 2 will activate where the renter shows their pickup code and the owner confirms it.
                 </p>
               </div>
+
+              {/* Cancellation Option for Stage 1 */}
+              <div className="pt-3 border-t border-divider flex items-center justify-between bg-canvas/40 p-3 rounded-2xl">
+                <span className="text-[11px] text-ink-secondary">Need to cancel before pickup?</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(true)}
+                  disabled={isCancelling}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-red-500 hover:text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                  <span>Cancel Request</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -463,7 +523,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   <span className="text-[11px] font-black uppercase text-brand tracking-wider bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
                     Stage 2: Pickup Handover Verification
                   </span>
-                  {pickupWindow.isAvailable ? (
+                  {pickupWindow.isExpired ? (
+                    <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/20 inline-flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      1-Hour Window Expired (Auto-Cancelled)
+                    </span>
+                  ) : pickupWindow.isAvailable ? (
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       1-Hour Window Active • {pickupWindow.scheduledTimeFormatted} - {pickupWindow.windowEndFormatted}
@@ -476,14 +541,18 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   )}
                 </div>
                 <h4 className="text-base font-extrabold text-ink font-display">
-                  {!pickupWindow.isAvailable
+                  {pickupWindow.isExpired
+                    ? '1-Hour Pickup Window Expired'
+                    : !pickupWindow.isAvailable
                     ? `Pickup Handover Opens at ${pickupWindow.scheduledTimeFormatted}`
                     : isBorrower
                     ? 'Give your 6-digit pickup code to the owner'
                     : 'Enter the pickup code received from the renter'}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {!pickupWindow.isAvailable
+                  {pickupWindow.isExpired
+                    ? 'The pickup code was not verified within 1 hour of the scheduled start time. This request has automatically cancelled.'
+                    : !pickupWindow.isAvailable
                     ? `Pickup code and verification unlock strictly at ${pickupWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.start_date)}.`
                     : isBorrower
                     ? `Share this code with ${otherPartyName} when you meet to collect the gear.`
@@ -491,8 +560,22 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 </p>
               </div>
 
-              {/* TIMING WINDOW LOCK: If scheduled pickup time has not arrived yet */}
-              {!pickupWindow.isAvailable ? (
+              {/* TIMING WINDOW LOCK / EXPIRED: If expired or scheduled pickup time has not arrived yet */}
+              {pickupWindow.isExpired ? (
+                <div className="p-6 rounded-3xl bg-red-500/10 border border-red-500/20 text-center space-y-3 max-w-md mx-auto shadow-sm animate-in fade-in">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center">
+                    <Clock className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-base font-extrabold text-red-500 font-display">
+                      Handover Window Expired
+                    </h4>
+                    <p className="text-xs text-ink-secondary leading-relaxed">
+                      The pickup handover code was not provided within 1 hour of the starting time ({pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}). This rental request has been automatically cancelled.
+                    </p>
+                  </div>
+                </div>
+              ) : !pickupWindow.isAvailable ? (
                 isBorrower ? (
                   /* Renter View when locked */
                   <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
@@ -656,6 +739,24 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Cancellation Option for Stage 2: Both renter and lender can cancel before pickup handover verification */}
+              {!pickupWindow.isExpired && (
+                <div className="pt-3 border-t border-divider flex flex-col sm:flex-row items-center justify-between gap-2.5 bg-canvas/40 p-3.5 rounded-2xl">
+                  <div className="text-[11px] text-ink-secondary text-center sm:text-left">
+                    Need to cancel this rental request before pickup handover?
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelConfirm(true)}
+                    disabled={isCancelling}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-red-500 hover:text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                  >
+                    {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                    <span>Cancel Rental Request</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -676,6 +777,10 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     ? 'Enjoy using the gear! Make sure to treat it with care and return it before the deadline.'
                     : `Gear handed over successfully. ${otherPartyName} is using it until the return deadline.`}
                 </p>
+                <div className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5 pt-1 font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>Pickup handover verified. Rental in progress from Stage 3 to Stage 5.</span>
+                </div>
               </div>
 
               {/* Active countdown card */}
@@ -1047,6 +1152,51 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Confirmation Dialog for Cancellation */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-surface border border-divider rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-ink">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-base text-ink font-display">
+                  Cancel Rental Request?
+                </h4>
+                <p className="text-[11px] text-ink-secondary">
+                  Release booking before pickup handover
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-ink-secondary leading-relaxed">
+              Are you sure you want to cancel this rental request for <strong className="text-ink">{booking.item_title}</strong>? The product will be released and {otherPartyName} will be notified immediately.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={isCancelling}
+                className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+              >
+                Keep Rental
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelBooking}
+                disabled={isCancelling}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white transition-all cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+              >
+                {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                <span>Yes, Cancel Rental</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -46,6 +46,87 @@ function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes?
   return d.getTime();
 }
 
+/**
+ * Automatically checks and cancels any ACCEPTED booking whose 1-hour pickup handover
+ * window has expired without pickup verification code entry.
+ */
+async function checkAndAutoCancelExpiredBookings(): Promise<void> {
+  try {
+    const expiredRes = await query(`
+      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, 
+             TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
+             b.start_time, i.title AS item_title,
+             lender.name AS lender_name, borrower.name AS borrower_name
+      FROM bookings b
+      JOIN items i ON b.item_id = i.id
+      JOIN users lender ON i.owner_id = lender.id
+      JOIN users borrower ON b.borrower_id = borrower.id
+      WHERE b.status = 'ACCEPTED'
+        AND b.handed_over_at IS NULL
+    `);
+
+    const now = Date.now();
+    for (const row of expiredRes.rows) {
+      const sDate = row.start_date_str;
+      if (!sDate) continue;
+      const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
+      const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
+      const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
+
+      if (now > oneHourAfterStart) {
+        // Auto cancel this booking because code was not provided within 1 hour of scheduled start time
+        await query(
+          `UPDATE bookings 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'ACCEPTED' AND handed_over_at IS NULL`,
+          [row.id]
+        );
+
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+
+        await query(
+          `UPDATE messages 
+           SET proposal_data = jsonb_set(
+             COALESCE(proposal_data, '{}'::jsonb),
+             '{status}',
+             '"CANCELLED"'::jsonb
+           )
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+          [row.id]
+        ).catch(() => {});
+
+        await query(
+          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the pickup handover code was not verified within 1 hour of the scheduled start time.', 'SYSTEM')`,
+          [row.id, row.lender_id, row.borrower_id]
+        ).catch(() => {});
+
+        await createNotification({
+          userId: row.borrower_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: 'BOOKING',
+          type: 'BOOKING_CANCELLED',
+          title: 'Rental Auto-Cancelled',
+          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`,
+        }).catch(() => {});
+
+        await createNotification({
+          userId: row.lender_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: 'BOOKING',
+          type: 'BOOKING_CANCELLED',
+          title: 'Rental Auto-Cancelled',
+          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`,
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('checkAndAutoCancelExpiredBookings notice:', err);
+  }
+}
+
 const verifyCodeSchema = z.object({
   code: z.string().min(4, 'Verification code is required'),
 });
@@ -285,6 +366,9 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
     const userId = req.user!.id;
     const { role } = req.query; // 'borrower' | 'lender' | all
 
+    // Check and auto-cancel any bookings where 1 hour has elapsed after start time without pickup verification
+    await checkAndAutoCancelExpiredBookings();
+
     let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
@@ -361,7 +445,10 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
 
     const booking = bookingRes.rows[0];
 
-    // Check authority: Lender can ACCEPT or REJECT. Borrower can CANCEL.
+    // Check authority: 
+    // - Lender can ACCEPT or REJECT proposals.
+    // - Both Renter (borrower) and Lender (owner) can CANCEL anytime before pickup handover verification (Stages 1 & 2).
+    // - Once pickup handover verification code is verified (Stage 3+), cancellation is not permitted.
     const isLender = booking.lender_id === userId;
     const isBorrower = booking.borrower_id === userId;
     const isAdmin = req.user!.role === 'ADMIN';
@@ -373,6 +460,17 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     if (status === 'ACCEPTED' || status === 'REJECTED') {
       if (!isLender && !isAdmin) {
         return sendError(res, 'FORBIDDEN', 'Only the gear owner can accept or reject proposals', 403);
+      }
+    }
+
+    if (status === 'CANCELLED') {
+      if (booking.status === 'HANDED_OVER' || booking.status === 'COMPLETED') {
+        return sendError(
+          res,
+          'BAD_REQUEST',
+          'Cancellation is not allowed after pickup handover verification. The rental is actively in use from Stage 3 onwards.',
+          400
+        );
       }
     }
 
@@ -565,6 +663,20 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
       booking.start_time || '10:00',
       tzOffset
     );
+
+    // 1-Hour Verification Window Check:
+    // If code was not provided within 1 hour of the scheduled start time, request cancels on its own.
+    const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
+    if (Date.now() > oneHourAfterStart) {
+      await query(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'The 1-hour pickup handover window has expired. This rental request has been automatically cancelled.',
+        400
+      );
+    }
 
     // Allow 2-minute clock skew buffer
     if (Date.now() < startTimestamp - (2 * 60 * 1000)) {
