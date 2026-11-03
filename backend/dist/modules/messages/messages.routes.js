@@ -509,12 +509,9 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
                 delete safeProposal.pickup_code;
                 delete safeProposal.return_code;
                 const safeBooking = { ...updatedBooking };
-                if (safeBooking.borrower_id !== currentUserId) {
-                    delete safeBooking.pickup_code;
-                }
-                if (safeBooking.lender_id !== currentUserId) {
-                    delete safeBooking.return_code;
-                }
+                // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+                delete safeBooking.pickup_code;
+                delete safeBooking.return_code;
                 return (0, response_1.sendSuccess)(res, {
                     booking: safeBooking,
                     message_id: messageId,
@@ -620,12 +617,9 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
        VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [currentUserId, message.sender_id, itemTitle, createdBooking.id]).catch(() => { });
         const safeCreatedBooking = { ...createdBooking };
-        if (safeCreatedBooking.borrower_id !== currentUserId) {
-            delete safeCreatedBooking.pickup_code;
-        }
-        if (safeCreatedBooking.lender_id !== currentUserId) {
-            delete safeCreatedBooking.return_code;
-        }
+        // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+        delete safeCreatedBooking.pickup_code;
+        delete safeCreatedBooking.return_code;
         const safeProposal = { ...updatedProposal };
         delete safeProposal.pickup_code;
         delete safeProposal.return_code;

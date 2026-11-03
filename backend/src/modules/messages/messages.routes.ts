@@ -611,12 +611,9 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         delete (safeProposal as any).return_code;
 
         const safeBooking = { ...updatedBooking };
-        if (safeBooking.borrower_id !== currentUserId) {
-          delete safeBooking.pickup_code;
-        }
-        if (safeBooking.lender_id !== currentUserId) {
-          delete safeBooking.return_code;
-        }
+        // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+        delete safeBooking.pickup_code;
+        delete safeBooking.return_code;
 
         return sendSuccess(res, {
           booking: safeBooking,
@@ -758,12 +755,9 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     ).catch(() => {});
 
     const safeCreatedBooking = { ...createdBooking };
-    if (safeCreatedBooking.borrower_id !== currentUserId) {
-      delete safeCreatedBooking.pickup_code;
-    }
-    if (safeCreatedBooking.lender_id !== currentUserId) {
-      delete safeCreatedBooking.return_code;
-    }
+    // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+    delete safeCreatedBooking.pickup_code;
+    delete safeCreatedBooking.return_code;
 
     const safeProposal = { ...updatedProposal };
     delete (safeProposal as any).pickup_code;

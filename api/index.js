@@ -54164,7 +54164,7 @@ var updateStatusSchema = external_exports.object({
 });
 function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
   const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
-  const cleanTime = timeStr && timeStr.trim() ? timeStr.slice(0, 5) : "10:00";
+  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
   const [hour, minute] = cleanTime.split(":").map(Number);
   if (typeof tzOffsetMinutes === "number") {
     const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
@@ -54191,7 +54191,7 @@ async function checkAndAutoCancelExpiredBookings() {
     for (const row of expiredRes.rows) {
       const sDate = row.start_date_str;
       if (!sDate) continue;
-      const sTime = row.start_time && row.start_time.trim() ? row.start_time.slice(0, 5) : "10:00";
+      const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
       const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
       if (row.status === "PENDING" && now > startTimestamp) {
         await query(
@@ -54530,6 +54530,17 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
+    const currentMs = Date.now();
+    for (const b of result.rows) {
+      if (b.status === "ACCEPTED" && b.pickup_code) {
+        const sDate = b.start_date;
+        const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
+        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+        if (currentMs < startMs - 5 * 60 * 1e3) {
+          b.pickup_code = null;
+        }
+      }
+    }
     const proposalsRes = await query(
       `WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -54823,6 +54834,13 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const safeBooking = { ...updateRes.rows[0] };
     if (safeBooking.borrower_id !== userId) {
       delete safeBooking.pickup_code;
+    } else if (safeBooking.status === "ACCEPTED" && safeBooking.pickup_code) {
+      const sDate2 = safeBooking.start_date_str || safeBooking.start_date;
+      const sTime = safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== "00:00" ? safeBooking.start_time.slice(0, 5) : "10:00";
+      const startMs = parseToUtcTimestamp(String(sDate2), sTime, -330);
+      if (Date.now() < startMs - 5 * 60 * 1e3) {
+        delete safeBooking.pickup_code;
+      }
     }
     if (safeBooking.lender_id !== userId) {
       delete safeBooking.return_code;
@@ -56475,12 +56493,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         delete safeProposal2.pickup_code;
         delete safeProposal2.return_code;
         const safeBooking = { ...updatedBooking };
-        if (safeBooking.borrower_id !== currentUserId) {
-          delete safeBooking.pickup_code;
-        }
-        if (safeBooking.lender_id !== currentUserId) {
-          delete safeBooking.return_code;
-        }
+        delete safeBooking.pickup_code;
+        delete safeBooking.return_code;
         return sendSuccess(res, {
           booking: safeBooking,
           message_id: messageId,
@@ -56598,12 +56612,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     ).catch(() => {
     });
     const safeCreatedBooking = { ...createdBooking };
-    if (safeCreatedBooking.borrower_id !== currentUserId) {
-      delete safeCreatedBooking.pickup_code;
-    }
-    if (safeCreatedBooking.lender_id !== currentUserId) {
-      delete safeCreatedBooking.return_code;
-    }
+    delete safeCreatedBooking.pickup_code;
+    delete safeCreatedBooking.return_code;
     const safeProposal = { ...updatedProposal };
     delete safeProposal.pickup_code;
     delete safeProposal.return_code;

@@ -234,7 +234,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
     }
     try {
       const [y, m, d] = booking.start_date.slice(0, 10).split('-').map(Number);
-      const cleanTime = (booking.start_time && booking.start_time.trim()) ? booking.start_time.slice(0, 5) : '10:00';
+      const cleanTime = (booking.start_time && booking.start_time.trim() && booking.start_time.slice(0, 5) !== '00:00') ? booking.start_time.slice(0, 5) : '10:00';
       const [h, min] = cleanTime.split(':').map(Number);
       const scheduled = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0);
       const windowEnd = new Date(scheduled.getTime() + 60 * 60 * 1000); // 1-hour window
@@ -450,8 +450,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   ];
 
   // Fast standard QR rendering for pickup and return
-  const pickupQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_PICKUP:${booking.id}:${booking.pickup_code || '123456'}`)}`;
-  const returnQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_RETURN:${booking.id}:${booking.return_code || '654321'}`)}`;
+  const pickupQrUrl = booking.pickup_code
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_PICKUP:${booking.id}:${booking.pickup_code}`)}`
+    : '';
+  const returnQrUrl = booking.return_code
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_RETURN:${booking.id}:${booking.return_code}`)}`
+    : '';
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
@@ -726,16 +730,18 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   {/* 6-Digit Code */}
                   <div className="flex items-center justify-center gap-2">
                     <span className="font-mono text-3xl font-black tracking-widest text-brand bg-surface px-6 py-3 rounded-2xl border border-brand/30 shadow-pink">
-                      {booking.pickup_code || '123456'}
+                      {booking.pickup_code || '------'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(booking.pickup_code || '123456')}
-                      className="p-3.5 rounded-2xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
-                      title="Copy pickup code"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
+                    {booking.pickup_code && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(booking.pickup_code!)}
+                        className="p-3.5 rounded-2xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
+                        title="Copy pickup code"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                   {isCopied && <span className="text-[11px] font-bold text-emerald-500 block">Copied to clipboard!</span>}
 

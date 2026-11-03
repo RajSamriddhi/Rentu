@@ -629,7 +629,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                             if (!booking.start_date) return false;
                             try {
                               const sDate = booking.start_date.split('T')[0];
-                              const sTime = booking.start_time ? booking.start_time.slice(0, 5) : '10:00';
+                              const sTime = (booking.start_time && booking.start_time.trim() && booking.start_time.slice(0, 5) !== '00:00') ? booking.start_time.slice(0, 5) : '10:00';
                               const [y, m, d] = sDate.split('-').map(Number);
                               const [h, min] = sTime.split(':').map(Number);
                               const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();

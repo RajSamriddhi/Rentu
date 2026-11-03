@@ -32,7 +32,7 @@ const updateStatusSchema = zod_1.z.object({
 });
 function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
     const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
-    const cleanTime = (timeStr && timeStr.trim()) ? timeStr.slice(0, 5) : '10:00';
+    const cleanTime = (timeStr && timeStr.trim() && timeStr.slice(0, 5) !== '00:00') ? timeStr.slice(0, 5) : '10:00';
     const [hour, minute] = cleanTime.split(':').map(Number);
     if (typeof tzOffsetMinutes === 'number') {
         const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
@@ -64,7 +64,7 @@ async function checkAndAutoCancelExpiredBookings() {
             const sDate = row.start_date_str;
             if (!sDate)
                 continue;
-            const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
+            const sTime = (row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== '00:00') ? row.start_time.slice(0, 5) : '10:00';
             const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
             // Case 1: PENDING booking proposals whose scheduled start time has arrived without being accepted
             if (row.status === 'PENDING' && now > startTimestamp) {
@@ -369,6 +369,20 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         }
         sql += ` ORDER BY b.created_at DESC`;
         const result = await (0, db_1.query)(sql, params);
+        // Enforce pickup code visibility:
+        // Never reveal the pickup verification code to the borrower before the scheduled pickup time
+        const currentMs = Date.now();
+        for (const b of result.rows) {
+            if (b.status === 'ACCEPTED' && b.pickup_code) {
+                const sDate = b.start_date;
+                const sTime = (b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== '00:00') ? b.start_time.slice(0, 5) : '10:00';
+                const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+                // Unlock 5 minutes before scheduled start time for the meetup
+                if (currentMs < startMs - (5 * 60 * 1000)) {
+                    b.pickup_code = null;
+                }
+            }
+        }
         // Also query pending custom gear request / lend offer proposals from messages that have not yet been accepted
         const proposalsRes = await (0, db_1.query)(`WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -658,6 +672,14 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         const safeBooking = { ...updateRes.rows[0] };
         if (safeBooking.borrower_id !== userId) {
             delete safeBooking.pickup_code;
+        }
+        else if (safeBooking.status === 'ACCEPTED' && safeBooking.pickup_code) {
+            const sDate = safeBooking.start_date_str || safeBooking.start_date;
+            const sTime = (safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== '00:00') ? safeBooking.start_time.slice(0, 5) : '10:00';
+            const startMs = parseToUtcTimestamp(String(sDate), sTime, -330);
+            if (Date.now() < startMs - (5 * 60 * 1000)) {
+                delete safeBooking.pickup_code;
+            }
         }
         if (safeBooking.lender_id !== userId) {
             delete safeBooking.return_code;
