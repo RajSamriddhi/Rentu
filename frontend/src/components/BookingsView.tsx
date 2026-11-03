@@ -95,12 +95,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   useEffect(() => {
     if (initialBookingId) {
       setHighlightedBookingId(initialBookingId);
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const el = document.getElementById(`booking-${initialBookingId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }, 350);
+
+      // Automatically clear highlight after 2.5s so card never stays highlighted or blinks
+      const clearTimer = setTimeout(() => {
+        setHighlightedBookingId(null);
+      }, 2500);
+
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
     }
   }, [initialBookingId]);
   
@@ -801,8 +811,8 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                     <div
                       key={booking.id}
                       id={`booking-${booking.id}`}
-                      className={`rounded-3xl transition-all ${
-                        highlightedBookingId === booking.id ? 'ring-4 ring-brand/60 shadow-pink animate-pulse' : ''
+                      className={`rounded-3xl transition-all duration-300 ${
+                        highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
                       }`}
                     >
                       <BookingCard
