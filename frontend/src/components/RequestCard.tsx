@@ -25,8 +25,25 @@ export const RequestCard: React.FC<RequestCardProps> = ({
 
   const hasImage = Boolean(request.image_url) && !imageError;
   const isFulfilled = request.status === 'FULFILLED';
+  const isCancelled = request.status === 'CANCELLED';
   const isOwnRequest = user?.id === request.seeker_id;
   const reachDistanceText = getReachDistance(request, user);
+
+  const isTimePassed = (() => {
+    if (!request.start_date) return false;
+    try {
+      const sDate = request.start_date.split('T')[0];
+      const sTime = request.start_time ? request.start_time.slice(0, 5) : '10:00';
+      const [y, m, d] = sDate.split('-').map(Number);
+      const [h, min] = sTime.split(':').map(Number);
+      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+      return Date.now() > startMs;
+    } catch {
+      return false;
+    }
+  })();
+
+  const isExpiredOrCancelled = isCancelled || (!isFulfilled && isTimePassed);
 
   return (
     <div
@@ -66,11 +83,18 @@ export const RequestCard: React.FC<RequestCardProps> = ({
             />
           </button>
 
-          {/* Status Tag Overlay if Fulfilled */}
+          {/* Status Tag Overlay if Fulfilled or Expired */}
           {isFulfilled && (
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
               <span className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" /> Fulfilled
+              </span>
+            </div>
+          )}
+          {isExpiredOrCancelled && (
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center">
+              <span className="bg-zinc-800 text-zinc-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border border-zinc-600">
+                Cancelled (Time Passed)
               </span>
             </div>
           )}
@@ -90,9 +114,15 @@ export const RequestCard: React.FC<RequestCardProps> = ({
               <span className="text-[11px] text-ink-secondary font-medium">budget</span>
             </div>
 
-            <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-              Active Request
-            </span>
+            {isExpiredOrCancelled ? (
+              <span className="text-[10px] font-extrabold text-zinc-500 bg-zinc-500/10 px-2 py-0.5 rounded-full border border-zinc-500/20">
+                Cancelled (Expired)
+              </span>
+            ) : (
+              <span className="text-[10px] font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
+                Active Request
+              </span>
+            )}
           </div>
 
           {/* Proximity Distance */}
@@ -142,6 +172,10 @@ export const RequestCard: React.FC<RequestCardProps> = ({
             ) : isFulfilled ? (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
                 Fulfilled
+              </span>
+            ) : isExpiredOrCancelled ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                Cancelled
               </span>
             ) : isOwnRequest ? (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">

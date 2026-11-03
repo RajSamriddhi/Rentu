@@ -53,7 +53,7 @@ function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes?
 async function checkAndAutoCancelExpiredBookings(): Promise<void> {
   try {
     const expiredRes = await query(`
-      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, 
+      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
              b.start_time, i.title AS item_title,
              lender.name AS lender_name, borrower.name AS borrower_name
@@ -61,8 +61,8 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
       JOIN items i ON b.item_id = i.id
       JOIN users lender ON i.owner_id = lender.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      WHERE b.status = 'ACCEPTED'
-        AND b.handed_over_at IS NULL
+      WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
+         OR (b.status = 'PENDING')
     `);
 
     const now = Date.now();
@@ -71,9 +71,60 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
       if (!sDate) continue;
       const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
       const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
-      const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
 
-      if (now > oneHourAfterStart) {
+      // Case 1: PENDING booking proposals whose scheduled start time has arrived without being accepted
+      if (row.status === 'PENDING' && now > startTimestamp) {
+        await query(
+          `UPDATE bookings 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'PENDING'`,
+          [row.id]
+        );
+
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+
+        await query(
+          `UPDATE messages 
+           SET proposal_data = jsonb_set(
+             COALESCE(proposal_data, '{}'::jsonb),
+             '{status}',
+             '"CANCELLED"'::jsonb
+           )
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+          [row.id]
+        ).catch(() => {});
+
+        await query(
+          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled start time arrived without being accepted.', 'SYSTEM')`,
+          [row.id, row.lender_id, row.borrower_id]
+        ).catch(() => {});
+
+        await createNotification({
+          userId: row.borrower_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: 'BOOKING',
+          type: 'BOOKING_CANCELLED',
+          title: 'Request Auto-Cancelled',
+          body: `Your rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed without being accepted.`,
+        }).catch(() => {});
+
+        await createNotification({
+          userId: row.lender_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: 'BOOKING',
+          type: 'BOOKING_CANCELLED',
+          title: 'Request Expired & Cancelled',
+          body: `Rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed.`,
+        }).catch(() => {});
+        continue;
+      }
+
+      // Case 2: ACCEPTED booking whose 1-hour pickup window expired without code entry
+      const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
+      if (row.status === 'ACCEPTED' && now > oneHourAfterStart) {
         // Auto cancel this booking because code was not provided within 1 hour of scheduled start time
         await query(
           `UPDATE bookings 

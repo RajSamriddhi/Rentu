@@ -54,9 +54,42 @@ const updateRequestSchema = zod_1.z.object({
     will_drop_back: zod_1.z.boolean().optional(),
     delivery_fee: zod_1.z.number().min(0).optional(),
 });
+/**
+ * Automatically checks and cancels any OPEN gear requests where the acceptance / needed start time has already passed.
+ */
+async function autoCancelExpiredRequests() {
+    try {
+        const expiredRes = await (0, db_1.query)(`
+      SELECT r.id, 
+             TO_CHAR(r.start_date, 'YYYY-MM-DD') AS start_date_str,
+             r.start_time
+      FROM requests r
+      WHERE r.status = 'OPEN'
+    `);
+        const now = Date.now();
+        for (const row of expiredRes.rows) {
+            const sDate = row.start_date_str;
+            if (!sDate)
+                continue;
+            const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
+            const [y, m, d] = sDate.split('-').map(Number);
+            const [h, min] = sTime.split(':').map(Number);
+            const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+            if (now > startMs) {
+                await (0, db_1.query)(`UPDATE requests 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'OPEN'`, [row.id]);
+            }
+        }
+    }
+    catch (err) {
+        console.warn('autoCancelExpiredRequests error:', err);
+    }
+}
 // Browse Community Wishes / Bounties
 router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     try {
+        await autoCancelExpiredRequests();
         const { category, locality, status = 'OPEN', seekerId } = req.query;
         let sql = `
       SELECT 
@@ -119,6 +152,7 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
 // Get Single Request
 router.get('/:id', async (req, res, next) => {
     try {
+        await autoCancelExpiredRequests();
         const { id } = req.params;
         const result = await (0, db_1.query)(`SELECT 
         r.id, r.item_name, r.description, r.category, 

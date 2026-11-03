@@ -46,7 +46,24 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
   if (!isOpen || !request) return null;
 
   const isFulfilled = request.status === 'FULFILLED';
+  const isCancelled = request.status === 'CANCELLED';
   const isOwnRequest = user?.id === request.seeker_id;
+
+  const isTimePassed = (() => {
+    if (!request.start_date) return false;
+    try {
+      const sDate = request.start_date.split('T')[0];
+      const sTime = request.start_time ? request.start_time.slice(0, 5) : '10:00';
+      const [y, m, d] = sDate.split('-').map(Number);
+      const [h, min] = sTime.split(':').map(Number);
+      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+      return Date.now() > startMs;
+    } catch {
+      return false;
+    }
+  })();
+
+  const isExpiredOrCancelled = isCancelled || (!isFulfilled && isTimePassed);
 
   const handleClaim = async () => {
     if (!isAuthenticated && onOpenAuth) {
@@ -143,11 +160,17 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
           {/* Status Badge */}
           <div className="absolute top-3 left-3">
             <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-              isFulfilled
+              isExpiredOrCancelled
+                ? 'bg-zinc-700 text-white shadow-md'
+                : isFulfilled
                 ? 'bg-emerald-600 text-white shadow-md'
                 : 'bg-brand text-white shadow-pink'
             }`}>
-              {isFulfilled ? 'Fulfilled Request' : 'Active Gear Request'}
+              {isExpiredOrCancelled 
+                ? 'Request Auto-Cancelled (Time Passed)' 
+                : isFulfilled 
+                ? 'Fulfilled Request' 
+                : 'Active Gear Request'}
             </span>
           </div>
         </div>
@@ -174,6 +197,19 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Expired / Auto-Cancelled Notice */}
+          {isExpiredOrCancelled && (
+            <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-3 text-rose-500 text-xs">
+              <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-extrabold uppercase tracking-wide block">Scheduled Acceptance Time Passed</span>
+                <p className="mt-0.5 text-ink-secondary text-[11px] leading-relaxed">
+                  This gear request was scheduled for <span className="font-bold text-ink">{formatDateStr(request.start_date)} at {formatTimeStr(request.start_time)}</span>. Because that acceptance time has already passed, the request has been automatically cancelled.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Full Description from Seeker */}
           {request.description && (
@@ -360,8 +396,8 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
               </button>
             )}
 
-            {/* I Can Lend This CTA */}
-            {!isOwnRequest && !isFulfilled && onClaim && (
+            {/* I Can Lend This CTA or Expired Notice */}
+            {!isOwnRequest && !isFulfilled && !isExpiredOrCancelled && onClaim && (
               <button
                 type="button"
                 disabled={isLending}
@@ -380,6 +416,12 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                   </>
                 )}
               </button>
+            )}
+
+            {!isOwnRequest && isExpiredOrCancelled && (
+              <span className="text-xs font-bold text-rose-500 py-2 px-3 bg-rose-500/10 rounded-xl border border-rose-500/20">
+                Request Expired & Cancelled
+              </span>
             )}
 
             {isOwnRequest && (

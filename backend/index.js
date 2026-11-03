@@ -53650,8 +53650,39 @@ var updateRequestSchema = external_exports.object({
   will_drop_back: external_exports.boolean().optional(),
   delivery_fee: external_exports.number().min(0).optional()
 });
+async function autoCancelExpiredRequests() {
+  try {
+    const expiredRes = await query(`
+      SELECT r.id, 
+             TO_CHAR(r.start_date, 'YYYY-MM-DD') AS start_date_str,
+             r.start_time
+      FROM requests r
+      WHERE r.status = 'OPEN'
+    `);
+    const now = Date.now();
+    for (const row of expiredRes.rows) {
+      const sDate = row.start_date_str;
+      if (!sDate) continue;
+      const sTime = row.start_time && row.start_time.trim() ? row.start_time.slice(0, 5) : "10:00";
+      const [y, m, d] = sDate.split("-").map(Number);
+      const [h, min] = sTime.split(":").map(Number);
+      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+      if (now > startMs) {
+        await query(
+          `UPDATE requests 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'OPEN'`,
+          [row.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("autoCancelExpiredRequests error:", err);
+  }
+}
 router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
+    await autoCancelExpiredRequests();
     const { category, locality, status = "OPEN", seekerId } = req.query;
     let sql = `
       SELECT 
@@ -53710,6 +53741,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
 });
 router3.get("/:id", async (req, res, next) => {
   try {
+    await autoCancelExpiredRequests();
     const { id } = req.params;
     const result = await query(
       `SELECT 
@@ -54144,7 +54176,7 @@ function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
 async function checkAndAutoCancelExpiredBookings() {
   try {
     const expiredRes = await query(`
-      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, 
+      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
              b.start_time, i.title AS item_title,
              lender.name AS lender_name, borrower.name AS borrower_name
@@ -54152,8 +54184,8 @@ async function checkAndAutoCancelExpiredBookings() {
       JOIN items i ON b.item_id = i.id
       JOIN users lender ON i.owner_id = lender.id
       JOIN users borrower ON b.borrower_id = borrower.id
-      WHERE b.status = 'ACCEPTED'
-        AND b.handed_over_at IS NULL
+      WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
+         OR (b.status = 'PENDING')
     `);
     const now = Date.now();
     for (const row of expiredRes.rows) {
@@ -54161,8 +54193,55 @@ async function checkAndAutoCancelExpiredBookings() {
       if (!sDate) continue;
       const sTime = row.start_time && row.start_time.trim() ? row.start_time.slice(0, 5) : "10:00";
       const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
+      if (row.status === "PENDING" && now > startTimestamp) {
+        await query(
+          `UPDATE bookings 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'PENDING'`,
+          [row.id]
+        );
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+        await query(
+          `UPDATE messages 
+           SET proposal_data = jsonb_set(
+             COALESCE(proposal_data, '{}'::jsonb),
+             '{status}',
+             '"CANCELLED"'::jsonb
+           )
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+          [row.id]
+        ).catch(() => {
+        });
+        await query(
+          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled start time arrived without being accepted.', 'SYSTEM')`,
+          [row.id, row.lender_id, row.borrower_id]
+        ).catch(() => {
+        });
+        await createNotification({
+          userId: row.borrower_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Request Auto-Cancelled",
+          body: `Your rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed without being accepted.`
+        }).catch(() => {
+        });
+        await createNotification({
+          userId: row.lender_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Request Expired & Cancelled",
+          body: `Rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed.`
+        }).catch(() => {
+        });
+        continue;
+      }
       const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
-      if (now > oneHourAfterStart) {
+      if (row.status === "ACCEPTED" && now > oneHourAfterStart) {
         await query(
           `UPDATE bookings 
            SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
