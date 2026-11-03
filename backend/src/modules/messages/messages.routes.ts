@@ -765,16 +765,12 @@ router.delete('/conversations/:conversationId', authMiddleware, async (req: Auth
   }
 });
 
-// 7. Edit an individual message
+// 7. Edit an individual message (or update proposal_data/live location)
 router.put('/:messageId', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { messageId } = req.params;
-    const { content } = req.body;
+    const { content, proposal_data } = req.body;
     const userId = req.user!.id;
-
-    if (!content || !content.trim()) {
-      return sendError(res, 'BAD_REQUEST', 'Message content cannot be empty', 400);
-    }
 
     const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
     if (checkRes.rows.length === 0) {
@@ -789,9 +785,14 @@ router.put('/:messageId', authMiddleware, async (req: AuthenticatedRequest, res:
       return sendError(res, 'FORBIDDEN', 'You can only edit your own messages', 403);
     }
 
+    const newContent = (content && content.trim()) || msg.content;
+    const newProposalData = proposal_data !== undefined
+      ? (typeof proposal_data === 'string' ? proposal_data : JSON.stringify(proposal_data))
+      : msg.proposal_data;
+
     const result = await query(
-      `UPDATE messages SET content = $1, is_edited = true WHERE id::text = $2 RETURNING *`,
-      [content.trim(), messageId]
+      `UPDATE messages SET content = $1, proposal_data = $2, is_edited = true WHERE id::text = $3 RETURNING *`,
+      [newContent, newProposalData, messageId]
     );
 
     return sendSuccess(res, result.rows[0], 'Message updated');

@@ -4,14 +4,21 @@ import {
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
   Trash2, Pencil, Image as ImageIcon, Phone, ExternalLink, Download, Loader2, Navigation,
-  ClipboardCheck, Copy
+  ClipboardCheck, Copy, Radio, LocateFixed, Compass, StopCircle, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { Conversation, Message, MessageProposalData } from '../lib/types';
 import { PersonalProposalModal } from './PersonalProposalModal';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
+import { 
+  detectCurrentLocation, 
+  getEffectiveSavedLocations, 
+  formatSavedLocationFull, 
+  getGoogleMapsUrl, 
+  getGoogleMapsDirectionsUrl, 
+  ResolvedLocation 
+} from '../lib/location';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
@@ -64,6 +71,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [detectedGpsLocation, setDetectedGpsLocation] = useState<ResolvedLocation | null>(null);
+  const [locationModalTab, setLocationModalTab] = useState<'options' | 'live_duration'>('options');
+  const [liveDurationMinutes, setLiveDurationMinutes] = useState<15 | 60 | 480>(60);
+  const [liveLocationComment, setLiveLocationComment] = useState('');
+  const [isSendingLocation, setIsSendingLocation] = useState(false);
   const [customLocationText, setCustomLocationText] = useState('');
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [contactName, setContactName] = useState('');
@@ -104,6 +116,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isAttachMenuOpen]);
+
+  // Auto-detect high-accuracy GPS satellite coordinates whenever Location Modal opens
+  useEffect(() => {
+    if (isLocationModalOpen) {
+      setLocationModalTab('options');
+      setIsDetectingLocation(true);
+      detectCurrentLocation({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
+        .then((loc) => {
+          setDetectedGpsLocation(loc);
+        })
+        .catch((err) => {
+          console.warn('GPS detection background error:', err);
+        })
+        .finally(() => {
+          setIsDetectingLocation(false);
+        });
+    }
+  }, [isLocationModalOpen]);
 
   // Scroll to bottom cleanly within the thread container
   const scrollToBottom = (smooth = true) => {
@@ -737,41 +767,144 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const handleShareCurrentLocation = async () => {
+  // WhatsApp Option 1: Send Exact Current GPS Location
+  const handleShareCurrentLocation = async (locToUse?: ResolvedLocation) => {
     try {
-      setIsDetectingLocation(true);
-      const loc = await detectCurrentLocation();
+      setIsSendingLocation(true);
+      let loc = locToUse || detectedGpsLocation;
+      if (!loc) {
+        setIsDetectingLocation(true);
+        loc = await detectCurrentLocation({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+        setDetectedGpsLocation(loc);
+      }
+
       const addr = [loc.address_text, loc.locality, loc.city].filter(Boolean).join(', ') || 'Current Location';
+      const mapsUrl = getGoogleMapsUrl(loc.latitude, loc.longitude, addr);
+      const directionsUrl = getGoogleMapsDirectionsUrl(loc.latitude, loc.longitude, addr);
+
       await handleSendAttachmentMessage({
-        content: `Location: ${addr}`,
+        content: `📍 Current Location: ${addr}`,
         message_type: 'LOCATION',
         proposal_data: {
+          location_type: 'CURRENT',
           address: addr,
           latitude: loc.latitude,
           longitude: loc.longitude,
+          accuracy: loc.accuracy || 12,
           locality: loc.locality || loc.city,
+          google_maps_url: mapsUrl,
+          directions_url: directionsUrl,
+          shared_at: new Date().toISOString(),
         },
       });
       setIsLocationModalOpen(false);
     } catch (err: any) {
       console.error('Failed to detect GPS location:', err);
-      alert(err.message || 'Could not detect your GPS location. Please choose a saved address below.');
+      alert(err.message || 'Could not acquire your precise GPS location. Please allow browser location permissions.');
     } finally {
+      setIsSendingLocation(false);
       setIsDetectingLocation(false);
     }
   };
 
-  const handleShareSavedLocation = async (locText: string) => {
+  // WhatsApp Option 2: Share Real-Time Live Location (15m, 1h, 8h)
+  const handleShareLiveLocation = async (durationMins: number = liveDurationMinutes) => {
+    try {
+      setIsSendingLocation(true);
+      let loc = detectedGpsLocation;
+      if (!loc) {
+        setIsDetectingLocation(true);
+        loc = await detectCurrentLocation({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+        setDetectedGpsLocation(loc);
+      }
+
+      const addr = [loc.address_text, loc.locality, loc.city].filter(Boolean).join(', ') || 'Live Location';
+      const expiresAt = new Date(Date.now() + durationMins * 60 * 1000).toISOString();
+      const mapsUrl = getGoogleMapsUrl(loc.latitude, loc.longitude, addr);
+      const directionsUrl = getGoogleMapsDirectionsUrl(loc.latitude, loc.longitude, addr);
+
+      await handleSendAttachmentMessage({
+        content: `🟢 Live Location (${durationMins >= 60 ? `${durationMins / 60}h` : `${durationMins}m`})`,
+        message_type: 'LOCATION',
+        proposal_data: {
+          location_type: 'LIVE',
+          is_live: true,
+          duration_minutes: durationMins,
+          started_at: new Date().toISOString(),
+          expires_at: expiresAt,
+          address: addr,
+          locality: loc.locality || loc.city,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          accuracy: loc.accuracy || 10,
+          comment: liveLocationComment.trim() || undefined,
+          google_maps_url: mapsUrl,
+          directions_url: directionsUrl,
+        },
+      });
+      setIsLocationModalOpen(false);
+      setLocationModalTab('options');
+      setLiveLocationComment('');
+    } catch (err: any) {
+      console.error('Failed to start live location:', err);
+      alert(err.message || 'Could not start live location sharing. Please check location permissions.');
+    } finally {
+      setIsSendingLocation(false);
+      setIsDetectingLocation(false);
+    }
+  };
+
+  // Stop Live Location Sharing
+  const handleStopLiveLocation = async (messageId: string, currentProposalData: any) => {
+    try {
+      const updatedData = {
+        ...currentProposalData,
+        is_live: false,
+        stopped_at: new Date().toISOString(),
+      };
+      await api.editMessage(messageId, undefined, updatedData);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, proposal_data: updatedData } : m
+        )
+      );
+    } catch (err: any) {
+      console.error('Failed to stop live location sharing:', err);
+      alert('Could not update live location status.');
+    }
+  };
+
+  // WhatsApp Option 3: Share Profile Saved Location or Custom Spot
+  const handleShareSavedLocation = async (locText: string, lat?: number, lon?: number) => {
     if (!locText.trim()) return;
-    await handleSendAttachmentMessage({
-      content: `Location: ${locText.trim()}`,
-      message_type: 'LOCATION',
-      proposal_data: {
-        address: locText.trim(),
-      },
-    });
-    setCustomLocationText('');
-    setIsLocationModalOpen(false);
+    try {
+      setIsSendingLocation(true);
+      const effectiveLat = typeof lat === 'number' && !isNaN(lat) ? lat : detectedGpsLocation?.latitude;
+      const effectiveLon = typeof lon === 'number' && !isNaN(lon) ? lon : detectedGpsLocation?.longitude;
+      const mapsUrl = getGoogleMapsUrl(effectiveLat, effectiveLon, locText.trim());
+      const directionsUrl = getGoogleMapsDirectionsUrl(effectiveLat, effectiveLon, locText.trim());
+
+      await handleSendAttachmentMessage({
+        content: `📍 Meetup Spot: ${locText.trim()}`,
+        message_type: 'LOCATION',
+        proposal_data: {
+          location_type: 'SAVED',
+          address: locText.trim(),
+          latitude: effectiveLat,
+          longitude: effectiveLon,
+          google_maps_url: mapsUrl,
+          directions_url: directionsUrl,
+          shared_at: new Date().toISOString(),
+        },
+      });
+      setCustomLocationText('');
+      setIsLocationModalOpen(false);
+    } catch (err: any) {
+      console.error('Failed to share saved location:', err);
+      alert(err.message || 'Could not send location.');
+    } finally {
+      setIsSendingLocation(false);
+    }
   };
 
   const handleShareContact = async () => {
@@ -1478,13 +1611,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                       }
 
-                      // 4. LOCATION MESSAGE (WhatsApp Style)
+                      // 4. LOCATION MESSAGE (WhatsApp Style: Live, Current GPS, or Saved Meetup Spot)
                       if (m.message_type === 'LOCATION' || pData?.address) {
-                        const addrText = pData?.address || m.content.replace(/^Location:\s*/i, '');
+                        const addrText = pData?.address || m.content.replace(/^📍\s*(Current Location|Meetup Spot):\s*/i, '').replace(/^🟢\s*Live Location[^\n]*\n?/i, '').replace(/^Location:\s*/i, '');
+                        const isLive = pData?.location_type === 'LIVE' || Boolean(pData?.is_live);
+                        const isExpired = isLive && pData?.expires_at ? new Date(pData.expires_at).getTime() < Date.now() : false;
+                        const isLiveActive = isLive && !pData?.stopped_at && !isExpired;
+                        const isCurrentLocation = pData?.location_type === 'CURRENT';
+
+                        const mapsUrl = pData?.google_maps_url || getGoogleMapsUrl(pData?.latitude, pData?.longitude, addrText);
+                        const directionsUrl = pData?.directions_url || getGoogleMapsDirectionsUrl(pData?.latitude, pData?.longitude, addrText);
+                        const hasCoords = typeof pData?.latitude === 'number' && typeof pData?.longitude === 'number' && !isNaN(pData.latitude) && !isNaN(pData.longitude) && (pData.latitude !== 0 || pData.longitude !== 0);
+
+                        const formattedExpiresAt = pData?.expires_at ? new Date(pData.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+
                         return (
                           <div
                             key={m.id}
-                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                            className={`flex items-end gap-2 my-1.5 group ${isMe ? 'justify-end' : 'justify-start'}`}
                           >
                             {!isMe && (
                               <img
@@ -1512,35 +1656,125 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               </button>
                             )}
 
-                            <div className="w-full max-w-[280px] sm:max-w-xs rounded-2xl sm:rounded-3xl p-3.5 border border-emerald-500/30 bg-surface shadow-xs space-y-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                                  <MapPin className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0">
-                                  <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider block">
-                                    Shared Location
-                                  </span>
-                                  <span className="text-xs font-bold text-ink truncate block">
-                                    Meetup Handover Spot
-                                  </span>
-                                </div>
+                            <div className="w-full max-w-[290px] sm:max-w-xs rounded-2xl sm:rounded-3xl border border-divider bg-surface shadow-xs overflow-hidden">
+                              {/* Visual Map / Radar Header */}
+                              <div className="relative h-24 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center overflow-hidden border-b border-divider">
+                                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#22c55e_1px,transparent_1px)] [background-size:14px_14px]" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent opacity-90" />
+
+                                {isLiveActive ? (
+                                  <div className="relative flex flex-col items-center justify-center text-center z-10 space-y-1">
+                                    <div className="relative flex items-center justify-center">
+                                      <span className="absolute w-12 h-12 rounded-full bg-emerald-500/20 animate-ping" />
+                                      <span className="absolute w-8 h-8 rounded-full bg-emerald-500/40" />
+                                      <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/50">
+                                        <Radio className="w-3.5 h-3.5 animate-pulse" />
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1 shadow-xs">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                                      Live Location
+                                    </span>
+                                  </div>
+                                ) : isLive ? (
+                                  <div className="relative flex flex-col items-center justify-center text-center z-10 space-y-1 text-ink-muted">
+                                    <div className="w-8 h-8 rounded-full bg-canvas border border-divider flex items-center justify-center text-ink-muted">
+                                      <Radio className="w-4 h-4 opacity-50" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-ink-secondary bg-canvas/80 px-2 py-0.5 rounded-full border border-divider">
+                                      Live location ended
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="relative flex flex-col items-center justify-center text-center z-10 space-y-1">
+                                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shadow-lg">
+                                      <LocateFixed className="w-4 h-4 animate-pulse" />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                                      {isCurrentLocation ? 'Current GPS Location' : 'Meetup Spot'}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {hasCoords && (
+                                  <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[9px] font-bold text-emerald-400 border border-emerald-500/20">
+                                    {pData?.accuracy ? `±${pData.accuracy}m` : 'GPS Pin'}
+                                  </div>
+                                )}
                               </div>
-                              <p className="text-xs text-ink font-medium leading-relaxed bg-canvas p-2 rounded-xl border border-divider">
-                                {addrText}
-                              </p>
-                              <a
-                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addrText)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center justify-center gap-1.5 w-full py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold transition-colors cursor-pointer"
-                              >
-                                <span>Open in Google Maps</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                              <div className="text-[9px] flex items-center justify-end gap-1 text-ink-secondary pt-0.5">
-                                <span>{formattedTime}</span>
-                                {isMe && renderMessageTicks(m, false)}
+
+                              {/* Card Body */}
+                              <div className="p-3.5 space-y-2.5">
+                                {pData?.comment && (
+                                  <p className="text-xs font-semibold text-brand italic bg-brand-soft/40 px-2.5 py-1.5 rounded-xl border border-brand/20">
+                                    "{pData.comment}"
+                                  </p>
+                                )}
+
+                                <div className="space-y-1">
+                                  <p className="text-xs text-ink font-semibold leading-relaxed line-clamp-2">
+                                    {addrText}
+                                  </p>
+                                  {hasCoords && (
+                                    <p className="text-[10px] text-ink-muted font-mono">
+                                      {pData.latitude.toFixed(5)}, {pData.longitude.toFixed(5)}
+                                    </p>
+                                  )}
+                                  {isLiveActive && formattedExpiresAt && (
+                                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      Live until {formattedExpiresAt}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="space-y-1.5 pt-1">
+                                  <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer"
+                                  >
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <span>Open in Google Maps</span>
+                                    <ExternalLink className="w-3 h-3 opacity-80" />
+                                  </a>
+
+                                  {hasCoords && (
+                                    <a
+                                      href={directionsUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-xl bg-canvas hover:bg-surface border border-divider text-ink text-[11px] font-bold transition-all cursor-pointer"
+                                    >
+                                      <Navigation className="w-3 h-3 text-emerald-500" />
+                                      <span>Get Directions</span>
+                                    </a>
+                                  )}
+
+                                  {isLiveActive && isMe && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStopLiveLocation(m.id, pData)}
+                                      className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-extrabold border border-red-500/30 transition-all cursor-pointer"
+                                    >
+                                      <StopCircle className="w-3.5 h-3.5" />
+                                      <span>Stop Sharing Live Location</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Timestamp & Status */}
+                                <div className="text-[9px] flex items-center justify-between text-ink-secondary pt-1 border-t border-divider">
+                                  <span className="text-[9px] text-ink-muted">
+                                    {isLiveActive ? 'Live tracking' : isCurrentLocation ? 'Precise GPS' : 'Handover spot'}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span>{formattedTime}</span>
+                                    {isMe && renderMessageTicks(m, false)}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1985,98 +2219,288 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       {isLocationModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <MapPin className="w-4 h-4" />
-                </div>
+              <div className="flex items-center gap-2.5">
+                {locationModalTab === 'live_duration' ? (
+                  <button
+                    type="button"
+                    onClick={() => setLocationModalTab('options')}
+                    className="p-1 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                )}
                 <div>
-                  <h3 className="text-sm font-extrabold text-ink font-display">Share Meetup Location</h3>
-                  <p className="text-[10px] text-ink-secondary">Send location to {activeConversation?.partner_name || 'neighbor'}</p>
+                  <h3 className="text-sm font-extrabold text-ink font-display">
+                    {locationModalTab === 'live_duration' ? 'Share Live Location' : 'Share Location'}
+                  </h3>
+                  <p className="text-[10px] text-ink-secondary">
+                    {locationModalTab === 'live_duration'
+                      ? 'Live real-time position'
+                      : `Send to ${activeConversation?.partner_name || 'neighbor'}`}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsLocationModalOpen(false)}
+                onClick={() => {
+                  setIsLocationModalOpen(false);
+                  setLocationModalTab('options');
+                }}
                 className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-              {/* Option A: 1-Click GPS Location */}
-              <button
-                type="button"
-                onClick={handleShareCurrentLocation}
-                disabled={isDetectingLocation}
-                className="w-full p-3.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-between transition-all cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5">
-                  {isDetectingLocation ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                  ) : (
-                    <Navigation className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
-                  )}
-                  <span>{isDetectingLocation ? 'Detecting GPS coordinates...' : 'Share Current GPS Location'}</span>
-                </div>
-                <ChevronRight className="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-              </button>
+            {/* Modal Body */}
+            {locationModalTab === 'options' ? (
+              <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                {/* GPS Status Card with Real-time satellite fix */}
+                <div className="p-3 rounded-2xl bg-canvas border border-divider space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        {isDetectingLocation ? (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+                        ) : detectedGpsLocation ? (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        ) : null}
+                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isDetectingLocation ? 'bg-brand' : detectedGpsLocation ? 'bg-emerald-500' : 'bg-ink-muted'}`} />
+                      </span>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-ink-secondary">
+                        {isDetectingLocation
+                          ? 'Acquiring GPS Satellite Lock...'
+                          : detectedGpsLocation
+                          ? 'Precise GPS Satellite Fixed'
+                          : 'GPS Coordinates'}
+                      </span>
+                    </div>
 
-              {/* Option B: Profile Saved Locations */}
-              <div className="space-y-2">
-                <div className="text-[10px] font-black uppercase tracking-wider text-ink-secondary">
-                  Or Pick Saved Address from Profile
-                </div>
-                {getEffectiveSavedLocations(user).map((loc) => {
-                  const full = formatSavedLocationFull(loc);
-                  return (
                     <button
-                      key={loc.id}
                       type="button"
-                      onClick={() => handleShareSavedLocation(full)}
-                      className="w-full text-left p-3 rounded-2xl bg-canvas hover:bg-surface border border-divider hover:border-emerald-500/40 transition-all cursor-pointer group space-y-0.5"
+                      disabled={isDetectingLocation}
+                      onClick={() => {
+                        setIsDetectingLocation(true);
+                        detectCurrentLocation({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
+                          .then((loc) => setDetectedGpsLocation(loc))
+                          .catch((e) => alert(e.message || 'GPS detection failed.'))
+                          .finally(() => setIsDetectingLocation(false));
+                      }}
+                      className="text-[10px] font-bold text-ink-muted hover:text-ink flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Refresh GPS satellite fix"
                     >
-                      <div className="flex items-center justify-between text-xs font-bold text-ink">
-                        <span>{loc.label}</span>
-                        {loc.is_default && (
-                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
-                            Primary
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-ink-secondary truncate">
-                        {full}
-                      </p>
+                      <RefreshCw className={`w-3 h-3 ${isDetectingLocation ? 'animate-spin' : ''}`} />
+                      <span>Re-scan</span>
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
 
-              {/* Option C: Custom Address Input */}
-              <div className="space-y-2 pt-2 border-t border-divider">
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block">
-                  Or Enter Specific Meetup Spot
-                </label>
-                <div className="flex items-center gap-2">
+                  {detectedGpsLocation ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-ink leading-tight line-clamp-2">
+                        {detectedGpsLocation.address_text || detectedGpsLocation.full_address}
+                      </p>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold border border-emerald-500/20">
+                          Accurate to {detectedGpsLocation.accuracy || 12} meters
+                        </span>
+                        <span className="text-ink-muted font-mono">
+                          {detectedGpsLocation.latitude.toFixed(4)}, {detectedGpsLocation.longitude.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink-muted">
+                      {isDetectingLocation
+                        ? 'Connecting to high-precision device sensors...'
+                        : 'GPS not yet acquired. Click re-scan or choose a saved spot.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* WhatsApp Option 1: Share Live Location */}
+                <button
+                  type="button"
+                  onClick={() => setLocationModalTab('live_duration')}
+                  className="w-full p-3.5 rounded-2xl bg-canvas hover:bg-surface border border-divider hover:border-emerald-500/40 text-left transition-all cursor-pointer group flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <Radio className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-ink group-hover:text-emerald-500 transition-colors">
+                        Share live location
+                      </div>
+                      <div className="text-[11px] text-ink-secondary">
+                        Update your location in real time as you move
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
+                </button>
+
+                {/* WhatsApp Option 2: Send Your Current Location */}
+                <button
+                  type="button"
+                  onClick={() => handleShareCurrentLocation()}
+                  disabled={isSendingLocation || isDetectingLocation}
+                  className="w-full p-3.5 rounded-2xl bg-canvas hover:bg-surface border border-divider hover:border-emerald-500/40 text-left transition-all cursor-pointer group flex items-center justify-between disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      {isSendingLocation ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <LocateFixed className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-ink group-hover:text-emerald-500 transition-colors">
+                        Send your current location
+                      </div>
+                      <div className="text-[11px] text-ink-secondary">
+                        {detectedGpsLocation
+                          ? `Accurate to ${detectedGpsLocation.accuracy || 12} meters`
+                          : 'High-accuracy GPS satellite fix'}
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
+                </button>
+
+                {/* Divider: NEARBY & SAVED PLACES */}
+                <div className="pt-2 border-t border-divider space-y-2.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-ink-secondary">
+                    Nearby & Saved Places
+                  </div>
+
+                  {getEffectiveSavedLocations(user).map((loc) => {
+                    const full = formatSavedLocationFull(loc);
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => handleShareSavedLocation(full, loc.latitude, loc.longitude)}
+                        disabled={isSendingLocation}
+                        className="w-full text-left p-3 rounded-2xl bg-canvas hover:bg-surface border border-divider hover:border-emerald-500/40 transition-all cursor-pointer group space-y-0.5 disabled:opacity-50"
+                      >
+                        <div className="flex items-center justify-between text-xs font-bold text-ink">
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+                            {loc.label}
+                          </span>
+                          {loc.is_default && (
+                            <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand/20">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-ink-secondary truncate pl-5">
+                          {full}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Meetup Spot Input */}
+                <div className="space-y-2 pt-2 border-t border-divider">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block">
+                    Or Enter Custom Meetup Spot
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={customLocationText}
+                      onChange={(e) => setCustomLocationText(e.target.value)}
+                      placeholder="e.g. Metro Station Gate 2, Bengaluru"
+                      className="flex-1 bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleShareSavedLocation(customLocationText)}
+                      disabled={!customLocationText.trim() || isSendingLocation}
+                      className="btn-primary text-xs px-3.5 py-2 font-bold disabled:opacity-50 cursor-pointer shrink-0"
+                    >
+                      Share
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Tab 2: WhatsApp Live Location Duration Selector */
+              <div className="p-5 space-y-5">
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 leading-relaxed">
+                  Participants in this chat will see your real-time location. You can stop sharing at any time.
+                </div>
+
+                {/* Duration options */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block">
+                    Share For
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { minutes: 15 as const, label: '15 Minutes' },
+                      { minutes: 60 as const, label: '1 Hour' },
+                      { minutes: 480 as const, label: '8 Hours' },
+                    ].map((opt) => {
+                      const isSelected = liveDurationMinutes === opt.minutes;
+                      return (
+                        <button
+                          key={opt.minutes}
+                          type="button"
+                          onClick={() => setLiveDurationMinutes(opt.minutes)}
+                          className={`p-3 rounded-2xl border text-center font-extrabold text-xs transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                              : 'bg-canvas hover:bg-surface border-divider text-ink'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Optional comment */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block">
+                    Add a comment (Optional)
+                  </label>
                   <input
                     type="text"
-                    value={customLocationText}
-                    onChange={(e) => setCustomLocationText(e.target.value)}
-                    placeholder="e.g. Metro Station Gate 2, Bengaluru"
-                    className="flex-1 bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
+                    value={liveLocationComment}
+                    onChange={(e) => setLiveLocationComment(e.target.value)}
+                    placeholder="e.g. On my way with the camera gear..."
+                    maxLength={100}
+                    className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-emerald-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => handleShareSavedLocation(customLocationText)}
-                    disabled={!customLocationText.trim()}
-                    className="btn-primary text-xs px-3 py-2 font-bold disabled:opacity-50 cursor-pointer shrink-0"
-                  >
-                    Share
-                  </button>
                 </div>
+
+                {/* Start Sharing CTA */}
+                <button
+                  type="button"
+                  disabled={isSendingLocation}
+                  onClick={() => handleShareLiveLocation()}
+                  className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingLocation ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Radio className="w-4 h-4" />
+                  )}
+                  <span>Start Sharing Live Location</span>
+                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

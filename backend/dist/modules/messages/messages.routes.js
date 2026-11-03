@@ -611,15 +611,12 @@ router.delete('/conversations/:conversationId', auth_1.authMiddleware, async (re
         next(error);
     }
 });
-// 7. Edit an individual message
+// 7. Edit an individual message (or update proposal_data/live location)
 router.put('/:messageId', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const { messageId } = req.params;
-        const { content } = req.body;
+        const { content, proposal_data } = req.body;
         const userId = req.user.id;
-        if (!content || !content.trim()) {
-            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Message content cannot be empty', 400);
-        }
         const checkRes = await (0, db_1.query)(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
         if (checkRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Message not found', 404);
@@ -630,7 +627,11 @@ router.put('/:messageId', auth_1.authMiddleware, async (req, res, next) => {
         if (!validSenders.includes(msg.sender_id)) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'You can only edit your own messages', 403);
         }
-        const result = await (0, db_1.query)(`UPDATE messages SET content = $1, is_edited = true WHERE id::text = $2 RETURNING *`, [content.trim(), messageId]);
+        const newContent = (content && content.trim()) || msg.content;
+        const newProposalData = proposal_data !== undefined
+            ? (typeof proposal_data === 'string' ? proposal_data : JSON.stringify(proposal_data))
+            : msg.proposal_data;
+        const result = await (0, db_1.query)(`UPDATE messages SET content = $1, proposal_data = $2, is_edited = true WHERE id::text = $3 RETURNING *`, [newContent, newProposalData, messageId]);
         return (0, response_1.sendSuccess)(res, result.rows[0], 'Message updated');
     }
     catch (error) {

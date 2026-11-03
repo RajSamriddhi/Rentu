@@ -13,6 +13,7 @@ export interface ResolvedLocation {
   pincode: string;
   latitude: number;
   longitude: number;
+  accuracy?: number;
   full_address: string;
   state?: string;
 }
@@ -21,8 +22,8 @@ export interface ResolvedLocation {
  * Request GPS coordinates from browser Geolocation API
  */
 export const getCoordinates = (
-  options: PositionOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-): Promise<{ latitude: number; longitude: number }> => {
+  options: PositionOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+): Promise<{ latitude: number; longitude: number; accuracy?: number }> => {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       return reject(new Error('Geolocation is not supported by your browser.'));
@@ -33,6 +34,7 @@ export const getCoordinates = (
         resolve({
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 10),
         });
       },
       (err) => {
@@ -172,9 +174,35 @@ export const reverseGeocode = async (
 /**
  * 1-Click Detect Location: Gets coordinates and parses into address
  */
-export const detectCurrentLocation = async (): Promise<ResolvedLocation> => {
-  const coords = await getCoordinates();
-  return await reverseGeocode(coords.latitude, coords.longitude);
+export const detectCurrentLocation = async (
+  options: PositionOptions = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+): Promise<ResolvedLocation> => {
+  const coords = await getCoordinates(options);
+  const resolved = await reverseGeocode(coords.latitude, coords.longitude);
+  return {
+    ...resolved,
+    accuracy: coords.accuracy,
+  };
+};
+
+/**
+ * Returns exact Google Maps URL pointing directly to coordinate pin
+ */
+export const getGoogleMapsUrl = (latitude?: number | null, longitude?: number | null, fallbackQuery?: string): string => {
+  if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude) && (latitude !== 0 || longitude !== 0)) {
+    return `https://www.google.com/maps?q=${latitude},${longitude}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fallbackQuery || 'Bengaluru')}`;
+};
+
+/**
+ * Returns exact Google Maps Directions URL navigating directly to the meetup spot
+ */
+export const getGoogleMapsDirectionsUrl = (latitude?: number | null, longitude?: number | null, fallbackQuery?: string): string => {
+  if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude) && (latitude !== 0 || longitude !== 0)) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+  }
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fallbackQuery || 'Bengaluru')}`;
 };
 
 /**

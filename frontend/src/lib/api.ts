@@ -536,11 +536,11 @@ export const api = {
     return handleResponse(res);
   },
 
-  async editMessage(messageId: string, content: string): Promise<Message> {
+  async editMessage(messageId: string, content?: string, proposal_data?: any): Promise<Message> {
     const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(messageId)}`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, proposal_data }),
     });
     return handleResponse(res);
   },
