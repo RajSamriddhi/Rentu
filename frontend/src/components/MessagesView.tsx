@@ -4,7 +4,8 @@ import {
   Clock, MapPin, Sparkles, User as UserIcon, ShieldCheck, ChevronRight,
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
   Trash2, Pencil, Image as ImageIcon, Phone, ExternalLink, Download, Loader2, Navigation,
-  ClipboardCheck, Copy, Radio, LocateFixed, Compass, StopCircle, RefreshCw
+  ClipboardCheck, Copy, Radio, LocateFixed, Compass, StopCircle, RefreshCw,
+  Info, Video, Heart, Smile, MoreHorizontal, MoreVertical, Bell, BellOff
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
@@ -86,6 +87,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [docNotes, setDocNotes] = useState('Item inspected and verified in clean working condition before handover. All cables and accessories accounted for.');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // Instagram-style Features State
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [likedMessages, setLikedMessages] = useState<Record<string, boolean>>({});
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isChatMuted, setIsChatMuted] = useState(false);
+
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,6 +124,21 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isAttachMenuOpen]);
+
+  // Click outside to close Emoji Picker
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setIsEmojiPickerOpen(false);
+      }
+    };
+    if (isEmojiPickerOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isEmojiPickerOpen]);
 
   // Auto-detect high-accuracy GPS satellite coordinates whenever Location Modal opens
   useEffect(() => {
@@ -944,6 +967,21 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     setIsDocumentModalOpen(false);
   };
 
+  const handleToggleLike = (messageId: string) => {
+    setLikedMessages((prev) => ({
+      ...prev,
+      [messageId]: !prev[messageId],
+    }));
+  };
+
+  const handleSendHeart = async () => {
+    if (!selectedConvId || isSending) return;
+    await handleSendAttachmentMessage({
+      content: '❤️',
+      message_type: 'TEXT',
+    });
+  };
+
   // Not signed in state
   if (!isAuthenticated) {
     return (
@@ -1076,17 +1114,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           : 'hover:bg-surface/70'
                       }`}
                     >
-                      <img
-                        src={partnerAvatar}
-                        alt={chat.partner_name || 'Member'}
-                        className="w-11 h-11 rounded-full object-cover shrink-0 border border-divider"
-                      />
+                      <div className="relative shrink-0">
+                        <img
+                          src={partnerAvatar}
+                          alt={chat.partner_name || 'Member'}
+                          className="w-12 h-12 rounded-full object-cover shrink-0 border border-divider"
+                        />
+                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" />
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between text-xs mb-0.5">
-                          <span className="font-black text-ink truncate">{chat.partner_name || 'Neighbor'}</span>
+                          <span className="font-bold text-ink truncate text-sm">{chat.partner_name || 'Neighbor'}</span>
                           <div className="flex items-center gap-1.5 shrink-0 pl-1">
                             {chat.last_message_at && (
-                              <span className="text-[10px] text-ink-secondary font-medium">
+                              <span className="text-[10px] text-ink-muted">
                                 {new Date(chat.last_message_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                               </span>
                             )}
@@ -1103,21 +1144,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             </button>
                           </div>
                         </div>
-                        <p className="text-xs text-ink-secondary truncate font-medium">
-                          {chat.last_message || (isDirect ? 'Direct conversation' : `Rental request for ${chat.item_title}`)}
-                        </p>
-                        <div className="flex items-center justify-between gap-1.5 mt-1.5">
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border truncate max-w-[160px] ${
-                            isDirect 
-                              ? 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20' 
-                              : 'text-brand bg-brand-soft border-brand/20'
-                          }`}>
-                            {isDirect ? 'Direct Message' : chat.item_title}
-                          </span>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <p className={`text-xs truncate ${chat.unread_count && chat.unread_count > 0 ? 'font-bold text-ink' : 'text-ink-secondary font-medium'}`}>
+                            {chat.last_message || 'Sent a message'}
+                          </p>
                           {Boolean(chat.unread_count && chat.unread_count > 0) && (
-                            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm leading-none">
-                              {chat.unread_count}
-                            </span>
+                            <span className="w-2.5 h-2.5 rounded-full bg-brand shrink-0 shadow-sm" />
                           )}
                         </div>
                       </div>
@@ -1133,7 +1165,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             
             {activeConversation ? (
               <>
-                {/* Active Chat Header */}
+                {/* Active Chat Header (Instagram Style) */}
                 <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-divider flex items-center justify-between gap-3 bg-surface z-10">
                   <div className="flex items-center gap-3 min-w-0">
                     <button
@@ -1141,106 +1173,99 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       className="md:hidden p-1.5 -ml-1 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink cursor-pointer shrink-0"
                       title="Back to conversation list"
                     >
-                      <ArrowLeft className="w-4 h-4" />
+                      <ArrowLeft className="w-5 h-5" />
                     </button>
                     
-                    <img
-                      src={
-                        activeConversation.partner_avatar ||
-                        (activeConversation.partner_name
-                          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(activeConversation.partner_name)}&background=0F172A&color=fff&bold=true`
-                          : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
-                      }
-                      alt={activeConversation.partner_name || 'Member'}
-                      onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
-                      className="w-10 h-10 rounded-full object-cover border border-divider shrink-0 cursor-pointer hover:ring-2 hover:ring-brand hover:scale-105 transition-all"
-                      title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
-                    />
+                    <div className="relative shrink-0">
+                      <img
+                        src={
+                          activeConversation.partner_avatar ||
+                          (activeConversation.partner_name
+                            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(activeConversation.partner_name)}&background=0F172A&color=fff&bold=true`
+                            : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                        }
+                        alt={activeConversation.partner_name || 'Member'}
+                        onClick={() => {
+                          const target = activeConversation.partner_username || activeConversation.partner_id;
+                          if (target) onOpenUserProfile?.(target);
+                        }}
+                        className="w-10 h-10 rounded-full object-cover border border-divider cursor-pointer hover:ring-2 hover:ring-brand hover:scale-105 transition-all"
+                        title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
+                      />
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" title="Active now" />
+                    </div>
 
-                    <div className="min-w-0">
+                    <div 
+                      onClick={() => {
+                        const target = activeConversation.partner_username || activeConversation.partner_id;
+                        if (target) onOpenUserProfile?.(target);
+                      }}
+                      className="min-w-0 cursor-pointer group"
+                    >
                       <h2 
-                        onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
-                        className="text-sm sm:text-base font-black text-ink truncate font-display flex items-center gap-1.5 cursor-pointer hover:text-brand transition-colors"
+                        className="text-sm sm:text-base font-black text-ink truncate font-display group-hover:text-brand transition-colors"
                         title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
                       >
-                        <span className="hover:underline">{activeConversation.partner_name || 'Neighbor'}</span>
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Active Member" />
+                        {activeConversation.partner_name || 'Neighbor'}
                       </h2>
                       <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 truncate">
-                        {activeConversation.booking_status === 'DIRECT_DM' || !activeConversation.booking_id ? (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span>Active now</span>
+                        {activeConversation.partner_username && (
                           <>
-                            <span className="font-bold text-purple-600 dark:text-purple-400">Direct Chat</span>
                             <span>•</span>
-                            <button
-                              type="button"
-                              onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
-                              className="text-brand font-bold hover:underline cursor-pointer"
-                            >
-                              View Profile
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span className="font-bold text-ink truncate">{activeConversation.item_title}</span>
-                            <span>•</span>
-                            <span className="font-extrabold text-brand uppercase tracking-wider text-[10px]">
-                              {activeConversation.booking_status}
-                            </span>
-                            <span>•</span>
-                            <button
-                              type="button"
-                              onClick={() => activeConversation.partner_id && onOpenUserProfile?.(activeConversation.partner_id)}
-                              className="text-brand font-bold hover:underline cursor-pointer"
-                            >
-                              Profile
-                            </button>
+                            <span className="text-ink-muted">@{activeConversation.partner_username}</span>
                           </>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Header Right Actions (Instagram Style: Call, Video, Custom Deal, Details, Close) */}
+                  <div className="flex items-center gap-1 sm:gap-2">
                     {/* Launch Personal Listing / Request Proposal Button */}
                     <button
                       type="button"
                       onClick={() => setIsCreateProposalOpen(true)}
                       className="btn-primary text-[11px] px-3 py-1.5 font-bold shadow-pink rounded-full inline-flex items-center gap-1 cursor-pointer transition-transform hover:scale-105"
-                      title="Release a personal listing or custom request for this neighbor"
+                      title="Create Custom Deal / Rental Offer"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[3]" />
                       <span className="hidden sm:inline">Custom Deal</span>
                     </button>
 
-                    {activeConversation.booking_id && Number(activeConversation.total_price) > 0 ? (
-                      <div className="text-right shrink-0 pl-1 hidden sm:block">
-                        <span className="font-black text-ink text-sm sm:text-base font-display block">
-                          ₹{Number(activeConversation.total_price)}
-                        </span>
-                        <span className="text-[10px] font-bold text-ink-secondary block">
-                          {activeConversation.duration_days} {activeConversation.duration_days === 1 ? 'day' : 'days'}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="shrink-0 pl-1 hidden sm:block">
-                        <span className="text-[11px] font-bold text-ink-secondary px-3 py-1 rounded-full bg-canvas border border-divider">
-                          Direct Message
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Delete Entire Chat Button */}
+                    {/* Audio Call */}
                     <button
                       type="button"
-                      onClick={() => {
-                        if (selectedConvId) {
-                          handleDeleteConversation(selectedConvId, activeConversation?.partner_name);
-                        }
-                      }}
-                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-red-500/10 border border-divider hover:border-red-500/30 text-ink-secondary hover:text-red-500 flex items-center justify-center transition-colors cursor-pointer"
-                      title="Delete entire chat"
+                      onClick={() => alert(`Calling ${activeConversation.partner_name || 'Neighbor'}... Audio call feature is rolling out soon!`)}
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-surface border border-divider text-ink-secondary hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
+                      title="Audio Call"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Phone className="w-4 h-4" />
+                    </button>
+
+                    {/* Video Call */}
+                    <button
+                      type="button"
+                      onClick={() => alert(`Starting video call with ${activeConversation.partner_name || 'Neighbor'}... Video feature is rolling out soon!`)}
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-surface border border-divider text-ink-secondary hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
+                      title="Video Call"
+                    >
+                      <Video className="w-4 h-4" />
+                    </button>
+
+                    {/* Instagram Details Button (i) - Where Delete Chat & Profile details live! */}
+                    <button
+                      type="button"
+                      onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border flex items-center justify-center transition-colors cursor-pointer ${
+                        isDetailsOpen
+                          ? 'bg-brand text-white border-brand'
+                          : 'bg-canvas hover:bg-surface border-divider text-ink-secondary hover:text-ink'
+                      }`}
+                      title="Conversation Details"
+                    >
+                      <Info className="w-4 h-4" />
                     </button>
 
                     {/* Close Active Chat Button */}
@@ -1273,19 +1298,61 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   ref={messagesContainerRef}
                   className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-3.5 bg-canvas/20"
                 >
+                  {/* Instagram Profile Hero Header at top of thread */}
+                  <div className="pt-4 pb-6 text-center flex flex-col items-center justify-center space-y-2 border-b border-divider/40 mb-4">
+                    <img
+                      src={
+                        activeConversation.partner_avatar ||
+                        (activeConversation.partner_name
+                          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(activeConversation.partner_name)}&background=0F172A&color=fff&bold=true`
+                          : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                      }
+                      alt={activeConversation.partner_name || 'Member'}
+                      onClick={() => {
+                        const target = activeConversation.partner_username || activeConversation.partner_id;
+                        if (target) onOpenUserProfile?.(target);
+                      }}
+                      className="w-20 h-20 rounded-full object-cover border-2 border-divider cursor-pointer hover:scale-105 hover:ring-2 hover:ring-brand transition-all shadow-md"
+                    />
+                    <div>
+                      <h3 
+                        onClick={() => {
+                          const target = activeConversation.partner_username || activeConversation.partner_id;
+                          if (target) onOpenUserProfile?.(target);
+                        }}
+                        className="text-base font-black text-ink font-display cursor-pointer hover:underline"
+                      >
+                        {activeConversation.partner_name || 'Neighbor'}
+                      </h3>
+                      <p className="text-xs text-ink-secondary">
+                        {activeConversation.partner_username ? `@${activeConversation.partner_username}` : 'Community Member'} • RentU
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = activeConversation.partner_username || activeConversation.partner_id;
+                        if (target) onOpenUserProfile?.(target);
+                      }}
+                      className="px-4 py-1.5 rounded-full bg-surface hover:bg-canvas border border-divider text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                    >
+                      View Profile
+                    </button>
+                  </div>
+
                   {isLoadingMessages ? (
                     <div className="py-20 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                       <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                       <span>Loading messages...</span>
                     </div>
                   ) : messages.length === 0 ? (
-                    <div className="py-20 text-center space-y-2 text-ink-secondary">
+                    <div className="py-8 text-center space-y-2 text-ink-secondary">
                       <div className="w-12 h-12 rounded-full bg-brand-soft text-brand flex items-center justify-center mx-auto mb-2">
-                        <MessageSquare className="w-6 h-6" />
+                        <Heart className="w-6 h-6 fill-brand text-brand" />
                       </div>
-                      <p className="text-sm font-bold text-ink">Start Your Coordination</p>
+                      <p className="text-sm font-bold text-ink">Say Hello</p>
                       <p className="text-xs max-w-sm mx-auto text-ink-secondary">
-                        Discuss handover logistics, pickup timing, or click the <span className="text-brand font-bold">+ button</span> below to release a custom listing deal.
+                        Send a message or tap the ❤️ below to start chatting with {activeConversation.partner_name || 'your neighbor'}.
                       </p>
                     </div>
                   ) : (
@@ -1915,11 +1982,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                       }
 
-                      // 7. STANDARD CHAT TEXT MESSAGE
+                      // 7. STANDARD CHAT TEXT MESSAGE (Instagram Style)
+                      const isSingleHeart = m.content.trim() === '❤️';
+                      const isLiked = Boolean(likedMessages[m.id]);
+
                       return (
                         <div
                           key={m.id}
-                          className={`flex items-end gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          className={`flex items-end gap-2 group my-0.5 ${isMe ? 'justify-end' : 'justify-start'}`}
                         >
                           {!isMe && (
                             <img
@@ -1936,99 +2006,135 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             />
                           )}
 
-                          {/* Hover action buttons for sender (Edit & Delete) */}
-                          {isMe && editingMessageId !== m.id && (
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity text-ink-muted mb-1 order-first">
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(m)}
-                                className="p-1 rounded-full hover:bg-canvas hover:text-ink transition-colors cursor-pointer"
-                                title="Edit message"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteMessage(m.id)}
-                                className="p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors cursor-pointer"
-                                title="Delete message"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
+                          {/* Instagram Hover Actions: Quick Heart Reaction & Edit/Delete */}
+                          <div className={`opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity text-ink-muted mb-1 ${isMe ? 'order-first' : 'order-last'}`}>
+                            {/* Like / Heart Reaction Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleLike(m.id)}
+                              className={`p-1 rounded-full hover:bg-canvas hover:scale-110 transition-all cursor-pointer ${
+                                isLiked ? 'text-red-500' : 'hover:text-red-500'
+                              }`}
+                              title={isLiked ? 'Unlike' : 'Like'}
+                            >
+                              <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                            </button>
 
-                          <div
-                            className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 text-xs font-medium leading-relaxed shadow-xs break-words whitespace-pre-wrap overflow-hidden ${
-                              isMe
-                                ? 'bg-brand text-white rounded-br-xs'
-                                : 'bg-surface border border-divider text-ink rounded-bl-xs'
-                            }`}
-                          >
-                            {!isMe && m.sender_name && (
-                              <div 
-                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
-                                className="text-[10px] font-black text-brand mb-0.5 cursor-pointer hover:underline"
-                                title={`View ${m.sender_name}'s public profile`}
-                              >
-                                {m.sender_name}
-                              </div>
-                            )}
-
-                            {editingMessageId === m.id ? (
-                              <div className="space-y-2 min-w-[200px]">
-                                <input
-                                  type="text"
-                                  value={editingText}
-                                  onChange={(e) => setEditingText(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleSaveEdit(m.id);
-                                    }
-                                    if (e.key === 'Escape') {
-                                      handleCancelEdit();
-                                    }
-                                  }}
-                                  autoFocus
-                                  className="w-full bg-white/15 dark:bg-black/30 border border-white/40 text-white rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white font-medium"
-                                />
-                                <div className="flex items-center justify-end gap-1.5 text-[10px]">
-                                  <button
-                                    type="button"
-                                    onClick={handleCancelEdit}
-                                    className="px-2 py-0.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer font-bold"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveEdit(m.id)}
-                                    disabled={!editingText.trim() || isSavingEdit}
-                                    className="px-2.5 py-0.5 rounded-full bg-white text-brand shadow-xs hover:bg-white/90 transition-all cursor-pointer font-extrabold disabled:opacity-50"
-                                  >
-                                    {isSavingEdit ? 'Saving...' : 'Save'}
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
+                            {isMe && editingMessageId !== m.id && (
                               <>
-                                <div className="break-words select-text">{m.content}</div>
-
-                                <div
-                                  className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
-                                    isMe ? 'text-white/75' : 'text-ink-secondary'
-                                  }`}
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(m)}
+                                  className="p-1 rounded-full hover:bg-canvas hover:text-ink transition-colors cursor-pointer"
+                                  title="Edit message"
                                 >
-                                  {m.is_edited && (
-                                    <span className="italic mr-0.5 opacity-80">(edited)</span>
-                                  )}
-                                  <span>{formattedTime}</span>
-                                  {isMe && renderMessageTicks(m, true)}
-                                </div>
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  className="p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors cursor-pointer"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
                               </>
                             )}
                           </div>
+
+                          {isSingleHeart ? (
+                            <div 
+                              onDoubleClick={() => handleToggleLike(m.id)}
+                              className="text-4xl sm:text-5xl py-1 px-2 select-none animate-in zoom-in-50 duration-200 cursor-pointer relative"
+                            >
+                              ❤️
+                              {isLiked && (
+                                <div className="absolute -bottom-1 -right-1 bg-surface border border-divider rounded-full px-1 shadow-xs text-[10px]">
+                                  ❤️
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              onDoubleClick={() => handleToggleLike(m.id)}
+                              className={`relative max-w-[80%] sm:max-w-[70%] rounded-[20px] px-4 py-2.5 text-xs font-medium leading-relaxed shadow-xs break-words whitespace-pre-wrap ${
+                                isMe
+                                  ? 'bg-brand text-white rounded-br-[4px]'
+                                  : 'bg-surface border border-divider text-ink rounded-bl-[4px]'
+                              }`}
+                            >
+                              {!isMe && m.sender_name && (
+                                <div 
+                                  onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                  className="text-[10px] font-black text-brand mb-0.5 cursor-pointer hover:underline"
+                                  title={`View ${m.sender_name}'s public profile`}
+                                >
+                                  {m.sender_name}
+                                </div>
+                              )}
+
+                              {editingMessageId === m.id ? (
+                                <div className="space-y-2 min-w-[200px]">
+                                  <input
+                                    type="text"
+                                    value={editingText}
+                                    onChange={(e) => setEditingText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveEdit(m.id);
+                                      }
+                                      if (e.key === 'Escape') {
+                                        handleCancelEdit();
+                                      }
+                                    }}
+                                    autoFocus
+                                    className="w-full bg-white/15 dark:bg-black/30 border border-white/40 text-white rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white font-medium"
+                                  />
+                                  <div className="flex items-center justify-end gap-1.5 text-[10px]">
+                                    <button
+                                      type="button"
+                                      onClick={handleCancelEdit}
+                                      className="px-2 py-0.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer font-bold"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveEdit(m.id)}
+                                      disabled={!editingText.trim() || isSavingEdit}
+                                      className="px-2.5 py-0.5 rounded-full bg-white text-brand shadow-xs hover:bg-white/90 transition-all cursor-pointer font-extrabold disabled:opacity-50"
+                                    >
+                                      {isSavingEdit ? 'Saving...' : 'Save'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="break-words select-text">{m.content}</div>
+
+                                  <div
+                                    className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
+                                      isMe ? 'text-white/75' : 'text-ink-secondary'
+                                    }`}
+                                  >
+                                    {m.is_edited && (
+                                      <span className="italic mr-0.5 opacity-80">(edited)</span>
+                                    )}
+                                    <span>{formattedTime}</span>
+                                    {isMe && renderMessageTicks(m, true)}
+                                  </div>
+                                </>
+                              )}
+
+                              {/* Instagram Floating Heart Reaction Badge */}
+                              {isLiked && (
+                                <div className="absolute -bottom-2 -right-1 bg-surface border border-divider rounded-full px-1.5 py-0.5 shadow-sm text-[10px] flex items-center justify-center animate-in zoom-in-75 duration-150">
+                                  ❤️
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -2045,95 +2151,54 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 )}
 
-                {/* Reply Input Bar with WhatsApp-style + Button */}
+                {/* Reply Input Bar (Instagram Style) */}
                 <form
                   onSubmit={handleSendMessage}
                   className="shrink-0 p-3 sm:p-4 border-t border-divider bg-surface flex items-center gap-2 sm:gap-3 relative"
                 >
-                  {/* WhatsApp-Style Attachment Menu + Button */}
-                  <div className="relative" ref={attachMenuRef}>
-                    {isAttachMenuOpen && (
-                      <div className="absolute bottom-14 left-0 mb-1 z-40 w-64 bg-surface/98 backdrop-blur-md border border-divider rounded-3xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 space-y-1">
-                        <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-ink-secondary border-b border-divider/60">
-                          Share Attachment
+                  {/* Instagram Pill Container */}
+                  <div className="flex-1 bg-canvas border border-divider rounded-full px-3 sm:px-4 py-2 flex items-center gap-2 relative focus-within:border-brand/60 focus-within:ring-1 focus-within:ring-brand/30 transition-all">
+                    {/* Emoji Smile Button */}
+                    <div className="relative" ref={emojiPickerRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)}
+                        className="p-1 rounded-full text-ink-muted hover:text-ink transition-colors cursor-pointer"
+                        title="Add emoji"
+                      >
+                        <Smile className="w-5 h-5" />
+                      </button>
+
+                      {/* Instagram Quick Emoji Picker Popover */}
+                      {isEmojiPickerOpen && (
+                        <div className="absolute bottom-12 left-0 z-50 bg-surface/98 backdrop-blur-md border border-divider rounded-2xl p-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 flex items-center gap-1.5 flex-wrap w-60">
+                          {['❤️', '🔥', '😂', '😍', '👏', '👍', '🙌', '🤝', '📍', '✨', '🙏', '🎉'].map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                setInputText((prev) => prev + emoji);
+                                setIsEmojiPickerOpen(false);
+                                inputRef.current?.focus();
+                              }}
+                              className="w-8 h-8 flex items-center justify-center text-base hover:scale-125 transition-transform rounded-lg hover:bg-canvas cursor-pointer"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
                         </div>
+                      )}
+                    </div>
 
-                        {/* 1. Photos & Videos */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAttachMenuOpen(false);
-                            fileInputRef.current?.click();
-                          }}
-                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                            <ImageIcon className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-ink">Photos & Videos</div>
-                            <div className="text-[10px] text-ink-secondary">Share gear photos or handoff proof</div>
-                          </div>
-                        </button>
-
-                        {/* 2. Share Location */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAttachMenuOpen(false);
-                            setIsLocationModalOpen(true);
-                          }}
-                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                            <MapPin className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-ink">Location</div>
-                            <div className="text-[10px] text-ink-secondary">Share meetup spot or saved address</div>
-                          </div>
-                        </button>
-
-                        {/* 3. Contact Card */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAttachMenuOpen(false);
-                            setContactName(user?.name || '');
-                            setContactPhone(user?.phone || '');
-                            setContactLocality(user?.locality || '');
-                            setIsContactModalOpen(true);
-                          }}
-                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                            <Phone className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-ink">Contact Card</div>
-                            <div className="text-[10px] text-ink-secondary">Share your phone number for meetup</div>
-                          </div>
-                        </button>
-
-                        {/* 4. Condition / Inspection Note */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAttachMenuOpen(false);
-                            setIsDocumentModalOpen(true);
-                          }}
-                          className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-3 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-9 h-9 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-ink">Condition Note</div>
-                            <div className="text-[10px] text-ink-secondary">Gear inspection & handover checklist</div>
-                          </div>
-                        </button>
-                      </div>
-                    )}
+                    {/* Main Text Input (Instagram style placeholder) */}
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Message..."
+                      className="flex-1 bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted"
+                    />
 
                     {/* Hidden file input for Photo Upload */}
                     <input
@@ -2144,42 +2209,102 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       className="hidden"
                     />
 
-                    {/* WhatsApp-style Plus Toggle Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full border transition-all flex items-center justify-center shrink-0 shadow-xs cursor-pointer ${
-                        isAttachMenuOpen
-                          ? 'bg-brand text-white border-brand rotate-45'
-                          : 'bg-canvas hover:bg-brand-soft border-divider hover:border-brand text-ink-secondary hover:text-brand'
-                      }`}
-                      title="Attach photo, location, contact, or condition note"
-                      aria-label="Attachment options"
-                    >
-                      <Plus className="w-5 h-5 transition-transform duration-200" />
-                    </button>
-                  </div>
+                    {/* Right Action Icons in Pill: When input is empty, show Gallery, Location, Plus, and Heart! */}
+                    {!inputText.trim() ? (
+                      <div className="flex items-center gap-1 sm:gap-1.5 text-ink-muted shrink-0">
+                        {/* Gallery / Image Upload */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
+                          title="Share photo"
+                        >
+                          <ImageIcon className="w-5 h-5" />
+                        </button>
 
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder={`Message ${activeConversation.partner_name || 'neighbor'}...`}
-                    className="flex-1 bg-canvas border border-divider rounded-full px-4 sm:px-5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/30 transition-all"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim() || isSending}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-brand text-white flex items-center justify-center shrink-0 shadow-pink transition-transform hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
-                    aria-label="Send Message"
-                  >
-                    {isSending ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        {/* Location Share */}
+                        <button
+                          type="button"
+                          onClick={() => setIsLocationModalOpen(true)}
+                          className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
+                          title="Share location"
+                        >
+                          <MapPin className="w-5 h-5" />
+                        </button>
+
+                        {/* Plus / Attachments (Contact & Condition notes) */}
+                        <div className="relative" ref={attachMenuRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
+                            className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
+                            title="More options"
+                          >
+                            <Plus className="w-5 h-5" />
+                          </button>
+
+                          {isAttachMenuOpen && (
+                            <div className="absolute bottom-12 right-0 mb-1 z-40 w-56 bg-surface/98 backdrop-blur-md border border-divider rounded-3xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAttachMenuOpen(false);
+                                  setContactName(user?.name || '');
+                                  setContactPhone(user?.phone || '');
+                                  setContactLocality(user?.locality || '');
+                                  setIsContactModalOpen(true);
+                                }}
+                                className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                  <Phone className="w-4 h-4" />
+                                </div>
+                                <div className="text-xs font-bold text-ink">Contact Card</div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAttachMenuOpen(false);
+                                  setIsDocumentModalOpen(true);
+                                }}
+                                className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                  <FileText className="w-4 h-4" />
+                                </div>
+                                <div className="text-xs font-bold text-ink">Condition Note</div>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Instagram Signature Quick Heart Button (Sends ❤️ on tap!) */}
+                        <button
+                          type="button"
+                          onClick={handleSendHeart}
+                          disabled={isSending}
+                          className="p-1 rounded-full text-red-500 hover:scale-125 transition-transform cursor-pointer"
+                          title="Send a heart"
+                        >
+                          <Heart className="w-5 h-5 fill-red-500 stroke-red-500" />
+                        </button>
+                      </div>
                     ) : (
-                      <Send className="w-4 h-4 ml-0.5" />
+                      /* When user types, show bold brand "Send" text button (Exact Instagram style!) */
+                      <button
+                        type="submit"
+                        disabled={isSending}
+                        className="text-brand hover:opacity-80 text-xs sm:text-sm font-bold px-2 py-1 transition-opacity cursor-pointer disabled:opacity-50"
+                      >
+                        {isSending ? (
+                          <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          'Send'
+                        )}
+                      </button>
                     )}
-                  </button>
+                  </div>
                 </form>
               </>
             ) : (
@@ -2214,6 +2339,130 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         onSubmitProposal={handleProposalSubmit}
         initialType={proposalType}
       />
+
+      {/* Instagram Modal: Conversation Details (Where Delete Chat & Profile Live!) */}
+      {isDetailsOpen && activeConversation && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-sm sm:max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
+              <h3 className="text-sm font-extrabold text-ink font-display">Details</h3>
+              <button
+                type="button"
+                onClick={() => setIsDetailsOpen(false)}
+                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Member Profile Hero */}
+              <div className="flex flex-col items-center justify-center text-center space-y-2 p-4 bg-canvas rounded-2xl border border-divider">
+                <img
+                  src={
+                    activeConversation.partner_avatar ||
+                    (activeConversation.partner_name
+                      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(activeConversation.partner_name)}&background=0F172A&color=fff&bold=true`
+                      : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                  }
+                  alt={activeConversation.partner_name || 'Member'}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-divider shadow-sm"
+                />
+                <div>
+                  <h4 className="text-sm font-bold text-ink">
+                    {activeConversation.partner_name || 'Neighbor'}
+                  </h4>
+                  <p className="text-xs text-ink-secondary">
+                    {activeConversation.partner_username ? `@${activeConversation.partner_username}` : 'RentU Member'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    const target = activeConversation.partner_username || activeConversation.partner_id;
+                    if (target) onOpenUserProfile?.(target);
+                  }}
+                  className="px-4 py-1.5 rounded-full bg-surface hover:bg-surface/80 border border-divider text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs"
+                >
+                  View Profile
+                </button>
+              </div>
+
+              {/* Chat Controls / Actions */}
+              <div className="space-y-2">
+                <div className="text-[10px] font-black uppercase tracking-wider text-ink-secondary">
+                  Chat Settings
+                </div>
+
+                {/* Mute Messages */}
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-canvas border border-divider">
+                  <div className="flex items-center gap-2.5">
+                    {isChatMuted ? (
+                      <BellOff className="w-4 h-4 text-ink-secondary" />
+                    ) : (
+                      <Bell className="w-4 h-4 text-ink-secondary" />
+                    )}
+                    <span className="text-xs font-semibold text-ink">Mute messages</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsChatMuted(!isChatMuted)}
+                    className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                      isChatMuted ? 'bg-brand' : 'bg-canvas-darker border border-divider'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                        isChatMuted ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Create Custom Proposal */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    setIsCreateProposalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-canvas hover:bg-surface border border-divider text-left transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Package className="w-4 h-4 text-brand" />
+                    <span className="text-xs font-semibold text-ink group-hover:text-brand transition-colors">
+                      Create Custom Deal / Proposal
+                    </span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </div>
+
+              {/* Privacy & Danger Zone (WHERE DELETE CHAT LIVES IN INSTAGRAM!) */}
+              <div className="pt-2 border-t border-divider space-y-2">
+                <div className="text-[10px] font-black uppercase tracking-wider text-red-500">
+                  Danger Zone
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    if (selectedConvId) {
+                      handleDeleteConversation(selectedConvId, activeConversation?.partner_name);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 p-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 text-xs font-extrabold transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Chat</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WhatsApp Modal 1: Location Share Modal */}
       {isLocationModalOpen && (
