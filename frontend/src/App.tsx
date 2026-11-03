@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { CategoryTiles } from './components/CategoryTiles';
@@ -100,6 +100,41 @@ export const App: React.FC = () => {
 
   // Public User Profile Viewing State
   const [viewingUserId, setViewingUserId] = useState<string | null>(getUserIdFromUrl);
+
+  // Unread Messages Badge Count (Instagram-style)
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
+
+  const fetchUnreadMessagesCount = useCallback(async () => {
+    if (!isAuthenticated) {
+      setUnreadMessagesCount(0);
+      return;
+    }
+    try {
+      const res = await api.getUnreadMessagesCount();
+      if (res && typeof res.unread_count === 'number') {
+        setUnreadMessagesCount(res.unread_count);
+      }
+    } catch {
+      // ignore
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUnreadMessagesCount(0);
+      return;
+    }
+    fetchUnreadMessagesCount();
+    const interval = setInterval(fetchUnreadMessagesCount, 10000);
+    const handleUpdate = () => fetchUnreadMessagesCount();
+    window.addEventListener('rentu:messages-updated', handleUpdate);
+    window.addEventListener('rentu:notifications-updated', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('rentu:messages-updated', handleUpdate);
+      window.removeEventListener('rentu:notifications-updated', handleUpdate);
+    };
+  }, [isAuthenticated, fetchUnreadMessagesCount]);
 
   const setActiveTab = (tab: TabType) => {
     // Non-admin users cannot access 'hustle' (admin dashboard)
@@ -342,6 +377,7 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onNavigateNotification={handleNavigateNotification}
         onOpenChatWithUser={handleOpenChatWithUser}
+        unreadMessagesCount={unreadMessagesCount}
       />
 
       {/* Main View Router */}
@@ -567,6 +603,7 @@ export const App: React.FC = () => {
         onOpenDropWish={() => setIsDropWishOpen(true)}
         onOpenChat={() => setActiveTab('messages')}
         onOpenAuth={() => setIsAuthOpen(true)}
+        unreadMessagesCount={unreadMessagesCount}
       />
 
       {/* Help & Community Support Modal */}

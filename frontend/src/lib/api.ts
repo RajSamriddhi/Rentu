@@ -469,6 +469,13 @@ export const api = {
   },
 
   // Messages & Coordination
+  async getUnreadMessagesCount(): Promise<{ unread_count: number }> {
+    const res = await fetch(`${API_BASE}/messages/unread-count`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async getConversations(): Promise<Conversation[]> {
     const res = await fetch(`${API_BASE}/messages/conversations`, {
       headers: getHeaders(),
@@ -646,7 +653,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getNotifications(): Promise<{ notifications: AppNotification[]; unread_count: number } | AppNotification[]> {
+  async getNotifications(): Promise<{ notifications: AppNotification[]; unread_count: number; unread_messages_count?: number } | AppNotification[]> {
     const res = await fetch(`${API_BASE}/notifications`, {
       headers: getHeaders(),
     });

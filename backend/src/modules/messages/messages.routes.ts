@@ -170,6 +170,47 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
   }
 });
 
+// 1.1 Get Total Unread Messages Count
+router.get('/unread-count', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const userId = req.user!.id;
+    const result = await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      ),
+      my_ids AS (
+        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      )
+      SELECT COUNT(*)::int AS unread_count
+      FROM messages m
+      WHERE (m.is_read = false OR m.is_read IS NULL)
+        AND (m.message_type IS NULL OR m.message_type != 'SYSTEM')
+        AND m.sender_id NOT IN (SELECT id_text FROM my_ids)
+        AND (
+          m.receiver_id IN (SELECT id_text FROM my_ids)
+          OR (
+            m.booking_id IS NOT NULL AND EXISTS (
+              SELECT 1 FROM bookings b
+              WHERE b.id = m.booking_id
+                AND ((b.borrower_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.borrower_id)
+                  OR (b.lender_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.lender_id))
+            )
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks ub
+          WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = m.sender_id))
+             OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = m.sender_id))
+        )`,
+      [userId]
+    );
+
+    return sendSuccess(res, { unread_count: result.rows[0]?.unread_count || 0 });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 2. Get Messages for a User (Unified Thread between Me and Partner)
 router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {

@@ -22,6 +22,7 @@ interface MobileBottomNavProps {
   onOpenChat: () => void;
   onOpenAuth: () => void;
   onOpenHowItWorks?: () => void;
+  unreadMessagesCount?: number;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -32,6 +33,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenChat,
   onOpenAuth,
   onOpenHowItWorks,
+  unreadMessagesCount,
 }) => {
   const { user, isAuthenticated } = useAuth();
   const [showPostSheet, setShowPostSheet] = useState(false);
@@ -142,7 +144,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 activeTab === 'messages' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
               }`}
             >
-              <MessageSquare className="w-5 h-5" />
+              <div className="relative">
+                <MessageSquare className="w-5 h-5" />
+                {Boolean(unreadMessagesCount && unreadMessagesCount > 0) && (
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-3.5 px-1 rounded-full bg-brand text-[9px] font-black text-white flex items-center justify-center leading-none shadow-sm animate-in zoom-in-75 duration-200">
+                    {(unreadMessagesCount ?? 0) > 9 ? '9+' : unreadMessagesCount}
+                  </span>
+                )}
+              </div>
               <span>Chat</span>
             </button>
 

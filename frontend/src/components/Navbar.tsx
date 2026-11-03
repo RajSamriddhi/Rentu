@@ -54,6 +54,7 @@ interface NavbarProps {
     userId?: string;
   }) => void;
   onOpenChatWithUser?: (partnerId: string, partnerName?: string, partnerAvatar?: string) => void;
+  unreadMessagesCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -72,6 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSettings,
   onNavigateNotification,
   onOpenChatWithUser,
+  unreadMessagesCount: propUnreadMessagesCount,
 }) => {
   const { user, firebaseUser, isAuthenticated, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -89,18 +91,34 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  // Live Notifications State
+  // Live Notifications & Unread Messages State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(10);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [latestToast, setLatestToast] = useState<AppNotification | null>(null);
 
+  // Unread messages count (falls back to local state if not passed from parent)
+  const [localUnreadMessages, setLocalUnreadMessages] = useState<number>(0);
+  const unreadMessagesCount = propUnreadMessagesCount !== undefined ? propUnreadMessagesCount : localUnreadMessages;
+
   const postMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const mobileSearchBoxRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const fetchUnreadMessages = async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await api.getUnreadMessagesCount();
+      if (res && typeof res.unread_count === 'number') {
+        setLocalUnreadMessages(res.unread_count);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const fetchNotifications = async () => {
     if (!isAuthenticated) return;
@@ -109,6 +127,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       const list: AppNotification[] = Array.isArray(data)
         ? data
         : (data?.notifications || []);
+
+      if (data && typeof data.unread_messages_count === 'number') {
+        setLocalUnreadMessages(data.unread_messages_count);
+      }
 
       setNotifications((prev) => {
         if (prev.length > 0 && list.length > 0) {
@@ -131,18 +153,27 @@ export const Navbar: React.FC<NavbarProps> = ({
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications();
-      const interval = setInterval(fetchNotifications, 12000);
+      fetchUnreadMessages();
+      const interval = setInterval(() => {
+        fetchNotifications();
+        fetchUnreadMessages();
+      }, 10000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
-  // Listen for real-time notification update events triggered anywhere in app
+  // Listen for real-time notification and message update events triggered anywhere in app
   useEffect(() => {
     const handleUpdate = () => {
       fetchNotifications();
+      fetchUnreadMessages();
     };
     window.addEventListener('rentu:notifications-updated', handleUpdate);
-    return () => window.removeEventListener('rentu:notifications-updated', handleUpdate);
+    window.addEventListener('rentu:messages-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('rentu:notifications-updated', handleUpdate);
+      window.removeEventListener('rentu:messages-updated', handleUpdate);
+    };
   }, [isAuthenticated]);
 
   // Debounced user search
@@ -828,7 +859,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Messages Icon (Hidden on small screens, accessible via hamburger) */}
                 <button
                   onClick={onOpenChat}
-                  className={`p-2 rounded-full transition-colors cursor-pointer hidden md:flex ${
+                  className={`relative p-2 rounded-full transition-colors cursor-pointer hidden md:flex ${
                     activeTab === 'messages'
                       ? 'bg-brand/10 text-brand ring-1 ring-brand/30'
                       : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink'
@@ -836,6 +867,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="Messages & Coordination"
                 >
                   <MessageSquare className="w-4 h-4" />
+                  {unreadMessagesCount > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-brand text-[10px] font-black text-white flex items-center justify-center leading-none shadow-sm animate-in zoom-in-75 duration-200">
+                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                    </span>
+                  )}
                 </button>
 
                 {/* Post Menu Button (+ List Item / + Post Request) */}
@@ -1141,12 +1177,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 <button
                   onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                     activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
                   }`}
                 >
-                  <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
-                  <span>Messages & Coordination</span>
+                  <div className="flex items-center gap-3">
+                    <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
+                    <span>Messages & Coordination</span>
+                  </div>
+                  {unreadMessagesCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
+                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount} new
+                    </span>
+                  )}
                 </button>
 
                 <button

@@ -346,6 +346,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       } else {
         setMessages([]);
       }
+
+      // Mark conversation read on server and update unread count badges everywhere
+      api.markConversationRead(convId).catch(() => {});
+      setConversations((prev) =>
+        prev.map((c) =>
+          isConvMatch(c, convId) || (data?.partner?.id && (c.partner_id === data.partner.id || c.conversation_id === `dm_${data.partner.id}`))
+            ? { ...c, unread_count: 0 }
+            : c
+        )
+      );
+      window.dispatchEvent(new CustomEvent('rentu:messages-updated'));
+      window.dispatchEvent(new CustomEvent('rentu:notifications-updated'));
     } catch (err) {
       console.error('Failed to load messages:', err);
       setMessages([]);
@@ -1097,7 +1109,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             {chat.last_message || 'Sent a message'}
                           </p>
                           {Boolean(chat.unread_count && chat.unread_count > 0) && (
-                            <span className="w-2.5 h-2.5 rounded-full bg-brand shrink-0 shadow-sm" />
+                            <span className="min-w-[18px] h-4.5 px-1.5 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm animate-in zoom-in-75 duration-150">
+                              {(chat.unread_count ?? 0) > 9 ? '9+' : chat.unread_count}
+                            </span>
                           )}
                         </div>
                       </div>
