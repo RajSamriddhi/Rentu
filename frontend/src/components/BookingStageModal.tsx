@@ -245,9 +245,9 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
   // Stage 2: Pickup Handover Verification
   const handleVerifyPickup = async (overrideCode?: string) => {
-    const code = overrideCode || pickupCodeInput.trim() || booking.pickup_code;
+    const code = (overrideCode || pickupCodeInput).trim();
     if (!code) {
-      setErrorMessage('Please enter the 6-digit pickup handover code.');
+      setErrorMessage('Please enter the 6-digit pickup handover code received from the renter.');
       return;
     }
 
@@ -272,9 +272,9 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
   // Stage 4: Return Handover Verification
   const handleVerifyReturn = async (overrideCode?: string) => {
-    const code = overrideCode || returnCodeInput.trim() || booking.return_code;
+    const code = (overrideCode || returnCodeInput).trim();
     if (!code) {
-      setErrorMessage('Please enter the 6-digit return handover code.');
+      setErrorMessage('Please enter the 6-digit return handover code received from the renter.');
       return;
     }
 
@@ -698,7 +698,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         maxLength={6}
                         value={pickupCodeInput}
                         onChange={(e) => setPickupCodeInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder={booking.pickup_code || '6-digit code'}
+                        placeholder="Enter 6-digit code"
                         className="bg-surface border border-divider rounded-xl px-4 py-2.5 text-center font-mono text-lg font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
                       />
                       <button
@@ -981,7 +981,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         maxLength={6}
                         value={returnCodeInput}
                         onChange={(e) => setReturnCodeInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder={booking.return_code || '6-digit return code'}
+                        placeholder="Enter 6-digit code"
                         className="bg-surface border border-divider rounded-xl px-4 py-2.5 text-center font-mono text-lg font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
                       />
                       <button
