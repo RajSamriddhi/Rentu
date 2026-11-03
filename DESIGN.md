@@ -1,7 +1,7 @@
 # 🎨 DESIGN.md: Design System, UI Components & Screen Specifications
 
 **Brand Archetype:** Gen Z Neo-Pop / Pastel Brutalism (Rentu⁺)  
-**Core Motto:** *"Borrow. Rent. Lend. Everything."*  
+**Core Motto:** *"Rent. Lend. Borrow. Everything."*  
 **Secondary Tagline:** *"Same stuff. More people. Happier planet. Good things circulate."*  
 **Design Philosophy:** Vibrant, playful, approachable, social, and ultra-crisp. Merges modern rounded card geometry with pastel category accents, hot-pink interactive highlights, and high-contrast dark/light mode balance.
 
@@ -62,7 +62,7 @@ Each category features a distinctive pastel background paired with a dark icon f
 
 | Level | Size (Desktop) | Weight | Tracking | Semantic Usage |
 | :--- | :--- | :--- | :--- | :--- |
-| **Hero Title** | 48px–56px | Black (900) | `-0.03em` | *"Borrow. Rent. Lend. Everything."* |
+| **Hero Title** | 48px–56px | Black (900) | `-0.03em` | *"Rent. Lend. Borrow. Everything."* |
 | **Section Header** | 24px–28px | Bold (800) | `-0.02em` | *"Featured near you"*, *"Wanted Board"* |
 | **Item Title** | 16px–18px | SemiBold (700) | `-0.01em` | *"Sony Alpha 7 IV"*, *"Pioneer DJ Mixer"* |
 | **Price Tag** | 16px–18px | ExtraBold (800)| `0em` | `₹300 / day` |

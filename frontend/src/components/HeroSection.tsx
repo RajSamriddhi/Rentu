@@ -25,7 +25,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
         {/* Main Headline */}
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight font-display leading-[1.1] max-w-3xl mx-auto">
-          Borrow. Rent. Lend.{' '}
+          Rent. Lend. Borrow.{' '}
           <span className="text-brand">Everything.</span>
         </h1>
 
