@@ -73,7 +73,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [selectedType, setSelectedType] = useState<'All' | 'Rent' | 'Borrow'>('All');
   const [selectedCondition, setSelectedCondition] = useState<string>('Any');
-  const [selectedAvailability, setSelectedAvailability] = useState<'all' | 'available' | 'delivery'>('all');
+  const [selectedPerks, setSelectedPerks] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'relevance' | 'distance' | 'price_low' | 'price_high'>('relevance');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
   const [showDesktopFilters, setShowDesktopFilters] = useState<boolean>(true);
@@ -84,7 +84,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     (maxPrice < 5000 ? 1 : 0) +
     (radiusKm !== null && radiusKm < 50 ? 1 : 0) +
     (selectedCondition !== 'Any' ? 1 : 0) +
-    (selectedAvailability !== 'all' ? 1 : 0) +
+    selectedPerks.length +
     (selectedCategory !== 'All' ? 1 : 0);
 
   const categories = [
@@ -126,10 +126,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       const itemCond = (item.condition || '').toLowerCase();
       if (!itemCond.includes(selectedCondition.toLowerCase())) return false;
     }
-    if (selectedAvailability === 'available' && item.status && item.status !== 'AVAILABLE') {
+    if (selectedPerks.includes('available') && item.status && item.status !== 'AVAILABLE') {
       return false;
     }
-    if (selectedAvailability === 'delivery' && !item.offers_delivery) {
+    if (selectedPerks.includes('delivery') && !item.offers_delivery) {
       return false;
     }
     if (radiusKm !== null && radiusKm > 0 && radiusKm < 50) {
@@ -161,7 +161,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     setRadiusKm(null);
     setSelectedType('All');
     setSelectedCondition('Any');
-    setSelectedAvailability('all');
+    setSelectedPerks([]);
     setSelectedCategory('All');
     setSortBy('relevance');
   };
@@ -326,16 +326,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </button>
                 )}
 
-                {selectedAvailability !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedAvailability('all')}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
-                  >
-                    <span>{selectedAvailability === 'available' ? 'Available Now' : 'Delivery Offered'}</span>
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
+                {selectedPerks.map((perkId) => {
+                  const perkLabel = perkId === 'available' ? 'Available Now' : 'Offers Delivery';
+                  return (
+                    <button
+                      key={perkId}
+                      type="button"
+                      onClick={() => setSelectedPerks((prev) => prev.filter((p) => p !== perkId))}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                    >
+                      <span>{perkLabel}</span>
+                      <X className="w-3 h-3" />
+                    </button>
+                  );
+                })}
 
                 {selectedCondition !== 'Any' && (
                   <button
@@ -541,30 +545,57 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </div>
                 </div>
 
-                {/* 4. Availability & Delivery Perks */}
+                {/* 4. Availability & Delivery Perks (Multi-Select) */}
                 <div className="pt-4 border-t border-divider space-y-2">
-                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
-                    Availability & Perks
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                      Availability & Perks
+                    </label>
+                    {selectedPerks.length > 0 && (
+                      <span className="text-[11px] font-bold text-brand">
+                        {selectedPerks.length} selected
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 gap-1.5">
+                    {/* All Items Option */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPerks([])}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left flex items-center justify-between border ${
+                        selectedPerks.length === 0
+                          ? 'bg-brand/10 border-brand text-brand shadow-xs'
+                          : 'bg-surface border-divider text-ink hover:border-zinc-400'
+                      }`}
+                    >
+                      <span>All Items</span>
+                      {selectedPerks.length === 0 && <Check className="w-3.5 h-3.5 text-brand" />}
+                    </button>
+
+                    {/* Multi-Select Perk Options */}
                     {[
-                      { label: 'All Items', value: 'all' },
-                      { label: 'Available Now', value: 'available' },
-                      { label: 'Offers Owner Delivery', value: 'delivery' },
-                    ].map((avail) => {
-                      const isSel = selectedAvailability === avail.value;
+                      { id: 'available', label: 'Available Now' },
+                      { id: 'delivery', label: 'Offers Owner Delivery' },
+                    ].map((perk) => {
+                      const isSel = selectedPerks.includes(perk.id);
                       return (
                         <button
-                          key={avail.value}
+                          key={perk.id}
                           type="button"
-                          onClick={() => setSelectedAvailability(avail.value as any)}
+                          onClick={() => {
+                            setSelectedPerks((prev) =>
+                              prev.includes(perk.id)
+                                ? prev.filter((p) => p !== perk.id)
+                                : [...prev, perk.id]
+                            );
+                          }}
                           className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left flex items-center justify-between border ${
                             isSel
-                              ? 'bg-brand/10 border-brand text-brand'
+                              ? 'bg-brand/10 border-brand text-brand shadow-xs font-black'
                               : 'bg-surface border-divider text-ink hover:border-zinc-400'
                           }`}
                         >
-                          <span>{avail.label}</span>
+                          <span>{perk.label}</span>
                           {isSel && <Check className="w-3.5 h-3.5 text-brand" />}
                         </button>
                       );
