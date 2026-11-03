@@ -15,7 +15,8 @@ import {
   Sparkles,
   ArrowRight,
   Package,
-  Target
+  Target,
+  X
 } from 'lucide-react';
 import { Item, CommunityRequest } from '../lib/types';
 import { ItemCard } from './ItemCard';
@@ -68,12 +69,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
 
   // Sidebar Filters State for Items
-  const [maxPrice, setMaxPrice] = useState<number>(2000);
-  const [radiusKm, setRadiusKm] = useState<number>(5);
-  const [selectedType, setSelectedType] = useState<'Rent' | 'Borrow' | 'Both'>('Both');
+  const [maxPrice, setMaxPrice] = useState<number>(5000);
+  const [radiusKm, setRadiusKm] = useState<number | null>(null);
+  const [selectedType, setSelectedType] = useState<'All' | 'Rent' | 'Borrow'>('All');
   const [selectedCondition, setSelectedCondition] = useState<string>('Any');
-  const [sortBy, setSortBy] = useState<'relevance' | 'price_low' | 'price_high'>('relevance');
+  const [selectedAvailability, setSelectedAvailability] = useState<'all' | 'available' | 'delivery'>('all');
+  const [sortBy, setSortBy] = useState<'relevance' | 'distance' | 'price_low' | 'price_high'>('relevance');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
+  const [showDesktopFilters, setShowDesktopFilters] = useState<boolean>(true);
+
+  // Active filter count
+  const activeFiltersCount = 
+    (selectedType !== 'All' ? 1 : 0) +
+    (maxPrice < 5000 ? 1 : 0) +
+    (radiusKm !== null ? 1 : 0) +
+    (selectedCondition !== 'Any' ? 1 : 0) +
+    (selectedAvailability !== 'all' ? 1 : 0) +
+    (selectedCategory !== 'All' ? 1 : 0);
 
   const categories = [
     'All',
@@ -106,18 +118,33 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   // Filter items based on sidebar state
   const filteredItems = (items || []).filter((item) => {
-    if (Number(item.price_per_day) > maxPrice) return false;
-    if (selectedType === 'Rent' && Number(item.price_per_day) <= 0) return false;
-    if (selectedType === 'Borrow' && Number(item.price_per_day) > 0) return false;
-    if (selectedCondition !== 'Any' && item.condition && item.condition !== selectedCondition) return false;
-    const distanceKm = getReachDistanceKm(item, user);
-    if (radiusKm && distanceKm > radiusKm) return false;
+    const price = Number(item.price_per_day);
+    if (maxPrice < 5000 && price > maxPrice) return false;
+    if (selectedType === 'Rent' && price <= 0) return false;
+    if (selectedType === 'Borrow' && price > 0) return false;
+    if (selectedCondition !== 'Any') {
+      const itemCond = (item.condition || '').toLowerCase();
+      if (!itemCond.includes(selectedCondition.toLowerCase())) return false;
+    }
+    if (selectedAvailability === 'available' && item.status && item.status !== 'AVAILABLE') {
+      return false;
+    }
+    if (selectedAvailability === 'delivery' && !item.offers_delivery) {
+      return false;
+    }
+    if (radiusKm !== null && radiusKm > 0) {
+      const distanceKm = getReachDistanceKm(item, user);
+      if (distanceKm > radiusKm) return false;
+    }
     return true;
   });
 
   const sortedItems = [...filteredItems].sort((a, b) => {
     if (sortBy === 'price_low') return Number(a.price_per_day) - Number(b.price_per_day);
     if (sortBy === 'price_high') return Number(b.price_per_day) - Number(a.price_per_day);
+    if (sortBy === 'distance') {
+      return getReachDistanceKm(a, user) - getReachDistanceKm(b, user);
+    }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
@@ -130,11 +157,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const myRequests = (requests || []).filter((r) => r.seeker_id === user?.id);
 
   const handleResetFilters = () => {
-    setMaxPrice(2000);
-    setRadiusKm(5);
-    setSelectedType('Both');
+    setMaxPrice(5000);
+    setRadiusKm(null);
+    setSelectedType('All');
     setSelectedCondition('Any');
+    setSelectedAvailability('all');
     setSelectedCategory('All');
+    setSortBy('relevance');
   };
 
   return (
@@ -206,165 +235,371 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {/* ========================================================================= */}
       {activeView === 'items' && (
         <div className="animate-in fade-in duration-200">
-          {/* Mobile Filter Toggle Button */}
-          <div className="lg:hidden mt-2 mb-4">
-            <button
-              onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className="w-full flex items-center justify-between bg-surface border border-divider rounded-2xl px-4 py-2.5 text-xs font-bold text-ink cursor-pointer hover:bg-canvas transition-colors shadow-xs"
-            >
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-brand" />
-                <span>Filters & Distance</span>
-              </span>
-              <span className="text-xs font-extrabold text-brand bg-brand-soft px-2 py-0.5 rounded-full">
-                {showMobileFilters ? 'Hide' : 'Show Filters'}
-              </span>
-            </button>
+          
+          {/* Top Control Bar: Filter Toggle + Active Tags + Sort */}
+          <div className="flex flex-col gap-3 pt-2 pb-4 border-b border-divider mb-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {/* Toggle Filter Sidebar Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDesktopFilters(!showDesktopFilters);
+                    setShowMobileFilters(!showMobileFilters);
+                  }}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    activeFiltersCount > 0
+                      ? 'bg-brand-soft border-brand/30 text-brand shadow-xs'
+                      : 'bg-surface border-divider text-ink hover:border-zinc-400'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{showDesktopFilters ? 'Hide Filters' : 'Show Filters'}</span>
+                  <span className="sm:hidden">Filters</span>
+                  {activeFiltersCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center">
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Items Counter */}
+                <span className="text-xs text-ink-secondary font-medium">
+                  Showing <strong className="text-ink font-bold">{sortedItems.length}</strong> {sortedItems.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+
+              {/* Sort by dropdown */}
+              <div className="flex items-center gap-2 text-xs text-ink-secondary">
+                <span className="hidden sm:inline">Sort by:</span>
+                <div className="relative">
+                  <select
+                    value={sortBy}
+                    onChange={(e: any) => setSortBy(e.target.value)}
+                    className="bg-surface border border-divider hover:border-zinc-400 rounded-xl px-3 py-1.5 pr-7 text-xs font-bold text-ink outline-none cursor-pointer appearance-none transition-colors"
+                  >
+                    <option value="relevance">Relevance</option>
+                    <option value="distance">Nearest First</option>
+                    <option value="price_low">Price: Low to High</option>
+                    <option value="price_high">Price: High to Low</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-ink-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Active Filter Pills Row (Instant clear on single click) */}
+            {activeFiltersCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 animate-in fade-in duration-150">
+                <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider">Active:</span>
+
+                {selectedType !== 'All' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedType('All')}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                  >
+                    <span>{selectedType === 'Rent' ? 'Rent Only' : 'Free Borrow Only'}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                {maxPrice < 5000 && (
+                  <button
+                    type="button"
+                    onClick={() => setMaxPrice(5000)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                  >
+                    <span>Up to ₹{maxPrice}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                {radiusKm !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setRadiusKm(null)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                  >
+                    <span>Within {radiusKm} km</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                {selectedAvailability !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAvailability('all')}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                  >
+                    <span>{selectedAvailability === 'available' ? 'Available Now' : 'Delivery Offered'}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                {selectedCondition !== 'Any' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCondition('Any')}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-brand-soft text-brand border border-brand/20 hover:bg-brand/20 transition-all cursor-pointer"
+                  >
+                    <span>{selectedCondition}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                {selectedCategory !== 'All' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('All')}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-surface text-ink border border-divider hover:border-ink transition-all cursor-pointer"
+                  >
+                    <span>{selectedCategory}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-xs font-bold text-brand hover:underline cursor-pointer ml-1 inline-flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Clear All</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 2-Column Main Layout: Left Sidebar Filters + Right Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-2">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* Left Filter Sidebar */}
-            <aside className={`lg:col-span-3 space-y-6 ${showMobileFilters ? 'block' : 'hidden lg:block'}`}>
-              <div className="bg-surface border border-divider rounded-2xl p-5 shadow-xs space-y-5">
+            <aside
+              className={`space-y-5 ${
+                showDesktopFilters ? 'lg:col-span-3' : 'hidden'
+              } ${showMobileFilters ? 'block' : 'hidden lg:block'}`}
+            >
+              <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 shadow-xs space-y-5">
                 
-                {/* Distance Radius */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-ink">Distance Radius</label>
-                  
-                  <div className="relative">
-                    <select
-                      value={radiusKm}
-                      onChange={(e) => setRadiusKm(Number(e.target.value))}
-                      className="w-full appearance-none bg-surface border border-divider hover:border-zinc-300 dark:hover:border-zinc-600 rounded-xl px-3 py-2 text-xs font-bold text-ink outline-none cursor-pointer transition-colors"
+                {/* Filter Sidebar Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-divider">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-brand" />
+                    <span className="font-extrabold text-xs uppercase tracking-wider text-ink font-display">Filters</span>
+                    {activeFiltersCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-brand text-white">
+                        {activeFiltersCount}
+                      </span>
+                    )}
+                  </div>
+                  {activeFiltersCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="text-xs font-bold text-brand hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      <option value={2}>Within 2 km</option>
-                      <option value={5}>Within 5 km</option>
-                      <option value={10}>Within 10 km</option>
-                      <option value={15}>Within 15 km</option>
-                      <option value={25}>Within 25 km</option>
-                    </select>
-                    <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 1. Listing Type (Segmented Pills) */}
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                    Listing Type
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 p-1 bg-surface-muted dark:bg-zinc-900 rounded-xl border border-divider">
+                    {[
+                      { label: 'All', value: 'All' },
+                      { label: 'Rent (₹)', value: 'Rent' },
+                      { label: 'Free (₹0)', value: 'Borrow' },
+                    ].map((tab) => {
+                      const isSel = selectedType === tab.value;
+                      return (
+                        <button
+                          key={tab.value}
+                          type="button"
+                          onClick={() => setSelectedType(tab.value as any)}
+                          className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                            isSel
+                              ? 'bg-surface text-brand shadow-xs border border-brand/20 font-black'
+                              : 'text-ink-secondary hover:text-ink'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Price per day */}
-                <div className="pt-4 border-t border-divider">
-                  <div className="flex items-center justify-between text-xs font-bold text-ink mb-2">
-                    <span>Price per day</span>
-                    <span className="text-brand font-semibold">₹0 – ₹{maxPrice}</span>
+                {/* 2. Distance Radius (Selectable Pills) */}
+                <div className="pt-4 border-t border-divider space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                      Distance Radius
+                    </label>
+                    <span className="text-xs font-bold text-brand">
+                      {radiusKm === null ? 'Any Distance' : `Within ${radiusKm} km`}
+                    </span>
                   </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: 'Any Distance', value: null },
+                      { label: 'Within 5 km', value: 5 },
+                      { label: 'Within 10 km', value: 10 },
+                      { label: 'Within 25 km', value: 25 },
+                    ].map((opt) => {
+                      const isSel = radiusKm === opt.value;
+                      return (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => setRadiusKm(opt.value)}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center border ${
+                            isSel
+                              ? 'bg-brand text-white border-brand shadow-xs'
+                              : 'bg-surface border-divider text-ink hover:border-zinc-400 dark:hover:border-zinc-600'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Price per day (Quick presets + Slider) */}
+                <div className="pt-4 border-t border-divider space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-ink">
+                    <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider">Price per day</span>
+                    <span className="text-brand font-black">
+                      {maxPrice >= 5000 ? 'Any Price (₹0–5k+)' : `₹0 – ₹${maxPrice}`}
+                    </span>
+                  </div>
+
+                  {/* Preset Buttons */}
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { label: 'Any', val: 5000 },
+                      { label: '< ₹200', val: 200 },
+                      { label: '₹500', val: 500 },
+                      { label: '₹1.5k', val: 1500 },
+                    ].map((preset) => {
+                      const isSel = maxPrice === preset.val;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setMaxPrice(preset.val)}
+                          className={`py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center border ${
+                            isSel
+                              ? 'bg-brand text-white border-brand shadow-xs'
+                              : 'bg-surface border-divider text-ink hover:border-zinc-400'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <input
                     type="range"
-                    min="50"
-                    max="2000"
+                    min="0"
+                    max="5000"
                     step="50"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(Number(e.target.value))}
-                    className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#E11D74]"
+                    className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-[#E11D74]"
                   />
-                  <div className="flex items-center justify-between text-[11px] text-ink-secondary mt-1 font-medium">
-                    <span>₹0</span>
-                    <span>₹2000</span>
+                  <div className="flex items-center justify-between text-[10px] text-ink-secondary font-semibold">
+                    <span>₹0 (Free)</span>
+                    <span>₹2,500</span>
+                    <span>₹5,000+</span>
                   </div>
                 </div>
 
-                {/* Availability */}
+                {/* 4. Availability & Delivery Perks */}
                 <div className="pt-4 border-t border-divider space-y-2">
-                  <label className="block text-xs font-bold text-ink mb-2">Availability</label>
-                  {[
-                    { label: 'Available now', value: 'now' },
-                    { label: 'This weekend', value: 'weekend' },
-                    { label: 'Custom dates', value: 'custom' },
-                  ].map((avail, idx) => (
-                    <label key={avail.value} className="flex items-center gap-2.5 text-xs font-medium text-ink cursor-pointer group">
-                      <input
-                        type="radio"
-                        name="availabilityOption"
-                        defaultChecked={idx === 0}
-                        className="w-3.5 h-3.5 text-brand accent-brand cursor-pointer"
-                      />
-                      <span className="group-hover:text-brand transition-colors">{avail.label}</span>
-                    </label>
-                  ))}
+                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                    Availability & Perks
+                  </label>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {[
+                      { label: 'All Items', value: 'all' },
+                      { label: 'Available Now', value: 'available' },
+                      { label: 'Offers Owner Delivery', value: 'delivery' },
+                    ].map((avail) => {
+                      const isSel = selectedAvailability === avail.value;
+                      return (
+                        <button
+                          key={avail.value}
+                          type="button"
+                          onClick={() => setSelectedAvailability(avail.value as any)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-left flex items-center justify-between border ${
+                            isSel
+                              ? 'bg-brand/10 border-brand text-brand'
+                              : 'bg-surface border-divider text-ink hover:border-zinc-400'
+                          }`}
+                        >
+                          <span>{avail.label}</span>
+                          {isSel && <Check className="w-3.5 h-3.5 text-brand" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Type */}
+                {/* 5. Item Condition */}
                 <div className="pt-4 border-t border-divider space-y-2">
-                  <label className="block text-xs font-bold text-ink mb-2">Type</label>
-                  {(['Rent', 'Borrow (Free)', 'Both'] as const).map((type) => {
-                    const isSelected = selectedType === (type.startsWith('Rent') ? 'Rent' : type.startsWith('Borrow') ? 'Borrow' : 'Both');
-                    return (
-                      <label key={type} className="flex items-center gap-2.5 text-xs font-medium text-ink cursor-pointer group">
-                        <input
-                          type="radio"
-                          name="listingType"
-                          checked={isSelected}
-                          onChange={() => setSelectedType(type.startsWith('Rent') ? 'Rent' : type.startsWith('Borrow') ? 'Borrow' : 'Both')}
-                          className="w-3.5 h-3.5 text-brand accent-brand cursor-pointer"
-                        />
-                        <span className="group-hover:text-brand transition-colors">{type}</span>
-                      </label>
-                    );
-                  })}
+                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                    Condition
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {['Any', 'Like new', 'Good', 'Fair'].map((cond) => {
+                      const isSel = selectedCondition === cond;
+                      return (
+                        <button
+                          key={cond}
+                          type="button"
+                          onClick={() => setSelectedCondition(cond)}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center border ${
+                            isSel
+                              ? 'bg-brand text-white border-brand shadow-xs'
+                              : 'bg-surface border-divider text-ink hover:border-zinc-400 dark:hover:border-zinc-600'
+                          }`}
+                        >
+                          {cond}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Condition */}
-                <div className="pt-4 border-t border-divider space-y-2">
-                  <label className="block text-xs font-bold text-ink mb-2">Condition</label>
-                  {['Any', 'Like new', 'Good', 'Fair'].map((cond) => (
-                    <label key={cond} className="flex items-center gap-2.5 text-xs font-medium text-ink cursor-pointer group">
-                      <input
-                        type="radio"
-                        name="itemCondition"
-                        checked={selectedCondition === cond}
-                        onChange={() => setSelectedCondition(cond)}
-                        className="w-3.5 h-3.5 text-brand accent-brand cursor-pointer"
-                      />
-                      <span className="group-hover:text-brand transition-colors">{cond}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Reset Filters Link */}
-                <div className="pt-4 border-t border-divider text-left">
-                  <button
-                    onClick={handleResetFilters}
-                    className="text-xs font-bold text-brand hover:underline cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset filters</span>
-                  </button>
-                </div>
+                {/* Reset Filters CTA */}
+                {activeFiltersCount > 0 && (
+                  <div className="pt-3 border-t border-divider">
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="w-full py-2 rounded-xl text-xs font-bold bg-surface border border-divider text-brand hover:bg-brand-soft hover:border-brand/30 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset All Filters</span>
+                    </button>
+                  </div>
+                )}
 
               </div>
             </aside>
 
             {/* Right Main Grid */}
-            <main className="lg:col-span-9">
+            <main className={`${showDesktopFilters ? 'lg:col-span-9' : 'lg:col-span-12'} transition-all`}>
               
-              {/* Sort bar */}
-              <div className="flex items-center justify-between pb-4 text-xs font-medium text-ink-secondary">
-                <span>
-                  Showing <span className="font-bold text-ink">{sortedItems.length}</span> items
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <span>Sort by:</span>
-                  <select
-                    value={sortBy}
-                    onChange={(e: any) => setSortBy(e.target.value)}
-                    className="bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs font-bold text-ink outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600"
-                  >
-                    <option value="relevance">Relevance</option>
-                    <option value="price_low">Price: Low to High</option>
-                    <option value="price_high">Price: High to Low</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Items Grid (4 columns) */}
+              {/* Items Grid */}
               {isLoading ? (
                 <div className="py-24 text-center">
                   <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
