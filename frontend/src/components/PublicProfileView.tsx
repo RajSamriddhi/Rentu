@@ -559,7 +559,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {profile.items.map((item) => (
                   <ItemCard
                     key={item.id}
@@ -595,7 +595,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {profile.requests.map((req) => (
                   <RequestCard
                     key={req.id}

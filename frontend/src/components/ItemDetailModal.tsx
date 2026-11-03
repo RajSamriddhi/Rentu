@@ -342,7 +342,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       <div className="relative bg-surface border border-divider rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden my-4 text-ink">
         
         {/* Top Header / Breadcrumb bar matching Screen 3 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-surface">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-divider bg-surface">
           <nav className="flex items-center gap-1.5 text-xs text-ink-secondary truncate">
             <span>Explore</span>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
@@ -391,7 +391,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         </div>
 
         {/* Modal Body: Left gallery + details, Right booking card */}
-        <div className="p-6 sm:p-8 max-h-[85vh] overflow-y-auto">
+        <div className="p-3.5 sm:p-6 lg:p-8 max-h-[88dvh] sm:max-h-[85vh] overflow-y-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             
             {/* Left 7 Columns: Gallery + Item Details */}
@@ -702,7 +702,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <Calendar className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs font-black text-ink flex items-center gap-1.5 truncate">
+                          <div className="text-xs font-black text-ink flex flex-wrap items-center gap-1.5">
                             <span>{startDate}</span>
                             <span className="text-brand font-bold text-[11px]">{formatTime12(startTime)}</span>
                             <span className="text-ink-secondary font-normal">→</span>

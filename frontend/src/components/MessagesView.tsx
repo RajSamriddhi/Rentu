@@ -1032,13 +1032,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6 h-[calc(100vh-4.5rem)] flex flex-col min-h-0">
+    <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-2 sm:py-6 h-[calc(100dvh-8rem)] sm:h-[calc(100dvh-8.5rem)] lg:h-[calc(100vh-4.5rem)] flex flex-col min-h-0">
       
       {/* Page Shell: Clean 2-Pane Messenger */}
-      <div className="bg-surface border border-divider rounded-3xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+      <div className="bg-surface border border-divider rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
         
         {/* Top Header Bar */}
-        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-b border-divider flex items-center justify-between bg-surface/80 backdrop-blur-sm">
+        <div className={`shrink-0 px-4 sm:px-6 py-2.5 sm:py-3.5 border-b border-divider flex items-center justify-between bg-surface/80 backdrop-blur-sm ${showMobileThread ? 'hidden md:flex' : 'flex'}`}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
               <MessageSquare className="w-5 h-5" />

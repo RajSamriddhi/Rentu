@@ -383,7 +383,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main View Router */}
-      <main className="flex-1">
+      <main className="flex-1 pb-20 lg:pb-0 overflow-x-hidden min-w-0 w-full">
         {viewingUserId ? (
           <PublicProfileView
             userId={viewingUserId}
@@ -453,7 +453,7 @@ export const App: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                     {(items || []).slice(0, 4).map((item) => (
                       <ItemCard
                         key={item.id}

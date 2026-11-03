@@ -608,7 +608,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {myItems.map((item) => (
                   <ItemCard
                     key={item.id}
@@ -644,7 +644,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {myRequests.map((req) => (
                   <RequestCard
                     key={req.id}
