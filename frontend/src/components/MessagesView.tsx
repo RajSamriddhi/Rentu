@@ -22,6 +22,51 @@ import {
 } from '../lib/location';
 import { formatTime12 } from '../lib/formatters';
 
+const formatProposalSchedule = (
+  startDate?: string,
+  startTime?: string,
+  endDate?: string,
+  endTime?: string
+) => {
+  if (!startDate) return { dateText: 'Flexible Dates', timeText: '' };
+  try {
+    const sDate = new Date(startDate);
+    const validStart = !isNaN(sDate.getTime());
+    const sDateText = validStart
+      ? sDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+      : startDate.split('T')[0];
+
+    const sTimeText = startTime ? formatTime12(startTime) : '';
+
+    const isSameDay = !endDate || endDate === startDate || endDate.split('T')[0] === startDate.split('T')[0];
+
+    if (isSameDay) {
+      const eTimeText = endTime ? formatTime12(endTime) : '';
+      const timeRange = sTimeText && eTimeText ? `${sTimeText} – ${eTimeText}` : sTimeText || eTimeText || '';
+      return {
+        dateText: sDateText,
+        timeText: timeRange,
+      };
+    } else {
+      const eDate = new Date(endDate);
+      const validEnd = !isNaN(eDate.getTime());
+      const eDateText = validEnd
+        ? eDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+        : (endDate || '').split('T')[0];
+      const eTimeText = endTime ? formatTime12(endTime) : '';
+      return {
+        dateText: `${sDateText} → ${eDateText}`,
+        timeText: sTimeText && eTimeText ? `${sTimeText} – ${eTimeText}` : sTimeText || '',
+      };
+    }
+  } catch {
+    return {
+      dateText: (startDate || '').split('T')[0],
+      timeText: startTime ? formatTime12(startTime) : '',
+    };
+  }
+};
+
 interface MessagesViewProps {
   initialBookingId?: string | null;
   initialPartner?: { id: string; name: string; avatar?: string } | null;
@@ -1441,7 +1486,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                         ? 'Rental Request'
                                         : pData.type === 'LISTING'
                                         ? 'Personal Gear Offer'
-                                        : 'Custom Gear Request'}
+                                        : 'Lend Offer Proposal'}
                                     </span>
                                     <span className="text-[11px] font-bold text-ink-secondary truncate block">
                                       {pData.type === 'RENTAL_REQUEST' ? 'Listing Booking Proposal' : 'Direct Agreement Proposal'}
@@ -1472,37 +1517,56 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   </div>
                                 )}
                                 <div className="flex items-start justify-between gap-2">
-                                  <h3 className="text-sm font-black text-ink font-display leading-tight">
+                                  <h3 className="text-sm font-black text-ink font-display leading-tight capitalize">
                                     {pData.title || pData.item_title || 'Rental Gear'}
                                   </h3>
                                   {pData.category && (
-                                    <span className="text-[10px] font-bold text-ink-secondary bg-canvas px-2 py-0.5 rounded-full border border-divider shrink-0">
+                                    <span className="text-[10px] font-bold text-ink-secondary bg-canvas px-2.5 py-0.5 rounded-full border border-divider shrink-0">
                                       {pData.category}
                                     </span>
                                   )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
-                                    <span className="text-[10px] text-ink-secondary block font-semibold">Agreed Price</span>
-                                    <span className="font-black text-ink text-sm sm:text-base font-display">
-                                      ₹{pData.total_price || 0}
-                                    </span>
-                                    <span className="text-[10px] text-ink-secondary block">
-                                      ₹{pData.price_per_day || 0}/day • {pData.duration_days} {pData.duration_days === 1 ? 'day' : 'days'}
-                                    </span>
-                                  </div>
+                                {(() => {
+                                  const sched = formatProposalSchedule(
+                                    pData.start_date,
+                                    pData.start_time,
+                                    pData.end_date,
+                                    pData.end_time
+                                  );
+                                  return (
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
+                                        <span className="text-[10px] text-ink-secondary block font-semibold">Agreed Price</span>
+                                        <div className="flex items-baseline gap-1 mt-0.5">
+                                          <span className="font-black text-ink text-sm sm:text-base font-display">
+                                            ₹{pData.total_price || 0}
+                                          </span>
+                                          {Number(pData.total_price) === 0 && (
+                                            <span className="text-[10px] font-bold text-emerald-500">
+                                              (Free)
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] text-ink-secondary block truncate mt-0.5">
+                                          {Number(pData.price_per_day) === 0 
+                                            ? `Free borrow • ${pData.duration_days || 1} day`
+                                            : `₹${pData.price_per_day || 0}/day • ${pData.duration_days || 1} ${pData.duration_days === 1 ? 'day' : 'days'}`}
+                                        </span>
+                                      </div>
 
-                                  <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
-                                    <span className="text-[10px] text-ink-secondary block font-semibold">Rental Schedule</span>
-                                    <span className="font-bold text-ink text-[11px] block truncate">
-                                      {pData.start_date} {pData.start_time ? `(${formatTime12(pData.start_time)})` : ''}
-                                    </span>
-                                    <span className="text-[10px] text-ink-secondary block truncate">
-                                      to {pData.end_date || 'End Date'} {pData.end_time ? `(${formatTime12(pData.end_time)})` : ''}
-                                    </span>
-                                  </div>
-                                </div>
+                                      <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
+                                        <span className="text-[10px] text-ink-secondary block font-semibold">Rental Schedule</span>
+                                        <span className="font-bold text-ink text-[11px] block truncate mt-0.5">
+                                          {sched.dateText}
+                                        </span>
+                                        <span className="text-[10px] text-brand font-medium block truncate mt-0.5">
+                                          {sched.timeText || 'Standard Handover'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
 
                                 {/* Handover Preferences & Addresses */}
                                 <div className="space-y-1.5">
@@ -1528,7 +1592,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                 {/* Custom Notes */}
                                 {pData.notes && (
                                   <div className="text-[11px] text-ink bg-canvas/40 p-2.5 rounded-xl border border-divider/40 leading-relaxed italic">
-                                    "{pData.notes}"
+                                    "{pData.notes.replace(/^"|"$/g, '').trim()}"
                                   </div>
                                 )}
                               </div>
