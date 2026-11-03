@@ -11,6 +11,7 @@ import {
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { formatTime12 } from '../lib/formatters';
+import { getBookingLogisticsInfo, checkIsLender } from '../lib/logistics';
 
 interface BookingCardProps {
   booking: Booking;
@@ -131,12 +132,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
   const { user } = useAuth();
   const [imageError, setImageError] = useState(false);
 
-  const isLender = Boolean(
-    booking && (
-      (booking.lender_id && (booking.lender_id === user?.id || (user?.firebase_uid && booking.lender_id === user.firebase_uid))) ||
-      (booking.lender_name && user?.name && booking.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
-    )
-  );
+  const isLender = checkIsLender(booking, user);
 
   const otherPartyName = isLender
     ? (booking.borrower_name || 'Renter')
@@ -146,6 +142,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
   const otherPartyId = isLender ? booking.borrower_id : booking.lender_id;
 
   const stage = getBookingStageInfo(booking);
+  const logistics = getBookingLogisticsInfo(booking, isLender);
 
   const images = Array.isArray(booking.item_images) ? booking.item_images.filter(Boolean) : [];
   const primaryImage = images[0] || '';
@@ -202,7 +199,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
         </div>
 
         {/* Content Info: Title & Price */}
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">
             <h4 className="font-extrabold text-ink text-base sm:text-lg capitalize line-clamp-1 group-hover:text-brand transition-colors font-display">
               {booking.item_title || 'Rented Item'}
@@ -216,14 +213,26 @@ export const BookingCard: React.FC<BookingCardProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Color-Coded Logistics Badge */}
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 border shadow-2xs ${logistics.badgeClass}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${logistics.dotClass}`} />
+              <span>{logistics.badgeText}</span>
+            </span>
+            <span className="text-[11px] font-semibold text-ink-secondary">
+              {logistics.actionSummary}
+            </span>
+          </div>
         </div>
 
-        {/* Dedicated Readable Schedule Box (Never Truncates!) */}
+        {/* Dedicated Readable Schedule Box with Color Indicators */}
         <div className="p-3 bg-canvas/80 rounded-2xl border border-divider text-xs space-y-2">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-semibold text-ink-secondary flex items-center gap-1.5 shrink-0">
-              <Calendar className="w-3.5 h-3.5 text-brand" />
-              <span>Pickup:</span>
+              <span className={`w-2 h-2 rounded-full ${logistics.pickupDotClass}`} />
+              <Calendar className="w-3.5 h-3.5 text-ink-secondary" />
+              <span>{logistics.pickupLabel}:</span>
             </span>
             <span className="font-bold text-ink truncate text-right">
               {formatFriendlyDate(booking.start_date)} at {formatTime12(booking.start_time || '10:00')}
@@ -232,8 +241,9 @@ export const BookingCard: React.FC<BookingCardProps> = ({
 
           <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-divider/60">
             <span className="text-[11px] font-semibold text-ink-secondary flex items-center gap-1.5 shrink-0">
-              <Clock className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Return:</span>
+              <span className={`w-2 h-2 rounded-full ${logistics.returnDotClass}`} />
+              <Clock className="w-3.5 h-3.5 text-rose-500" />
+              <span>{logistics.returnLabel}:</span>
             </span>
             <span className="font-bold text-ink truncate text-right">
               {formatFriendlyDate(booking.end_date || booking.start_date)} at {formatTime12(booking.end_time || '18:00')}

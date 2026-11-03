@@ -34,6 +34,7 @@ import { formatTime12 } from '../lib/formatters';
 import { ReviewModal } from './ReviewModal';
 import { BookingCard } from './BookingCard';
 import { BookingStageModal } from './BookingStageModal';
+import { getDayLogisticsStatus, checkIsLender } from '../lib/logistics';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
@@ -635,6 +636,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 const hasActive = day.activeBookings.length > 0;
                 const isSelected = selectedDateFilter === day.dateStr;
 
+                const primaryBooking = hasActive ? day.activeBookings[0] : null;
+                const isPrimaryLender = primaryBooking ? checkIsLender(primaryBooking, user) : false;
+                const dayStatus = primaryBooking
+                  ? getDayLogisticsStatus(day.dateStr, primaryBooking, isPrimaryLender)
+                  : null;
+
                 return (
                   <button
                     key={`${day.dateStr}-${idx}`}
@@ -643,42 +650,46 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                     className={`relative min-h-[58px] sm:min-h-[70px] p-1.5 sm:p-2 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                       isSelected
                         ? 'border-brand ring-2 ring-brand/40 bg-brand/10 shadow-sm'
-                        : hasActive
-                        ? 'border-pink-500/40 bg-pink-500/10 hover:bg-pink-500/20'
+                        : hasActive && dayStatus
+                        ? dayStatus.cellClass
                         : day.isCurrentMonth
                         ? 'border-divider bg-canvas/40 hover:bg-canvas'
                         : 'border-transparent bg-transparent opacity-40 hover:opacity-75'
                     }`}
                     title={
-                      hasActive
-                        ? `Active rental on this date: ${day.activeBookings.map((b) => b.item_title).join(', ')}`
+                      hasActive && dayStatus
+                        ? `${dayStatus.title} (${day.activeBookings.length} total)`
                         : undefined
                     }
                   >
-                    {/* Top Row: Date Number + Today indicator */}
+                    {/* Top Row: Date Number + Logistics indicator dot */}
                     <div className="flex items-center justify-between w-full">
                       <span
                         className={`text-xs font-bold leading-none ${
                           day.isToday
                             ? 'w-5 h-5 rounded-full bg-ink text-canvas flex items-center justify-center font-black'
                             : hasActive
-                            ? 'text-brand font-black'
+                            ? 'font-black text-ink'
                             : 'text-ink'
                         }`}
                       >
                         {day.dayNumber}
                       </span>
 
-                      {hasActive && (
-                        <span className="w-2 h-2 rounded-full bg-brand animate-pulse shrink-0" />
+                      {hasActive && dayStatus && (
+                        <span className={`w-2 h-2 rounded-full ${dayStatus.dotColor} animate-pulse shrink-0`} />
                       )}
                     </div>
 
-                    {/* Active Booking snippet or count pill */}
-                    {hasActive ? (
+                    {/* Active Booking snippet or count pill with logistics tag */}
+                    {hasActive && dayStatus && primaryBooking ? (
                       <div className="w-full mt-1">
-                        <div className="text-[10px] font-black text-brand line-clamp-1 truncate bg-white/70 dark:bg-black/40 px-1 py-0.5 rounded-md border border-brand/20">
-                          {day.activeBookings[0].item_title}
+                        <div
+                          className={`text-[10px] font-black line-clamp-1 truncate px-1 py-0.5 rounded-md border shadow-2xs ${dayStatus.badgeClass}`}
+                          title={`${dayStatus.tag}: ${primaryBooking.item_title}`}
+                        >
+                          <span className="font-extrabold mr-1">{dayStatus.tag}:</span>
+                          <span>{primaryBooking.item_title}</span>
                         </div>
                         {day.activeBookings.length > 1 && (
                           <span className="text-[9px] font-black text-ink-secondary block mt-0.5">
@@ -694,14 +705,30 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
               })}
             </div>
 
-            {/* Calendar Legend & Filter indicator */}
-            <div className="flex items-center justify-between flex-wrap gap-2 pt-4 mt-3 border-t border-divider text-xs text-ink-secondary">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand" />
-                  <span>Active Rental Date</span>
+            {/* Calendar Legend with Multi-Color Logistics & Filter indicator */}
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-3 border-t border-divider text-xs text-ink-secondary">
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
+                <span className="flex items-center gap-1.5 font-semibold text-sky-600 dark:text-sky-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                  <span>🚚 Deliver</span>
                 </span>
-                <span className="flex items-center gap-1.5 font-medium">
+                <span className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>🚶 Pick Up</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-purple-600 dark:text-purple-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                  <span>📍 Hub / Owner Loc</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  <span>🎒 In-Use</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span>🔄 Return</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-ink">
                   <span className="w-2.5 h-2.5 rounded-full bg-ink" />
                   <span>Today</span>
                 </span>
