@@ -663,7 +663,15 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
       });
     }
 
-    return sendSuccess(res, updateRes.rows[0], `Proposal updated to ${status}`);
+    const safeBooking = { ...updateRes.rows[0] };
+    if (safeBooking.borrower_id !== userId) {
+      delete safeBooking.pickup_code;
+    }
+    if (safeBooking.lender_id !== userId) {
+      delete safeBooking.return_code;
+    }
+
+    return sendSuccess(res, safeBooking, `Proposal updated to ${status}`);
   } catch (error) {
     next(error);
   }

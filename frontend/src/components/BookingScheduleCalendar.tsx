@@ -19,7 +19,8 @@ import {
   Star,
   Loader2,
   Truck,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
@@ -622,26 +623,54 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        {/* Renter's View: Show the Pickup Code */}
-                        {!isLender ? (
-                          <div className="p-3 bg-surface rounded-xl border border-blue-500/30 space-y-1.5">
-                            <div className="text-[10px] font-black uppercase text-ink-muted">
-                              Your 6-Digit Pickup Code (Give this to owner)
+                        {/* Renter's View: Show the Pickup Code strictly during 1-hour active window */}
+                        {!isLender ? (() => {
+                          const isWindowActive = (() => {
+                            if (!booking.start_date) return false;
+                            try {
+                              const sDate = booking.start_date.split('T')[0];
+                              const sTime = booking.start_time ? booking.start_time.slice(0, 5) : '10:00';
+                              const [y, m, d] = sDate.split('-').map(Number);
+                              const [h, min] = sTime.split(':').map(Number);
+                              const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+                              const endMs = startMs + (60 * 60 * 1000);
+                              const now = Date.now();
+                              return now >= startMs && now <= endMs;
+                            } catch {
+                              return false;
+                            }
+                          })();
+
+                          return isWindowActive ? (
+                            <div className="p-3 bg-surface rounded-xl border border-blue-500/30 space-y-1.5">
+                              <div className="text-[10px] font-black uppercase text-ink-muted">
+                                Your 6-Digit Pickup Code (Give this to owner)
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-xl sm:text-2xl font-black text-brand tracking-widest">
+                                  {booking.pickup_code || '------'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(booking.pickup_code || '', booking.id)}
+                                  className="p-1.5 rounded-lg hover:bg-canvas text-ink-secondary hover:text-ink cursor-pointer transition-colors"
+                                >
+                                  {copiedId === booking.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-mono text-xl sm:text-2xl font-black text-brand tracking-widest">
-                                {booking.pickup_code || '------'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(booking.pickup_code || '', booking.id)}
-                                className="p-1.5 rounded-lg hover:bg-canvas text-ink-secondary hover:text-ink cursor-pointer transition-colors"
-                              >
-                                {copiedId === booking.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                              </button>
+                          ) : (
+                            <div className="p-3 bg-surface rounded-xl border border-divider space-y-1">
+                              <div className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-1">
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Pickup Code Locked (Reveals at {formatTime12(booking.start_time)})</span>
+                              </div>
+                              <p className="text-[11px] text-ink-secondary">
+                                Visible to renter strictly during the 1-hour handover window starting at {formatTime12(booking.start_time)}.
+                              </p>
                             </div>
-                          </div>
-                        ) : (
+                          );
+                        })() : (
                           /* Lender's View: Input Renter's Code to Verify Handover */
                           onVerifyPickup && (
                             <div className="space-y-1.5">
@@ -652,7 +681,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                                 <input
                                   type="text"
                                   maxLength={6}
-                                  placeholder="e.g. 582194"
+                                  placeholder="Enter 6-digit code"
                                   value={pickupCodeInput[booking.id] || ''}
                                   onChange={(e) => setPickupCodeInput((prev) => ({ ...prev, [booking.id]: e.target.value.replace(/\D/g, '') }))}
                                   className="w-36 bg-surface border border-divider rounded-xl px-3 py-2 text-center text-sm font-black tracking-widest font-mono text-ink focus:outline-none focus:border-brand"

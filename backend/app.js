@@ -54682,7 +54682,14 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         body: `${actorName} cancelled the rental for "${booking.item_title}".`
       });
     }
-    return sendSuccess(res, updateRes.rows[0], `Proposal updated to ${status}`);
+    const safeBooking = { ...updateRes.rows[0] };
+    if (safeBooking.borrower_id !== userId) {
+      delete safeBooking.pickup_code;
+    }
+    if (safeBooking.lender_id !== userId) {
+      delete safeBooking.return_code;
+    }
+    return sendSuccess(res, safeBooking, `Proposal updated to ${status}`);
   } catch (error) {
     next(error);
   }
@@ -56112,7 +56119,15 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       [myIds, pIds]
     );
     const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+    if (activeBooking) {
+      delete activeBooking.pickup_code;
+      delete activeBooking.return_code;
+    }
     const mappedMessages = messagesRes.rows.map((row) => {
+      let content = row.content;
+      if (content && typeof content === "string") {
+        content = content.replace(/\.?\s*Pickup Verification Code:\s*\d+\.?/gi, ".");
+      }
       if (row.message_type === "PROPOSAL" && row.proposal_data) {
         let pData = typeof row.proposal_data === "string" ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
         const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : void 0);
@@ -56123,20 +56138,18 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
         } else if (bStatus === "CANCELLED") {
           pData.status = "CANCELLED";
         }
-        const isMeBorrower = myIds.includes(activeBooking?.borrower_id || pData.borrower_id);
-        const isMeLender = myIds.includes(activeBooking?.lender_id || pData.lender_id);
-        if (!isMeBorrower) {
-          delete pData.pickup_code;
-        }
-        if (!isMeLender) {
-          delete pData.return_code;
-        }
+        delete pData.pickup_code;
+        delete pData.return_code;
         return {
           ...row,
+          content,
           proposal_data: pData
         };
       }
-      return row;
+      return {
+        ...row,
+        content
+      };
     });
     return sendSuccess(res, {
       booking: activeBooking,
@@ -56296,8 +56309,6 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         const updatedProposal2 = {
           ...proposal,
           status: "ACCEPTED",
-          pickup_code: pickupCode2,
-          return_code: returnCode2,
           accepted_at: (/* @__PURE__ */ new Date()).toISOString()
         };
         await query(
@@ -56313,7 +56324,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Pickup Verification Code: ${pickupCode2}. Handover is now live in Bookings.`
+            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Handover is now live in Bookings.`
           ]
         );
         await query(
@@ -56322,10 +56333,20 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           [message.sender_id, currentUserId, itemTitle2, existingBookingId]
         ).catch(() => {
         });
+        const safeProposal2 = { ...updatedProposal2 };
+        delete safeProposal2.pickup_code;
+        delete safeProposal2.return_code;
+        const safeBooking = { ...updatedBooking };
+        if (safeBooking.borrower_id !== currentUserId) {
+          delete safeBooking.pickup_code;
+        }
+        if (safeBooking.lender_id !== currentUserId) {
+          delete safeBooking.return_code;
+        }
         return sendSuccess(res, {
-          booking: updatedBooking,
+          booking: safeBooking,
           message_id: messageId,
-          proposal_data: updatedProposal2
+          proposal_data: safeProposal2
         }, "Rental request accepted");
       }
     }
@@ -56401,8 +56422,6 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       status: "ACCEPTED",
       booking_id: createdBooking.id,
       item_id: createdItem.id,
-      pickup_code: pickupCode,
-      return_code: returnCode,
       accepted_at: (/* @__PURE__ */ new Date()).toISOString()
     };
     await query(
@@ -56440,11 +56459,21 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       [currentUserId, message.sender_id, itemTitle, createdBooking.id]
     ).catch(() => {
     });
+    const safeCreatedBooking = { ...createdBooking };
+    if (safeCreatedBooking.borrower_id !== currentUserId) {
+      delete safeCreatedBooking.pickup_code;
+    }
+    if (safeCreatedBooking.lender_id !== currentUserId) {
+      delete safeCreatedBooking.return_code;
+    }
+    const safeProposal = { ...updatedProposal };
+    delete safeProposal.pickup_code;
+    delete safeProposal.return_code;
     return sendSuccess(res, {
-      booking: createdBooking,
+      booking: safeCreatedBooking,
       item: createdItem,
       message_id: messageId,
-      proposal_data: updatedProposal
+      proposal_data: safeProposal
     }, "Agreement accepted and booking created");
   } catch (error) {
     next(error);
@@ -67073,6 +67102,15 @@ var runMigrations = async () => {
 
       -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
       UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+
+      -- Sanitize any old chat messages so verification codes are not leaked in chat text or proposal_data
+      UPDATE messages
+      SET content = REGEXP_REPLACE(content, '.?s*Pickup Verification Code:s*d+.?', '.', 'gi')
+      WHERE content ILIKE '%Pickup Verification Code%';
+
+      UPDATE messages
+      SET proposal_data = proposal_data - 'pickup_code' - 'return_code'
+      WHERE proposal_data IS NOT NULL AND (proposal_data ? 'pickup_code' OR proposal_data ? 'return_code');
     `);
     await client.query("COMMIT");
     console.log("Database migrations completed successfully!");

@@ -1531,19 +1531,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     "{pData.notes}"
                                   </div>
                                 )}
-
-                                {/* Security Pickup Code Badge (shown when accepted only to the renter/borrower) */}
-                                {isAccepted && pData.pickup_code && (pData.borrower_id ? pData.borrower_id === user?.id : isMe) && (
-                                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                                      <span className="text-[11px] font-bold text-ink">Your Pickup Verification Code:</span>
-                                    </div>
-                                    <span className="font-mono font-black text-sm tracking-wider text-emerald-600 dark:text-emerald-400">
-                                      {pData.pickup_code}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
 
                               {/* Card Action Footer */}

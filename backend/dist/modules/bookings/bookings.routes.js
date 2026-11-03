@@ -511,7 +511,14 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                 body: `${actorName} cancelled the rental for "${booking.item_title}".`,
             });
         }
-        return (0, response_1.sendSuccess)(res, updateRes.rows[0], `Proposal updated to ${status}`);
+        const safeBooking = { ...updateRes.rows[0] };
+        if (safeBooking.borrower_id !== userId) {
+            delete safeBooking.pickup_code;
+        }
+        if (safeBooking.lender_id !== userId) {
+            delete safeBooking.return_code;
+        }
+        return (0, response_1.sendSuccess)(res, safeBooking, `Proposal updated to ${status}`);
     }
     catch (error) {
         next(error);
