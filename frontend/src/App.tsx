@@ -25,6 +25,7 @@ import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
 import confetti from 'canvas-confetti';
+import { CheckCircle2, AlertCircle, X, ArrowRight } from 'lucide-react';
 
 export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
 
@@ -290,6 +291,49 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
 
+  // In-App Toast Notification
+  const [toast, setToast] = useState<{
+    id: string;
+    type?: 'success' | 'info' | 'error';
+    title: string;
+    message: string;
+    avatar?: string;
+    actionLabel?: string;
+    onAction?: () => void;
+    duration?: number;
+  } | null>(null);
+
+  const showToast = useCallback((toastData: {
+    type?: 'success' | 'info' | 'error';
+    title: string;
+    message: string;
+    avatar?: string;
+    actionLabel?: string;
+    onAction?: () => void;
+    duration?: number;
+  }) => {
+    const id = Date.now().toString();
+    setToast({ ...toastData, id });
+    if (toastData.duration !== 0) {
+      setTimeout(() => {
+        setToast((current) => (current?.id === id ? null : current));
+      }, toastData.duration || 6500);
+    }
+  }, []);
+
+  // Listen for global toast events dispatched across the app
+  useEffect(() => {
+    const handleGlobalToast = (e: any) => {
+      if (e.detail) {
+        showToast(e.detail);
+      }
+    };
+    window.addEventListener('rentu:toast', handleGlobalToast);
+    return () => {
+      window.removeEventListener('rentu:toast', handleGlobalToast);
+    };
+  }, [showToast]);
+
   const handleOpenAuth = (mode: 'login' | 'signup' = 'login') => {
     setAuthMode(mode);
     setIsAuthOpen(true);
@@ -345,12 +389,30 @@ export const App: React.FC = () => {
       try {
         confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
       } catch {}
-      alert(`Offer sent! We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`);
-      if (req.seeker_id) {
-        handleOpenChatWithUser(req.seeker_id, req.seeker_name || 'Neighbor', req.seeker_avatar);
-      }
+
+      showToast({
+        type: 'success',
+        title: 'Offer Sent Successfully!',
+        message: `We notified ${req.seeker_name || 'the requester'}. When they accept your offer in messages, the ongoing booking will automatically start in your Ongoing Bookings!`,
+        avatar: req.seeker_avatar,
+        actionLabel: 'Chat with ' + (req.seeker_name ? req.seeker_name.split(' ')[0] : 'Requester'),
+        onAction: () => {
+          if (req.seeker_id) {
+            handleOpenChatWithUser(req.seeker_id, req.seeker_name || 'Neighbor', req.seeker_avatar);
+          }
+        },
+        duration: 8000,
+      });
+
+      // Refresh notification counts
+      window.dispatchEvent(new CustomEvent('rentu:notifications-updated'));
     } catch (err: any) {
-      alert(err.message || 'Could not send lend offer.');
+      showToast({
+        type: 'error',
+        title: 'Could Not Send Offer',
+        message: err.message || 'Something went wrong while sending your offer. Please try again.',
+        duration: 5000,
+      });
     }
   };
 
@@ -669,6 +731,63 @@ export const App: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* Floating In-App Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 right-4 sm:right-8 z-[100] max-w-md w-[calc(100vw-32px)] sm:w-full bg-surface/95 dark:bg-zinc-900/95 backdrop-blur-md border border-divider shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-4 fade-in duration-200">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 mt-0.5">
+              {toast.avatar ? (
+                <img
+                  src={toast.avatar}
+                  alt="User"
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-brand/30"
+                />
+              ) : toast.type === 'error' ? (
+                <div className="w-9 h-9 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs sm:text-sm font-extrabold text-ink font-display leading-tight">
+                {toast.title}
+              </h4>
+              <p className="text-xs text-ink-secondary font-medium mt-1 leading-relaxed">
+                {toast.message}
+              </p>
+
+              {toast.actionLabel && toast.onAction && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.onAction?.();
+                    setToast(null);
+                  }}
+                  className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand text-white hover:bg-brand/90 transition-all cursor-pointer shadow-xs"
+                >
+                  <span>{toast.actionLabel}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="shrink-0 p-1 rounded-lg text-ink-secondary hover:text-ink hover:bg-canvas transition-colors cursor-pointer"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

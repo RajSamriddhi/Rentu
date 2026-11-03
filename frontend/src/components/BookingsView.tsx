@@ -191,7 +191,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     if (status === 'ACCEPTED') {
       const b = bookings.find((item) => item.id === bookingId);
       if (b && isBookingRequestPassed(b)) {
-        alert('This booking request cannot be accepted because its scheduled rental time has already passed. Please message the renter to propose new upcoming dates.');
+        window.dispatchEvent(new CustomEvent('rentu:toast', {
+          detail: {
+            type: 'error',
+            title: 'Rental Time Passed',
+            message: 'This booking request cannot be accepted because its scheduled rental time has already passed. Please message the renter to propose new upcoming dates.',
+            duration: 6000,
+          }
+        }));
         return;
       }
     }
@@ -215,7 +222,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         }, 150);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to update booking status.');
+      window.dispatchEvent(new CustomEvent('rentu:toast', {
+        detail: {
+          type: 'error',
+          title: 'Update Failed',
+          message: err.message || 'Failed to update booking status.',
+          duration: 5000,
+        }
+      }));
     }
   };
 
