@@ -81,8 +81,8 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
         <button
           type="button"
           onClick={() => {
-            if (onOpenUserProfile && bounty.seeker_id) {
-              onOpenUserProfile(bounty.seeker_id);
+            if (onOpenUserProfile && (bounty.seeker_username || bounty.seeker_id)) {
+              onOpenUserProfile(bounty.seeker_username || bounty.seeker_id);
             }
           }}
           className="flex items-center gap-2 truncate group text-left cursor-pointer hover:opacity-90 transition-opacity"

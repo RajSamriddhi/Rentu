@@ -159,7 +159,8 @@ export const App: React.FC = () => {
     }
 
     setViewingUserId(userIdOrUsername);
-    const isCleanUsername = /^[a-zA-Z0-9_]{3,30}$/.test(cleanHandle) && !cleanHandle.includes('-');
+    const isProbableRawId = userIdOrUsername.includes('-') || userIdOrUsername.length > 24;
+    const isCleanUsername = !isProbableRawId && /^[a-zA-Z0-9_]{3,24}$/.test(cleanHandle);
     const targetPath = isCleanUsername 
       ? `/${encodeURIComponent(cleanHandle)}` 
       : `/user/${encodeURIComponent(userIdOrUsername)}`;

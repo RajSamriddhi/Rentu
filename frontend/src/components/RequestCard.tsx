@@ -109,8 +109,8 @@ export const RequestCard: React.FC<RequestCardProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (onOpenUserProfile && request.seeker_id) {
-                  onOpenUserProfile(request.seeker_id);
+                if (onOpenUserProfile && (request.seeker_username || request.seeker_id)) {
+                  onOpenUserProfile(request.seeker_username || request.seeker_id);
                 }
               }}
               className="flex items-center gap-1.5 hover:text-brand transition-colors cursor-pointer text-left truncate group/owner"

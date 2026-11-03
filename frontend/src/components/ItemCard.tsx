@@ -104,8 +104,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (onOpenUserProfile && item.owner_id) {
-                  onOpenUserProfile(item.owner_id);
+                if (onOpenUserProfile && (item.owner_username || item.owner_id)) {
+                  onOpenUserProfile(item.owner_username || item.owner_id);
                 }
               }}
               className="flex items-center gap-1.5 hover:text-brand transition-colors cursor-pointer text-left truncate group/owner"

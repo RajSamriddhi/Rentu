@@ -461,9 +461,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               {/* Owner Profile Card matching Screen 3 */}
               <div 
                 onClick={() => {
-                  if (onOpenUserProfile && item.owner_id) {
+                  if (onOpenUserProfile && (item.owner_username || item.owner_id)) {
                     onClose();
-                    onOpenUserProfile(item.owner_id);
+                    onOpenUserProfile(item.owner_username || item.owner_id);
                   }
                 }}
                 className="bg-canvas border border-divider hover:border-brand/40 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors group"
@@ -492,9 +492,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onOpenUserProfile && item.owner_id) {
+                    if (onOpenUserProfile && (item.owner_username || item.owner_id)) {
                       onClose();
-                      onOpenUserProfile(item.owner_id);
+                      onOpenUserProfile(item.owner_username || item.owner_id);
                     }
                   }}
                   className="px-3.5 py-1.5 rounded-full border border-divider bg-surface hover:bg-brand-soft hover:text-brand hover:border-brand/40 text-xs font-bold text-ink transition-colors cursor-pointer shadow-xs shrink-0"

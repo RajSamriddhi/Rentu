@@ -332,7 +332,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenUserProfile(request.seeker_id);
+                  onOpenUserProfile(request.seeker_username || request.seeker_id);
                 }}
                 className="btn-secondary text-xs px-3.5 py-1.5 rounded-full font-bold cursor-pointer inline-flex items-center gap-1"
               >

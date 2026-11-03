@@ -206,8 +206,8 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (onOpenUserProfile && req.seeker_id) {
-                              onOpenUserProfile(req.seeker_id);
+                            if (onOpenUserProfile && (req.seeker_username || req.seeker_id)) {
+                              onOpenUserProfile(req.seeker_username || req.seeker_id);
                             }
                           }}
                           className="flex items-center gap-1.5 hover:text-brand cursor-pointer group text-left transition-colors"

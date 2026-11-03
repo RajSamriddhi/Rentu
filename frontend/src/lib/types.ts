@@ -74,6 +74,7 @@ export interface Item {
   condition?: string;
   created_at: string;
   owner_name?: string;
+  owner_username?: string;
   owner_avatar?: string;
   owner_locality?: string;
   owner_address_text?: string;
@@ -112,6 +113,7 @@ export interface CommunityRequest {
   status: 'OPEN' | 'FULFILLED' | 'CANCELLED';
   created_at: string;
   seeker_name?: string;
+  seeker_username?: string;
   seeker_avatar?: string;
   seeker_locality?: string;
   seeker_trust_score?: number;

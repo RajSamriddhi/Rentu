@@ -80,6 +80,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     try {
       const data = await api.getUserProfile(userId);
       setProfile(data);
+      if (data && data.username) {
+        const cleanHandle = data.username.toLowerCase();
+        const expectedPath = `/${cleanHandle}`;
+        if (window.location.pathname.toLowerCase() !== expectedPath) {
+          window.history.replaceState(null, '', expectedPath);
+        }
+      }
       setIsFollowing(!!data.is_following);
       setFollowersCount(data.followers_count || 0);
       setFollowingCount(data.following_count || 0);

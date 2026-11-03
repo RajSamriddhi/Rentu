@@ -53141,6 +53141,7 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         ${distanceField},
         COALESCE(u.id, i.owner_id) AS owner_id, 
         COALESCE(u.name, 'Community Member') AS owner_name, 
+        u.username AS owner_username,
         u.avatar_url AS owner_avatar,
         COALESCE(u.locality, i.locality) AS owner_locality, 
         NULL AS owner_address_text,
@@ -53209,7 +53210,7 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.longitude, i.longitude) AS longitude,
         CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
-        u.id AS owner_id, u.name AS owner_name, u.avatar_url AS owner_avatar,
+        u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
         COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
@@ -53630,6 +53631,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
+        u.username AS seeker_username,
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
         u.trust_score AS seeker_trust_score,
@@ -53685,7 +53687,7 @@ router3.get("/:id", async (req, res, next) => {
         r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
-        u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
+        u.id AS seeker_id, u.name AS seeker_name, u.username AS seeker_username, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r

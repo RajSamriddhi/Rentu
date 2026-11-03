@@ -72,6 +72,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         r.status, r.created_at, r.image_url,
         COALESCE(u.id, r.seeker_id) AS seeker_id, 
         COALESCE(u.name, 'Community Member') AS seeker_name, 
+        u.username AS seeker_username,
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
         u.trust_score AS seeker_trust_score,
@@ -137,7 +138,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
         r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
-        u.id AS seeker_id, u.name AS seeker_name, u.avatar_url AS seeker_avatar,
+        u.id AS seeker_id, u.name AS seeker_name, u.username AS seeker_username, u.avatar_url AS seeker_avatar,
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r
