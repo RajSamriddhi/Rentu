@@ -301,7 +301,7 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
         b.status, b.message, 
         CASE WHEN b.borrower_id = $1 THEN b.pickup_code ELSE NULL END AS pickup_code, 
-        CASE WHEN b.borrower_id = $1 THEN b.return_code ELSE NULL END AS return_code, 
+        CASE WHEN b.lender_id = $1 OR i.owner_id = $1 THEN b.return_code ELSE NULL END AS return_code, 
         b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
         b.payment_status, b.payment_method,
         i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
@@ -617,17 +617,15 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
         }
         const isFree = Number(booking.total_price) === 0;
         const updateRes = await (0, db_1.query)(`UPDATE bookings 
-       SET status = CASE WHEN $2::boolean THEN 'COMPLETED'::booking_status ELSE status END,
+       SET status = 'COMPLETED'::booking_status,
            returned_at = CURRENT_TIMESTAMP,
-           completed_at = CASE WHEN $2::boolean THEN CURRENT_TIMESTAMP ELSE completed_at END,
-           payment_status = CASE WHEN $2::boolean THEN 'CONFIRMED' ELSE 'PENDING' END,
+           completed_at = CURRENT_TIMESTAMP,
+           payment_status = 'CONFIRMED',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
-       RETURNING *`, [id, isFree]);
-        if (isFree) {
-            // Release item back to AVAILABLE
-            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-        }
+       RETURNING *`, [id]);
+        // Release item back to AVAILABLE
+        await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         // Send chat system message
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
        VALUES ($1, $2, $3, $4, 'SYSTEM')`, [

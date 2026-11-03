@@ -26,6 +26,7 @@ import { uploadItemPhoto } from '../lib/supabase';
 import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
 import { MessageProposalData, SavedLocation } from '../lib/types';
 import { AddLocationModal } from './AddLocationModal';
+import { formatTime12 } from '../lib/formatters';
 
 interface PersonalProposalModalProps {
   isOpen: boolean;
@@ -438,7 +439,7 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
     }
 
     if (requestStartDate === todayStr && requestStartTime <= currentHStr) {
-      setErrorMsg(`Start time (${requestStartTime}) has already passed for today. Please select an upcoming time.`);
+      setErrorMsg(`Start time (${formatTime12(requestStartTime)}) has already passed for today. Please select an upcoming time.`);
       return;
     }
 
@@ -448,12 +449,12 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
     }
 
     if (requestEndDate === requestStartDate && requestEndTime <= requestStartTime) {
-      setErrorMsg(`Return time (${requestEndTime}) must be after start time (${requestStartTime}).`);
+      setErrorMsg(`Return time (${formatTime12(requestEndTime)}) must be after start time (${formatTime12(requestStartTime)}).`);
       return;
     }
 
     if (requestEndDate === todayStr && requestEndTime <= currentHStr) {
-      setErrorMsg(`Return time (${requestEndTime}) has already passed for today. Please select an upcoming time.`);
+      setErrorMsg(`Return time (${formatTime12(requestEndTime)}) has already passed for today. Please select an upcoming time.`);
       return;
     }
 

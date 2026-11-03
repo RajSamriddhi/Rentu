@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { formatTime12 } from '../lib/formatters';
 
 export interface BookingScheduleCalendarProps {
   bookings: Booking[];
@@ -536,7 +537,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                             ? 'Owner delivers gear directly to the renter'
                             : `Renter picks up from owner (${booking.item_locality || 'Owner location'})`}
                         </div>
-                        <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {booking.start_time || '10:00'}</div>
+                        <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {formatTime12(booking.start_time || '10:00')}</div>
                       </div>
                     </div>
 
@@ -551,7 +552,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                             ? 'Owner will collect gear back from renter'
                             : `Renter brings gear back to owner (${booking.item_locality || 'Owner location'})`}
                         </div>
-                        <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {booking.end_time || '18:00'}</div>
+                        <div className="text-[10px] text-ink-secondary font-medium mt-0.5">Time: {formatTime12(booking.end_time || '18:00')}</div>
                       </div>
                     </div>
                   </div>
@@ -693,7 +694,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
                           </h5>
                         </div>
                         <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                          Due: {formatDisplayDate(bEnd)} {booking.end_time || '18:00'}
+                          Due: {formatDisplayDate(bEnd)} {formatTime12(booking.end_time || '18:00')}
                         </span>
                       </div>
 

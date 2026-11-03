@@ -21,6 +21,7 @@ import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
+import { formatTime12 } from '../lib/formatters';
 
 interface BookingStageModalProps {
   booking: Booking | null;
@@ -202,14 +203,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
   // Sequential 5-Stage computation
   let currentStage = 2; // Default for active ongoing booking awaiting pickup
-  if (booking.status === 'COMPLETED') {
-    currentStage = 5;
-  } else if (booking.returned_at) {
+  if (booking.status === 'COMPLETED' || booking.returned_at) {
     currentStage = 5;
   } else if (booking.status === 'HANDED_OVER') {
-    const endStr = (booking.end_date || booking.start_date || '').slice(0, 10);
-    const isDeadlineReached = endStr && endStr <= currentDayStr;
-    currentStage = (isDeadlineReached || isReturnActive || returnWindow.isAvailable) ? 4 : 3;
+    // Stage 3 (Rental In-Use) remains ACTIVE while the return time has not arrived yet.
+    // When scheduled return time arrives, it advances to Stage 4 (Return Handover).
+    currentStage = (returnWindow.isBefore && !isReturnActive) ? 3 : 4;
   } else if (booking.status === 'ACCEPTED') {
     currentStage = 2;
   } else {
@@ -456,7 +455,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 <div>
                   <span className="text-[10px] font-bold text-ink-secondary/70 uppercase tracking-wider block">Starts</span>
                   <span className="font-bold text-ink">
-                    {formatFriendlyDate(booking.start_date)} {booking.start_time ? `• ${booking.start_time}` : ''}
+                    {formatFriendlyDate(booking.start_date)} {booking.start_time ? `• ${formatTime12(booking.start_time)}` : ''}
                   </span>
                 </div>
               </div>
@@ -466,7 +465,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 <div>
                   <span className="text-[10px] font-bold text-ink-secondary/70 uppercase tracking-wider block">Ends</span>
                   <span className="font-bold text-ink">
-                    {formatFriendlyDate(booking.end_date || booking.start_date)} {booking.end_time ? `• ${booking.end_time}` : ''}
+                    {formatFriendlyDate(booking.end_date || booking.start_date)} {booking.end_time ? `• ${formatTime12(booking.end_time)}` : ''}
                   </span>
                 </div>
               </div>
@@ -791,7 +790,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     <span>Return Deadline:</span>
                   </span>
                   <span className="text-xs font-black text-brand font-display">
-                    {booking.end_date || booking.start_date} ({booking.end_time || '18:00'})
+                    {formatFriendlyDate(booking.end_date || booking.start_date)} ({formatTime12(booking.end_time || '18:00')})
                   </span>
                 </div>
 
@@ -806,12 +805,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Button to advance to return handover */}
+              {/* Action Button to advance to return handover early */}
               <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => setIsReturnActive(true)}
-                  className="w-full btn-primary text-xs py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center justify-center gap-2"
+                  className="w-full btn-secondary text-xs py-2.5 font-bold cursor-pointer inline-flex items-center justify-center gap-2"
                 >
                   <span>Ready to Return? Open Return Handover (Stage 4)</span>
                   <ArrowRight className="w-4 h-4" />
@@ -821,7 +820,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           )}
 
           {/* ======================================================== */}
-          {/* STAGE 4: RETURN HANDOVER (RENTER CODE, OWNER INPUT)      */}
+          {/* STAGE 4: RETURN HANDOVER (LENDER GIVES CODE/QR TO RENTER) */}
           {/* ======================================================== */}
           {currentStage === 4 && (
             <div className="space-y-4 animate-in fade-in">
@@ -845,23 +844,23 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 <h4 className="text-base font-extrabold text-ink font-display">
                   {!returnWindow.isAvailable
                     ? `Return Handover Opens at ${returnWindow.scheduledTimeFormatted}`
-                    : isBorrower
-                    ? 'Give your 6-digit return code to the owner'
-                    : 'Enter the return code received from the renter'}
+                    : isLender
+                    ? `Give the return code or QR to ${otherPartyName}`
+                    : `Enter the return code received from ${otherPartyName}`}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
                   {!returnWindow.isAvailable
                     ? `Return code and verification unlock strictly at ${returnWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.end_date || booking.start_date)}.`
-                    : isBorrower
-                    ? `Give this return code to ${otherPartyName} once you hand back the gear in good condition.`
-                    : `Inspect the gear first, then enter the 6-digit return code given by ${otherPartyName}.`}
+                    : isLender
+                    ? `Show this return code or QR to ${otherPartyName} once you have picked back your gear in good condition.`
+                    : `Enter the 6-digit return code or scan the QR code received from ${otherPartyName} to confirm return.`}
                 </p>
               </div>
 
               {/* TIMING WINDOW LOCK: If scheduled return time has not arrived yet */}
               {!returnWindow.isAvailable ? (
-                isBorrower ? (
-                  /* Renter View when return locked */
+                isLender ? (
+                  /* Owner View when return locked */
                   <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
                     <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
                       <Lock className="w-9 h-9 stroke-[2]" />
@@ -874,7 +873,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         Reveals at {returnWindow.scheduledTimeFormatted}
                       </h4>
                       <p className="text-xs text-ink-secondary leading-relaxed">
-                        Your 6-digit return handover code will be visible starting at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
+                        Your 6-digit return code and QR will be visible starting at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
                       </p>
                     </div>
 
@@ -893,11 +892,11 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
                     <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
                       <Clock className="w-4 h-4 text-purple-500 shrink-0" />
-                      <span>Return the gear to {otherPartyName} at the scheduled time to complete return.</span>
+                      <span>Pick back the gear from {otherPartyName} at the scheduled time to complete return.</span>
                     </div>
                   </div>
                 ) : (
-                  /* Owner View when return locked */
+                  /* Renter View when return locked */
                   <div className="p-6 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center shadow-sm">
                     <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
                       <Lock className="w-9 h-9 stroke-[2]" />
@@ -910,7 +909,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         Opens at {returnWindow.scheduledTimeFormatted}
                       </h4>
                       <p className="text-xs text-ink-secondary leading-relaxed">
-                        Return code entry and inspection verification will unlock at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
+                        Return code entry and QR verification will unlock at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
                       </p>
                     </div>
 
@@ -933,8 +932,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     </div>
                   </div>
                 )
-              ) : isBorrower ? (
-                /* RENTER (BORROWER) VIEW: SHOWS RETURN CODE */
+              ) : isLender ? (
+                /* OWNER (LENDER) VIEW: PROVIDES CODE OR QR TO RENTER */
                 <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
                   <div className="w-52 h-52 mx-auto rounded-2xl bg-white p-3 shadow-md border border-zinc-200 flex items-center justify-center">
                     <img
@@ -950,26 +949,28 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     </span>
                     <div className="flex items-center justify-center gap-2">
                       <span className="font-mono text-2xl font-black tracking-widest text-purple-600 dark:text-purple-400 bg-surface px-5 py-2 rounded-xl border border-purple-500/30 shadow-xs">
-                        {booking.return_code || '654321'}
+                        {booking.return_code || '------'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(booking.return_code || '654321')}
-                        className="p-2.5 rounded-xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
-                        title="Copy return code"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
+                      {booking.return_code && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(booking.return_code || '')}
+                          className="p-2.5 rounded-xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
+                          title="Copy return code"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                     {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">Copied to clipboard</span>}
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] font-medium text-purple-700 dark:text-purple-300">
-                    Hand this code to {otherPartyName} upon completing gear inspection.
+                    Show this code or QR to {otherPartyName} once you have picked back your product in good condition.
                   </div>
                 </div>
               ) : (
-                /* OWNER (LENDER) VIEW: INPUT CODE FROM RENTER */
+                /* RENTER (BORROWER) VIEW: INPUTS CODE RECEIVED FROM LENDER / SCANS QR */
                 <div className="p-5 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center">
                   <div className="space-y-2 pt-2">
                     <label className="text-xs font-bold text-ink block">
@@ -996,7 +997,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     </div>
 
                     <p className="text-[11px] text-ink-secondary pt-1">
-                      Check that the product is returned safely, then enter the code given by {otherPartyName}.
+                      Ask {otherPartyName} for their 6-digit return code or scan their QR code to verify return.
                     </p>
                   </div>
 
@@ -1009,7 +1010,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                         className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5"
                       >
                         <Camera className="w-3.5 h-3.5 text-brand" />
-                        <span>{isCameraActive ? 'Close Camera' : 'Scan Return QR Code'}</span>
+                        <span>{isCameraActive ? 'Close Camera' : 'Scan Lender QR Code'}</span>
                       </button>
                     </div>
 
@@ -1026,32 +1027,30 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           )}
 
           {/* ======================================================== */}
-          {/* STAGE 5: TAKE THE PAYMENT FROM THE RENTER                */}
+          {/* STAGE 5: PAYMENT & FINISH                                */}
           {/* ======================================================== */}
           {currentStage === 5 && (
             <div className="space-y-4 animate-in fade-in">
               <div className="text-center space-y-1">
                 <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                  Stage 5: Final Settlement
+                  Stage 5: Payment & Finish
                 </span>
                 <h4 className="text-base font-extrabold text-ink font-display">
-                  {booking.status === 'COMPLETED'
-                    ? 'Rental Process Completed'
-                    : 'Take the payment from the renter'}
+                  {isLender
+                    ? `Collect your money from ${otherPartyName} and complete the process`
+                    : `Give ₹${Number(booking.total_price)} to ${otherPartyName} and finish the payment`}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {booking.status === 'COMPLETED'
-                    ? 'All stages verified, return completed, and payment confirmed!'
-                    : isLender
-                    ? `Have you received the payment of ₹${Number(booking.total_price)} from ${otherPartyName}?`
-                    : `Please pay ₹${Number(booking.total_price)} to ${otherPartyName}. The rental will finish once ${otherPartyName} confirms receiving the payment.`}
+                  {isLender
+                    ? `Product return has been verified. Collect ₹${Number(booking.total_price)} directly from ${otherPartyName} to complete the rental process.`
+                    : `Product return has been verified. Give ₹${Number(booking.total_price)} directly to ${otherPartyName} to finish the payment.`}
                 </p>
               </div>
 
               {/* Total Rental Amount Card */}
               <div className="p-5 rounded-2xl bg-canvas border border-divider text-center space-y-1.5 max-w-sm mx-auto shadow-xs">
                 <span className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider block">
-                  Total Rental Amount
+                  {isLender ? 'Amount to Collect' : 'Amount to Pay'}
                 </span>
                 <div className="text-3xl font-black text-ink font-display">
                   {Number(booking.total_price) === 0 ? 'Free (Community Borrow)' : `₹${Number(booking.total_price)}`}
@@ -1061,74 +1060,19 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 </div>
               </div>
 
-              {booking.status === 'COMPLETED' ? (
-                /* 100% COMPLETED CELEBRATION */
-                <div className="p-6 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-3 max-w-md mx-auto">
-                  <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-md">
-                    <CheckCircle2 className="w-6 h-6 stroke-[2.5]" />
-                  </div>
-                  <h4 className="text-base font-extrabold text-emerald-800 dark:text-emerald-200 font-display">
-                    Process 100% Completed!
-                  </h4>
-                  <p className="text-xs text-ink-secondary">
-                    This booking has moved to your Finished Bookings section. Both of you can now review each other for the next 3 days.
-                  </p>
-                  {onLeaveReview && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onLeaveReview(booking);
-                      }}
-                      className="btn-primary text-xs px-5 py-2.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Rate & Review Neighbor</span>
-                    </button>
-                  )}
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-2 max-w-md mx-auto">
+                <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-sm">
+                  <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
                 </div>
-              ) : isLender ? (
-                /* OWNER (LENDER) VIEW: CONFIRM RECEIPT OF PAYMENT */
-                <div className="space-y-4 max-w-md mx-auto text-center">
-                  <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1.5">
-                    <span className="text-xs font-bold text-ink block">
-                      Confirm Payment Received
-                    </span>
-                    <p className="text-xs text-ink-secondary">
-                      Once you click confirm below, the rental process completes for both sides and moves directly to Finished Bookings.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleConfirmPayment}
-                    disabled={isVerifying}
-                    className="w-full btn-primary text-xs py-3.5 font-bold shadow-pink cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isVerifying ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 stroke-[3]" />
-                    )}
-                    <span>Confirm Yes, I have received the payment (₹{Number(booking.total_price)})</span>
-                  </button>
-                </div>
-              ) : (
-                /* RENTER (BORROWER) VIEW: AWAITING CONFIRMATION */
-                <div className="space-y-3 max-w-md mx-auto text-center">
-                  <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center space-y-2">
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300 block">
-                      Payment Settlement in Progress
-                    </span>
-                    <p className="text-xs text-ink-secondary">
-                      Please hand over or transfer ₹{Number(booking.total_price)} directly to {otherPartyName}. Once {otherPartyName} confirms receiving it, this booking will be finalized.
-                    </p>
-                    <span className="text-[11px] font-bold text-amber-600 bg-amber-500/20 px-3 py-1 rounded-full inline-block mt-1">
-                      Awaiting confirmation from owner
-                    </span>
-                  </div>
-                </div>
-              )}
+                <h5 className="text-sm font-extrabold text-emerald-800 dark:text-emerald-200 font-display">
+                  Return Verified Successfully
+                </h5>
+                <p className="text-xs text-ink-secondary leading-relaxed">
+                  {isLender
+                    ? `The product has been picked back and verified. Collect ₹${Number(booking.total_price)} directly from ${otherPartyName} to complete the process.`
+                    : `The product has been returned and verified. Hand over ₹${Number(booking.total_price)} directly to ${otherPartyName} to finish the payment.`}
+                </p>
+              </div>
             </div>
           )}
         </div>

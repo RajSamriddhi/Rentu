@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { formatTime12 } from '../lib/formatters';
 
 interface RequestDetailModalProps {
   request: CommunityRequest | null;
@@ -93,15 +94,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
   };
 
   const formatTimeStr = (timeStr?: string) => {
-    if (!timeStr) return '';
-    if (timeStr.includes(':')) {
-      const [h, m] = timeStr.split(':');
-      const hour = parseInt(h, 10);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const formattedH = hour % 12 || 12;
-      return `${formattedH}:${m} ${ampm}`;
-    }
-    return timeStr;
+    return formatTime12(timeStr);
   };
 
   // Build full destination address

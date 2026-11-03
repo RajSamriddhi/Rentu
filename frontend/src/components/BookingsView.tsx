@@ -28,6 +28,7 @@ import confetti from 'canvas-confetti';
 import { api } from '../lib/api';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { formatTime12 } from '../lib/formatters';
 import { ReviewModal } from './ReviewModal';
 import { BookingCard } from './BookingCard';
 import { BookingStageModal } from './BookingStageModal';
@@ -920,7 +921,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       {isTimePassed && (
                         <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 animate-in fade-in">
                           <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>The scheduled rental time for this request ({booking.start_date} at {booking.start_time || '10:00'}) has already passed. It cannot be accepted. Please message {requesterName} to request upcoming dates.</span>
+                          <span>The scheduled rental time for this request ({booking.start_date} at {formatTime12(booking.start_time || '10:00')}) has already passed. It cannot be accepted. Please message {requesterName} to request upcoming dates.</span>
                         </div>
                       )}
 
@@ -936,10 +937,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       <div className="p-3 bg-canvas/60 rounded-2xl border border-divider text-xs text-ink-secondary flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
                           <MapPin className="w-3.5 h-3.5 text-brand" />
-                          <span>Pickup: {booking.requires_delivery ? 'Owner Delivers' : `Self Pickup (${booking.item_locality || 'Local Hub'})`} at {booking.start_time || '10:00'}</span>
+                          <span>Pickup: {booking.requires_delivery ? 'Owner Delivers' : `Self Pickup (${booking.item_locality || 'Local Hub'})`} at {formatTime12(booking.start_time || '10:00')}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span>Return: {booking.requires_pickup ? 'Owner Collects' : 'Renter Returns'} at {booking.end_time || '18:00'}</span>
+                          <span>Return: {booking.requires_pickup ? 'Owner Collects' : 'Renter Returns'} at {formatTime12(booking.end_time || '18:00')}</span>
                         </div>
                       </div>
 

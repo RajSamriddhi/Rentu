@@ -436,7 +436,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                         (m.sender_name && user?.name && m.sender_name === user.name);
 
                       const formattedTime = m.created_at
-                        ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        ? new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                         : 'Just now';
 
                       return (

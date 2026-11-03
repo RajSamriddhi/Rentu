@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { formatTime12 } from '../lib/formatters';
 
 interface BookingCardProps {
   booking: Booking;
@@ -39,10 +40,15 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
 
   // Stage 3 & 4: Handed Over (Rental ongoing or return handover)
   if (booking.status === 'HANDED_OVER') {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const endStr = (booking.end_date || booking.start_date || '').slice(0, 10);
-    const isDeadlineReached = currentDayStr ? (endStr && endStr <= currentDayStr) : false;
+    const endT = (booking.end_time || '18:00').slice(0, 5);
+    const currentHMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    if (isDeadlineReached) {
+    const isReturnTimeArrived = (endStr < todayStr) || (endStr === todayStr && currentHMin >= endT);
+
+    if (isReturnTimeArrived) {
       return {
         stageNumber: 4,
         stageLabel: 'Stage 4: Return',
@@ -55,7 +61,7 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
       stageNumber: 3,
       stageLabel: 'Stage 3: In-Use',
       badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-      description: 'Rental period ongoing',
+      description: 'Rental period in use',
     };
   }
 
@@ -82,7 +88,7 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
       stageNumber: 1,
       stageLabel: 'Stage 1: Accepted',
       badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-      description: `Pickup at ${booking.start_time || '10:00'}`,
+      description: `Pickup at ${formatTime12(booking.start_time || '10:00')}`,
     };
   }
 
@@ -225,7 +231,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
                 {booking.start_time && (
                   <span className="text-[10px] text-ink-secondary flex items-center gap-1">
                     <Clock className="w-2.5 h-2.5 text-brand shrink-0" />
-                    <span className="truncate">{booking.start_time}</span>
+                    <span className="truncate">{formatTime12(booking.start_time)}</span>
                   </span>
                 )}
               </div>
@@ -240,7 +246,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
                 {booking.end_time && (
                   <span className="text-[10px] text-ink-secondary flex items-center gap-1">
                     <Clock className="w-2.5 h-2.5 text-brand shrink-0" />
-                    <span className="truncate">{booking.end_time}</span>
+                    <span className="truncate">{formatTime12(booking.end_time)}</span>
                   </span>
                 )}
               </div>

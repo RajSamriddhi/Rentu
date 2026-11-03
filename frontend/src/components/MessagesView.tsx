@@ -20,6 +20,7 @@ import {
   getGoogleMapsDirectionsUrl, 
   ResolvedLocation 
 } from '../lib/location';
+import { formatTime12 } from '../lib/formatters';
 
 interface MessagesViewProps {
   initialBookingId?: string | null;
@@ -1358,7 +1359,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         (Boolean(user?.firebase_uid) && m.sender_id === user?.firebase_uid);
 
                       const formattedTime = m.created_at
-                        ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        ? new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                         : 'Just now';
 
                       const pData = m.proposal_data
@@ -1495,10 +1496,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   <div className="p-2.5 rounded-2xl bg-canvas border border-divider/60">
                                     <span className="text-[10px] text-ink-secondary block font-semibold">Rental Schedule</span>
                                     <span className="font-bold text-ink text-[11px] block truncate">
-                                      {pData.start_date} {pData.start_time ? `(${pData.start_time})` : ''}
+                                      {pData.start_date} {pData.start_time ? `(${formatTime12(pData.start_time)})` : ''}
                                     </span>
                                     <span className="text-[10px] text-ink-secondary block truncate">
-                                      to {pData.end_date || 'End Date'} {pData.end_time ? `(${pData.end_time})` : ''}
+                                      to {pData.end_date || 'End Date'} {pData.end_time ? `(${formatTime12(pData.end_time)})` : ''}
                                     </span>
                                   </div>
                                 </div>
@@ -1823,7 +1824,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         const directionsUrl = pData?.directions_url || getGoogleMapsDirectionsUrl(pData?.latitude, pData?.longitude, addrText);
                         const hasCoords = typeof pData?.latitude === 'number' && typeof pData?.longitude === 'number' && !isNaN(pData.latitude) && !isNaN(pData.longitude) && (pData.latitude !== 0 || pData.longitude !== 0);
 
-                        const formattedExpiresAt = pData?.expires_at ? new Date(pData.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+                        const formattedExpiresAt = pData?.expires_at ? new Date(pData.expires_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
 
                         return (
                           <div

@@ -320,6 +320,14 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
                 else if (bStatus === 'CANCELLED') {
                     pData.status = 'CANCELLED';
                 }
+                const isMeBorrower = myIds.includes(activeBooking?.borrower_id || pData.borrower_id);
+                const isMeLender = myIds.includes(activeBooking?.lender_id || pData.lender_id);
+                if (!isMeBorrower) {
+                    delete pData.pickup_code;
+                }
+                if (!isMeLender) {
+                    delete pData.return_code;
+                }
                 return {
                     ...row,
                     proposal_data: pData,

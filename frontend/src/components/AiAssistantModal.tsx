@@ -374,7 +374,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
 
                       <div className="flex items-center justify-end gap-2 mt-1.5 text-[9px] opacity-70">
                         <span>
-                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(m.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                         </span>
                         
                         {!isUser && (

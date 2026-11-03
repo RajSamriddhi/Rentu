@@ -43,16 +43,8 @@ for (let h = 6; h <= 23; h++) {
 }
 
 // Friendly 12-hour formatter (e.g. '02:00 PM')
-export const formatTime12 = (timeStr?: string): string => {
-  if (!timeStr) return '';
-  const [hStr, mStr] = timeStr.split(':');
-  const h = parseInt(hStr, 10);
-  const m = mStr || '00';
-  if (isNaN(h)) return timeStr;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${String(h12).padStart(2, '0')}:${m} ${period}`;
-};
+import { formatTime12 } from '../lib/formatters';
+export { formatTime12 };
 
 export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   bookedDates = [],
