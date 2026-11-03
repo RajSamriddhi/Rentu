@@ -551,24 +551,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
 
               {/* About this item description */}
-              <div>
-                <h3 className="text-sm font-extrabold text-ink uppercase tracking-wider mb-2">About this item</h3>
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">About this item</h3>
                 <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed font-medium">
-                  {item.description || "Perfect for beginners and hobbyists. Comes with 18-55mm lens, charger, 32GB SD card and camera bag. Great for travel, events or college projects."}
+                  {item.description || "No specific details provided by the owner. You can coordinate details via chat."}
                 </p>
               </div>
 
-              {/* Tags Pills matching Screen 3 */}
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                {['Camera', 'DSLR', '18-55mm', 'With accessories', 'Good condition'].map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-ink-secondary text-xs font-semibold rounded-full border border-zinc-200 dark:border-zinc-700"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {/* Real Category & Condition Badges */}
+              {(item.category || item.condition) && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {item.category && (
+                    <span className="px-3 py-1 bg-canvas text-ink-secondary text-xs font-semibold rounded-full border border-divider">
+                      {item.category}
+                    </span>
+                  )}
+                  {item.condition && (
+                    <span className="px-3 py-1 bg-canvas text-ink-secondary text-xs font-semibold rounded-full border border-divider">
+                      {item.condition} condition
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Dedicated Visible Product Calendar Section */}
               <div className="pt-4 border-t border-divider space-y-3">
