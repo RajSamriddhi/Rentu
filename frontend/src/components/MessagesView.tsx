@@ -67,8 +67,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [proposalType, setProposalType] = useState<'LISTING' | 'REQUEST'>('LISTING');
   const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
 
-  // WhatsApp-style Attachment Tray State
-  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
+  // Media & Location State
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -78,13 +77,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [liveLocationComment, setLiveLocationComment] = useState('');
   const [isSendingLocation, setIsSendingLocation] = useState(false);
   const [customLocationText, setCustomLocationText] = useState('');
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [contactName, setContactName] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  const [contactLocality, setContactLocality] = useState('');
-  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
-  const [docTitle, setDocTitle] = useState('Pre-handover Equipment Inspection');
-  const [docNotes, setDocNotes] = useState('Item inspected and verified in clean working condition before handover. All cables and accessories accounted for.');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   // Instagram-style Features State
@@ -97,7 +89,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const attachMenuRef = useRef<HTMLDivElement>(null);
   const hasUserClosedChatRef = useRef<boolean>(false);
 
   // Helper to reliably check if a conversation matches a selected identifier without null == null false positives
@@ -109,21 +100,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       (c.partner_id && `dm_${c.partner_id}` === targetId)
     );
   };
-
-  // Close attachment menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
-        setIsAttachMenuOpen(false);
-      }
-    };
-    if (isAttachMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isAttachMenuOpen]);
 
   // Click outside to close Emoji Picker
   useEffect(() => {
@@ -928,43 +904,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     } finally {
       setIsSendingLocation(false);
     }
-  };
-
-  const handleShareContact = async () => {
-    const name = contactName.trim() || user?.name || 'Neighbor';
-    const phone = contactPhone.trim() || user?.phone || '';
-    if (!phone) {
-      alert('Please enter a phone number to share.');
-      return;
-    }
-    await handleSendAttachmentMessage({
-      content: `Contact: ${name} (${phone})`,
-      message_type: 'CONTACT',
-      proposal_data: {
-        name,
-        phone,
-        locality: contactLocality.trim() || user?.locality || undefined,
-      },
-    });
-    setIsContactModalOpen(false);
-  };
-
-  const handleShareDocument = async () => {
-    const title = docTitle.trim() || 'Gear Handover Inspection';
-    const notes = docNotes.trim();
-    if (!notes) {
-      alert('Please enter your condition inspection notes.');
-      return;
-    }
-    await handleSendAttachmentMessage({
-      content: `Condition Note: ${title}`,
-      message_type: 'DOCUMENT',
-      proposal_data: {
-        title,
-        notes,
-      },
-    });
-    setIsDocumentModalOpen(false);
   };
 
   const handleToggleLike = (messageId: string) => {
@@ -2232,53 +2171,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           <MapPin className="w-5 h-5" />
                         </button>
 
-                        {/* Plus / Attachments (Contact & Condition notes) */}
-                        <div className="relative" ref={attachMenuRef}>
-                          <button
-                            type="button"
-                            onClick={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
-                            className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
-                            title="More options"
-                          >
-                            <Plus className="w-5 h-5" />
-                          </button>
-
-                          {isAttachMenuOpen && (
-                            <div className="absolute bottom-12 right-0 mb-1 z-40 w-56 bg-surface/98 backdrop-blur-md border border-divider rounded-3xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 space-y-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsAttachMenuOpen(false);
-                                  setContactName(user?.name || '');
-                                  setContactPhone(user?.phone || '');
-                                  setContactLocality(user?.locality || '');
-                                  setIsContactModalOpen(true);
-                                }}
-                                className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                                  <Phone className="w-4 h-4" />
-                                </div>
-                                <div className="text-xs font-bold text-ink">Contact Card</div>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsAttachMenuOpen(false);
-                                  setIsDocumentModalOpen(true);
-                                }}
-                                className="w-full text-left p-2 rounded-2xl hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                  <FileText className="w-4 h-4" />
-                                </div>
-                                <div className="text-xs font-bold text-ink">Condition Note</div>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
                         {/* Instagram Signature Quick Heart Button (Sends ❤️ on tap!) */}
                         <button
                           type="button"
@@ -2754,188 +2646,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
       )}
 
-      {/* WhatsApp Modal 2: Contact Card Modal */}
-      {isContactModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <Phone className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-ink font-display">Share Contact Card</h3>
-                  <p className="text-[10px] text-ink-secondary">Direct handover contact info</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsContactModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3.5">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  placeholder="Your Name"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
-                  Locality / Landmark (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={contactLocality}
-                  onChange={(e) => setContactLocality(e.target.value)}
-                  placeholder="e.g. BEML Layout 7th Phase, Bengaluru"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-divider">
-                <button
-                  type="button"
-                  onClick={() => setIsContactModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-ink-secondary hover:text-ink rounded-xl border border-divider transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareContact}
-                  disabled={!contactPhone.trim()}
-                  className="btn-primary text-xs px-5 py-2 font-extrabold shadow-pink disabled:opacity-50 cursor-pointer"
-                >
-                  Share Contact Card
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* WhatsApp Modal 3: Condition & Inspection Note Modal */}
-      {isDocumentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-surface border border-divider rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-divider">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-ink font-display">Gear Condition & Check Note</h3>
-                  <p className="text-[10px] text-ink-secondary">Record pre-handover or return inspection</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDocumentModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3.5">
-              {/* Presets */}
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1.5">
-                  Quick Presets
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    'Clean & Fully Operational',
-                    'Minor Existing Scratches Noted',
-                    'All Cables & Case Included',
-                    'Battery at 100% Charged',
-                  ].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setDocNotes((prev) => (prev ? `${prev}\n• ${preset}` : `• ${preset}`))}
-                      className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-canvas hover:bg-indigo-500/10 hover:text-indigo-600 border border-divider transition-colors cursor-pointer"
-                    >
-                      + {preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
-                  Note Title
-                </label>
-                <input
-                  type="text"
-                  value={docTitle}
-                  onChange={(e) => setDocTitle(e.target.value)}
-                  placeholder="e.g. Handover Inspection Note"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-semibold text-ink outline-none focus:border-brand"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-ink-secondary block mb-1">
-                  Inspection Details *
-                </label>
-                <textarea
-                  value={docNotes}
-                  onChange={(e) => setDocNotes(e.target.value)}
-                  placeholder="Describe gear working state, inclusions, or inspection agreement..."
-                  rows={4}
-                  className="w-full bg-canvas border border-divider rounded-xl p-3 text-xs font-medium text-ink outline-none focus:border-brand resize-none"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-divider">
-                <button
-                  type="button"
-                  onClick={() => setIsDocumentModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-ink-secondary hover:text-ink rounded-xl border border-divider transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareDocument}
-                  disabled={!docNotes.trim()}
-                  className="btn-primary text-xs px-5 py-2 font-extrabold shadow-pink disabled:opacity-50 cursor-pointer"
-                >
-                  Share Condition Note
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* WhatsApp Modal 4: Fullscreen Image Lightbox */}
+      {/* Fullscreen Image Lightbox */}
       {previewImageUrl && (
         <div 
           onClick={() => setPreviewImageUrl(null)}
