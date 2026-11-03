@@ -218,8 +218,25 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
            is_delivered = true,
            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
        WHERE (is_read = false OR is_read IS NULL)
-         AND receiver_id = ANY($1::text[])
-         AND sender_id = ANY($2::text[])`, [myIds, pIds]).catch(() => { });
+         AND sender_id = ANY($2::text[])
+         AND (
+           receiver_id = ANY($1::text[])
+           OR booking_id IN (
+             SELECT b_sub.id FROM bookings b_sub 
+             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+           )
+         )`, [myIds, pIds]).catch(() => { });
+        // Retrofit older milestone notifications into SYSTEM message type
+        await (0, db_1.query)(`UPDATE messages
+       SET message_type = 'SYSTEM'
+       WHERE (message_type IS NULL OR message_type = 'TEXT')
+         AND (
+           content LIKE 'Proposal accepted.%'
+           OR content LIKE 'Product received and handed over%'
+           OR content LIKE 'Product returned to owner%'
+           OR content LIKE 'Renter has sent the payment via%'
+         )`).catch(() => { });
         // Fetch unified messages between current user and this partner
         const messagesRes = await (0, db_1.query)(`SELECT 
         m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
@@ -308,8 +325,15 @@ router.post('/:conversationId/read', auth_1.authMiddleware, async (req, res, nex
              is_delivered = true,
              delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
          WHERE (is_read = false OR is_read IS NULL)
-           AND receiver_id = ANY($1::text[])
-           AND sender_id = ANY($2::text[])`, [myIds, pIds]);
+           AND sender_id = ANY($2::text[])
+           AND (
+             receiver_id = ANY($1::text[])
+             OR booking_id IN (
+               SELECT b_sub.id FROM bookings b_sub 
+               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+             )
+           )`, [myIds, pIds]);
         }
         return (0, response_1.sendSuccess)(res, { marked_read: true });
     }

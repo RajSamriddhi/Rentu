@@ -144,25 +144,28 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  // Status ticks: 1 tick = sent, 2 ticks = reached recipient (delivered), 2 blue ticks = read
+  // Status ticks: 1 tick = sent, 2 ticks = reached recipient (delivered), 2 blue ticks = read/seen
   const renderMessageTicks = (m: Message, onBubble = true) => {
+    // 3. Double Blue Ticks (Read / Seen by recipient)
     if (m.is_read) {
       return (
-        <span title="Read" className="inline-flex items-center text-sky-400 drop-shadow-xs">
+        <span title="Read" className="inline-flex items-center text-[#38bdf8] drop-shadow-xs">
           <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
         </span>
       );
     }
+    // 2. Double Grey/White Ticks (Delivered to recipient)
     if (m.is_delivered) {
       return (
-        <span title="Delivered" className={`inline-flex items-center ${onBubble ? 'text-white/75' : 'text-ink-muted'}`}>
+        <span title="Delivered" className={`inline-flex items-center ${onBubble ? 'text-white/70' : 'text-ink-muted'}`}>
           <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
         </span>
       );
     }
+    // 1. Single Tick (Sent & stored on server)
     return (
-      <span title="Sent" className={`inline-flex items-center ${onBubble ? 'text-white/75' : 'text-ink-muted'}`}>
-        <Check className="w-3 h-3 stroke-[2.5]" />
+      <span title="Sent" className={`inline-flex items-center ${onBubble ? 'text-white/70' : 'text-ink-muted'}`}>
+        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
       </span>
     );
   };
@@ -509,6 +512,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       receiver_id: receiverId,
       content: textToSend,
       created_at: new Date().toISOString(),
+      is_delivered: false,
+      is_read: false,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -644,6 +649,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       message_type: 'PROPOSAL',
       proposal_data: proposalPayload,
       created_at: new Date().toISOString(),
+      is_delivered: false,
+      is_read: false,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -697,6 +704,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       message_type: opts.message_type as any,
       proposal_data: opts.proposal_data,
       created_at: new Date().toISOString(),
+      is_delivered: false,
+      is_read: false,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -1298,8 +1307,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     messages.map((m) => {
                       const isMe =
                         m.sender_id === (user?.id || 'me') ||
-                        (user?.firebase_uid && m.sender_id === user.firebase_uid) ||
-                        (m.sender_name && user?.name && m.sender_name === user.name);
+                        (Boolean(user?.id) && m.sender_id === user?.id) ||
+                        (Boolean(user?.firebase_uid) && m.sender_id === user?.firebase_uid);
 
                       const formattedTime = m.created_at
                         ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -1309,13 +1318,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         ? (typeof m.proposal_data === 'string' ? (() => { try { return JSON.parse(m.proposal_data); } catch { return null; } })() : m.proposal_data)
                         : null;
 
+                      const isSystemMessage =
+                        m.message_type === 'SYSTEM' ||
+                        m.content?.startsWith('Proposal accepted.') ||
+                        m.content?.startsWith('Product received and handed over') ||
+                        m.content?.startsWith('Product returned to owner') ||
+                        m.content?.startsWith('Renter has sent the payment via');
+
                       // 1. SYSTEM Announcement Messages (Deal confirmation, milestones)
-                      if (m.message_type === 'SYSTEM') {
+                      if (isSystemMessage) {
                         return (
                           <div key={m.id} className="flex justify-center my-3">
-                            <div className="max-w-md bg-surface/90 border border-emerald-500/30 rounded-2xl px-4 py-2 text-center text-xs text-ink shadow-xs">
+                            <div className="max-w-md bg-surface/90 border border-brand/20 rounded-2xl px-4 py-2.5 text-center text-xs text-ink shadow-xs">
                               <span className="font-semibold text-ink leading-relaxed">{m.content}</span>
-                              <span className="block text-[10px] text-ink-secondary mt-0.5">{formattedTime}</span>
+                              <span className="block text-[10px] text-ink-secondary mt-1">{formattedTime}</span>
                             </div>
                           </div>
                         );

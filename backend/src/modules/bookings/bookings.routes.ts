@@ -423,8 +423,8 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
 
       // Add notification chat message
       await query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`,
         [id, booking.lender_id, booking.borrower_id]
       );
 
@@ -584,8 +584,8 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
 
     // Send chat system message
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
 
@@ -706,8 +706,8 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
 
     // Send chat system message
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, $4, 'SYSTEM')`,
       [
         id, 
         userId, 
@@ -757,8 +757,8 @@ router.post('/:id/submit-payment', authMiddleware, async (req: AuthenticatedRequ
     );
 
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.', 'SYSTEM')`,
       [id, userId, booking.lender_id, payment_method]
     );
 
@@ -804,8 +804,8 @@ router.post('/:id/confirm-payment', authMiddleware, async (req: AuthenticatedReq
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
 
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
       [id, userId, booking.borrower_id]
     );
 

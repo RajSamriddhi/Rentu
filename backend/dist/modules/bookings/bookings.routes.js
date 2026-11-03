@@ -328,8 +328,8 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
          )
          WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [id]).catch((err) => console.warn('Failed to sync message proposal_data status:', err));
             // Add notification chat message
-            await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`, [id, booking.lender_id, booking.borrower_id]);
+            await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`, [id, booking.lender_id, booking.borrower_id]);
             // Notify Borrower: Proposal Accepted
             await (0, notifications_service_1.createNotification)({
                 userId: booking.borrower_id,
@@ -446,8 +446,8 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         // Keep item status as AVAILABLE since item is rented only for agreed dates
         await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         // Send chat system message
-        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);
+        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);
         const sDate = booking.start_date_str || booking.start_date;
         const eDate = booking.end_date_str || booking.end_date;
         // 1. Notify Borrower: Gear Received
@@ -533,8 +533,8 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
             await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
         }
         // Send chat system message
-        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, $4)`, [
+        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, $4, 'SYSTEM')`, [
             id,
             userId,
             isBorrower ? booking.lender_id : booking.borrower_id,
@@ -570,8 +570,8 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $2
        RETURNING *`, [payment_method, id]);
-        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`, [id, userId, booking.lender_id, payment_method]);
+        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.', 'SYSTEM')`, [id, userId, booking.lender_id, payment_method]);
         return (0, response_1.sendSuccess)(res, updateRes.rows[0], 'Payment marked as sent! Waiting for owner verification.');
     }
     catch (error) {
@@ -603,8 +603,8 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
        RETURNING *`, [id]);
         // Release item back to AVAILABLE
         await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`, [id, userId, booking.borrower_id]);
+        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`, [id, userId, booking.borrower_id]);
         // Notify Borrower: Rental Completed
         await (0, notifications_service_1.createNotification)({
             userId: booking.borrower_id,

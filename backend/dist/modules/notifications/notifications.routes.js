@@ -14,6 +14,15 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         await (0, notifications_service_1.checkAndGenerateReminders)(userId).catch(err => {
             console.warn('Notification reminder check error:', err);
         });
+        // Mark pending incoming messages as delivered to this active user
+        await (0, db_1.query)(`WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE (is_delivered = false OR is_delivered IS NULL)
+        AND receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)`, [userId]).catch(() => { });
         const result = await (0, db_1.query)(`SELECT 
         n.id, 
         n.user_id, 

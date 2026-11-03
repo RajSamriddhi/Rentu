@@ -54412,8 +54412,8 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         [id]
       ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
       await query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.')`,
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`,
         [id, booking.lender_id, booking.borrower_id]
       );
       await createNotification({
@@ -54538,8 +54538,8 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     );
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
       [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
     );
     const sDate = booking.start_date_str || booking.start_date;
@@ -54632,8 +54632,8 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     }
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, $4, 'SYSTEM')`,
       [
         id,
         userId,
@@ -54673,8 +54673,8 @@ router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
       [payment_method, id]
     );
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.', 'SYSTEM')`,
       [id, userId, booking.lender_id, payment_method]
     );
     return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
@@ -54712,8 +54712,8 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
     );
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).')`,
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
       [id, userId, booking.borrower_id]
     );
     await createNotification({
@@ -55775,9 +55775,28 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
            is_delivered = true,
            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
        WHERE (is_read = false OR is_read IS NULL)
-         AND receiver_id = ANY($1::text[])
-         AND sender_id = ANY($2::text[])`,
+         AND sender_id = ANY($2::text[])
+         AND (
+           receiver_id = ANY($1::text[])
+           OR booking_id IN (
+             SELECT b_sub.id FROM bookings b_sub 
+             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+           )
+         )`,
       [myIds, pIds]
+    ).catch(() => {
+    });
+    await query(
+      `UPDATE messages
+       SET message_type = 'SYSTEM'
+       WHERE (message_type IS NULL OR message_type = 'TEXT')
+         AND (
+           content LIKE 'Proposal accepted.%'
+           OR content LIKE 'Product received and handed over%'
+           OR content LIKE 'Product returned to owner%'
+           OR content LIKE 'Renter has sent the payment via%'
+         )`
     ).catch(() => {
     });
     const messagesRes = await query(
@@ -55868,8 +55887,15 @@ router7.post("/:conversationId/read", authMiddleware, async (req, res, next) => 
              is_delivered = true,
              delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
          WHERE (is_read = false OR is_read IS NULL)
-           AND receiver_id = ANY($1::text[])
-           AND sender_id = ANY($2::text[])`,
+           AND sender_id = ANY($2::text[])
+           AND (
+             receiver_id = ANY($1::text[])
+             OR booking_id IN (
+               SELECT b_sub.id FROM bookings b_sub 
+               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+             )
+           )`,
         [myIds, pIds]
       );
     }
@@ -65771,6 +65797,18 @@ router10.get("/", authMiddleware, async (req, res, next) => {
     const userId = req.user.id;
     await checkAndGenerateReminders(userId).catch((err) => {
       console.warn("Notification reminder check error:", err);
+    });
+    await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      )
+      UPDATE messages
+      SET is_delivered = true,
+          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+      WHERE (is_delivered = false OR is_delivered IS NULL)
+        AND receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)`,
+      [userId]
+    ).catch(() => {
     });
     const result = await query(
       `SELECT 

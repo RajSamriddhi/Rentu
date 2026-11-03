@@ -244,9 +244,29 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
            is_delivered = true,
            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
        WHERE (is_read = false OR is_read IS NULL)
-         AND receiver_id = ANY($1::text[])
-         AND sender_id = ANY($2::text[])`,
+         AND sender_id = ANY($2::text[])
+         AND (
+           receiver_id = ANY($1::text[])
+           OR booking_id IN (
+             SELECT b_sub.id FROM bookings b_sub 
+             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+           )
+         )`,
       [myIds, pIds]
+    ).catch(() => {});
+
+    // Retrofit older milestone notifications into SYSTEM message type
+    await query(
+      `UPDATE messages
+       SET message_type = 'SYSTEM'
+       WHERE (message_type IS NULL OR message_type = 'TEXT')
+         AND (
+           content LIKE 'Proposal accepted.%'
+           OR content LIKE 'Product received and handed over%'
+           OR content LIKE 'Product returned to owner%'
+           OR content LIKE 'Renter has sent the payment via%'
+         )`
     ).catch(() => {});
 
     // Fetch unified messages between current user and this partner
@@ -350,8 +370,15 @@ router.post('/:conversationId/read', authMiddleware, async (req: AuthenticatedRe
              is_delivered = true,
              delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
          WHERE (is_read = false OR is_read IS NULL)
-           AND receiver_id = ANY($1::text[])
-           AND sender_id = ANY($2::text[])`,
+           AND sender_id = ANY($2::text[])
+           AND (
+             receiver_id = ANY($1::text[])
+             OR booking_id IN (
+               SELECT b_sub.id FROM bookings b_sub 
+               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+             )
+           )`,
         [myIds, pIds]
       );
     }
