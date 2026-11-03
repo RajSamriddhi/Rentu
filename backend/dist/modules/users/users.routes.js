@@ -559,11 +559,22 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
         next(error);
     }
 });
+// Helper to resolve user ID from UUID, Firebase UID, or @username
+async function resolveUserId(idOrHandle) {
+    const clean = (idOrHandle || '').replace(/^@/, '').trim();
+    if (!clean)
+        return null;
+    const res = await (0, db_1.query)(`SELECT id FROM users WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1) LIMIT 1`, [clean]);
+    return res.rows[0]?.id || null;
+}
 // Follow a user
 router.post('/:id/follow', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const followerId = req.user.id;
-        const followingId = req.params.id;
+        const followingId = await resolveUserId(req.params.id);
+        if (!followingId) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
+        }
         if (followerId === followingId) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot follow yourself', 400);
         }
@@ -587,7 +598,10 @@ router.post('/:id/follow', auth_1.authMiddleware, async (req, res, next) => {
 router.post('/:id/unfollow', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const followerId = req.user.id;
-        const followingId = req.params.id;
+        const followingId = await resolveUserId(req.params.id);
+        if (!followingId) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
+        }
         await (0, db_1.query)(`DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [followerId, followingId]);
         const countRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
         return (0, response_1.sendSuccess)(res, { is_following: false, followers_count: countRes.rows[0]?.count || 0 }, 'Unfollowed neighbor');
@@ -600,7 +614,10 @@ router.post('/:id/unfollow', auth_1.authMiddleware, async (req, res, next) => {
 router.post('/:id/block', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const blockerId = req.user.id;
-        const blockedId = req.params.id;
+        const blockedId = await resolveUserId(req.params.id);
+        if (!blockedId) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
+        }
         if (blockerId === blockedId) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot block yourself', 400);
         }
@@ -617,7 +634,10 @@ router.post('/:id/block', auth_1.authMiddleware, async (req, res, next) => {
 router.post('/:id/unblock', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const blockerId = req.user.id;
-        const blockedId = req.params.id;
+        const blockedId = await resolveUserId(req.params.id);
+        if (!blockedId) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
+        }
         await (0, db_1.query)(`DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [blockerId, blockedId]);
         return (0, response_1.sendSuccess)(res, { is_blocked: false }, 'User unblocked successfully');
     }

@@ -106,14 +106,15 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       return;
     }
     if (isActionLoading || isBlocked) return;
+    const targetId = profile?.id || userId;
     setIsActionLoading(true);
     try {
       if (isFollowing) {
-        const res = await api.unfollowUser(userId);
+        const res = await api.unfollowUser(targetId);
         setIsFollowing(false);
         setFollowersCount(res?.followers_count ?? Math.max(0, followersCount - 1));
       } else {
-        const res = await api.followUser(userId);
+        const res = await api.followUser(targetId);
         setIsFollowing(true);
         setFollowersCount(res?.followers_count ?? (followersCount + 1));
       }
@@ -129,10 +130,11 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
       onOpenAuth?.();
       return;
     }
+    const targetId = profile?.id || userId;
     if (isBlocked) {
       if (!confirm(`Unblock ${profile?.name}? You will be able to see each other's listings and send messages.`)) return;
       try {
-        await api.unblockUser(userId);
+        await api.unblockUser(targetId);
         setIsBlocked(false);
         fetchProfile();
       } catch (err: any) {
@@ -141,7 +143,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     } else {
       if (!confirm(`Block ${profile?.name}? You won't be able to message each other, see each other's requests, or rent items from each other.`)) return;
       try {
-        await api.blockUser(userId);
+        await api.blockUser(targetId);
         setIsBlocked(true);
         setIsFollowing(false);
         setFollowersCount(Math.max(0, followersCount - 1));
