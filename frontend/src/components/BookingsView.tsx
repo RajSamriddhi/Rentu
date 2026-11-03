@@ -22,7 +22,9 @@ import {
   Info,
   CalendarCheck2,
   XCircle,
-  Ban
+  Ban,
+  Upload,
+  Download
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../lib/api';
@@ -496,6 +498,28 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     return ongoingList.filter((b) => isDateWithinRange(selectedDateFilter, b.start_date, b.end_date));
   }, [ongoingList, selectedDateFilter]);
 
+  const [ongoingRoleFilter, setOngoingRoleFilter] = useState<'all' | 'lender' | 'renter'>('all');
+
+  // Split ongoing bookings by role: Lender vs Renter
+  const ongoingLendingList = useMemo(() => {
+    return displayedOngoingList.filter((b) => {
+      return Boolean(
+        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
+        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
+      );
+    });
+  }, [displayedOngoingList, user]);
+
+  const ongoingRentingList = useMemo(() => {
+    return displayedOngoingList.filter((b) => {
+      const isLender = Boolean(
+        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
+        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
+      );
+      return !isLender;
+    });
+  }, [displayedOngoingList, user]);
+
   // Helper to check 3-day review window for finished bookings
   const getReviewTimeRemaining = (booking: Booking): { isOpen: boolean; label: string } => {
     if (booking.status !== 'COMPLETED') return { isOpen: false, label: '' };
@@ -848,7 +872,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <>
           {/* TAB 1: ONGOING BOOKINGS */}
           {activeTab === 'ongoing' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {displayedOngoingList.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-3xl p-8 max-w-2xl mx-auto space-y-2">
                   <div className="w-12 h-12 rounded-2xl bg-brand/10 text-brand flex items-center justify-center mx-auto mb-2">
@@ -873,31 +897,186 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {displayedOngoingList.map((booking) => (
-                    <div
-                      key={booking.id}
-                      id={`booking-${booking.id}`}
-                      className={`rounded-3xl transition-all duration-300 ${
-                        highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
+                <div className="space-y-6">
+                  {/* Role Sub-Filter Navigation Pills */}
+                  <div className="flex items-center gap-2 pb-1 overflow-x-auto scrollbar-none">
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('all')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'all'
+                          ? 'bg-ink text-canvas shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
                       }`}
                     >
-                      <BookingCard
-                        booking={booking}
-                        onClick={() => setSelectedStageBooking(booking)}
-                        onOpenChat={onOpenChat}
-                        onUpdated={(updated) => {
-                          setBookings((prev) =>
-                            prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
-                          );
-                          if (updated.status === 'COMPLETED') {
-                            setActiveTab('finished');
-                            setReviewBooking(updated);
-                          }
-                        }}
-                      />
+                      <span>All Ongoing</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'all' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {displayedOngoingList.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('lender')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'lender'
+                          ? 'bg-purple-600 text-white shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Gear I'm Lending (Owner)</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'lender' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {ongoingLendingList.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('renter')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'renter'
+                          ? 'bg-brand text-white shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
+                      }`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Gear I'm Renting (Borrower)</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'renter' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {ongoingRentingList.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* ======================================================== */}
+                  {/* SECTION 1: GEAR I'M LENDING (AS OWNER)                   */}
+                  {/* ======================================================== */}
+                  {(ongoingRoleFilter === 'all' || ongoingRoleFilter === 'lender') && (
+                    <div className="space-y-3.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-divider">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                            <Upload className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-ink font-display flex items-center gap-2">
+                              <span>Gear I'm Lending</span>
+                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                You are Owner • {ongoingLendingList.length}
+                              </span>
+                            </h3>
+                            <p className="text-[11px] text-ink-secondary">
+                              Items you are renting out to neighbors. You verify handover code and collect rental earnings.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {ongoingLendingList.length === 0 ? (
+                        <div className="p-6 rounded-3xl bg-surface border border-divider text-center space-y-1">
+                          <p className="text-xs font-bold text-ink">No gear currently out on rent</p>
+                          <p className="text-[11px] text-ink-secondary">
+                            When neighbors book your listed gear, active handoffs and return tracking will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ongoingLendingList.map((booking) => (
+                            <div
+                              key={booking.id}
+                              id={`booking-${booking.id}`}
+                              className={`rounded-3xl transition-all duration-300 ${
+                                highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
+                              }`}
+                            >
+                              <BookingCard
+                                booking={booking}
+                                onClick={() => setSelectedStageBooking(booking)}
+                                onOpenChat={onOpenChat}
+                                onUpdated={(updated) => {
+                                  setBookings((prev) =>
+                                    prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+                                  );
+                                  if (updated.status === 'COMPLETED') {
+                                    setActiveTab('finished');
+                                    setReviewBooking(updated);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )}
+
+                  {/* ======================================================== */}
+                  {/* SECTION 2: GEAR I'M RENTING (AS BORROWER)                */}
+                  {/* ======================================================== */}
+                  {(ongoingRoleFilter === 'all' || ongoingRoleFilter === 'renter') && (
+                    <div className="space-y-3.5 pt-2">
+                      <div className="flex items-center justify-between pb-2 border-b border-divider">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-2xl bg-brand/10 text-brand flex items-center justify-center">
+                            <Download className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-ink font-display flex items-center gap-2">
+                              <span>Gear I'm Renting</span>
+                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20">
+                                You are Renter • {ongoingRentingList.length}
+                              </span>
+                            </h3>
+                            <p className="text-[11px] text-ink-secondary">
+                              Items you booked from neighbors. You will show your 6-digit pickup code at meetup time.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {ongoingRentingList.length === 0 ? (
+                        <div className="p-6 rounded-3xl bg-surface border border-divider text-center space-y-1">
+                          <p className="text-xs font-bold text-ink">No gear currently being rented</p>
+                          <p className="text-[11px] text-ink-secondary">
+                            When you rent cameras, camping gear, tools, or tech, your active orders will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ongoingRentingList.map((booking) => (
+                            <div
+                              key={booking.id}
+                              id={`booking-${booking.id}`}
+                              className={`rounded-3xl transition-all duration-300 ${
+                                highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
+                              }`}
+                            >
+                              <BookingCard
+                                booking={booking}
+                                onClick={() => setSelectedStageBooking(booking)}
+                                onOpenChat={onOpenChat}
+                                onUpdated={(updated) => {
+                                  setBookings((prev) =>
+                                    prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+                                  );
+                                  if (updated.status === 'COMPLETED') {
+                                    setActiveTab('finished');
+                                    setReviewBooking(updated);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

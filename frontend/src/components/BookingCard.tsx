@@ -4,7 +4,9 @@ import {
   Clock, 
   ArrowRight, 
   CheckCircle2, 
-  QrCode 
+  QrCode,
+  MessageSquare,
+  Package
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
@@ -23,7 +25,7 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
     return {
       stageNumber: 5,
       stageLabel: 'Completed',
-      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+      badgeClass: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
       description: 'Finished & verified',
     };
   }
@@ -32,8 +34,8 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
   if (booking.returned_at) {
     return {
       stageNumber: 5,
-      stageLabel: 'Payment',
-      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+      stageLabel: 'Stage 5: Payment',
+      badgeClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
       description: 'Take payment',
     };
   }
@@ -51,16 +53,16 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
     if (isReturnTimeArrived) {
       return {
         stageNumber: 4,
-        stageLabel: 'Return Handover',
-        badgeClass: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+        stageLabel: 'Stage 4: Return',
+        badgeClass: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30',
         description: 'Ready for return code',
       };
     }
 
     return {
       stageNumber: 3,
-      stageLabel: 'In-Use',
-      badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      stageLabel: 'Stage 3: In-Use',
+      badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
       description: 'Rental in progress',
     };
   }
@@ -78,16 +80,16 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
     if (isPickupTimeArrived) {
       return {
         stageNumber: 2,
-        stageLabel: 'Pickup Ready',
-        badgeClass: 'bg-brand-soft text-brand border-brand/20',
+        stageLabel: 'Stage 2: Pickup Ready',
+        badgeClass: 'bg-brand/15 text-brand border-brand/30',
         description: 'Verify pickup code',
       };
     }
 
     return {
       stageNumber: 1,
-      stageLabel: 'Scheduled',
-      badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      stageLabel: 'Stage 1: Scheduled',
+      badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
       description: `Pickup at ${formatTime12(booking.start_time || '10:00')}`,
     };
   }
@@ -95,7 +97,7 @@ export function getBookingStageInfo(booking: Booking, currentDayStr?: string) {
   return {
     stageNumber: 1,
     stageLabel: 'Pending',
-    badgeClass: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20',
+    badgeClass: 'bg-zinc-500/15 text-zinc-500 border-zinc-500/30',
     description: 'Awaiting confirmation',
   };
 }
@@ -124,6 +126,7 @@ function formatFriendlyDate(dateStr?: string): string {
 export const BookingCard: React.FC<BookingCardProps> = ({
   booking,
   onClick,
+  onOpenChat,
 }) => {
   const { user } = useAuth();
   const [imageError, setImageError] = useState(false);
@@ -140,6 +143,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
     : (booking.lender_name || 'Lender / Owner');
 
   const otherPartyAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
+  const otherPartyId = isLender ? booking.borrower_id : booking.lender_id;
 
   const stage = getBookingStageInfo(booking);
 
@@ -154,11 +158,11 @@ export const BookingCard: React.FC<BookingCardProps> = ({
     <div
       id={`booking-${booking.id}`}
       onClick={onClick}
-      className="group relative bg-surface border border-divider hover:border-zinc-300 dark:hover:border-zinc-700 rounded-2xl p-3 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between"
+      className="group relative bg-surface border border-divider hover:border-brand/40 rounded-3xl p-4 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between space-y-3"
     >
-      <div>
-        {/* Photo Container */}
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-800">
+      <div className="space-y-3">
+        {/* Photo Container with readable Role & Stage Badges */}
+        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-divider/50">
           {hasImage ? (
             <img
               src={primaryImage}
@@ -169,76 +173,120 @@ export const BookingCard: React.FC<BookingCardProps> = ({
             />
           ) : (
             <div className="w-full h-full bg-zinc-100 dark:bg-zinc-800/60 flex items-center justify-center">
-              <QrCode className="w-8 h-8 text-ink-secondary/40" />
+              <QrCode className="w-10 h-10 text-ink-secondary/30" />
             </div>
           )}
 
-          {/* Clean Floating Badges */}
-          <div className="absolute top-2 inset-x-2 flex items-center justify-between gap-1 pointer-events-none">
-            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-black/70 text-white backdrop-blur-xs shadow-xs truncate">
-              {isLender ? 'Lending' : 'Renting'}
+          {/* Floating Role & Status Badges */}
+          <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between gap-1.5 pointer-events-none">
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${
+              isLender
+                ? 'bg-purple-950/85 text-purple-300 border-purple-500/40'
+                : 'bg-black/85 text-pink-300 border-brand/40'
+            }`}>
+              {isLender ? '📤 Lending (Owner)' : '📥 Renting (Borrower)'}
             </span>
-            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider backdrop-blur-xs shadow-xs border truncate ${stage.badgeClass}`}>
+
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border ${stage.badgeClass}`}>
               {stage.stageLabel}
             </span>
           </div>
 
           {booking.status === 'COMPLETED' && (
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-2xs flex items-center justify-center">
-              <span className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-md">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Finished
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center">
+              <span className="bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-full inline-flex items-center gap-1.5 shadow-md">
+                <CheckCircle2 className="w-4 h-4" /> Finished
               </span>
             </div>
           )}
         </div>
 
-        {/* Content Info */}
-        <div className="mt-2.5 px-0.5 space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="font-bold text-ink text-sm sm:text-base line-clamp-1 group-hover:text-brand transition-colors">
+        {/* Content Info: Title & Price */}
+        <div className="space-y-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h4 className="font-extrabold text-ink text-base sm:text-lg capitalize line-clamp-1 group-hover:text-brand transition-colors font-display">
               {booking.item_title || 'Rented Item'}
             </h4>
-            <span className="text-sm sm:text-base font-extrabold text-ink font-display shrink-0">
-              {Number(booking.total_price) === 0 ? 'Free' : `₹${Number(booking.total_price)}`}
+            <div className="text-right shrink-0">
+              <span className="text-base sm:text-lg font-black text-ink font-display">
+                {Number(booking.total_price) === 0 ? 'Free' : `₹${Number(booking.total_price)}`}
+              </span>
+              <span className="text-[11px] text-ink-secondary ml-1 font-medium">
+                ({durationLabel})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dedicated Readable Schedule Box (Never Truncates!) */}
+        <div className="p-3 bg-canvas/80 rounded-2xl border border-divider text-xs space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-ink-secondary flex items-center gap-1.5 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-brand" />
+              <span>Pickup:</span>
+            </span>
+            <span className="font-bold text-ink truncate text-right">
+              {formatFriendlyDate(booking.start_date)} at {formatTime12(booking.start_time || '10:00')}
             </span>
           </div>
 
-          {/* Clean Schedule Line */}
-          <div className="flex items-center gap-1.5 text-xs text-ink-secondary">
-            <Clock className="w-3.5 h-3.5 text-brand shrink-0" />
-            <span className="truncate font-medium">
-              {formatFriendlyDate(booking.start_date)} {booking.start_time ? `(${formatTime12(booking.start_time)})` : ''} → {formatFriendlyDate(booking.end_date || booking.start_date)}
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-divider/60">
+            <span className="text-[11px] font-semibold text-ink-secondary flex items-center gap-1.5 shrink-0">
+              <Clock className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Return:</span>
+            </span>
+            <span className="font-bold text-ink truncate text-right">
+              {formatFriendlyDate(booking.end_date || booking.start_date)} at {formatTime12(booking.end_time || '18:00')}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Footer: Partner Info & View Timeline CTA */}
-      <div className="mt-3 pt-2 border-t border-divider flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-700 shrink-0 border border-zinc-300 dark:border-zinc-600">
-            <img
-              src={otherPartyAvatar || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(otherPartyName)}`}
-              alt={otherPartyName}
-              className="w-full h-full object-cover"
-            />
+      {/* Footer: Partner Info & Quick Action */}
+      <div className="pt-2.5 border-t border-divider flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src={otherPartyAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherPartyName)}&background=0F172A&color=fff&bold=true`}
+            alt={otherPartyName}
+            className="w-7 h-7 rounded-full object-cover border border-divider shrink-0 shadow-2xs"
+          />
+          <div className="min-w-0">
+            <span className="text-[9px] uppercase font-bold text-ink-muted block leading-none">
+              {isLender ? 'Rented by' : 'Lender'}
+            </span>
+            <span className="text-xs font-bold text-ink truncate block">
+              {otherPartyName}
+            </span>
           </div>
-          <span className="text-[11px] font-bold text-ink-secondary truncate max-w-[110px]">
-            {otherPartyName}
-          </span>
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-          }}
-          className="text-xs font-bold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-        >
-          <span>Timeline</span>
-          <ArrowRight className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenChat && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenChat(booking.is_proposal ? `dm_${otherPartyId}` : booking.id);
+              }}
+              className="p-2 rounded-xl border border-divider hover:border-brand hover:text-brand bg-surface text-ink-secondary transition-colors cursor-pointer"
+              title={`Message ${otherPartyName}`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className="btn-primary text-xs px-3.5 py-1.5 font-bold shadow-pink rounded-xl inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>Timeline</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
