@@ -485,12 +485,16 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 7: BOOKINGS (Screen 7 in Mockup) */}
+            {/* VIEW 7: BOOKINGS (Integrated into Profile beside My Requests) */}
             {activeTab === 'bookings' && (
-              <BookingsView
-                initialTab={bookingSubTab}
+              <ProfileView
+                initialTab="bookings"
+                initialBookingSubTab={bookingSubTab}
                 initialBookingId={highlightedBookingId}
-                onOpenChat={(bookingId) => handleOpenChatWithBooking(bookingId)}
+                onOpenDropGear={() => setIsDropGearOpen(true)}
+                onOpenDropWish={() => setIsDropWishOpen(true)}
+                onOpenChatWithBooking={handleOpenChatWithBooking}
+                onOpenAuth={() => setIsAuthOpen(true)}
               />
             )}
 
@@ -509,6 +513,8 @@ export const App: React.FC = () => {
             {/* VIEW 9: PROFILE VIEW (Screen 9 in Mockup) */}
             {activeTab === 'profile' && (
               <ProfileView
+                initialBookingSubTab={bookingSubTab}
+                initialBookingId={highlightedBookingId}
                 onOpenDropGear={() => setIsDropGearOpen(true)}
                 onOpenDropWish={() => setIsDropWishOpen(true)}
                 onOpenChatWithBooking={handleOpenChatWithBooking}

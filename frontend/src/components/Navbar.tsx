@@ -950,14 +950,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>My Profile & Listings</span>
                       </button>
 
-                      <button
-                        onClick={() => { setActiveTab('bookings'); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
-                      >
-                        <Calendar className="w-4 h-4 text-ink-secondary" />
-                        <span>Bookings</span>
-                      </button>
-
                       {isUserAdmin && (
                         <button
                           onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
