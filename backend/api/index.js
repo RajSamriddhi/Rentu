@@ -53267,7 +53267,9 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         duration_days,
         status
       FROM bookings
-      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );
@@ -53302,7 +53304,9 @@ router2.get("/:id/availability", async (req, res, next) => {
         duration_days,
         status
       FROM bookings
-      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );

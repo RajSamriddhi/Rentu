@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, AlertCircle, Clock, Lock, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 
 export interface BookedDateRange {
   id?: string;
@@ -103,13 +103,15 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
     return currentMonth.getTime() > firstOfCurrent.getTime();
   }, [currentMonth, today]);
 
-  // Normalize booked date ranges
+  // Normalize booked date ranges - only include active or future rentals
   const normalizedBookedRanges = useMemo(() => {
-    return (bookedDates || []).map((b) => ({
-      start: b.start_date?.slice(0, 10),
-      end: (b.end_date || b.start_date)?.slice(0, 10),
-    })).filter((b) => b.start && b.end);
-  }, [bookedDates]);
+    return (bookedDates || [])
+      .map((b) => ({
+        start: b.start_date?.slice(0, 10),
+        end: (b.end_date || b.start_date)?.slice(0, 10),
+      }))
+      .filter((b) => b.start && b.end && b.end >= todayStr);
+  }, [bookedDates, todayStr]);
 
   // Check if a specific YYYY-MM-DD is booked
   const isDateBooked = (dateStr: string): boolean => {
@@ -580,26 +582,6 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
           </div>
         );
       })()}
-
-      {/* Booked ranges notice banner if any rentals exist */}
-      {normalizedBookedRanges.length > 0 && (
-        <div className="mt-2.5 pt-2 border-t border-divider">
-          <div className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1 mb-1">
-            <Info className="w-3 h-3 text-rose-500" />
-            <span>Active Rental Schedule</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {normalizedBookedRanges.map((range, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-              >
-                <Lock className="w-2.5 h-2.5" /> {range.start} → {range.end} (Rented)
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
     </div>
   );

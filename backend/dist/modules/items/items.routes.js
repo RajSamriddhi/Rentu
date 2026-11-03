@@ -286,7 +286,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             item.pincode = null;
             item.owner_pincode = null;
         }
-        // Fetch booked calendar dates for this item (Active / Confirmed rentals)
+        // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
         const bookedRes = await (0, db_1.query)(`SELECT 
         id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
@@ -296,7 +296,9 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         duration_days,
         status
       FROM bookings
-      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`, [id]);
         // Fetch related items in same category and city
         const itemCity = (0, city_1.extractCity)(item.locality);
@@ -315,7 +317,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         next(error);
     }
 });
-// Get Availability & Booked Dates for an Item Calendar
+// Get Availability & Booked Dates for an Item Calendar (Active or upcoming rentals)
 router.get('/:id/availability', async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -328,7 +330,9 @@ router.get('/:id/availability', async (req, res, next) => {
         duration_days,
         status
       FROM bookings
-      WHERE item_id = $1 AND status IN ('ACCEPTED', 'HANDED_OVER')
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`, [id]);
         return (0, response_1.sendSuccess)(res, result.rows);
     }
