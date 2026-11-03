@@ -21,3 +21,4 @@ export function formatTime12(timeStr?: string): string {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${String(h12).padStart(2, '0')}:${m} ${period}`;
 }
+

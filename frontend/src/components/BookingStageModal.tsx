@@ -101,6 +101,50 @@ function getHandoverWindowStatus(
   }
 }
 
+/**
+ * Return Handover has NO time limit once the return time starts.
+ * Whenever the lender gives the code to the renter and the renter inputs it, it always works.
+ */
+function getReturnHandoverStatus(
+  dateStr?: string, 
+  timeStr?: string
+): {
+  isAvailable: boolean;
+  isBefore: boolean;
+  scheduledTimeFormatted: string;
+} {
+  if (!dateStr) {
+    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '06:00 PM' };
+  }
+  try {
+    const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+    const cleanTime = (timeStr && timeStr.trim()) ? timeStr.slice(0, 5) : '18:00';
+    const [h, min] = cleanTime.split(':').map(Number);
+
+    const scheduled = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0);
+    const now = new Date();
+    const timeFormatted = formatTime12(cleanTime);
+
+    // If current time is strictly before the scheduled return time
+    if (now.getTime() < scheduled.getTime()) {
+      return {
+        isAvailable: false,
+        isBefore: true,
+        scheduledTimeFormatted: timeFormatted,
+      };
+    }
+
+    // Once return time arrives (e.g. 3:00 PM), there is NO expiration / NO time limit.
+    return {
+      isAvailable: true,
+      isBefore: false,
+      scheduledTimeFormatted: timeFormatted,
+    };
+  } catch {
+    return { isAvailable: true, isBefore: false, scheduledTimeFormatted: '06:00 PM' };
+  }
+}
+
 function formatFriendlyDate(dateStr?: string): string {
   if (!dateStr) return 'Not set';
   try {
@@ -199,7 +243,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const today = new Date();
   const currentDayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const returnWindow = getHandoverWindowStatus(booking.end_date || booking.start_date, booking.end_time || '18:00', 60);
+  const returnWindow = getReturnHandoverStatus(booking.end_date || booking.start_date, booking.end_time || '18:00');
 
   // Sequential 5-Stage computation
   let currentStage = 2; // Default for active ongoing booking awaiting pickup
@@ -832,7 +876,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   {returnWindow.isAvailable ? (
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      1-Hour Window Active • {returnWindow.scheduledTimeFormatted} - {returnWindow.windowEndFormatted}
+                      Return Handover Active • No Time Limit
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20 inline-flex items-center gap-1">
@@ -879,8 +923,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
                     <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
                       <div className="flex items-center justify-between font-medium">
-                        <span>1-Hour Return Window:</span>
-                        <span className="font-bold text-brand">{returnWindow.scheduledTimeFormatted} – {returnWindow.windowEndFormatted}</span>
+                        <span>Scheduled Return Time:</span>
+                        <span className="font-bold text-brand">Starts at {returnWindow.scheduledTimeFormatted} (No time limit)</span>
                       </div>
                       <div className="flex items-center justify-between font-medium">
                         <span>Return Location:</span>
@@ -915,8 +959,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
                     <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
                       <div className="flex items-center justify-between font-medium">
-                        <span>1-Hour Verification Window:</span>
-                        <span className="font-bold text-brand">{returnWindow.scheduledTimeFormatted} – {returnWindow.windowEndFormatted}</span>
+                        <span>Scheduled Return Time:</span>
+                        <span className="font-bold text-brand">Starts at {returnWindow.scheduledTimeFormatted} (No time limit)</span>
                       </div>
                       <div className="flex items-center justify-between font-medium">
                         <span>Return Location:</span>
