@@ -85,6 +85,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isChatMuted, setIsChatMuted] = useState(false);
 
+  // Custom Delete Confirmation Modal State
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'CONVERSATION' | 'MESSAGE';
+    id: string;
+    name?: string;
+  } | null>(null);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -382,32 +390,64 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     setEditingMessageId(null);
   };
 
-  // Delete entire conversation
-  const handleDeleteConversation = async (convId: string, partnerName?: string) => {
-    const confirmMsg = partnerName
-      ? `Are you sure you want to delete your conversation with ${partnerName}? All messages in this chat will be permanently deleted.`
-      : 'Are you sure you want to delete this chat conversation? All messages will be permanently deleted.';
+  // Open Custom Pop-up for Deleting Conversation
+  const handleDeleteConversation = (convId: string, partnerName?: string) => {
+    setDeleteTarget({
+      type: 'CONVERSATION',
+      id: convId,
+      name: partnerName || 'Neighbor',
+    });
+  };
 
-    if (!window.confirm(confirmMsg)) return;
+  // Open Custom Pop-up for Deleting Message
+  const handleDeleteMessage = (messageId: string) => {
+    setDeleteTarget({
+      type: 'MESSAGE',
+      id: messageId,
+    });
+  };
+
+  // Execute Confirmed Deletion
+  const confirmDelete = async () => {
+    if (!deleteTarget || isDeletingChat) return;
+    setIsDeletingChat(true);
 
     try {
-      await api.deleteConversation(convId);
-      setConversations((prev) =>
-        prev.filter((c) => !isConvMatch(c, convId) && c.conversation_id !== convId)
-      );
-
-      const isActive =
-        Boolean(selectedConvId) && (
-          selectedConvId === convId ||
-          isConvMatch({ conversation_id: convId, booking_id: convId, partner_id: convId } as any, selectedConvId)
+      if (deleteTarget.type === 'CONVERSATION') {
+        const convId = deleteTarget.id;
+        await api.deleteConversation(convId);
+        setConversations((prev) =>
+          prev.filter((c) => !isConvMatch(c, convId) && c.conversation_id !== convId)
         );
 
-      if (isActive) {
-        handleCloseChat();
+        const isActive =
+          Boolean(selectedConvId) && (
+            selectedConvId === convId ||
+            isConvMatch({ conversation_id: convId, booking_id: convId, partner_id: convId } as any, selectedConvId)
+          );
+
+        if (isActive) {
+          handleCloseChat();
+        }
+      } else if (deleteTarget.type === 'MESSAGE') {
+        const messageId = deleteTarget.id;
+        await api.deleteMessage(messageId);
+        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+        // Update conversations if needed
+        setConversations((prev) =>
+          prev.map((c) => {
+            const match = isConvMatch(c, selectedConvId);
+            return match ? { ...c, last_message: 'Message deleted' } : c;
+          })
+        );
       }
+      setDeleteTarget(null);
     } catch (err: any) {
-      console.error('Failed to delete conversation:', err);
-      alert(err.message || 'Failed to delete conversation. Please try again.');
+      console.error('Failed to delete:', err);
+      alert(err.message || 'Failed to delete. Please try again.');
+    } finally {
+      setIsDeletingChat(false);
     }
   };
 
@@ -449,26 +489,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       alert(err.message || 'Failed to edit message');
     } finally {
       setIsSavingEdit(false);
-    }
-  };
-
-  const handleDeleteMessage = async (messageId: string) => {
-    if (!window.confirm('Are you sure you want to delete this message?')) return;
-
-    try {
-      await api.deleteMessage(messageId);
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
-
-      // Update conversations if needed
-      setConversations((prev) =>
-        prev.map((c) => {
-          const match = isConvMatch(c, selectedConvId);
-          return match ? { ...c, last_message: 'Message deleted' } : c;
-        })
-      );
-    } catch (err: any) {
-      console.error('Failed to delete message:', err);
-      alert(err.message || 'Failed to delete message');
     }
   };
 
@@ -2864,6 +2884,79 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 <Download className="w-3.5 h-3.5" />
                 <span>Open / Download Original</span>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Pop-up Modal: Delete Chat / Delete Message Confirmation */}
+      {deleteTarget && (
+        <div 
+          onClick={() => !isDeletingChat && setDeleteTarget(null)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-surface border border-divider rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 text-center relative"
+          >
+            {/* Close Button */}
+            <button
+              type="button"
+              disabled={isDeletingChat}
+              onClick={() => setDeleteTarget(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-ink-muted hover:text-ink hover:bg-canvas transition-colors cursor-pointer disabled:opacity-50"
+              title="Cancel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Warning Trash Icon */}
+            <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mx-auto shadow-xs">
+              <Trash2 className="w-8 h-8" />
+            </div>
+
+            {/* Title & Explanatory Body */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-ink font-display">
+                {deleteTarget.type === 'CONVERSATION'
+                  ? `Delete chat with ${deleteTarget.name || 'Neighbor'}?`
+                  : 'Delete Message?'}
+              </h3>
+              <p className="text-xs text-ink-secondary leading-relaxed px-2">
+                {deleteTarget.type === 'CONVERSATION'
+                  ? `Are you sure you want to delete your conversation with ${deleteTarget.name || 'this person'}? All messages, shared media, and location history will be permanently deleted for you.`
+                  : 'Are you sure you want to permanently delete this message? This action cannot be undone.'}
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingChat}
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-canvas hover:bg-surface border border-divider text-xs font-bold text-ink transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingChat}
+                onClick={confirmDelete}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white text-xs font-extrabold shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingChat ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
