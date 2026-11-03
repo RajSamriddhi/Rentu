@@ -125,43 +125,55 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-150">
+    <div className="mx-auto max-w-7xl px-4 py-6 animate-in fade-in duration-150 sm:px-6 sm:py-9 lg:px-8">
       
       {/* Header Bar: Renamed Page Title + Subtitle + In-Page [Items | Requests] Segmented Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-divider">
+      <div className="flex flex-col justify-between gap-4 rounded-[1.75rem] border border-divider bg-surface px-5 py-5 shadow-sm sm:flex-row sm:items-center sm:px-7 sm:py-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display">
-            Marketplace
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-brand">
+            <Sparkles className="h-3 w-3" /> People over things
+          </span>
+          <h1 className="mt-1 font-display text-2xl font-black tracking-tight text-ink sm:text-3xl">
+            Find your next good thing
           </h1>
-          <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-0.5">
-            Everyday items and community requests. Real people. Shared near you.
+          <p className="mt-1 text-xs font-medium text-ink-secondary sm:text-sm">
+            Borrow from your community. Pass along what you have.
           </p>
         </div>
 
         {/* View Toggle: Items | Requests (Switches inline on the same page!) */}
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-full border border-zinc-200 dark:border-zinc-700 self-start sm:self-auto">
-          <button
-            onClick={() => setActiveView('items')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeView === 'items'
-                ? 'bg-surface text-ink shadow-xs'
-                : 'text-ink-secondary hover:text-ink'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Items ({(items || []).length})</span>
-          </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <div className="flex w-full items-center rounded-2xl border border-divider bg-canvas p-1 sm:w-auto sm:rounded-full">
+              <button
+                onClick={() => setActiveView('items')}
+                className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
+                  activeView === 'items'
+                    ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                <Package className="h-3.5 w-3.5" />
+                <span>Gear <span className="ml-1 opacity-70">{(items || []).length}</span></span>
+              </button>
 
+              <button
+                onClick={() => setActiveView('requests')}
+                className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
+                  activeView === 'requests'
+                    ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
+                    : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                <Target className="h-3.5 w-3.5" />
+                <span>Wanted <span className="ml-1 opacity-70">{(requests || []).length}</span></span>
+              </button>
+            </div>
           <button
-            onClick={() => setActiveView('requests')}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeView === 'requests'
-                ? 'bg-surface text-ink shadow-xs'
-                : 'text-ink-secondary hover:text-ink'
-            }`}
+            type="button"
+            onClick={isAuthenticated ? onOpenDropGear : onOpenAuth}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl bg-brand px-4 text-xs font-extrabold text-white shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:bg-brand-hover"
           >
-            <Target className="w-3.5 h-3.5" />
-            <span>Requests ({(requests || []).length})</span>
+            <Plus className="h-4 w-4" /> List gear
           </button>
         </div>
       </div>
@@ -174,10 +186,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat === 'All' ? 'All' : cat)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${
                 isSelected
-                  ? 'bg-ink text-canvas shadow-xs'
-                  : 'bg-surface border border-divider text-ink hover:border-zinc-400 dark:hover:border-zinc-600'
+                  ? 'bg-ink text-canvas shadow-md shadow-ink/10'
+                  : 'bg-surface border border-divider text-ink-secondary hover:border-brand/40 hover:text-brand'
               }`}
             >
               {cat === 'Electronics & Tech' ? 'Electronics' : cat === 'Camping & Outdoor' ? 'Camping' : cat === 'Home & Appliances' ? 'Home' : cat === 'Clothing & Fits' ? 'Clothing' : cat === 'Books & Media' ? 'Books' : cat === 'Sports & Fitness' ? 'Sports' : cat}
