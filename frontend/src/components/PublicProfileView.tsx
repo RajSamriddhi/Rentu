@@ -371,10 +371,6 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                       <span className="text-xs sm:text-sm font-bold text-brand bg-brand-soft border border-brand/20 px-2.5 py-0.5 rounded-full font-mono">
                         @{profile.username}
                       </span>
-                      <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                        <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
-                        Verified Unique Handle
-                      </span>
                     </div>
                   )}
                 </div>

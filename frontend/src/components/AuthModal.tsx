@@ -136,7 +136,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       if (!cleanUser) {
-        setErrorMsg('Please choose a unique username.');
+        setErrorMsg('Please choose a username.');
         return;
       }
 
@@ -235,7 +235,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </h3>
             <p className="text-xs text-ink-secondary">
               {mode === 'signup'
-                ? 'Claim your unique handle and start sharing gear locally.'
+                ? 'Create your account and start sharing gear locally.'
                 : 'Log in to rent, borrow, or list equipment in your community.'}
             </p>
           </div>
@@ -306,7 +306,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* Unique Username Input */}
                 <div>
                   <label className="block text-[11px] font-bold text-ink mb-1">
-                    Unique Username <span className="text-brand font-black">*</span>
+                    Username <span className="text-brand font-black">*</span>
                   </label>
                   <div className="relative flex items-center bg-canvas border border-divider rounded-xl px-3 py-2 focus-within:border-brand">
                     <AtSign className="w-3.5 h-3.5 text-ink-muted mr-1.5 shrink-0" />

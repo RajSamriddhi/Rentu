@@ -904,10 +904,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="px-3 py-2 border-b border-divider mb-1">
                         <div className="font-extrabold text-sm text-ink">{user?.name}</div>
                         <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className="text-[11px] font-mono font-bold text-brand">@{user?.username || user?.email?.split('@')[0]}</span>
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Unique Handle</span>
-                        </div>
                       </div>
 
                       <button

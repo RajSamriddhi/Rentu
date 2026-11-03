@@ -487,10 +487,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-ink flex items-center gap-1.5 flex-wrap">
                   <AtSign className="w-3.5 h-3.5 text-brand" />
-                  <span>Unique Username & Handle *</span>
-                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    Guaranteed Unique
-                  </span>
+                  <span>Username *</span>
                 </label>
                 {isCheckingUsername ? (
                   <span className="text-[11px] text-zinc-400 flex items-center gap-1">
@@ -498,7 +495,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   </span>
                 ) : usernameStatus?.available ? (
                   <span className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Unique & Available
+                    <Check className="w-3 h-3" /> Available
                   </span>
                 ) : usernameStatus && !usernameStatus.available ? (
                   <span className="text-[11px] text-red-500 font-bold flex items-center gap-1">
@@ -514,7 +511,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                  placeholder="your-unique-username"
+                  placeholder="username"
                   maxLength={30}
                   className="w-full bg-canvas border border-divider rounded-xl pl-8 pr-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   required

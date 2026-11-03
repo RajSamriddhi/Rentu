@@ -107,10 +107,10 @@ export const SetUsernameModal: React.FC = () => {
 
           <div className="space-y-2">
             <h2 className="text-2xl font-black text-white font-display tracking-tight">
-              Claim Your Unique Username
+              Choose Your Username
             </h2>
             <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
-              Every member gets their own dedicated profile URL. Pick a unique handle so people can find you at{' '}
+              Every member gets their own dedicated profile URL. Pick a username so people can find you at{' '}
               <span className="text-brand font-semibold">rentu.site/your-name</span>.
             </p>
           </div>
