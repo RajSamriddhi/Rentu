@@ -34,6 +34,26 @@ export const parseDateString = (str: string): Date => {
   return new Date(y, (m || 1) - 1, d || 1);
 };
 
+// Generate time slots every 30 minutes from 06:00 to 23:30
+export const TIME_SLOTS: string[] = [];
+for (let h = 6; h <= 23; h++) {
+  const hh = String(h).padStart(2, '0');
+  TIME_SLOTS.push(`${hh}:00`);
+  TIME_SLOTS.push(`${hh}:30`);
+}
+
+// Friendly 12-hour formatter (e.g. '02:00 PM')
+export const formatTime12 = (timeStr?: string): string => {
+  if (!timeStr) return '';
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = mStr || '00';
+  if (isNaN(h)) return timeStr;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${m} ${period}`;
+};
+
 export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   bookedDates = [],
   startDate,
@@ -45,8 +65,8 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   onSelectEndTime,
   minDate,
 }) => {
-  const startInputRef = React.useRef<HTMLInputElement>(null);
-  const endInputRef = React.useRef<HTMLInputElement>(null);
+  const startSelectRef = React.useRef<HTMLSelectElement>(null);
+  const endSelectRef = React.useRef<HTMLSelectElement>(null);
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -105,6 +125,35 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
       return range.start <= endStr && range.end >= startStr;
     });
   };
+
+  // Auto-advance start time if it has already passed today
+  React.useEffect(() => {
+    if (!onSelectStartTime) return;
+    const now = new Date();
+    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (startDate === todayStr && startTime <= currentHourMin) {
+      const nextAvailable = TIME_SLOTS.find((s) => s > currentHourMin);
+      if (nextAvailable) {
+        onSelectStartTime(nextAvailable);
+      }
+    }
+  }, [startDate, todayStr, startTime, onSelectStartTime]);
+
+  // Auto-advance end time if it has already passed today or is before/equal to start time
+  React.useEffect(() => {
+    if (!onSelectEndTime) return;
+    const now = new Date();
+    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const isPastToday = endDate === todayStr && endTime <= currentHourMin;
+    const isBeforeStart = startDate === endDate && endTime <= startTime;
+    if (isPastToday || isBeforeStart) {
+      const minSlot = startDate === endDate ? startTime : (endDate === todayStr ? currentHourMin : '00:00');
+      const nextAvailable = TIME_SLOTS.find((s) => s > minSlot);
+      if (nextAvailable) {
+        onSelectEndTime(nextAvailable);
+      }
+    }
+  }, [startDate, endDate, todayStr, startTime, endTime, onSelectEndTime]);
 
   // Generate calendar grid days
   const calendarDays = useMemo(() => {
@@ -329,6 +378,9 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
         const isEndTimePassedToday = isEndToday && endTime <= currentTimeStr;
         const isEndTimeBeforeStartTime = startDate === endDate && endTime <= startTime;
 
+        const allStartSlots = Array.from(new Set([...TIME_SLOTS, startTime].filter(Boolean))).sort();
+        const allEndSlots = Array.from(new Set([...TIME_SLOTS, endTime].filter(Boolean))).sort();
+
         return (
           <div className="mt-3.5 pt-3 border-t border-divider space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -344,10 +396,10 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      startSelectRef.current?.focus();
                       try {
-                        startInputRef.current?.showPicker?.();
+                        startSelectRef.current?.showPicker?.();
                       } catch {}
-                      startInputRef.current?.focus();
                     }}
                     className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
                   >
@@ -357,34 +409,31 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                 </div>
 
                 <div className="relative flex items-center">
-                  <input
-                    ref={startInputRef}
-                    type="time"
+                  <select
+                    ref={startSelectRef}
                     value={startTime}
-                    min={isStartToday ? currentTimeStr : undefined}
                     onChange={(e) => onSelectStartTime?.(e.target.value)}
-                    onClick={(e) => {
-                      try {
-                        e.currentTarget.showPicker?.();
-                      } catch {}
-                    }}
-                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100 ${
+                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2.5 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer appearance-none transition-all shadow-2xs ${
                       isStartTimePassedToday ? 'border-rose-500 text-rose-500' : 'border-divider'
                     }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        startInputRef.current?.showPicker?.();
-                      } catch {}
-                      startInputRef.current?.focus();
-                    }}
-                    className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
-                    title="Open calendar time picker"
                   >
-                    <CalendarIcon className="w-4 h-4 text-brand" />
-                  </button>
+                    {allStartSlots.map((t) => {
+                      const isPast = isStartToday && t <= currentTimeStr;
+                      return (
+                        <option
+                          key={t}
+                          value={t}
+                          disabled={isPast}
+                          className={isPast ? 'text-zinc-500 bg-zinc-900 line-through' : 'text-ink bg-surface font-semibold'}
+                        >
+                          {formatTime12(t)} {isPast ? '(Passed)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="absolute right-3 pointer-events-none text-brand">
+                    <Clock className="w-4 h-4" />
+                  </div>
                 </div>
 
                 {/* Validation alert if past time today */}
@@ -414,14 +463,14 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                         onClick={() => !isPast && onSelectStartTime?.(time)}
                         className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
                           isPast
-                            ? 'opacity-30 cursor-not-allowed bg-canvas border-divider text-ink-muted line-through'
+                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
                             : startTime === time
                             ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
                             : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
                         }`}
                         title={isPast ? 'This time has already passed today' : undefined}
                       >
-                        {label}
+                        {label} {isPast ? '(Passed)' : ''}
                       </button>
                     );
                   })}
@@ -440,10 +489,10 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      endSelectRef.current?.focus();
                       try {
-                        endInputRef.current?.showPicker?.();
+                        endSelectRef.current?.showPicker?.();
                       } catch {}
-                      endInputRef.current?.focus();
                     }}
                     className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
                   >
@@ -453,34 +502,33 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                 </div>
 
                 <div className="relative flex items-center">
-                  <input
-                    ref={endInputRef}
-                    type="time"
+                  <select
+                    ref={endSelectRef}
                     value={endTime}
-                    min={isEndToday ? currentTimeStr : (startDate === endDate ? startTime : undefined)}
                     onChange={(e) => onSelectEndTime?.(e.target.value)}
-                    onClick={(e) => {
-                      try {
-                        e.currentTarget.showPicker?.();
-                      } catch {}
-                    }}
-                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100 ${
+                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2.5 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer appearance-none transition-all shadow-2xs ${
                       (isEndTimePassedToday || isEndTimeBeforeStartTime) ? 'border-rose-500 text-rose-500' : 'border-divider'
                     }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        endInputRef.current?.showPicker?.();
-                      } catch {}
-                      endInputRef.current?.focus();
-                    }}
-                    className="absolute right-2 p-1 rounded-lg hover:bg-brand/10 text-brand transition-colors cursor-pointer"
-                    title="Open calendar time picker"
                   >
-                    <CalendarIcon className="w-4 h-4 text-brand" />
-                  </button>
+                    {allEndSlots.map((t) => {
+                      const isPastToday = isEndToday && t <= currentTimeStr;
+                      const isBeforeStart = startDate === endDate && t <= startTime;
+                      const isEndDisabled = isPastToday || isBeforeStart;
+                      return (
+                        <option
+                          key={t}
+                          value={t}
+                          disabled={isEndDisabled}
+                          className={isEndDisabled ? 'text-zinc-500 bg-zinc-900 line-through' : 'text-ink bg-surface font-semibold'}
+                        >
+                          {formatTime12(t)} {isPastToday ? '(Passed)' : isBeforeStart ? '(Before pickup)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="absolute right-3 pointer-events-none text-brand">
+                    <Clock className="w-4 h-4" />
+                  </div>
                 </div>
 
                 {/* Validation alert */}
@@ -515,14 +563,14 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
                         onClick={() => !isPast && onSelectEndTime?.(time)}
                         className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
                           isPast
-                            ? 'opacity-30 cursor-not-allowed bg-canvas border-divider text-ink-muted line-through'
+                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
                             : endTime === time
                             ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
                             : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
                         }`}
                         title={isPast ? (startDate === endDate && time <= startTime ? 'Must be after pickup time' : 'This time has already passed today') : undefined}
                       >
-                        {label}
+                        {label} {isPast ? '(Passed)' : ''}
                       </button>
                     );
                   })}

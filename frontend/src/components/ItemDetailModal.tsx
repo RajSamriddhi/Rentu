@@ -26,7 +26,7 @@ import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { getEffectiveSavedLocations, formatSavedLocationFull, formatFullAddress } from '../lib/location';
-import { RentalCalendar } from './RentalCalendar';
+import { RentalCalendar, formatTime12 } from './RentalCalendar';
 import { getReachDistance } from '../lib/distance';
 
 interface ItemDetailModalProps {
@@ -136,8 +136,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   dayAfter.setDate(dayAfter.getDate() + 3);
   const defaultEndDate = dayAfter.toISOString().split('T')[0];
 
+  const getUpcomingStartTime = (): string => {
+    const now = new Date();
+    const m = now.getMinutes();
+    if (m < 30) {
+      now.setMinutes(30, 0, 0);
+    } else {
+      now.setHours(now.getHours() + 1, 0, 0, 0);
+    }
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    return `${h}:${min}`;
+  };
+
   const [startDate, setStartDate] = useState(defaultStartDate);
-  const [startTime, setStartTime] = useState('10:00');
+  const [startTime, setStartTime] = useState(getUpcomingStartTime);
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [endTime, setEndTime] = useState('18:00');
 
@@ -147,13 +160,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const currentHStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     if (startDate === todayStr && startTime <= currentHStr) {
-      const nextD = new Date();
-      nextD.setMinutes(nextD.getMinutes() + 30);
-      const nextH = String(nextD.getHours()).padStart(2, '0');
-      const nextM = nextD.getMinutes() < 30 ? '30' : '00';
-      setStartTime(`${nextH}:${nextM}`);
+      setStartTime(getUpcomingStartTime());
     }
-  }, [startDate]);
+  }, [startDate, startTime]);
 
   // Delivery & Return Collection options based on lender listing
   const savedLocations = getEffectiveSavedLocations(user);
@@ -654,10 +663,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <div className="min-w-0">
                           <div className="text-xs font-black text-ink flex items-center gap-1.5 truncate">
                             <span>{startDate}</span>
-                            <span className="text-brand font-bold text-[11px]">{startTime}</span>
+                            <span className="text-brand font-bold text-[11px]">{formatTime12(startTime)}</span>
                             <span className="text-ink-secondary font-normal">→</span>
                             <span>{endDate}</span>
-                            <span className="text-brand font-bold text-[11px]">{endTime}</span>
+                            <span className="text-brand font-bold text-[11px]">{formatTime12(endTime)}</span>
                           </div>
                           <div className="text-[10px] text-ink-secondary">Selected on calendar</div>
                         </div>

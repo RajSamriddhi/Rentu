@@ -677,19 +677,31 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
                 {/* Quick start time presets */}
                 <div className="flex flex-wrap items-center gap-1 pt-1">
-                  {['09:00', '10:00', '12:00', '16:00', '18:00'].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setStartTime(t)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${startTime === t
-                        ? 'bg-brand text-white border-brand shadow-xs'
-                        : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                  {['09:00', '10:00', '12:00', '16:00', '18:00'].map((t) => {
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    const isStartToday = startDate === todayStr;
+                    const isPast = isStartToday && t <= currentHourMin;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        disabled={isPast}
+                        onClick={() => !isPast && setStartTime(t)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all ${
+                          isPast
+                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
+                            : startTime === t
+                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
+                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
                         }`}
-                    >
-                      {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
-                    </button>
-                  ))}
+                        title={isPast ? 'This time has already passed today' : undefined}
+                      >
+                        {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'} {isPast ? '(Passed)' : ''}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -735,19 +747,31 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
 
                 {/* Quick return time presets */}
                 <div className="flex flex-wrap items-center gap-1 pt-1">
-                  {['11:00', '14:00', '18:00', '20:00', '21:30'].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setEndTime(t)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer ${endTime === t
-                        ? 'bg-brand text-white border-brand shadow-xs'
-                        : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                  {['11:00', '14:00', '18:00', '20:00', '21:30'].map((t) => {
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    const isEndToday = endDate === todayStr;
+                    const isPast = (isEndToday && t <= currentHourMin) || (startDate === endDate && t <= startTime);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        disabled={isPast}
+                        onClick={() => !isPast && setEndTime(t)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all ${
+                          isPast
+                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
+                            : endTime === t
+                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
+                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
                         }`}
-                    >
-                      {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'}
-                    </button>
-                  ))}
+                        title={isPast ? (startDate === endDate && t <= startTime ? 'Must be after pickup time' : 'This time has already passed today') : undefined}
+                      >
+                        {t.startsWith('0') ? t.slice(1) : t} {parseInt(t) < 12 ? 'AM' : 'PM'} {isPast ? '(Passed)' : ''}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
