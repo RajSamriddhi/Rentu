@@ -5,7 +5,7 @@ import {
   Plus, X, Package, Calendar, DollarSign, Truck, FileText, CheckCircle2, XCircle,
   Trash2, Pencil, Image as ImageIcon, Phone, ExternalLink, Download, Loader2, Navigation,
   ClipboardCheck, Copy, Radio, LocateFixed, Compass, StopCircle, RefreshCw,
-  Info, Video, Heart, Smile, MoreHorizontal, MoreVertical, Bell, BellOff
+  Info, Smile, MoreHorizontal, MoreVertical, Bell, BellOff
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
@@ -81,7 +81,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Instagram-style Features State
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [likedMessages, setLikedMessages] = useState<Record<string, boolean>>({});
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isChatMuted, setIsChatMuted] = useState(false);
 
@@ -927,21 +926,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const handleToggleLike = (messageId: string) => {
-    setLikedMessages((prev) => ({
-      ...prev,
-      [messageId]: !prev[messageId],
-    }));
-  };
-
-  const handleSendHeart = async () => {
-    if (!selectedConvId || isSending) return;
-    await handleSendAttachmentMessage({
-      content: '❤️',
-      message_type: 'TEXT',
-    });
-  };
-
   // Not signed in state
   if (!isAuthenticated) {
     return (
@@ -1183,7 +1167,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Header Right Actions (Instagram Style: Call, Video, Custom Deal, Details, Close) */}
+                  {/* Header Right Actions (Custom Deal, Details, Close) */}
                   <div className="flex items-center gap-1 sm:gap-2">
                     {/* Launch Personal Listing / Request Proposal Button */}
                     <button
@@ -1194,26 +1178,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[3]" />
                       <span className="hidden sm:inline">Custom Deal</span>
-                    </button>
-
-                    {/* Audio Call */}
-                    <button
-                      type="button"
-                      onClick={() => alert(`Calling ${activeConversation.partner_name || 'Neighbor'}... Audio call feature is rolling out soon!`)}
-                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-surface border border-divider text-ink-secondary hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
-                      title="Audio Call"
-                    >
-                      <Phone className="w-4 h-4" />
-                    </button>
-
-                    {/* Video Call */}
-                    <button
-                      type="button"
-                      onClick={() => alert(`Starting video call with ${activeConversation.partner_name || 'Neighbor'}... Video feature is rolling out soon!`)}
-                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-canvas hover:bg-surface border border-divider text-ink-secondary hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
-                      title="Video Call"
-                    >
-                      <Video className="w-4 h-4" />
                     </button>
 
                     {/* Instagram Details Button (i) - Where Delete Chat & Profile details live! */}
@@ -1310,11 +1274,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   ) : messages.length === 0 ? (
                     <div className="py-8 text-center space-y-2 text-ink-secondary">
                       <div className="w-12 h-12 rounded-full bg-brand-soft text-brand flex items-center justify-center mx-auto mb-2">
-                        <Heart className="w-6 h-6 fill-brand text-brand" />
+                        <MessageSquare className="w-6 h-6 text-brand" />
                       </div>
                       <p className="text-sm font-bold text-ink">Say Hello</p>
                       <p className="text-xs max-w-sm mx-auto text-ink-secondary">
-                        Send a message or tap the ❤️ below to start chatting with {activeConversation.partner_name || 'your neighbor'}.
+                        Send a message to start chatting with {activeConversation.partner_name || 'your neighbor'}.
                       </p>
                     </div>
                   ) : (
@@ -1952,9 +1916,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       }
 
                       // 7. STANDARD CHAT TEXT MESSAGE (Instagram Style)
-                      const isSingleHeart = m.content.trim() === '❤️';
-                      const isLiked = Boolean(likedMessages[m.id]);
-
                       return (
                         <div
                           key={m.id}
@@ -1975,135 +1936,99 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             />
                           )}
 
-                          {/* Instagram Hover Actions: Quick Heart Reaction & Edit/Delete */}
-                          <div className={`opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity text-ink-muted mb-1 ${isMe ? 'order-first' : 'order-last'}`}>
-                            {/* Like / Heart Reaction Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleLike(m.id)}
-                              className={`p-1 rounded-full hover:bg-canvas hover:scale-110 transition-all cursor-pointer ${
-                                isLiked ? 'text-red-500' : 'hover:text-red-500'
-                              }`}
-                              title={isLiked ? 'Unlike' : 'Like'}
-                            >
-                              <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                            </button>
+                          {/* Hover Actions: Edit/Delete for own messages */}
+                          {isMe && editingMessageId !== m.id && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity text-ink-muted mb-1 order-first">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(m)}
+                                className="p-1 rounded-full hover:bg-canvas hover:text-ink transition-colors cursor-pointer"
+                                title="Edit message"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors cursor-pointer"
+                                title="Delete message"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
 
-                            {isMe && editingMessageId !== m.id && (
+                          <div
+                            className={`relative max-w-[80%] sm:max-w-[70%] rounded-[20px] px-4 py-2.5 text-xs font-medium leading-relaxed shadow-xs break-words whitespace-pre-wrap ${
+                              isMe
+                                ? 'bg-brand text-white rounded-br-[4px]'
+                                : 'bg-surface border border-divider text-ink rounded-bl-[4px]'
+                            }`}
+                          >
+                            {!isMe && m.sender_name && (
+                              <div 
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="text-[10px] font-black text-brand mb-0.5 cursor-pointer hover:underline"
+                                title={`View ${m.sender_name}'s public profile`}
+                              >
+                                {m.sender_name}
+                              </div>
+                            )}
+
+                            {editingMessageId === m.id ? (
+                              <div className="space-y-2 min-w-[200px]">
+                                <input
+                                  type="text"
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveEdit(m.id);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      handleCancelEdit();
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-full bg-white/15 dark:bg-black/30 border border-white/40 text-white rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white font-medium"
+                                />
+                                <div className="flex items-center justify-end gap-1.5 text-[10px]">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEdit}
+                                    className="px-2 py-0.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer font-bold"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEdit(m.id)}
+                                    disabled={!editingText.trim() || isSavingEdit}
+                                    className="px-2.5 py-0.5 rounded-full bg-white text-brand shadow-xs hover:bg-white/90 transition-all cursor-pointer font-extrabold disabled:opacity-50"
+                                  >
+                                    {isSavingEdit ? 'Saving...' : 'Save'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEdit(m)}
-                                  className="p-1 rounded-full hover:bg-canvas hover:text-ink transition-colors cursor-pointer"
-                                  title="Edit message"
+                                <div className="break-words select-text">{m.content}</div>
+
+                                <div
+                                  className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
+                                    isMe ? 'text-white/75' : 'text-ink-secondary'
+                                  }`}
                                 >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMessage(m.id)}
-                                  className="p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors cursor-pointer"
-                                  title="Delete message"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
+                                  {m.is_edited && (
+                                    <span className="italic mr-0.5 opacity-80">(edited)</span>
+                                  )}
+                                  <span>{formattedTime}</span>
+                                  {isMe && renderMessageTicks(m, true)}
+                                </div>
                               </>
                             )}
                           </div>
-
-                          {isSingleHeart ? (
-                            <div 
-                              onDoubleClick={() => handleToggleLike(m.id)}
-                              className="text-4xl sm:text-5xl py-1 px-2 select-none animate-in zoom-in-50 duration-200 cursor-pointer relative"
-                            >
-                              ❤️
-                              {isLiked && (
-                                <div className="absolute -bottom-1 -right-1 bg-surface border border-divider rounded-full px-1 shadow-xs text-[10px]">
-                                  ❤️
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div
-                              onDoubleClick={() => handleToggleLike(m.id)}
-                              className={`relative max-w-[80%] sm:max-w-[70%] rounded-[20px] px-4 py-2.5 text-xs font-medium leading-relaxed shadow-xs break-words whitespace-pre-wrap ${
-                                isMe
-                                  ? 'bg-brand text-white rounded-br-[4px]'
-                                  : 'bg-surface border border-divider text-ink rounded-bl-[4px]'
-                              }`}
-                            >
-                              {!isMe && m.sender_name && (
-                                <div 
-                                  onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
-                                  className="text-[10px] font-black text-brand mb-0.5 cursor-pointer hover:underline"
-                                  title={`View ${m.sender_name}'s public profile`}
-                                >
-                                  {m.sender_name}
-                                </div>
-                              )}
-
-                              {editingMessageId === m.id ? (
-                                <div className="space-y-2 min-w-[200px]">
-                                  <input
-                                    type="text"
-                                    value={editingText}
-                                    onChange={(e) => setEditingText(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        handleSaveEdit(m.id);
-                                      }
-                                      if (e.key === 'Escape') {
-                                        handleCancelEdit();
-                                      }
-                                    }}
-                                    autoFocus
-                                    className="w-full bg-white/15 dark:bg-black/30 border border-white/40 text-white rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white font-medium"
-                                  />
-                                  <div className="flex items-center justify-end gap-1.5 text-[10px]">
-                                    <button
-                                      type="button"
-                                      onClick={handleCancelEdit}
-                                      className="px-2 py-0.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer font-bold"
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveEdit(m.id)}
-                                      disabled={!editingText.trim() || isSavingEdit}
-                                      className="px-2.5 py-0.5 rounded-full bg-white text-brand shadow-xs hover:bg-white/90 transition-all cursor-pointer font-extrabold disabled:opacity-50"
-                                    >
-                                      {isSavingEdit ? 'Saving...' : 'Save'}
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="break-words select-text">{m.content}</div>
-
-                                  <div
-                                    className={`text-[9px] mt-1 flex items-center justify-end gap-1 ${
-                                      isMe ? 'text-white/75' : 'text-ink-secondary'
-                                    }`}
-                                  >
-                                    {m.is_edited && (
-                                      <span className="italic mr-0.5 opacity-80">(edited)</span>
-                                    )}
-                                    <span>{formattedTime}</span>
-                                    {isMe && renderMessageTicks(m, true)}
-                                  </div>
-                                </>
-                              )}
-
-                              {/* Instagram Floating Heart Reaction Badge */}
-                              {isLiked && (
-                                <div className="absolute -bottom-2 -right-1 bg-surface border border-divider rounded-full px-1.5 py-0.5 shadow-sm text-[10px] flex items-center justify-center animate-in zoom-in-75 duration-150">
-                                  ❤️
-                                </div>
-                              )}
-                            </div>
-                          )}
                         </div>
                       );
                     })
@@ -2178,7 +2103,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       className="hidden"
                     />
 
-                    {/* Right Action Icons in Pill: When input is empty, show Gallery, Location, Plus, and Heart! */}
+                    {/* Right Action Icons in Pill: When input is empty, show Gallery and Location */}
                     {!inputText.trim() ? (
                       <div className="flex items-center gap-1 sm:gap-1.5 text-ink-muted shrink-0">
                         {/* Gallery / Image Upload */}
@@ -2199,17 +2124,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           title="Share location"
                         >
                           <MapPin className="w-5 h-5" />
-                        </button>
-
-                        {/* Instagram Signature Quick Heart Button (Sends ❤️ on tap!) */}
-                        <button
-                          type="button"
-                          onClick={handleSendHeart}
-                          disabled={isSending}
-                          className="p-1 rounded-full text-red-500 hover:scale-125 transition-transform cursor-pointer"
-                          title="Send a heart"
-                        >
-                          <Heart className="w-5 h-5 fill-red-500 stroke-red-500" />
                         </button>
                       </div>
                     ) : (
