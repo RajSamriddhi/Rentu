@@ -235,7 +235,7 @@ export const App: React.FC = () => {
   const loadFeed = async () => {
     setIsLoading(true);
     try {
-      const [itemsData, requestsData] = await Promise.all([
+      const [itemsRes, requestsRes] = await Promise.allSettled([
         api.getItems({
           category: selectedCategory,
           search: searchQuery,
@@ -244,12 +244,20 @@ export const App: React.FC = () => {
           category: selectedCategory,
         }),
       ]);
-      setItems(Array.isArray(itemsData) ? itemsData : []);
-      setRequests(Array.isArray(requestsData) ? requestsData : []);
+
+      if (itemsRes.status === 'fulfilled' && Array.isArray(itemsRes.value)) {
+        setItems(itemsRes.value);
+      } else if (itemsRes.status === 'rejected') {
+        console.error('Failed to load items:', itemsRes.reason);
+      }
+
+      if (requestsRes.status === 'fulfilled' && Array.isArray(requestsRes.value)) {
+        setRequests(requestsRes.value);
+      } else if (requestsRes.status === 'rejected') {
+        console.error('Failed to load requests:', requestsRes.reason);
+      }
     } catch (err) {
       console.error('Failed to load feed data:', err);
-      setItems([]);
-      setRequests([]);
     } finally {
       setIsLoading(false);
     }

@@ -16,9 +16,35 @@ import {
   AppNotification
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
-  : '/api';
+export const getApiBase = (): string => {
+  if (typeof window !== 'undefined') {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const envApi = import.meta.env.VITE_API_URL;
+    if (isLocalhost && envApi) {
+      return `${envApi.replace(/\/$/, '')}/api`;
+    }
+    // On Vercel (preview or production) and custom domains, ALWAYS use relative '/api'
+    // to keep requests same-origin, prevent 308 domain redirect CORS blocks,
+    // and preserve Vercel authentication cookies.
+    return '/api';
+  }
+  return import.meta.env.VITE_API_URL 
+    ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
+    : '/api';
+};
+
+const API_BASE = getApiBase();
+
+// Custom fetch wrapper that ensures credentials (cookies) are sent for Vercel preview authentication
+const apiFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const globalFetch = typeof window !== 'undefined' ? window.fetch : globalThis.fetch;
+  return globalFetch(input, {
+    credentials: 'include',
+    ...init,
+  });
+};
+
+const fetch = apiFetch;
 
 export class ApiError extends Error {
   code: string;
