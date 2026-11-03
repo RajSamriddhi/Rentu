@@ -82,7 +82,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const activeFiltersCount = 
     (selectedType !== 'All' ? 1 : 0) +
     (maxPrice < 5000 ? 1 : 0) +
-    (radiusKm !== null ? 1 : 0) +
+    (radiusKm !== null && radiusKm < 50 ? 1 : 0) +
     (selectedCondition !== 'Any' ? 1 : 0) +
     (selectedAvailability !== 'all' ? 1 : 0) +
     (selectedCategory !== 'All' ? 1 : 0);
@@ -132,7 +132,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     if (selectedAvailability === 'delivery' && !item.offers_delivery) {
       return false;
     }
-    if (radiusKm !== null && radiusKm > 0) {
+    if (radiusKm !== null && radiusKm > 0 && radiusKm < 50) {
       const distanceKm = getReachDistanceKm(item, user);
       if (distanceKm > radiusKm) return false;
     }
@@ -315,7 +315,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </button>
                 )}
 
-                {radiusKm !== null && (
+                {radiusKm !== null && radiusKm < 50 && (
                   <button
                     type="button"
                     onClick={() => setRadiusKm(null)}
@@ -435,39 +435,58 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </div>
                 </div>
 
-                {/* 2. Distance Radius (Selectable Pills) */}
-                <div className="pt-4 border-t border-divider space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
-                      Distance Radius
-                    </label>
-                    <span className="text-xs font-bold text-brand">
-                      {radiusKm === null ? 'Any Distance' : `Within ${radiusKm} km`}
+                {/* 2. Distance Radius (Quick presets + Scroller) */}
+                <div className="pt-4 border-t border-divider space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-ink">
+                    <span className="text-[11px] font-bold text-ink-muted uppercase tracking-wider">Distance Radius</span>
+                    <span className="text-brand font-black">
+                      {radiusKm === null || radiusKm >= 50 ? 'Any Distance' : `Within ${radiusKm} km`}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+
+                  {/* Preset Buttons */}
+                  <div className="grid grid-cols-4 gap-1">
                     {[
-                      { label: 'Any Distance', value: null },
-                      { label: 'Within 5 km', value: 5 },
-                      { label: 'Within 10 km', value: 10 },
-                      { label: 'Within 25 km', value: 25 },
-                    ].map((opt) => {
-                      const isSel = radiusKm === opt.value;
+                      { label: 'Any', val: null },
+                      { label: '5 km', val: 5 },
+                      { label: '10 km', val: 10 },
+                      { label: '25 km', val: 25 },
+                    ].map((preset) => {
+                      const isSel = radiusKm === preset.val || (preset.val === null && (radiusKm === null || radiusKm >= 50));
                       return (
                         <button
-                          key={String(opt.value)}
+                          key={preset.label}
                           type="button"
-                          onClick={() => setRadiusKm(opt.value)}
-                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center border ${
+                          onClick={() => setRadiusKm(preset.val)}
+                          className={`py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center border ${
                             isSel
                               ? 'bg-brand text-white border-brand shadow-xs'
-                              : 'bg-surface border-divider text-ink hover:border-zinc-400 dark:hover:border-zinc-600'
+                              : 'bg-surface border-divider text-ink hover:border-zinc-400'
                           }`}
                         >
-                          {opt.label}
+                          {preset.label}
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Distance Scroller / Range Slider */}
+                  <input
+                    type="range"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={radiusKm === null ? 50 : radiusKm}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setRadiusKm(val >= 50 ? null : val);
+                    }}
+                    className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-[#E11D74]"
+                  />
+                  <div className="flex items-center justify-between text-[10px] text-ink-secondary font-semibold">
+                    <span>1 km</span>
+                    <span>25 km</span>
+                    <span>50+ km (Any)</span>
                   </div>
                 </div>
 
