@@ -311,7 +311,7 @@ router.get('/search', async (req, res, next) => {
 // Public User Profile & Gear Closet (Lookup by UUID, Firebase UID, or Unique Username)
 router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const id = (req.params.id || '').replace(/^@/, '');
         const currentUserId = req.user?.id;
         // 1. Query real PostgreSQL user by id, firebase_uid, or username
         let userRes = await (0, db_1.query)(`SELECT 

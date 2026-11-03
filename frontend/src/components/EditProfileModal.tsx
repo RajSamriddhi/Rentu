@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { 
-  X, 
-  Upload, 
-  Loader2, 
-  Check, 
-  User, 
-  MapPin, 
-  Phone, 
-  FileText, 
-  Camera, 
+import {
+  X,
+  Upload,
+  Loader2,
+  Check,
+  User,
+  MapPin,
+  Phone,
+  FileText,
+  Camera,
   ImageIcon,
   Sparkles,
   Navigation,
@@ -249,7 +249,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setLocationSuccessMsg(`Location detected: ${locSummary}`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
-      } catch {}
+      } catch { }
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect current location.');
     } finally {
@@ -310,7 +310,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="relative bg-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-4 border border-divider">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-canvas/30">
           <div className="flex items-center gap-2">
@@ -388,11 +388,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     key={preset.name}
                     type="button"
                     onClick={() => setBannerUrl(preset.url)}
-                    className={`relative rounded-xl overflow-hidden h-14 border-2 transition-all cursor-pointer group ${
-                      bannerUrl === preset.url
-                        ? 'border-brand ring-2 ring-brand/30'
-                        : 'border-divider hover:border-ink-secondary'
-                    }`}
+                    className={`relative rounded-xl overflow-hidden h-14 border-2 transition-all cursor-pointer group ${bannerUrl === preset.url
+                      ? 'border-brand ring-2 ring-brand/30'
+                      : 'border-divider hover:border-ink-secondary'
+                      }`}
                   >
                     <img
                       src={preset.url}

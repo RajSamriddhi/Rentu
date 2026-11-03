@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  MapPin, 
-  Star, 
-  Package, 
-  MessageSquare, 
-  ShieldCheck, 
-  Edit3, 
-  Plus, 
-  CheckCircle2, 
-  Calendar, 
+import {
+  MapPin,
+  Star,
+  Package,
+  MessageSquare,
+  ShieldCheck,
+  Edit3,
+  Plus,
+  CheckCircle2,
+  Calendar,
   Sparkles,
   Camera,
   Loader2,
@@ -147,7 +147,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  const memberSince = user?.created_at 
+  const memberSince = user?.created_at
     ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     : 'Recent';
 
@@ -183,10 +183,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-in fade-in duration-200">
-      
+
       {/* Profile Header & Hero Card */}
       <div className="bg-surface border border-divider rounded-3xl overflow-hidden shadow-sm transition-all">
-        
+
         {/* Panoramic Banner Area */}
         <div className="h-48 sm:h-64 lg:h-72 w-full relative bg-zinc-900 group overflow-hidden">
           <img
@@ -236,10 +236,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* User Identity Block */}
         <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-0 relative">
-          
+
           {/* Top Bar: Overlapping Avatar on Left, Action Buttons on Right */}
           <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-4">
-            
+
             {/* Avatar (ONLY the avatar has negative margin to overlap cover) */}
             <div className="relative group shrink-0 -mt-14 sm:-mt-20">
               <img
@@ -270,7 +270,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Action Buttons (Cleanly positioned on card surface) */}
             <div className="flex items-center gap-2 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
-              <button 
+              <button
                 id="edit-profile-btn"
                 onClick={() => setIsEditModalOpen(true)}
                 className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
@@ -292,12 +292,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* User Name, Verified Badge, Bio & Meta (Completely on card surface with crystal clear contrast) */}
           <div className="mt-3 sm:mt-4 space-y-2 text-center sm:text-left">
-            
+
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
               <h1 className="text-2xl sm:text-3xl font-black text-ink tracking-tight font-display select-text">
                 {user?.name || user?.email?.split('@')[0] || 'Rentu Member'}
               </h1>
-              
+
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-extrabold border border-emerald-500/20">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Verified Peer</span>
@@ -315,7 +315,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Unique Community Handle</span>
               </span>
             </div>
-            
+
             {user?.bio ? (
               <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed">
                 {user.bio}
@@ -396,7 +396,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span>New Member</span>
                 </span>
               )}
-              
+
               <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider">
                 <Calendar className="w-3.5 h-3.5 text-ink-muted" />
                 <span>Member since {memberSince}</span>
@@ -418,7 +418,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Dynamic Stats Row with Premium Badges */}
         <div className="border-t border-divider grid grid-cols-2 md:grid-cols-4 bg-canvas/30 divide-y md:divide-y-0 md:divide-x divide-divider">
-          
+
           <div className="p-4 sm:p-5 flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-2xl bg-pink-500/10 text-brand flex items-center justify-center shrink-0">
               <Package className="w-5 h-5" />
@@ -479,7 +479,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           item={previewItem}
           onClose={() => setPreviewItem(null)}
           onBookingSuccess={() => loadData()}
-          onOpenAuth={() => {}}
+          onOpenAuth={() => { }}
           onEditItem={(itemToEdit) => {
             setPreviewItem(null);
             setEditingItem(itemToEdit);
@@ -526,17 +526,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2 shadow-xs ${
-                isActive
-                  ? 'bg-ink text-canvas shadow-sm scale-[1.02]'
-                  : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
-              }`}
+              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2 shadow-xs ${isActive
+                ? 'bg-ink text-canvas shadow-sm scale-[1.02]'
+                : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
+                }`}
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand' : 'text-ink-secondary'}`} />
               <span>{tab.label}</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                isActive ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
-              }`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${isActive ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                }`}>
                 {tab.count}
               </span>
             </button>
@@ -546,7 +544,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Tab Content Display */}
       <div className="mt-2">
-        
+
         {/* Listings Tab */}
         {activeTab === 'listings' && (
           <div>
@@ -555,7 +553,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand/20 via-pink-500/10 to-purple-500/10 text-brand flex items-center justify-center mx-auto shadow-inner">
                   <Package className="w-8 h-8" />
                 </div>
-                
+
                 <div className="space-y-1">
                   <h3 className="text-lg sm:text-xl font-extrabold text-ink font-display">
                     Your Gear Closet is Empty
@@ -645,7 +643,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* Reviews & Trust Tab: Leave Reviews within 3-day window & See reviews received */}
         {activeTab === 'reviews' && (
           <div className="space-y-6 max-w-4xl mx-auto">
-            
+
             {/* Header Trust Overview */}
             <div className="bg-surface border border-divider rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -876,11 +874,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       key={filterTab.key}
                       onClick={() => setReviewTypeFilter(filterTab.key as any)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        reviewTypeFilter === filterTab.key
-                          ? 'bg-ink text-canvas shadow-xs'
-                          : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
-                      }`}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${reviewTypeFilter === filterTab.key
+                        ? 'bg-ink text-canvas shadow-xs'
+                        : 'bg-canvas border border-divider text-ink-secondary hover:text-ink'
+                        }`}
                     >
                       {filterTab.label} ({filterTab.count})
                     </button>

@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Star, 
-  ShieldCheck, 
-  Calendar, 
-  MessageSquare, 
-  Share2, 
-  Package, 
-  Sparkles, 
-  Clock, 
-  CheckCircle2, 
+import {
+  ArrowLeft,
+  MapPin,
+  Star,
+  ShieldCheck,
+  Calendar,
+  MessageSquare,
+  Share2,
+  Package,
+  Sparkles,
+  Clock,
+  CheckCircle2,
   ChevronRight,
   Loader2,
   Heart,
@@ -35,6 +35,7 @@ import { formatFullAddress } from '../lib/location';
 interface PublicProfileViewProps {
   userId: string;
   onClose: () => void;
+  onOpenMyAccount?: () => void;
   onSelectItem: (item: Item) => void;
   onClaimRequest?: (request: CommunityRequest) => void;
   onOpenChatWithBooking?: (bookingId: string) => void;
@@ -45,6 +46,7 @@ interface PublicProfileViewProps {
 export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   userId,
   onClose,
+  onOpenMyAccount,
   onSelectItem,
   onClaimRequest,
   onOpenChatWithBooking,
@@ -144,7 +146,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   };
 
   const handleShare = () => {
-    const shareUrl = profile?.username 
+    const shareUrl = profile?.username
       ? `${window.location.origin}/${profile.username}`
       : (window.location.href || `${window.location.origin}/user/${userId}`);
     if (navigator.clipboard) {
@@ -154,7 +156,27 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     }
   };
 
-  const isOwnProfile = currentUser?.id === userId;
+  const isOwnProfile = Boolean(
+    currentUser && (
+      currentUser.id === userId ||
+      (profile && currentUser.id === profile.id) ||
+      (currentUser.username && (
+        (profile?.username && currentUser.username.toLowerCase() === profile.username.toLowerCase()) ||
+        currentUser.username.toLowerCase() === userId.toLowerCase()
+      )) ||
+      (currentUser.email && (
+        (profile?.email && currentUser.email.toLowerCase() === profile.email.toLowerCase()) ||
+        currentUser.email.split('@')[0].toLowerCase() === userId.toLowerCase()
+      ))
+    )
+  );
+
+  // If viewing own profile URL, automatically switch to own account
+  useEffect(() => {
+    if (isOwnProfile && onOpenMyAccount) {
+      onOpenMyAccount();
+    }
+  }, [isOwnProfile, onOpenMyAccount]);
 
   if (isLoading) {
     return (
@@ -194,7 +216,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
   return (
     <div className="min-h-screen bg-canvas text-ink pb-20 animate-in fade-in duration-300">
-      
+
       {/* Top Back Navigation Bar */}
       <div className="sticky top-16 z-30 bg-surface/80 backdrop-blur-md border-b border-divider px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -217,17 +239,29 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               <span>{copiedLink ? 'Link Copied!' : 'Share Profile'}</span>
             </button>
 
-            {!isOwnProfile && (
+            {isOwnProfile ? (
+              <button
+                onClick={() => {
+                  if (onOpenMyAccount) {
+                    onOpenMyAccount();
+                  } else {
+                    onClose();
+                  }
+                }}
+                className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>My Profile & Listings</span>
+              </button>
+            ) : (
               <>
                 {/* Follow / Following Button */}
                 <button
                   onClick={handleToggleFollow}
                   disabled={isActionLoading || isBlocked}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isFollowing
-                      ? 'bg-canvas border border-brand text-brand hover:bg-brand/10'
-                      : 'bg-brand hover:bg-brand-hover text-white shadow-pink'
-                  } disabled:opacity-50`}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${isFollowing
+                    ? 'bg-canvas border border-brand text-brand hover:bg-brand/10'
+                    : 'bg-brand hover:bg-brand-hover text-white shadow-pink'
+                    } disabled:opacity-50`}
                 >
                   {isFollowing ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
                   <span>{isFollowing ? 'Following' : 'Follow'}</span>
@@ -254,11 +288,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 {/* Block / Unblock Button */}
                 <button
                   onClick={handleToggleBlock}
-                  className={`px-2.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${
-                    isBlocked 
-                      ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20' 
-                      : 'border-divider bg-canvas hover:bg-surface text-ink-muted hover:text-red-500 hover:border-red-500/30'
-                  }`}
+                  className={`px-2.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${isBlocked
+                    ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20'
+                    : 'border-divider bg-canvas hover:bg-surface text-ink-muted hover:text-red-500 hover:border-red-500/30'
+                    }`}
                   title={isBlocked ? 'Unblock user' : 'Block user'}
                 >
                   <Ban className="w-3.5 h-3.5" />
@@ -274,12 +307,12 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
         {/* Profile Header Hero Card */}
         <div className="bg-surface border border-divider rounded-3xl overflow-hidden shadow-lg relative">
-          
+
           {/* Cover Banner */}
           <div className="h-40 sm:h-52 w-full overflow-hidden relative bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-brand/20">
-            <img 
-              src={bannerSrc} 
-              alt={`${profile.name} banner`} 
+            <img
+              src={bannerSrc}
+              alt={`${profile.name} banner`}
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-black/20" />
@@ -287,19 +320,19 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
           {/* Profile Identity Details */}
           <div className="px-6 sm:px-8 pb-8 pt-0 relative">
-            
+
             {/* Avatar & Floating Badges */}
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-5">
               <div className="relative inline-block">
                 <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden border-4 border-surface shadow-xl bg-canvas">
-                  <img 
-                    src={avatarSrc} 
-                    alt={profile.name} 
+                  <img
+                    src={avatarSrc}
+                    alt={profile.name}
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div 
-                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md border-2 border-surface" 
+                <div
+                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md border-2 border-surface"
                   title="100% Verified Community Neighbor"
                 >
                   <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
@@ -345,7 +378,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-secondary font-medium mt-1">
                   <span className="flex items-center gap-1 text-ink">
                     <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
@@ -447,54 +480,48 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
         {/* Tab Navigation: Products Listed, Products Requesting, Reviews, About */}
         <div className="flex items-center gap-2 border-b border-divider overflow-x-auto pb-px">
-          
+
           <button
             onClick={() => setActiveTab('items')}
-            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'items'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-ink-secondary hover:text-ink'
-            }`}
+            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${activeTab === 'items'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-ink-secondary hover:text-ink'
+              }`}
           >
             <Package className="w-4 h-4" />
             <span>Listed Products</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-              activeTab === 'items' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'items' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
+              }`}>
               {profile.items.length}
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('requests')}
-            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'requests'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-ink-secondary hover:text-ink'
-            }`}
+            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${activeTab === 'requests'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-ink-secondary hover:text-ink'
+              }`}
           >
             <Sparkles className="w-4 h-4" />
             <span>Products Requesting</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-              activeTab === 'requests' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'requests' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
+              }`}>
               {profile.requests.length}
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('reviews')}
-            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'reviews'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-ink-secondary hover:text-ink'
-            }`}
+            className={`px-4 py-3 border-b-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${activeTab === 'reviews'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-ink-secondary hover:text-ink'
+              }`}
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Reviews & Trust</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-              activeTab === 'reviews' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'reviews' ? 'bg-brand-soft text-brand' : 'bg-canvas text-ink-secondary'
+              }`}>
               {profile.reviews.length}
             </span>
           </button>
@@ -584,7 +611,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         {/* TAB 3: REVIEWS & TRUST VERIFICATION */}
         {activeTab === 'reviews' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            
+
             {/* Reviews & Trust Summary Header */}
             <div className="bg-surface border border-divider rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-xs">
               <div className="space-y-1">
@@ -745,11 +772,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 <button
                   key={filterTab.key}
                   onClick={() => setReviewTypeFilter(filterTab.key as any)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    reviewTypeFilter === filterTab.key
-                      ? 'bg-ink text-canvas shadow-xs'
-                      : 'bg-surface border border-divider text-ink-secondary hover:text-ink'
-                  }`}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${reviewTypeFilter === filterTab.key
+                    ? 'bg-ink text-canvas shadow-xs'
+                    : 'bg-surface border border-divider text-ink-secondary hover:text-ink'
+                    }`}
                 >
                   {filterTab.label} ({filterTab.count})
                 </button>

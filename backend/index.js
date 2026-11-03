@@ -55213,7 +55213,7 @@ router6.get("/search", async (req, res, next) => {
 });
 router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = (req.params.id || "").replace(/^@/, "");
     const currentUserId = req.user?.id;
     let userRes = await query(
       `SELECT 

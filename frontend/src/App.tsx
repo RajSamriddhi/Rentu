@@ -59,11 +59,12 @@ const getUserIdFromUrl = (): string | null => {
   const hashMatch = hash.match(/^(?:user|u)\/([^/?#]+)/i);
   if (hashMatch) return decodeURIComponent(hashMatch[1]);
 
-  // Check root slug as unique username (e.g. rentu.site/sadiqua or rentu.site/geetansh)
+  // Check root slug as unique username (e.g. rentu.site/sadiqua or rentu.site/@sadiqua)
   if (path && !path.includes('/')) {
-    const slug = path.toLowerCase();
+    const rawSlug = path.replace(/^@/, '');
+    const slug = rawSlug.toLowerCase();
     if (!RESERVED_ROUTES.has(slug) && /^[a-z0-9_]{3,30}$/.test(slug)) {
-      return decodeURIComponent(slug);
+      return decodeURIComponent(rawSlug);
     }
   }
 
@@ -105,6 +106,8 @@ export const App: React.FC = () => {
     if (tab === 'hustle' && !isUserAdmin) {
       tab = 'home';
     }
+    // ALWAYS dismiss public profile view when navigating to any tab!
+    setViewingUserId(null);
     setActiveTabState(tab);
     const targetPath = tab === 'home' ? '/' : tab === 'hustle' ? '/admin' : `/${tab}`;
     if (window.location.pathname !== targetPath) {
@@ -120,12 +123,45 @@ export const App: React.FC = () => {
     }
   }, [activeTab, isUserAdmin]);
 
+  // If the opened username URL belongs to the currently logged in user, directly switch to own account
+  useEffect(() => {
+    if (user && viewingUserId) {
+      const cleanHandle = viewingUserId.replace(/^@/, '').trim().toLowerCase();
+      const isSelf = Boolean(
+        (user.id && viewingUserId.toLowerCase() === user.id.toLowerCase()) ||
+        (user.username && cleanHandle === user.username.toLowerCase()) ||
+        (user.email && cleanHandle === user.email.split('@')[0].toLowerCase())
+      );
+      if (isSelf) {
+        setViewingUserId(null);
+        setActiveTabState('profile');
+      }
+    }
+  }, [user, viewingUserId]);
+
   const handleOpenUserProfile = (userIdOrUsername: string) => {
+    if (!userIdOrUsername) return;
+    const cleanHandle = userIdOrUsername.replace(/^@/, '').trim().toLowerCase();
+
+    // If it's the current user's own profile, lead directly to their own account
+    const isSelf = Boolean(
+      user && (
+        (user.id && userIdOrUsername.toLowerCase() === user.id.toLowerCase()) ||
+        (user.username && cleanHandle === user.username.toLowerCase()) ||
+        (user.email && cleanHandle === user.email.split('@')[0].toLowerCase())
+      )
+    );
+
+    if (isSelf) {
+      setViewingUserId(null);
+      setActiveTab('profile');
+      return;
+    }
+
     setViewingUserId(userIdOrUsername);
-    // If it's a clean username (not a UUID with hyphens), use direct /username URL
-    const isCleanUsername = /^[a-zA-Z0-9_]{3,30}$/.test(userIdOrUsername) && !userIdOrUsername.includes('-');
+    const isCleanUsername = /^[a-zA-Z0-9_]{3,30}$/.test(cleanHandle) && !cleanHandle.includes('-');
     const targetPath = isCleanUsername 
-      ? `/${encodeURIComponent(userIdOrUsername.toLowerCase())}` 
+      ? `/${encodeURIComponent(cleanHandle)}` 
       : `/user/${encodeURIComponent(userIdOrUsername)}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
@@ -143,12 +179,32 @@ export const App: React.FC = () => {
   // Sync browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
-      setActiveTabState(getTabFromUrl());
-      setViewingUserId(getUserIdFromUrl());
+      const targetUserId = getUserIdFromUrl();
+      const targetTab = getTabFromUrl();
+
+      if (targetUserId) {
+        const cleanHandle = targetUserId.replace(/^@/, '').trim().toLowerCase();
+        const isSelf = Boolean(
+          user && (
+            (user.id && targetUserId.toLowerCase() === user.id.toLowerCase()) ||
+            (user.username && cleanHandle === user.username.toLowerCase()) ||
+            (user.email && cleanHandle === user.email.split('@')[0].toLowerCase())
+          )
+        );
+        if (isSelf) {
+          setViewingUserId(null);
+          setActiveTabState('profile');
+          return;
+        }
+        setViewingUserId(targetUserId);
+      } else {
+        setViewingUserId(null);
+        setActiveTabState(targetTab);
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [user]);
 
   // Data State
   const [items, setItems] = useState<Item[]>([]);
@@ -285,6 +341,10 @@ export const App: React.FC = () => {
           <PublicProfileView
             userId={viewingUserId}
             onClose={handleCloseUserProfile}
+            onOpenMyAccount={() => {
+              setViewingUserId(null);
+              setActiveTab('profile');
+            }}
             onSelectItem={(item) => setSelectedItem(item)}
             onClaimRequest={handleClaimRequest}
             onOpenAuth={() => setIsAuthOpen(true)}
