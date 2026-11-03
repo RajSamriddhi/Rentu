@@ -32,6 +32,7 @@ const RESERVED_ROUTES = new Set([
   'admin',
   'requests',
   'bookings',
+  'booking',
   'messages',
   'chat',
   'community',
@@ -79,7 +80,13 @@ const getTabFromUrl = (): TabType => {
 
   if (path === 'admin' || hash === 'admin') return 'hustle';
   if (path === 'requests' || hash === 'requests') return 'requests';
-  if (path === 'bookings' || hash === 'bookings') return 'bookings';
+  if (path === 'bookings' || hash === 'bookings' || path === 'booking' || hash === 'booking') {
+    // Bookings is integrated into Profile view; sanitize URL to /profile immediately
+    try {
+      window.history.replaceState(null, '', '/profile');
+    } catch {}
+    return 'bookings';
+  }
   if (path === 'messages' || hash === 'messages' || path === 'chat' || hash === 'chat') return 'messages';
   if (path === 'community' || hash === 'community') return 'community';
   if (path === 'profile' || hash === 'profile') return 'profile';
@@ -145,7 +152,15 @@ export const App: React.FC = () => {
     // ALWAYS dismiss public profile view when navigating to any tab!
     setViewingUserId(null);
     setActiveTabState(tab);
-    const targetPath = tab === 'home' ? '/' : tab === 'hustle' ? '/admin' : `/${tab}`;
+    // Booking section is integrated inside Profile, so the URL is always /profile
+    const targetPath = tab === 'home'
+      ? '/'
+      : tab === 'hustle'
+      ? '/admin'
+      : (tab === 'bookings' || tab === 'profile')
+      ? '/profile'
+      : `/${tab}`;
+
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
@@ -158,6 +173,14 @@ export const App: React.FC = () => {
       setActiveTab('home');
     }
   }, [activeTab, isUserAdmin]);
+
+  // Ensure that /bookings or /booking URLs are automatically sanitized to /profile
+  useEffect(() => {
+    const rawPath = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+    if (rawPath === 'bookings' || rawPath === 'booking') {
+      window.history.replaceState(null, '', '/profile');
+    }
+  }, []);
 
   // If the opened username URL belongs to the currently logged in user, directly switch to own account
   useEffect(() => {
