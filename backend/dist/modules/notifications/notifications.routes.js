@@ -14,6 +14,11 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         await (0, notifications_service_1.checkAndGenerateReminders)(userId).catch(err => {
             console.warn('Notification reminder check error:', err);
         });
+        // Automatically purge notifications older than 30 days
+        await (0, db_1.query)(`DELETE FROM notifications 
+       WHERE created_at < NOW() - INTERVAL '30 days'`).catch(err => {
+            console.warn('Notification 30-day purge error:', err);
+        });
         // Mark pending incoming messages as delivered to this active user
         await (0, db_1.query)(`WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -58,12 +63,14 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
        LEFT JOIN items i ON b.item_id = i.id
        LEFT JOIN items i_ref ON (n.reference_type = 'ITEM' AND n.reference_id::text = i_ref.id::text)
        WHERE n.user_id = $1
+         AND n.created_at >= NOW() - INTERVAL '30 days'
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
        LIMIT 150`, [userId]);
         const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications 
        WHERE user_id = $1 
+         AND created_at >= NOW() - INTERVAL '30 days'
          AND read_at IS NULL
          AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`, [userId]);

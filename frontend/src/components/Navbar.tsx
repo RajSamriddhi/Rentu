@@ -124,9 +124,14 @@ export const Navbar: React.FC<NavbarProps> = ({
     if (!isAuthenticated) return;
     try {
       const data: any = await api.getNotifications();
-      const list: AppNotification[] = Array.isArray(data)
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const rawList: AppNotification[] = Array.isArray(data)
         ? data
         : (data?.notifications || []);
+      const list: AppNotification[] = rawList.filter((n) => {
+        if (!n.created_at) return true;
+        return new Date(n.created_at).getTime() >= thirtyDaysAgo;
+      });
 
       if (data && typeof data.unread_messages_count === 'number') {
         setLocalUnreadMessages(data.unread_messages_count);
