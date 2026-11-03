@@ -93,7 +93,7 @@ export const App: React.FC = () => {
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
-  const [bookingSubTab, setBookingSubTab] = useState<'ongoing' | 'requests' | 'finished'>('ongoing');
+  const [bookingSubTab, setBookingSubTab] = useState<'ongoing' | 'requests' | 'finished' | 'cancelled'>('ongoing');
   const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -294,7 +294,7 @@ export const App: React.FC = () => {
 
   const handleNavigateNotification = (target: {
     tab: TabType;
-    bookingSubTab?: 'ongoing' | 'requests' | 'finished';
+    bookingSubTab?: 'ongoing' | 'requests' | 'finished' | 'cancelled';
     bookingId?: string;
     userId?: string;
   }) => {

@@ -20,7 +20,9 @@ import {
   ChevronRight,
   Filter,
   Info,
-  CalendarCheck2
+  CalendarCheck2,
+  XCircle,
+  Ban
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../lib/api';
@@ -32,7 +34,7 @@ import { BookingStageModal } from './BookingStageModal';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
-  initialTab?: 'ongoing' | 'requests' | 'finished';
+  initialTab?: 'ongoing' | 'requests' | 'finished' | 'cancelled';
   initialBookingId?: string | null;
 }
 
@@ -75,11 +77,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 }) => {
   const { user } = useAuth();
   
-  // 3 Primary Sections:
+  // 4 Primary Sections:
   // 1. 'ongoing' - All ongoing / active bookings (ACCEPTED & HANDED_OVER)
   // 2. 'requests' - All incoming / outgoing booking requests (PENDING)
-  // 3. 'finished' - All finished bookings (COMPLETED & history)
-  const [activeTab, setActiveTab] = useState<'ongoing' | 'requests' | 'finished'>(initialTab);
+  // 3. 'finished' - All finished bookings (COMPLETED)
+  // 4. 'cancelled' - All cancelled or declined bookings (REJECTED, CANCELLED, DECLINED)
+  const [activeTab, setActiveTab] = useState<'ongoing' | 'requests' | 'finished' | 'cancelled'>(initialTab);
   const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(initialBookingId);
 
   useEffect(() => {
@@ -268,7 +271,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Groupings for the 3 distinct sections
+  // Groupings for the 4 distinct sections
   const ongoingList = useMemo(() => {
     return bookings.filter((b) => b.status === 'ACCEPTED' || b.status === 'HANDED_OVER');
   }, [bookings]);
@@ -278,7 +281,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   }, [bookings]);
 
   const finishedList = useMemo(() => {
-    return bookings.filter((b) => ['COMPLETED', 'REJECTED', 'CANCELLED'].includes(b.status));
+    return bookings.filter((b) => b.status === 'COMPLETED');
+  }, [bookings]);
+
+  const cancelledList = useMemo(() => {
+    return bookings.filter((b) => b.status === 'REJECTED' || b.status === 'CANCELLED');
   }, [bookings]);
 
   // Map of date strings -> ongoing bookings for fast calendar lookup
@@ -436,59 +443,15 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in duration-150 space-y-6">
       
       {/* ======================================================== */}
-      {/* 1. HEADER & SUMMARY BAR                                  */}
+      {/* 1. HEADER (Title & Subtitle)                             */}
       {/* ======================================================== */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-divider">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display flex items-center gap-2.5">
-            <span>My Bookings & Handoffs</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-1">
-            Complete clarity over your active rentals, incoming requests, and finished handoffs
-          </p>
-        </div>
-
-        {/* Quick Summary Badges */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <button
-            onClick={() => { setActiveTab('ongoing'); setSelectedDateFilter(null); }}
-            className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'ongoing'
-                ? 'bg-brand text-white border-brand shadow-sm'
-                : 'bg-surface hover:bg-canvas border-divider text-ink'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Ongoing:</span>
-            <span className="font-mono font-black">{ongoingList.length}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveTab('requests'); setSelectedDateFilter(null); }}
-            className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'requests'
-                ? 'bg-brand text-white border-brand shadow-sm'
-                : 'bg-surface hover:bg-canvas border-divider text-ink'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>Requests:</span>
-            <span className="font-mono font-black">{requestsList.length}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveTab('finished'); setSelectedDateFilter(null); }}
-            className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'finished'
-                ? 'bg-brand text-white border-brand shadow-sm'
-                : 'bg-surface hover:bg-canvas border-divider text-ink'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-            <span>Finished:</span>
-            <span className="font-mono font-black">{finishedList.length}</span>
-          </button>
-        </div>
+      <div className="pb-6 border-b border-divider">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display flex items-center gap-2.5">
+          <span>My Bookings & Handoffs</span>
+        </h1>
+        <p className="text-xs sm:text-sm text-ink-secondary font-medium mt-1">
+          Complete clarity over your active rentals, incoming requests, finished handoffs, and cancelled orders
+        </p>
       </div>
 
       {/* ======================================================== */}
@@ -662,9 +625,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* 3. THREE MAIN TABS (Ongoing, Requests, Finished)         */}
+      {/* 3. FOUR MAIN TABS (Ongoing, Requests, Finished, Cancelled) */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         
         {/* Tab 1: Ongoing Bookings */}
         <button
@@ -744,6 +707,33 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             activeTab === 'finished' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
             {finishedList.length}
+          </span>
+        </button>
+
+        {/* Tab 4: Cancelled & Declined Bookings */}
+        <button
+          onClick={() => { setActiveTab('cancelled'); setSelectedDateFilter(null); }}
+          className={`p-4 rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
+            activeTab === 'cancelled'
+              ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
+              : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
+          }`}
+        >
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="text-xs font-black uppercase tracking-wider text-ink font-display">
+                Cancelled / Declined
+              </span>
+            </div>
+            <p className="text-[11px] text-ink-secondary font-medium mt-0.5">
+              Declined proposals & cancelled
+            </p>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+            activeTab === 'cancelled' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
+          }`}>
+            {cancelledList.length}
           </span>
         </button>
 
@@ -1118,6 +1108,94 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         </div>
                       )}
 
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: CANCELLED & DECLINED BOOKINGS */}
+          {activeTab === 'cancelled' && (
+            <div className="space-y-4">
+              {cancelledList.length === 0 ? (
+                <div className="py-20 text-center bg-surface border border-divider rounded-3xl p-8 max-w-2xl mx-auto space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-2">
+                    <XCircle className="w-6 h-6 stroke-[1.8]" />
+                  </div>
+                  <p className="text-base font-bold text-ink">No cancelled or declined bookings</p>
+                  <p className="text-xs text-ink-secondary max-w-md mx-auto">
+                    Any rental proposals that were declined or bookings cancelled for any reason will be archived here for your records.
+                  </p>
+                </div>
+              ) : (
+                cancelledList.map((booking) => {
+                  const isLender = booking.lender_id === user?.id;
+                  const partnerName = isLender ? (booking.borrower_name || 'Renter') : (booking.lender_name || 'Owner');
+                  const isDeclined = booking.status === 'REJECTED';
+
+                  return (
+                    <div
+                      key={booking.id}
+                      id={`booking-${booking.id}`}
+                      className={`bg-surface border rounded-3xl p-5 sm:p-6 shadow-sm transition-all space-y-4 ${
+                        highlightedBookingId === booking.id
+                          ? 'border-brand ring-4 ring-brand/60 shadow-pink'
+                          : 'border-divider hover:border-zinc-300 dark:hover:border-zinc-700'
+                      }`}
+                    >
+                      {/* Top Info */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={booking.item_images?.[0] || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80'}
+                            alt={booking.item_title}
+                            className="w-16 h-16 rounded-2xl object-cover border border-divider shrink-0 opacity-80 grayscale-[25%]"
+                          />
+
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-extrabold text-base sm:text-lg text-ink tracking-tight font-display">
+                                {booking.item_title}
+                              </h3>
+                              <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                                isDeclined
+                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                                  : 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border border-zinc-500/20'
+                              }`}>
+                                {isDeclined ? 'Declined Proposal' : 'Cancelled Booking'}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-secondary">
+                              <span>{booking.start_date} → {booking.end_date || booking.start_date}</span>
+                              <span>•</span>
+                              <span>₹{Number(booking.total_price)}</span>
+                              <span>•</span>
+                              <span>{isLender ? `Renter: ${partnerName}` : `Owner: ${partnerName}`}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onOpenChat(booking.id)}
+                          className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5 shrink-0"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Chat History</span>
+                        </button>
+                      </div>
+
+                      {/* Explanation Note Banner */}
+                      <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary flex items-center gap-2">
+                        <Ban className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span>
+                          {isDeclined
+                            ? `This booking proposal was declined. You can message ${partnerName} in chat to propose alternative dates or items.`
+                            : `This booking was cancelled and is no longer active.`}
+                        </span>
+                      </div>
                     </div>
                   );
                 })
