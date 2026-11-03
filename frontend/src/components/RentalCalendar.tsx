@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle, Clock, ArrowRight } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle, Clock, ArrowRight, ChevronDown, X } from 'lucide-react';
 
 export interface BookedDateRange {
   id?: string;
@@ -46,6 +46,177 @@ for (let h = 6; h <= 23; h++) {
 import { formatTime12 } from '../lib/formatters';
 export { formatTime12 };
 
+interface TimePickerCardProps {
+  label: string;
+  time: string;
+  onSelectTime?: (time: string) => void;
+  availableSlots: string[];
+  presets: { time: string; label: string }[];
+  isOpen: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  isError?: boolean;
+  errorMessage?: string;
+  emptyMessage?: string;
+}
+
+const TimePickerCard: React.FC<TimePickerCardProps> = ({
+  label,
+  time,
+  onSelectTime,
+  availableSlots,
+  presets,
+  isOpen,
+  onToggleOpen,
+  onClose,
+  isError,
+  errorMessage,
+  emptyMessage,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+    };
+  }, [isOpen, onClose]);
+
+  // Only show presets that are currently available/valid
+  const activePresets = presets.filter((p) => availableSlots.includes(p.time));
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative p-3 rounded-2xl bg-canvas border space-y-2 shadow-2xs transition-colors ${
+        isError ? 'border-rose-500/40 bg-rose-500/5' : 'border-divider'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-brand" />
+          <span>{label}</span>
+        </label>
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
+        >
+          <CalendarIcon className="w-3 h-3 text-brand" />
+          <span>{isOpen ? 'Close' : 'Select Time'}</span>
+        </button>
+      </div>
+
+      {/* Main Trigger Box */}
+      <div
+        onClick={onToggleOpen}
+        className={`w-full bg-surface border rounded-xl px-3 py-2.5 flex items-center justify-between cursor-pointer transition-all shadow-2xs hover:border-brand select-none ${
+          isError ? 'border-rose-500 text-rose-500' : 'border-divider text-ink'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-brand shrink-0" />
+          <span className="text-xs font-black">{formatTime12(time)}</span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] font-bold text-ink-secondary">
+          <span>Change</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180 text-brand' : ''}`}
+          />
+        </div>
+      </div>
+
+      {/* Validation Alert */}
+      {isError && errorMessage && (
+        <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
+          <AlertCircle className="w-3 h-3 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Clean Presets without passed times */}
+      {activePresets.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+          <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
+          {activePresets.map(({ time: pTime, label: pLabel }) => {
+            const isSelected = time === pTime;
+            return (
+              <button
+                key={pTime}
+                type="button"
+                onClick={() => onSelectTime?.(pTime)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-brand text-white border-brand shadow-xs'
+                    : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                }`}
+              >
+                {pLabel}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Custom Dropdown Popover */}
+      {isOpen && (
+        <div className="absolute top-[calc(100%+6px)] left-0 right-0 z-50 bg-[#18181b] border border-zinc-700/80 rounded-2xl p-3 shadow-2xl backdrop-blur-xl animate-in fade-in-50 zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-white">
+              <Clock className="w-3.5 h-3.5 text-brand" />
+              <span>Select {label}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-6 h-6 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {availableSlots.length === 0 ? (
+            <div className="py-4 px-2 text-center text-xs text-zinc-400 font-medium">
+              {emptyMessage || 'No available slots for this date.'}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-1.5 max-h-52 overflow-y-auto pr-1">
+              {availableSlots.map((slot) => {
+                const isSelected = slot === time;
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => {
+                      onSelectTime?.(slot);
+                      onClose();
+                    }}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition-all cursor-pointer border ${
+                      isSelected
+                        ? 'bg-brand text-white border-brand shadow-pink font-black scale-[1.02]'
+                        : 'bg-zinc-800/90 text-zinc-300 border-zinc-700/60 hover:border-brand hover:text-white hover:bg-brand/20'
+                    }`}
+                  >
+                    {formatTime12(slot)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   bookedDates = [],
   startDate,
@@ -57,8 +228,8 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
   onSelectEndTime,
   minDate,
 }) => {
-  const startSelectRef = React.useRef<HTMLSelectElement>(null);
-  const endSelectRef = React.useRef<HTMLSelectElement>(null);
+  const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
+  const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -368,208 +539,92 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
         const currentMinNum = now.getMinutes();
         const currentTimeStr = `${String(currentHourNum).padStart(2, '0')}:${String(currentMinNum).padStart(2, '0')}`;
 
+        // Available pickup slots: strictly upcoming if today
+        const availableStartSlots = TIME_SLOTS.filter((t) => {
+          if (isStartToday) {
+            return t > currentTimeStr;
+          }
+          return true;
+        });
+
+        // Available return slots: strictly upcoming if today AND strictly after pickup time if same day
+        const availableEndSlots = TIME_SLOTS.filter((t) => {
+          if (isEndToday && t <= currentTimeStr) return false;
+          if (startDate === endDate && t <= startTime) return false;
+          return true;
+        });
+
         const isStartTimePassedToday = isStartToday && startTime <= currentTimeStr;
         const isEndTimePassedToday = isEndToday && endTime <= currentTimeStr;
         const isEndTimeBeforeStartTime = startDate === endDate && endTime <= startTime;
 
-        const allStartSlots = Array.from(new Set([...TIME_SLOTS, startTime].filter(Boolean))).sort();
-        const allEndSlots = Array.from(new Set([...TIME_SLOTS, endTime].filter(Boolean))).sort();
+        const startPresets = [
+          { time: '09:00', label: '9 AM' },
+          { time: '10:00', label: '10 AM' },
+          { time: '12:00', label: '12 PM' },
+          { time: '14:00', label: '2 PM' },
+          { time: '16:00', label: '4 PM' },
+          { time: '18:00', label: '6 PM' },
+          { time: '20:00', label: '8 PM' },
+        ];
+
+        const endPresets = [
+          { time: '11:00', label: '11 AM' },
+          { time: '14:00', label: '2 PM' },
+          { time: '16:00', label: '4 PM' },
+          { time: '18:00', label: '6 PM' },
+          { time: '20:00', label: '8 PM' },
+          { time: '21:30', label: '9:30 PM' },
+        ];
 
         return (
           <div className="mt-3.5 pt-3 border-t border-divider space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Pickup / Start Time */}
-              <div className={`p-3 rounded-2xl bg-canvas border space-y-2 shadow-2xs transition-colors ${
-                isStartTimePassedToday ? 'border-rose-500/40 bg-rose-500/5' : 'border-divider'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-brand" />
-                    <span>Pickup / Start Time</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      startSelectRef.current?.focus();
-                      try {
-                        startSelectRef.current?.showPicker?.();
-                      } catch {}
-                    }}
-                    className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                  >
-                    <CalendarIcon className="w-3 h-3 text-brand" />
-                    <span>Select Time</span>
-                  </button>
-                </div>
-
-                <div className="relative flex items-center">
-                  <select
-                    ref={startSelectRef}
-                    value={startTime}
-                    onChange={(e) => onSelectStartTime?.(e.target.value)}
-                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2.5 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer appearance-none transition-all shadow-2xs ${
-                      isStartTimePassedToday ? 'border-rose-500 text-rose-500' : 'border-divider'
-                    }`}
-                  >
-                    {allStartSlots.map((t) => {
-                      const isPast = isStartToday && t <= currentTimeStr;
-                      return (
-                        <option
-                          key={t}
-                          value={t}
-                          disabled={isPast}
-                          className={isPast ? 'text-zinc-500 bg-zinc-900 line-through' : 'text-ink bg-surface font-semibold'}
-                        >
-                          {formatTime12(t)} {isPast ? '(Passed)' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <div className="absolute right-3 pointer-events-none text-brand">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                </div>
-
-                {/* Validation alert if past time today */}
-                {isStartTimePassedToday && (
-                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    <span>Time has already passed today. Pick an upcoming time.</span>
-                  </div>
-                )}
-
-                {/* Quick Time Pills */}
-                <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                  <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
-                  {[
-                    { time: '09:00', label: '9 AM' },
-                    { time: '10:00', label: '10 AM' },
-                    { time: '12:00', label: '12 PM' },
-                    { time: '16:00', label: '4 PM' },
-                    { time: '18:00', label: '6 PM' },
-                  ].map(({ time, label }) => {
-                    const isPast = isStartToday && time <= currentTimeStr;
-                    return (
-                      <button
-                        key={time}
-                        type="button"
-                        disabled={isPast}
-                        onClick={() => !isPast && onSelectStartTime?.(time)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
-                          isPast
-                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
-                            : startTime === time
-                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
-                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
-                        }`}
-                        title={isPast ? 'This time has already passed today' : undefined}
-                      >
-                        {label} {isPast ? '(Passed)' : ''}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <TimePickerCard
+                label="Pickup / Start Time"
+                time={startTime}
+                onSelectTime={onSelectStartTime}
+                availableSlots={availableStartSlots}
+                presets={startPresets}
+                isOpen={isStartPickerOpen}
+                onToggleOpen={() => {
+                  setIsStartPickerOpen((prev) => !prev);
+                  setIsEndPickerOpen(false);
+                }}
+                onClose={() => setIsStartPickerOpen(false)}
+                isError={isStartTimePassedToday}
+                errorMessage="Time has already passed today. Pick an upcoming time."
+                emptyMessage="All pickup slots for today have passed. Please select a future date on the calendar."
+              />
 
               {/* Return / End Time */}
-              <div className={`p-3 rounded-2xl bg-canvas border space-y-2 shadow-2xs transition-colors ${
-                (isEndTimePassedToday || isEndTimeBeforeStartTime) ? 'border-rose-500/40 bg-rose-500/5' : 'border-divider'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-brand" />
-                    <span>Return / End Time</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      endSelectRef.current?.focus();
-                      try {
-                        endSelectRef.current?.showPicker?.();
-                      } catch {}
-                    }}
-                    className="text-[10px] font-extrabold text-brand hover:underline inline-flex items-center gap-1 cursor-pointer"
-                  >
-                    <CalendarIcon className="w-3 h-3 text-brand" />
-                    <span>Select Time</span>
-                  </button>
-                </div>
-
-                <div className="relative flex items-center">
-                  <select
-                    ref={endSelectRef}
-                    value={endTime}
-                    onChange={(e) => onSelectEndTime?.(e.target.value)}
-                    className={`w-full bg-surface border rounded-xl pl-3 pr-10 py-2.5 text-xs font-black text-ink outline-none focus:border-brand cursor-pointer appearance-none transition-all shadow-2xs ${
-                      (isEndTimePassedToday || isEndTimeBeforeStartTime) ? 'border-rose-500 text-rose-500' : 'border-divider'
-                    }`}
-                  >
-                    {allEndSlots.map((t) => {
-                      const isPastToday = isEndToday && t <= currentTimeStr;
-                      const isBeforeStart = startDate === endDate && t <= startTime;
-                      const isEndDisabled = isPastToday || isBeforeStart;
-                      return (
-                        <option
-                          key={t}
-                          value={t}
-                          disabled={isEndDisabled}
-                          className={isEndDisabled ? 'text-zinc-500 bg-zinc-900 line-through' : 'text-ink bg-surface font-semibold'}
-                        >
-                          {formatTime12(t)} {isPastToday ? '(Passed)' : isBeforeStart ? '(Before pickup)' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <div className="absolute right-3 pointer-events-none text-brand">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                </div>
-
-                {/* Validation alert */}
-                {isEndTimePassedToday ? (
-                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    <span>Return time has already passed today.</span>
-                  </div>
-                ) : isEndTimeBeforeStartTime ? (
-                  <div className="text-[10px] font-bold text-rose-500 flex items-center gap-1 animate-in fade-in">
-                    <AlertCircle className="w-3 h-3 shrink-0" />
-                    <span>Return time must be after pickup time.</span>
-                  </div>
-                ) : null}
-
-                {/* Quick Time Pills */}
-                <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                  <span className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mr-0.5">Presets:</span>
-                  {[
-                    { time: '11:00', label: '11 AM' },
-                    { time: '14:00', label: '2 PM' },
-                    { time: '18:00', label: '6 PM' },
-                    { time: '20:00', label: '8 PM' },
-                    { time: '21:30', label: '9:30 PM' },
-                  ].map(({ time, label }) => {
-                    const isPast = (isEndToday && time <= currentTimeStr) || (startDate === endDate && time <= startTime);
-                    return (
-                      <button
-                        key={time}
-                        type="button"
-                        disabled={isPast}
-                        onClick={() => !isPast && onSelectEndTime?.(time)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all ${
-                          isPast
-                            ? 'opacity-30 cursor-not-allowed bg-zinc-800/40 border-zinc-700/40 text-zinc-500 line-through pointer-events-none'
-                            : endTime === time
-                            ? 'bg-brand text-white border-brand shadow-xs cursor-pointer'
-                            : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40 cursor-pointer'
-                        }`}
-                        title={isPast ? (startDate === endDate && time <= startTime ? 'Must be after pickup time' : 'This time has already passed today') : undefined}
-                      >
-                        {label} {isPast ? '(Passed)' : ''}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <TimePickerCard
+                label="Return / End Time"
+                time={endTime}
+                onSelectTime={onSelectEndTime}
+                availableSlots={availableEndSlots}
+                presets={endPresets}
+                isOpen={isEndPickerOpen}
+                onToggleOpen={() => {
+                  setIsEndPickerOpen((prev) => !prev);
+                  setIsStartPickerOpen(false);
+                }}
+                onClose={() => setIsEndPickerOpen(false)}
+                isError={isEndTimePassedToday || isEndTimeBeforeStartTime}
+                errorMessage={
+                  isEndTimePassedToday
+                    ? 'Return time has already passed today.'
+                    : isEndTimeBeforeStartTime
+                    ? 'Return time must be after pickup time.'
+                    : undefined
+                }
+                emptyMessage={
+                  startDate === endDate
+                    ? 'No return slots remaining after pickup time today. Select a later return date.'
+                    : 'No available return slots for this date.'
+                }
+              />
             </div>
           </div>
         );

@@ -600,9 +600,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     setStartDate(start);
                     setEndDate(end);
                     setErrorMsg('');
+                    if (start === end && endTime <= startTime) {
+                      const [h, m] = startTime.split(':').map(Number);
+                      const newEndH = Math.min(23, (h || 10) + 2);
+                      setEndTime(`${String(newEndH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+                    }
                   }}
-                  onSelectStartTime={(t) => setStartTime(t)}
-                  onSelectEndTime={(t) => setEndTime(t)}
+                  onSelectStartTime={(t) => {
+                    setStartTime(t);
+                    setErrorMsg('');
+                    if (startDate === endDate && endTime <= t) {
+                      const [h, m] = t.split(':').map(Number);
+                      const newEndH = Math.min(23, (h || 10) + 2);
+                      setEndTime(`${String(newEndH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+                    }
+                  }}
+                  onSelectEndTime={(t) => {
+                    setEndTime(t);
+                    setErrorMsg('');
+                  }}
                 />
               </div>
 
@@ -768,17 +784,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     <span>Delivery Address</span>
                                     <span className="text-brand">*</span>
                                   </label>
-                                  {savedLocations.length > 0 && (
+                                  {validSavedLocations.length > 0 && (
                                     <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
                                   )}
                                 </div>
 
                                 {/* Choose from Saved Profile Locations */}
-                                {savedLocations.length > 0 && (
+                                {validSavedLocations.length > 0 && (
                                   <div className="flex flex-wrap gap-1.5">
-                                    {savedLocations.map((loc) => {
+                                    {validSavedLocations.map((loc) => {
                                       const full = formatSavedLocationFull(loc);
                                       const isSelected = deliveryAddress === full;
+                                      const subtitle = loc.locality || loc.building_flat_house;
                                       return (
                                         <button
                                           key={loc.id}
@@ -792,9 +809,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                         >
                                           <MapPin className="w-3 h-3 text-brand shrink-0" />
                                           <span className="font-extrabold">{loc.label}</span>
-                                          <span className="text-[10px] opacity-75 max-w-[130px] truncate">
-                                            ({loc.locality || loc.building_flat_house})
-                                          </span>
+                                          {subtitle && (
+                                            <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                              ({subtitle})
+                                            </span>
+                                          )}
                                         </button>
                                       );
                                     })}
@@ -858,7 +877,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     <span>Return Collection Address</span>
                                     <span className="text-brand">*</span>
                                   </label>
-                                  {savedLocations.length > 0 && (
+                                  {validSavedLocations.length > 0 && (
                                     <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
                                   )}
                                 </div>
@@ -879,9 +898,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </button>
                                   )}
 
-                                  {savedLocations.map((loc) => {
+                                  {validSavedLocations.map((loc) => {
                                     const full = formatSavedLocationFull(loc);
                                     const isSelected = pickupAddress === full;
+                                    const subtitle = loc.locality || loc.building_flat_house;
                                     return (
                                       <button
                                         key={loc.id}
@@ -895,9 +915,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                       >
                                         <MapPin className="w-3 h-3 text-brand shrink-0" />
                                         <span className="font-extrabold">{loc.label}</span>
-                                        <span className="text-[10px] opacity-75 max-w-[130px] truncate">
-                                          ({loc.locality || loc.building_flat_house})
-                                        </span>
+                                        {subtitle && (
+                                          <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                            ({subtitle})
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}
