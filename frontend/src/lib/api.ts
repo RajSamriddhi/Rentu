@@ -18,19 +18,27 @@ import {
 
 export const getApiBase = (): string => {
   if (typeof window !== 'undefined') {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const hostname = window.location.hostname.toLowerCase();
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
     const envApi = import.meta.env.VITE_API_URL;
+
     if (isLocalhost && envApi) {
       return `${envApi.replace(/\/$/, '')}/api`;
     }
-    // On Vercel (preview or production) and custom domains, ALWAYS use relative '/api'
-    // to keep requests same-origin, prevent 308 domain redirect CORS blocks,
-    // and preserve Vercel authentication cookies.
+
+    // On Vercel preview branch deployments (*.vercel.app), Vercel's Edge Deployment Protection
+    // gates /api/* routes behind an SSO redirect. We seamlessly route preview API calls to the
+    // live production API at https://www.rentu.site/api, which fully permits preview CORS requests.
+    if (hostname.endsWith('.vercel.app')) {
+      return 'https://www.rentu.site/api';
+    }
+
+    // In production on rentu.site or www.rentu.site, use relative path '/api'
     return '/api';
   }
   return import.meta.env.VITE_API_URL 
     ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
-    : '/api';
+    : 'https://www.rentu.site/api';
 };
 
 const API_BASE = getApiBase();

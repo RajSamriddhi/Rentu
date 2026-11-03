@@ -53,9 +53,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
             title="Save to favorites"
           >
             <Heart
-              className={`w-3.5 h-3.5 transition-colors ${
-                isLiked ? 'fill-brand text-brand' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
-              }`}
+              className={`w-3.5 h-3.5 transition-colors ${isLiked ? 'fill-brand text-brand' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                }`}
             />
           </button>
         </div>
