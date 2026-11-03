@@ -82,12 +82,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   // Instagram-style Features State
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [isChatMuted, setIsChatMuted] = useState(false);
 
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaFileInputRef = useRef<HTMLInputElement>(null);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
   const hasUserClosedChatRef = useRef<boolean>(false);
 
   // Helper to reliably check if a conversation matches a selected identifier without null == null false positives
@@ -100,20 +103,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     );
   };
 
-  // Click outside to close Emoji Picker
+  // Click outside to close Emoji Picker & Attachment Menu
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
         setIsEmojiPickerOpen(false);
       }
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(e.target as Node)) {
+        setIsAttachmentMenuOpen(false);
+      }
     };
-    if (isEmojiPickerOpen) {
+    if (isEmojiPickerOpen || isAttachmentMenuOpen) {
       document.addEventListener('mousedown', handleOutsideClick);
     }
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
     };
-  }, [isEmojiPickerOpen]);
+  }, [isEmojiPickerOpen, isAttachmentMenuOpen]);
 
   // Auto-detect high-accuracy GPS satellite coordinates whenever Location Modal opens
   useEffect(() => {
@@ -741,6 +747,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           const label =
             opts.message_type === 'IMAGE'
               ? 'Photo'
+              : opts.message_type === 'VIDEO'
+              ? 'Video'
+              : opts.message_type === 'FILE'
+              ? (opts.proposal_data?.file_name || 'Document')
               : opts.message_type === 'LOCATION'
               ? 'Shared Location'
               : opts.message_type === 'CONTACT'
@@ -760,27 +770,66 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // WhatsApp Attachment Handler 1: Photos & Videos
+  const handleMediaSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
 
-    if (file.size > 15 * 1024 * 1024) {
-      alert('Photo is too large (maximum 15MB). Please choose a smaller photo.');
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File is too large (maximum 25MB). Please choose a smaller file.');
+      return;
+    }
+
+    const isVideo = file.type.startsWith('video/');
+    try {
+      setIsUploadingPhoto(true);
+      const url = await uploadItemPhoto(file, isVideo ? 'chat_videos' : 'chat_photos');
+      await handleSendAttachmentMessage({
+        content: isVideo ? 'Video' : 'Photo',
+        message_type: isVideo ? 'VIDEO' : 'IMAGE',
+        proposal_data: {
+          [isVideo ? 'video_url' : 'image_url']: url,
+          file_name: file.name,
+          file_size: file.size,
+          media_type: isVideo ? 'video' : 'image',
+        },
+      });
+    } catch (err: any) {
+      console.error('Media upload failed:', err);
+      alert(err.message || 'Failed to upload media. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  // WhatsApp Attachment Handler 2: Documents & Files
+  const handleDocumentSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File is too large (maximum 25MB). Please choose a smaller file.');
       return;
     }
 
     try {
       setIsUploadingPhoto(true);
-      const url = await uploadItemPhoto(file, 'chat');
+      const url = await uploadItemPhoto(file, 'chat_files');
       await handleSendAttachmentMessage({
-        content: 'Photo',
-        message_type: 'IMAGE',
-        proposal_data: { image_url: url, file_name: file.name },
+        content: file.name,
+        message_type: 'FILE',
+        proposal_data: {
+          file_url: url,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type || 'document',
+        },
       });
     } catch (err: any) {
-      console.error('Photo upload failed:', err);
-      alert(err.message || 'Failed to upload photo. Please try again.');
+      console.error('Document upload failed:', err);
+      alert(err.message || 'Failed to upload document. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -1611,6 +1660,137 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                       }
 
+                      // 3b. VIDEO MESSAGE (WhatsApp Style)
+                      if (m.message_type === 'VIDEO' || pData?.video_url) {
+                        const videoUrl = pData?.video_url || m.content;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete video"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="rounded-2xl sm:rounded-3xl overflow-hidden max-w-[280px] sm:max-w-[340px] border border-divider/80 bg-surface shadow-xs">
+                              <video
+                                src={videoUrl}
+                                controls
+                                preload="metadata"
+                                className="w-full max-h-[320px] bg-black object-contain"
+                              />
+                              {pData?.file_name && (
+                                <p className="px-3 pt-2 text-xs font-medium text-ink truncate">
+                                  {pData.file_name}
+                                </p>
+                              )}
+                              <div className="px-3 py-1.5 flex items-center justify-end gap-1 text-[9px] text-ink-secondary">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 3c. DOCUMENT / FILE MESSAGE (WhatsApp Style)
+                      if (m.message_type === 'FILE' || (pData?.file_url && !pData.total_price)) {
+                        const fileUrl = pData?.file_url || m.content;
+                        const fileName = pData?.file_name || m.content || 'Document';
+                        const fileSize = pData?.file_size
+                          ? pData.file_size / (1024 * 1024) >= 1
+                            ? `${(pData.file_size / (1024 * 1024)).toFixed(1)} MB`
+                            : `${Math.max(1, Math.round(pData.file_size / 1024))} KB`
+                          : null;
+
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-end gap-2 my-1 group ${isMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isMe && (
+                              <img
+                                src={
+                                  m.sender_avatar ||
+                                  (m.sender_name
+                                    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(m.sender_name)}&background=0F172A&color=fff&bold=true`
+                                    : 'https://api.dicebear.com/7.x/shapes/svg?seed=partner')
+                                }
+                                alt={m.sender_name || 'Member'}
+                                onClick={() => m.sender_id && onOpenUserProfile?.(m.sender_id)}
+                                className="w-7 h-7 rounded-full object-cover shrink-0 border border-divider mb-1 cursor-pointer hover:ring-2 hover:ring-brand transition-all"
+                                title={`View ${m.sender_name || 'Member'}'s public profile`}
+                              />
+                            )}
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all text-ink-muted mb-1 order-first cursor-pointer"
+                                title="Delete file"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <div className="w-full max-w-[280px] sm:max-w-xs rounded-2xl sm:rounded-3xl p-3 border border-divider/80 bg-surface shadow-xs space-y-2">
+                              <div className="flex items-center gap-2.5 bg-canvas/80 p-2.5 rounded-xl border border-divider">
+                                <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                                  <FileText className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-ink truncate" title={fileName}>
+                                    {fileName}
+                                  </p>
+                                  {fileSize && (
+                                    <span className="text-[10px] text-ink-secondary block">
+                                      {fileSize}
+                                    </span>
+                                  )}
+                                </div>
+                                <a
+                                  href={fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={fileName}
+                                  className="w-8 h-8 rounded-full bg-surface hover:bg-divider border border-divider flex items-center justify-center text-ink shrink-0 transition-colors"
+                                  title="Download / Open file"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                              <div className="flex items-center justify-end gap-1 text-[9px] text-ink-secondary px-1">
+                                <span>{formattedTime}</span>
+                                {isMe && renderMessageTicks(m, false)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       // 4. LOCATION MESSAGE (WhatsApp Style: Live, Current GPS, or Saved Meetup Spot)
                       if (m.message_type === 'LOCATION' || pData?.address) {
                         const addrText = pData?.address || m.content.replace(/^📍\s*(Current Location|Meetup Spot):\s*/i, '').replace(/^🟢\s*Live Location[^\n]*\n?/i, '').replace(/^Location:\s*/i, '');
@@ -2045,15 +2225,106 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 )}
 
-                {/* Reply Input Bar (Instagram Style) */}
+                {/* Reply Input Bar (WhatsApp Style) */}
                 <form
                   onSubmit={handleSendMessage}
-                  className="shrink-0 p-3 sm:p-4 border-t border-divider bg-surface flex items-center gap-2 sm:gap-3 relative"
+                  className="shrink-0 p-2.5 sm:p-3 border-t border-divider bg-surface flex items-center gap-2 relative"
                 >
-                  {/* Instagram Pill Container */}
-                  <div className="flex-1 bg-canvas border border-divider rounded-full px-3 sm:px-4 py-2 flex items-center gap-2 relative focus-within:border-brand/60 focus-within:ring-1 focus-within:ring-brand/30 transition-all">
+                  {/* WhatsApp Attachment Plus (+) Button & Popup Menu */}
+                  <div className="relative shrink-0" ref={attachmentMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                        isAttachmentMenuOpen
+                          ? 'bg-brand text-white rotate-45 shadow-sm'
+                          : 'bg-canvas hover:bg-divider/50 border border-divider text-ink-secondary hover:text-ink'
+                      }`}
+                      title="Attach Photos, Videos, Files or Location"
+                    >
+                      <Plus className="w-5 h-5 transition-transform" />
+                    </button>
+
+                    {/* WhatsApp Attachment Popup Menu */}
+                    {isAttachmentMenuOpen && (
+                      <div className="absolute bottom-12 sm:bottom-14 left-0 z-50 bg-surface/98 backdrop-blur-md border border-divider rounded-2xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 w-56 space-y-1">
+                        {/* Photos & Videos */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachmentMenuOpen(false);
+                            mediaFileInputRef.current?.click();
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer text-left text-xs font-semibold group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <ImageIcon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-ink">Photos & Videos</div>
+                            <div className="text-[10px] text-ink-secondary">Share gear photos or clips</div>
+                          </div>
+                        </button>
+
+                        {/* Document / Files */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachmentMenuOpen(false);
+                            docFileInputRef.current?.click();
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer text-left text-xs font-semibold group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-ink">Document / File</div>
+                            <div className="text-[10px] text-ink-secondary">Share PDFs, notes, or receipts</div>
+                          </div>
+                        </button>
+
+                        {/* Location */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttachmentMenuOpen(false);
+                            setIsLocationModalOpen(true);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer text-left text-xs font-semibold group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-ink">Location</div>
+                            <div className="text-[10px] text-ink-secondary">Live GPS, current or meetup spot</div>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={mediaFileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleMediaSelected}
+                    className="hidden"
+                  />
+                  <input
+                    ref={docFileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.zip,.csv,.xlsx,application/*"
+                    onChange={handleDocumentSelected}
+                    className="hidden"
+                  />
+
+                  {/* WhatsApp Message Input Box Container */}
+                  <div className="flex-1 bg-canvas border border-divider rounded-full px-3 sm:px-4 py-2 flex items-center gap-2 relative focus-within:border-brand/60 focus-within:ring-1 focus-within:ring-brand/30 transition-all min-w-0">
                     {/* Emoji Smile Button */}
-                    <div className="relative" ref={emojiPickerRef}>
+                    <div className="relative shrink-0" ref={emojiPickerRef}>
                       <button
                         type="button"
                         onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)}
@@ -2063,10 +2334,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         <Smile className="w-5 h-5" />
                       </button>
 
-                      {/* Instagram Quick Emoji Picker Popover */}
+                      {/* WhatsApp Quick Emoji Picker Popover */}
                       {isEmojiPickerOpen && (
                         <div className="absolute bottom-12 left-0 z-50 bg-surface/98 backdrop-blur-md border border-divider rounded-2xl p-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 flex items-center gap-1.5 flex-wrap w-60">
-                          {['❤️', '🔥', '😂', '😍', '👏', '👍', '🙌', '🤝', '📍', '✨', '🙏', '🎉'].map((emoji) => (
+                          {['😀', '😂', '👍', '🤝', '🙌', '🎉', '📍', '✨', '🙏', '🔥', '👏', '✅'].map((emoji) => (
                             <button
                               key={emoji}
                               type="button"
@@ -2084,63 +2355,34 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       )}
                     </div>
 
-                    {/* Main Text Input (Instagram style placeholder) */}
+                    {/* Main Text Input */}
                     <input
                       ref={inputRef}
                       type="text"
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
-                      placeholder="Message..."
-                      className="flex-1 bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted"
+                      placeholder="Type a message..."
+                      className="flex-1 bg-transparent border-none outline-none text-xs font-semibold text-ink placeholder:text-ink-muted min-w-0"
                     />
-
-                    {/* Hidden file input for Photo Upload */}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoSelected}
-                      className="hidden"
-                    />
-
-                    {/* Right Action Icons in Pill: When input is empty, show Gallery and Location */}
-                    {!inputText.trim() ? (
-                      <div className="flex items-center gap-1 sm:gap-1.5 text-ink-muted shrink-0">
-                        {/* Gallery / Image Upload */}
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
-                          title="Share photo"
-                        >
-                          <ImageIcon className="w-5 h-5" />
-                        </button>
-
-                        {/* Location Share */}
-                        <button
-                          type="button"
-                          onClick={() => setIsLocationModalOpen(true)}
-                          className="p-1 rounded-full hover:text-ink hover:scale-110 transition-all cursor-pointer"
-                          title="Share location"
-                        >
-                          <MapPin className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ) : (
-                      /* When user types, show bold brand "Send" text button (Exact Instagram style!) */
-                      <button
-                        type="submit"
-                        disabled={isSending}
-                        className="text-brand hover:opacity-80 text-xs sm:text-sm font-bold px-2 py-1 transition-opacity cursor-pointer disabled:opacity-50"
-                      >
-                        {isSending ? (
-                          <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          'Send'
-                        )}
-                      </button>
-                    )}
                   </div>
+
+                  {/* Dedicated WhatsApp Send Button on the Right Side */}
+                  <button
+                    type="submit"
+                    disabled={!inputText.trim() || isSending}
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      inputText.trim() && !isSending
+                        ? 'bg-brand text-white shadow-pink hover:opacity-90 hover:scale-105 active:scale-95'
+                        : 'bg-canvas border border-divider text-ink-muted/50 cursor-not-allowed opacity-60'
+                    }`}
+                    title="Send message"
+                  >
+                    {isSending ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 sm:w-4.5 sm:h-4.5 translate-x-[-0.5px]" />
+                    )}
+                  </button>
                 </form>
               </>
             ) : (
