@@ -167,6 +167,10 @@ export interface Booking {
   lender_avatar?: string;
   lender_phone?: string;
   lender_email?: string;
+  is_proposal?: boolean;
+  proposal_message_id?: string;
+  proposer_id?: string;
+  recipient_id?: string;
 }
 
 export interface MessageProposalData {

@@ -499,7 +499,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
-            {/* Nav links: Marketplace, Community */}
+            {/* Nav links: Marketplace, Community, Bookings */}
             <nav className="hidden md:flex items-center gap-5 text-xs font-bold">
               <button
                 onClick={() => setActiveTab('explore')}
@@ -522,6 +522,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}>
                   Top 10
                 </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!isAuthenticated && onOpenAuth) {
+                    onOpenAuth();
+                  } else {
+                    setActiveTab('bookings');
+                  }
+                }}
+                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'bookings' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
+                }`}
+                title="View your gear rental bookings and handoffs"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Bookings</span>
               </button>
             </nav>
           </div>
@@ -1158,6 +1175,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}>
                   Top 10
                 </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!isAuthenticated && onOpenAuth) {
+                    onOpenAuth();
+                  } else {
+                    setActiveTab('bookings');
+                  }
+                  setShowMobileMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  activeTab === 'bookings' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Bookings</span>
               </button>
             </div>
 

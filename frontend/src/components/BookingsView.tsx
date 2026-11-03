@@ -188,21 +188,74 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
   // Accept or Decline a proposal
   const handleStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
+    const b = bookings.find((item) => item.id === bookingId);
+    const isProposal = b?.is_proposal || bookingId.startsWith('proposal_');
+    const msgId = b?.proposal_message_id || bookingId.replace(/^proposal_/, '');
+
     if (status === 'ACCEPTED') {
-      const b = bookings.find((item) => item.id === bookingId);
       if (b && isBookingRequestPassed(b)) {
         window.dispatchEvent(new CustomEvent('rentu:toast', {
           detail: {
             type: 'error',
             title: 'Rental Time Passed',
-            message: 'This booking request cannot be accepted because its scheduled rental time has already passed. Please message the renter to propose new upcoming dates.',
+            message: 'This booking request cannot be accepted because its scheduled rental time has already passed. Please message the partner to propose new upcoming dates.',
             duration: 6000,
           }
         }));
         return;
       }
     }
+
     try {
+      if (isProposal) {
+        if (status === 'ACCEPTED') {
+          const res = await api.acceptProposal(msgId);
+          const newBooking = res.booking || {
+            ...b,
+            id: res.booking?.id || `booking_${Date.now()}`,
+            status: 'ACCEPTED'
+          };
+          setBookings((prev) => [
+            newBooking,
+            ...prev.filter((item) => item.id !== bookingId && item.proposal_message_id !== msgId)
+          ]);
+
+          try {
+            confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
+          } catch {}
+
+          window.dispatchEvent(new CustomEvent('rentu:toast', {
+            detail: {
+              type: 'success',
+              title: 'Proposal Accepted',
+              message: 'Agreement confirmed! Handover is now active in Ongoing Bookings.',
+              duration: 5000,
+            }
+          }));
+
+          setActiveTab('ongoing');
+          setSelectedDateFilter(null);
+          setHighlightedBookingId(newBooking.id);
+          setTimeout(() => {
+            const el = document.getElementById(`booking-${newBooking.id}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 150);
+          return;
+        } else {
+          await api.declineProposal(msgId);
+          setBookings((prev) => prev.filter((item) => item.id !== bookingId && item.proposal_message_id !== msgId));
+          window.dispatchEvent(new CustomEvent('rentu:toast', {
+            detail: {
+              type: 'info',
+              title: status === 'CANCELLED' ? 'Proposal Cancelled' : 'Proposal Declined',
+              message: 'The proposal has been updated.',
+              duration: 4000,
+            }
+          }));
+          return;
+        }
+      }
+
       const updated = await api.updateBookingStatus(bookingId, status);
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status } : b))
@@ -865,9 +918,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               ) : (
                 requestsList.map((booking) => {
+                  const isRecipient = booking.is_proposal
+                    ? (booking.recipient_id === user?.id || booking.recipient_id === (user as any)?.firebase_uid)
+                    : (booking.lender_id === user?.id || booking.lender_id === (user as any)?.firebase_uid);
                   const isLender = booking.lender_id === user?.id;
-                  const requesterName = isLender ? (booking.borrower_name || 'Neighbor') : (booking.lender_name || 'Owner');
-                  const requesterAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
+
+                  const partnerIsBorrower = booking.borrower_id !== user?.id && booking.borrower_id !== (user as any)?.firebase_uid;
+                  const partnerName = partnerIsBorrower
+                    ? (booking.borrower_name || 'Borrower')
+                    : (booking.lender_name || 'Lender');
+                  const partnerAvatar = partnerIsBorrower
+                    ? booking.borrower_avatar
+                    : booking.lender_avatar;
+                  const partnerId = partnerIsBorrower
+                    ? booking.borrower_id
+                    : booking.lender_id;
+
                   const isTimePassed = isBookingRequestPassed(booking);
 
                   return (
@@ -902,7 +968,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                                 </span>
                               ) : (
                                 <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                  {isLender ? 'Incoming Request' : 'Proposal Sent'}
+                                  {booking.is_proposal 
+                                    ? (isRecipient ? 'Custom Request' : 'Proposal Sent') 
+                                    : (isLender ? 'Incoming Request' : 'Proposal Sent')}
                                 </span>
                               )}
                             </div>
@@ -919,11 +987,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                             </div>
 
                             <div className="text-xs text-ink-secondary font-medium flex items-center gap-1.5">
-                              {requesterAvatar && (
-                                <img src={requesterAvatar} alt={requesterName} className="w-4 h-4 rounded-full object-cover" />
+                              {partnerAvatar && (
+                                <img src={partnerAvatar} alt={partnerName} className="w-4 h-4 rounded-full object-cover" />
                               )}
-                              <span>{isLender ? 'Requested by:' : 'Sent to:'}</span>
-                              <strong className="text-ink">{requesterName}</strong>
+                              <span>{isRecipient ? 'Requested by:' : 'Sent to:'}</span>
+                              <strong className="text-ink">{partnerName}</strong>
                             </div>
                           </div>
                         </div>
@@ -932,11 +1000,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         <div className="shrink-0 w-full sm:w-auto">
                           <button
                             type="button"
-                            onClick={() => onOpenChat(booking.id)}
+                            onClick={() => onOpenChat(booking.is_proposal ? `dm_${partnerId}` : booking.id)}
                             className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 w-full sm:w-auto justify-center hover:border-brand hover:text-brand transition-colors"
                           >
                             <MessageSquare className="w-3.5 h-3.5 text-brand" />
-                            <span>Message {requesterName}</span>
+                            <span>Message {partnerName}</span>
                           </button>
                         </div>
                       </div>
@@ -945,14 +1013,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       {isTimePassed && (
                         <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 animate-in fade-in">
                           <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>The scheduled rental time for this request ({booking.start_date} at {formatTime12(booking.start_time || '10:00')}) has already passed. It cannot be accepted. Please message {requesterName} to request upcoming dates.</span>
+                          <span>The scheduled rental time for this request ({booking.start_date} at {formatTime12(booking.start_time || '10:00')}) has already passed. It cannot be accepted. Please message {partnerName} to request upcoming dates.</span>
                         </div>
                       )}
 
                       {/* Requester note if any */}
                       {booking.message && (
                         <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary">
-                          <span className="font-bold text-ink">Note from {requesterName}: </span>
+                          <span className="font-bold text-ink">Note from {partnerName}: </span>
                           <span>"{booking.message}"</span>
                         </div>
                       )}
@@ -968,17 +1036,17 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Actions: Accept or Reject (If Lender) */}
+                      {/* Actions: Accept or Reject */}
                       <div className="pt-2 border-t border-divider flex flex-col sm:flex-row items-center justify-between gap-3">
                         <div className="text-xs text-ink-secondary">
                           {isTimePassed
                             ? 'This request is expired because its scheduled pickup time has passed.'
-                            : isLender
+                            : isRecipient
                             ? 'Accepting this request will immediately activate the booking and schedule it on your calendar.'
-                            : 'Waiting for the equipment owner to review and accept your proposal.'}
+                            : `Waiting for ${partnerName} to review and accept your proposal.`}
                         </div>
 
-                        {isLender ? (
+                        {isRecipient ? (
                           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             <button
                               type="button"
@@ -1003,7 +1071,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                                 className="btn-primary text-xs px-6 py-2 shadow-pink font-bold cursor-pointer inline-flex items-center gap-1.5"
                               >
                                 <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                <span>Accept Booking</span>
+                                <span>Accept Request & Book</span>
                               </button>
                             )}
                           </div>
