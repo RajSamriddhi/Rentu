@@ -31,7 +31,8 @@ import {
   HelpCircle,
   Mail,
   AtSign,
-  Copy
+  Copy,
+  Share2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -98,6 +99,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [copiedProfileLink, setCopiedProfileLink] = useState(false);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleShareProfile = async () => {
+    const handle = user?.username || user?.email?.split('@')[0] || user?.id;
+    const url = `https://rentu.site/${handle}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${user?.name || 'User'}'s Profile on Rentu`,
+          text: `Check out ${user?.name || 'this'}'s gear closet and rental profile on Rentu!`,
+          url,
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedProfileLink(true);
+      setTimeout(() => setCopiedProfileLink(false), 2000);
+    } catch {}
+  };
 
   const loadData = async () => {
     if (!user) return;
@@ -209,18 +232,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
 
-          {/* Top Left: Locality Pill */}
-          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 max-w-[85%]">
-            <button
-              type="button"
-              onClick={() => setIsEditModalOpen(true)}
-              className="backdrop-blur-md bg-black/50 hover:bg-black/70 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md max-w-full cursor-pointer transition-colors"
-            >
-              <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-              <span className="truncate">{formatFullAddress(user) || 'Set Your Location'}</span>
-            </button>
-          </div>
-
           {/* Top Right: Change Cover Button */}
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
             <button
@@ -285,7 +296,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               />
             </div>
 
-            {/* Action Buttons (Cleanly positioned on card surface) */}
+            {/* Action Buttons (Clean, minimal, professional) */}
             <div className="flex items-center gap-2 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
               <button
                 id="edit-profile-btn"
@@ -294,6 +305,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Edit Profile</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShareProfile}
+                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
+                title="Share Profile Link"
+              >
+                {copiedProfileLink ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-emerald-500 font-bold">Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share</span>
+                  </>
+                )}
               </button>
 
               <button
@@ -307,7 +337,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           </div>
 
-          {/* User Name, Verified Badge, Bio & Meta (Completely on card surface with crystal clear contrast) */}
+          {/* User Name, Verified Badge, Bio & Meta */}
           <div className="mt-3 sm:mt-4 space-y-2 text-center sm:text-left">
 
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
@@ -322,110 +352,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Username */}
-            <div className="flex items-center justify-center sm:justify-start gap-1.5 pt-0.5">
-              <span className="font-mono text-xs sm:text-sm font-bold text-brand bg-brand-soft px-3 py-1 rounded-full border border-brand/20 inline-flex items-center gap-1.5 shadow-2xs">
-                <AtSign className="w-3.5 h-3.5" />
-                <span>{user?.username || user?.email?.split('@')[0] || 'member'}</span>
-              </span>
+            <div className="flex items-center justify-center sm:justify-start gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(true)}
+                className="font-mono text-xs sm:text-sm font-bold text-brand hover:underline cursor-pointer"
+                title="Click to edit username"
+              >
+                @{user?.username || user?.email?.split('@')[0] || 'member'}
+              </button>
             </div>
 
             {user?.bio ? (
-              <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed pt-0.5">
                 {user.bio}
               </p>
             ) : (
-              <p className="text-xs text-ink-secondary/70 italic max-w-2xl">
-                No bio added yet. Click <button onClick={() => setIsEditModalOpen(true)} className="font-semibold text-brand hover:underline not-italic cursor-pointer">Edit Profile</button> to introduce yourself to neighbors!
+              <p className="text-xs text-ink-secondary/70 italic max-w-2xl pt-0.5">
+                No bio added yet. Click <button onClick={() => setIsEditModalOpen(true)} className="font-semibold text-brand hover:underline not-italic cursor-pointer">Edit Profile</button> to introduce yourself to neighbors.
               </p>
             )}
 
-            {/* Profile URL Banner */}
-            <div className="mt-3 p-3.5 rounded-2xl bg-canvas border border-divider flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <div className="w-9 h-9 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0 border border-brand/20">
-                  <AtSign className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-ink uppercase tracking-wider">Profile Link</span>
-                  </div>
-                  <p className="text-[11px] text-ink-secondary truncate">
-                    Share your profile link: <span className="font-mono font-bold text-brand">rentu.site/{user?.username || user?.email?.split('@')[0]}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const handle = user?.username || user?.email?.split('@')[0];
-                    const url = `https://rentu.site/${handle}`;
-                    navigator.clipboard?.writeText(url);
-                    setCopiedProfileLink(true);
-                    setTimeout(() => setCopiedProfileLink(false), 2000);
-                  }}
-                  className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5 shrink-0"
-                >
-                  {copiedProfileLink ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-emerald-500 font-bold">Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy Link</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(true)}
-                  className="text-xs font-bold text-brand hover:underline cursor-pointer shrink-0"
-                >
-                  Edit Username
-                </button>
-              </div>
-            </div>
-
-            {/* Metadata Badges */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs font-semibold text-ink-secondary pt-1">
-
-              {ratingDisplay ? (
-                <span className="inline-flex items-center gap-1 text-ink font-bold bg-canvas px-3 py-1 rounded-full border border-divider">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{ratingDisplay} Rating</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider font-bold text-ink">
-                  <span>New Member</span>
-                </span>
-              )}
-
-              <span className="inline-flex items-center gap-1.5 bg-canvas px-3 py-1 rounded-full border border-divider">
-                <Calendar className="w-3.5 h-3.5 text-ink-muted" />
-                <span>Member since {memberSince}</span>
-              </span>
-
+            {/* Clean Minimalist Meta Line (Location, Joined date, Rating) */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1.5 text-xs text-ink-secondary pt-1.5">
               {formatFullAddress(user) ? (
                 <button
+                  type="button"
                   onClick={() => setIsEditModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer max-w-full"
+                  className="inline-flex items-center gap-1.5 hover:text-brand transition-colors cursor-pointer text-ink font-semibold"
                   title="Click to update your location"
                 >
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{formatFullAddress(user)}</span>
+                  <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                  <span className="truncate max-w-[280px]">{formatFullAddress(user)}</span>
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => setIsEditModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold transition-colors cursor-pointer max-w-full"
+                  className="inline-flex items-center gap-1.5 text-amber-500 hover:underline font-bold cursor-pointer"
                   title="Location not set — click to add your location"
                 >
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>Set Your Location</span>
+                  <span>Set Location</span>
                 </button>
+              )}
+
+              <span className="text-divider">•</span>
+
+              <span className="inline-flex items-center gap-1.5 text-ink-secondary">
+                <Calendar className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+                <span>Member since {memberSince}</span>
+              </span>
+
+              {ratingDisplay && (
+                <>
+                  <span className="text-divider">•</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-ink">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                    <span>{ratingDisplay} Rating</span>
+                  </span>
+                </>
               )}
             </div>
 
@@ -433,49 +419,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         </div>
 
-        {/* Dynamic Stats Row with Premium Badges */}
-        <div className="border-t border-divider grid grid-cols-2 md:grid-cols-4 bg-canvas/30 divide-y md:divide-y-0 md:divide-x divide-divider">
-
-          <div className="p-4 sm:p-5 flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-pink-500/10 text-brand flex items-center justify-center shrink-0">
-              <Package className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{myItems.length}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">Items Listed</div>
-            </div>
+        {/* Minimalist Professional Stats Bar */}
+        <div className="border-t border-divider grid grid-cols-2 sm:grid-cols-4 bg-canvas/30 divide-y sm:divide-y-0 sm:divide-x divide-divider">
+          <div className="p-4 sm:p-5 text-center sm:text-left">
+            <div className="text-xl sm:text-2xl font-black text-ink font-display">{myItems.length}</div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Gear Listed</div>
           </div>
 
-          <div className="p-4 sm:p-5 flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{completedCount}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">Completed Rentals</div>
-            </div>
+          <div className="p-4 sm:p-5 text-center sm:text-left">
+            <div className="text-xl sm:text-2xl font-black text-ink font-display">{completedCount}</div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Completed Handouts</div>
           </div>
 
-          <div className="p-4 sm:p-5 flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{myRequests.length}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">Wishes & Requests</div>
-            </div>
+          <div className="p-4 sm:p-5 text-center sm:text-left">
+            <div className="text-xl sm:text-2xl font-black text-ink font-display">{myRequests.length}</div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
           </div>
 
-          <div className="p-4 sm:p-5 flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
-              <Star className="w-5 h-5 fill-amber-400" />
+          <div className="p-4 sm:p-5 text-center sm:text-left">
+            <div className="text-xl sm:text-2xl font-black text-ink font-display">
+              {ratingDisplay ? `${ratingDisplay} ★` : '100%'}
             </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{ratingDisplay || '—'}</div>
-              <div className="text-[11px] font-bold text-ink-secondary">{ratingDisplay ? 'Trust Rating' : 'New Member'}</div>
-            </div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Trust Score</div>
           </div>
-
         </div>
 
       </div>

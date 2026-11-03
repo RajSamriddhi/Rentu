@@ -350,9 +350,18 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
     );
 
     const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+    if (activeBooking) {
+      delete activeBooking.pickup_code;
+      delete activeBooking.return_code;
+    }
 
     // Map messages so proposal_data status stays strictly synchronized with live booking status
     const mappedMessages = messagesRes.rows.map((row: any) => {
+      let content = row.content;
+      if (content && typeof content === 'string') {
+        content = content.replace(/\.?\s*Pickup Verification Code:\s*\d+\.?/gi, '.');
+      }
+
       if (row.message_type === 'PROPOSAL' && row.proposal_data) {
         let pData = typeof row.proposal_data === 'string' ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
         const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : undefined);
@@ -364,20 +373,20 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
           pData.status = 'CANCELLED';
         }
 
-        const isMeBorrower = myIds.includes(activeBooking?.borrower_id || pData.borrower_id);
-        const isMeLender = myIds.includes(activeBooking?.lender_id || pData.lender_id);
-        if (!isMeBorrower) {
-          delete pData.pickup_code;
-        }
-        if (!isMeLender) {
-          delete pData.return_code;
-        }
+        // Never expose pickup_code or return_code in chat proposal_data
+        delete pData.pickup_code;
+        delete pData.return_code;
+
         return {
           ...row,
+          content,
           proposal_data: pData,
         };
       }
-      return row;
+      return {
+        ...row,
+        content,
+      };
     });
 
     return sendSuccess(res, {
@@ -568,8 +577,6 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         const updatedProposal = {
           ...proposal,
           status: 'ACCEPTED',
-          pickup_code: pickupCode,
-          return_code: returnCode,
           accepted_at: new Date().toISOString(),
         };
 
@@ -588,7 +595,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Pickup Verification Code: ${pickupCode}. Handover is now live in Bookings.`,
+            `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Handover is now live in Bookings.`,
           ]
         );
 
@@ -598,10 +605,20 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           [message.sender_id, currentUserId, itemTitle, existingBookingId]
         ).catch(() => {});
 
+        // Never expose pickup_code or return_code in proposal_data response
+        const safeProposal = { ...updatedProposal };
+        delete (safeProposal as any).pickup_code;
+        delete (safeProposal as any).return_code;
+
+        const safeBooking = { ...updatedBooking };
+        // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+        delete safeBooking.pickup_code;
+        delete safeBooking.return_code;
+
         return sendSuccess(res, {
-          booking: updatedBooking,
+          booking: safeBooking,
           message_id: messageId,
-          proposal_data: updatedProposal,
+          proposal_data: safeProposal,
         }, 'Rental request accepted');
       }
     }
@@ -694,8 +711,6 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       status: 'ACCEPTED',
       booking_id: createdBooking.id,
       item_id: createdItem.id,
-      pickup_code: pickupCode,
-      return_code: returnCode,
       accepted_at: new Date().toISOString(),
     };
 
@@ -739,11 +754,20 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       [currentUserId, message.sender_id, itemTitle, createdBooking.id]
     ).catch(() => {});
 
+    const safeCreatedBooking = { ...createdBooking };
+    // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
+    delete safeCreatedBooking.pickup_code;
+    delete safeCreatedBooking.return_code;
+
+    const safeProposal = { ...updatedProposal };
+    delete (safeProposal as any).pickup_code;
+    delete (safeProposal as any).return_code;
+
     return sendSuccess(res, {
-      booking: createdBooking,
+      booking: safeCreatedBooking,
       item: createdItem,
       message_id: messageId,
-      proposal_data: updatedProposal,
+      proposal_data: safeProposal,
     }, 'Agreement accepted and booking created');
   } catch (error) {
     next(error);

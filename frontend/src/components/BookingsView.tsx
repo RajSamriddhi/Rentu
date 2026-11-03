@@ -22,7 +22,9 @@ import {
   Info,
   CalendarCheck2,
   XCircle,
-  Ban
+  Ban,
+  Upload,
+  Download
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../lib/api';
@@ -32,6 +34,7 @@ import { formatTime12 } from '../lib/formatters';
 import { ReviewModal } from './ReviewModal';
 import { BookingCard } from './BookingCard';
 import { BookingStageModal } from './BookingStageModal';
+import { getDayLogisticsStatus, checkIsLender } from '../lib/logistics';
 
 interface BookingsViewProps {
   onOpenChat: (bookingId: string) => void;
@@ -95,12 +98,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   useEffect(() => {
     if (initialBookingId) {
       setHighlightedBookingId(initialBookingId);
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const el = document.getElementById(`booking-${initialBookingId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }, 350);
+
+      // Automatically clear highlight after 2.5s so card never stays highlighted or blinks
+      const clearTimer = setTimeout(() => {
+        setHighlightedBookingId(null);
+      }, 2500);
+
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
     }
   }, [initialBookingId]);
   
@@ -178,14 +191,74 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
   // Accept or Decline a proposal
   const handleStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
+    const b = bookings.find((item) => item.id === bookingId);
+    const isProposal = b?.is_proposal || bookingId.startsWith('proposal_');
+    const msgId = b?.proposal_message_id || bookingId.replace(/^proposal_/, '');
+
     if (status === 'ACCEPTED') {
-      const b = bookings.find((item) => item.id === bookingId);
       if (b && isBookingRequestPassed(b)) {
-        alert('This booking request cannot be accepted because its scheduled rental time has already passed. Please message the renter to propose new upcoming dates.');
+        window.dispatchEvent(new CustomEvent('rentu:toast', {
+          detail: {
+            type: 'error',
+            title: 'Rental Time Passed',
+            message: 'This booking request cannot be accepted because its scheduled rental time has already passed. Please message the partner to propose new upcoming dates.',
+            duration: 6000,
+          }
+        }));
         return;
       }
     }
+
     try {
+      if (isProposal) {
+        if (status === 'ACCEPTED') {
+          const res = await api.acceptProposal(msgId);
+          const newBooking = res.booking || {
+            ...b,
+            id: res.booking?.id || `booking_${Date.now()}`,
+            status: 'ACCEPTED'
+          };
+          setBookings((prev) => [
+            newBooking,
+            ...prev.filter((item) => item.id !== bookingId && item.proposal_message_id !== msgId)
+          ]);
+
+          try {
+            confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
+          } catch {}
+
+          window.dispatchEvent(new CustomEvent('rentu:toast', {
+            detail: {
+              type: 'success',
+              title: 'Proposal Accepted',
+              message: 'Agreement confirmed! Handover is now active in Ongoing Bookings.',
+              duration: 5000,
+            }
+          }));
+
+          setActiveTab('ongoing');
+          setSelectedDateFilter(null);
+          setHighlightedBookingId(newBooking.id);
+          setTimeout(() => {
+            const el = document.getElementById(`booking-${newBooking.id}`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 150);
+          return;
+        } else {
+          await api.declineProposal(msgId);
+          setBookings((prev) => prev.filter((item) => item.id !== bookingId && item.proposal_message_id !== msgId));
+          window.dispatchEvent(new CustomEvent('rentu:toast', {
+            detail: {
+              type: 'info',
+              title: status === 'CANCELLED' ? 'Proposal Cancelled' : 'Proposal Declined',
+              message: 'The proposal has been updated.',
+              duration: 4000,
+            }
+          }));
+          return;
+        }
+      }
+
       const updated = await api.updateBookingStatus(bookingId, status);
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, ...updated, status } : b))
@@ -205,7 +278,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         }, 150);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to update booking status.');
+      window.dispatchEvent(new CustomEvent('rentu:toast', {
+        detail: {
+          type: 'error',
+          title: 'Update Failed',
+          message: err.message || 'Failed to update booking status.',
+          duration: 5000,
+        }
+      }));
     }
   };
 
@@ -419,6 +499,28 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
     return ongoingList.filter((b) => isDateWithinRange(selectedDateFilter, b.start_date, b.end_date));
   }, [ongoingList, selectedDateFilter]);
 
+  const [ongoingRoleFilter, setOngoingRoleFilter] = useState<'all' | 'lender' | 'renter'>('all');
+
+  // Split ongoing bookings by role: Lender vs Renter
+  const ongoingLendingList = useMemo(() => {
+    return displayedOngoingList.filter((b) => {
+      return Boolean(
+        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
+        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
+      );
+    });
+  }, [displayedOngoingList, user]);
+
+  const ongoingRentingList = useMemo(() => {
+    return displayedOngoingList.filter((b) => {
+      const isLender = Boolean(
+        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
+        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
+      );
+      return !isLender;
+    });
+  }, [displayedOngoingList, user]);
+
   // Helper to check 3-day review window for finished bookings
   const getReviewTimeRemaining = (booking: Booking): { isOpen: boolean; label: string } => {
     if (booking.status !== 'COMPLETED') return { isOpen: false, label: '' };
@@ -534,6 +636,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 const hasActive = day.activeBookings.length > 0;
                 const isSelected = selectedDateFilter === day.dateStr;
 
+                const primaryBooking = hasActive ? day.activeBookings[0] : null;
+                const isPrimaryLender = primaryBooking ? checkIsLender(primaryBooking, user) : false;
+                const dayStatus = primaryBooking
+                  ? getDayLogisticsStatus(day.dateStr, primaryBooking, isPrimaryLender)
+                  : null;
+
                 return (
                   <button
                     key={`${day.dateStr}-${idx}`}
@@ -542,42 +650,46 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                     className={`relative min-h-[58px] sm:min-h-[70px] p-1.5 sm:p-2 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                       isSelected
                         ? 'border-brand ring-2 ring-brand/40 bg-brand/10 shadow-sm'
-                        : hasActive
-                        ? 'border-pink-500/40 bg-pink-500/10 hover:bg-pink-500/20'
+                        : hasActive && dayStatus
+                        ? dayStatus.cellClass
                         : day.isCurrentMonth
                         ? 'border-divider bg-canvas/40 hover:bg-canvas'
                         : 'border-transparent bg-transparent opacity-40 hover:opacity-75'
                     }`}
                     title={
-                      hasActive
-                        ? `Active rental on this date: ${day.activeBookings.map((b) => b.item_title).join(', ')}`
+                      hasActive && dayStatus
+                        ? `${dayStatus.title} (${day.activeBookings.length} total)`
                         : undefined
                     }
                   >
-                    {/* Top Row: Date Number + Today indicator */}
+                    {/* Top Row: Date Number + Logistics indicator dot */}
                     <div className="flex items-center justify-between w-full">
                       <span
                         className={`text-xs font-bold leading-none ${
                           day.isToday
                             ? 'w-5 h-5 rounded-full bg-ink text-canvas flex items-center justify-center font-black'
                             : hasActive
-                            ? 'text-brand font-black'
+                            ? 'font-black text-ink'
                             : 'text-ink'
                         }`}
                       >
                         {day.dayNumber}
                       </span>
 
-                      {hasActive && (
-                        <span className="w-2 h-2 rounded-full bg-brand animate-pulse shrink-0" />
+                      {hasActive && dayStatus && (
+                        <span className={`w-2 h-2 rounded-full ${dayStatus.dotColor} animate-pulse shrink-0`} />
                       )}
                     </div>
 
-                    {/* Active Booking snippet or count pill */}
-                    {hasActive ? (
+                    {/* Active Booking snippet or count pill with logistics tag */}
+                    {hasActive && dayStatus && primaryBooking ? (
                       <div className="w-full mt-1">
-                        <div className="text-[10px] font-black text-brand line-clamp-1 truncate bg-white/70 dark:bg-black/40 px-1 py-0.5 rounded-md border border-brand/20">
-                          {day.activeBookings[0].item_title}
+                        <div
+                          className={`text-[10px] font-black line-clamp-1 truncate px-1 py-0.5 rounded-md border shadow-2xs ${dayStatus.badgeClass}`}
+                          title={`${dayStatus.tag}: ${primaryBooking.item_title}`}
+                        >
+                          <span className="font-extrabold mr-1">{dayStatus.tag}:</span>
+                          <span>{primaryBooking.item_title}</span>
                         </div>
                         {day.activeBookings.length > 1 && (
                           <span className="text-[9px] font-black text-ink-secondary block mt-0.5">
@@ -593,14 +705,30 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
               })}
             </div>
 
-            {/* Calendar Legend & Filter indicator */}
-            <div className="flex items-center justify-between flex-wrap gap-2 pt-4 mt-3 border-t border-divider text-xs text-ink-secondary">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand" />
-                  <span>Active Rental Date</span>
+            {/* Calendar Legend with Multi-Color Logistics & Filter indicator */}
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-3 border-t border-divider text-xs text-ink-secondary">
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
+                <span className="flex items-center gap-1.5 font-semibold text-sky-600 dark:text-sky-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                  <span>🚚 Deliver</span>
                 </span>
-                <span className="flex items-center gap-1.5 font-medium">
+                <span className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>🚶 Pick Up</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-purple-600 dark:text-purple-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                  <span>📍 Hub / Owner Loc</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  <span>🎒 In-Use</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-300">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span>🔄 Return</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-ink">
                   <span className="w-2.5 h-2.5 rounded-full bg-ink" />
                   <span>Today</span>
                 </span>
@@ -771,7 +899,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <>
           {/* TAB 1: ONGOING BOOKINGS */}
           {activeTab === 'ongoing' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {displayedOngoingList.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-3xl p-8 max-w-2xl mx-auto space-y-2">
                   <div className="w-12 h-12 rounded-2xl bg-brand/10 text-brand flex items-center justify-center mx-auto mb-2">
@@ -796,31 +924,186 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {displayedOngoingList.map((booking) => (
-                    <div
-                      key={booking.id}
-                      id={`booking-${booking.id}`}
-                      className={`rounded-3xl transition-all ${
-                        highlightedBookingId === booking.id ? 'ring-4 ring-brand/60 shadow-pink animate-pulse' : ''
+                <div className="space-y-6">
+                  {/* Role Sub-Filter Navigation Pills */}
+                  <div className="flex items-center gap-2 pb-1 overflow-x-auto scrollbar-none">
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('all')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'all'
+                          ? 'bg-ink text-canvas shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
                       }`}
                     >
-                      <BookingCard
-                        booking={booking}
-                        onClick={() => setSelectedStageBooking(booking)}
-                        onOpenChat={onOpenChat}
-                        onUpdated={(updated) => {
-                          setBookings((prev) =>
-                            prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
-                          );
-                          if (updated.status === 'COMPLETED') {
-                            setActiveTab('finished');
-                            setReviewBooking(updated);
-                          }
-                        }}
-                      />
+                      <span>All Ongoing</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'all' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {displayedOngoingList.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('lender')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'lender'
+                          ? 'bg-purple-600 text-white shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Gear I'm Lending (Owner)</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'lender' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {ongoingLendingList.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOngoingRoleFilter('renter')}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-2xs ${
+                        ongoingRoleFilter === 'renter'
+                          ? 'bg-brand text-white shadow-xs scale-[1.02]'
+                          : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
+                      }`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Gear I'm Renting (Borrower)</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        ongoingRoleFilter === 'renter' ? 'bg-white/20 text-white' : 'bg-canvas text-ink-secondary'
+                      }`}>
+                        {ongoingRentingList.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* ======================================================== */}
+                  {/* SECTION 1: GEAR I'M LENDING (AS OWNER)                   */}
+                  {/* ======================================================== */}
+                  {(ongoingRoleFilter === 'all' || ongoingRoleFilter === 'lender') && (
+                    <div className="space-y-3.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-divider">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                            <Upload className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-ink font-display flex items-center gap-2">
+                              <span>Gear I'm Lending</span>
+                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                You are Owner • {ongoingLendingList.length}
+                              </span>
+                            </h3>
+                            <p className="text-[11px] text-ink-secondary">
+                              Items you are renting out to neighbors. You verify handover code and collect rental earnings.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {ongoingLendingList.length === 0 ? (
+                        <div className="p-6 rounded-3xl bg-surface border border-divider text-center space-y-1">
+                          <p className="text-xs font-bold text-ink">No gear currently out on rent</p>
+                          <p className="text-[11px] text-ink-secondary">
+                            When neighbors book your listed gear, active handoffs and return tracking will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ongoingLendingList.map((booking) => (
+                            <div
+                              key={booking.id}
+                              id={`booking-${booking.id}`}
+                              className={`rounded-3xl transition-all duration-300 ${
+                                highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
+                              }`}
+                            >
+                              <BookingCard
+                                booking={booking}
+                                onClick={() => setSelectedStageBooking(booking)}
+                                onOpenChat={onOpenChat}
+                                onUpdated={(updated) => {
+                                  setBookings((prev) =>
+                                    prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+                                  );
+                                  if (updated.status === 'COMPLETED') {
+                                    setActiveTab('finished');
+                                    setReviewBooking(updated);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )}
+
+                  {/* ======================================================== */}
+                  {/* SECTION 2: GEAR I'M RENTING (AS BORROWER)                */}
+                  {/* ======================================================== */}
+                  {(ongoingRoleFilter === 'all' || ongoingRoleFilter === 'renter') && (
+                    <div className="space-y-3.5 pt-2">
+                      <div className="flex items-center justify-between pb-2 border-b border-divider">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-2xl bg-brand/10 text-brand flex items-center justify-center">
+                            <Download className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-ink font-display flex items-center gap-2">
+                              <span>Gear I'm Renting</span>
+                              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20">
+                                You are Renter • {ongoingRentingList.length}
+                              </span>
+                            </h3>
+                            <p className="text-[11px] text-ink-secondary">
+                              Items you booked from neighbors. You will show your 6-digit pickup code at meetup time.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {ongoingRentingList.length === 0 ? (
+                        <div className="p-6 rounded-3xl bg-surface border border-divider text-center space-y-1">
+                          <p className="text-xs font-bold text-ink">No gear currently being rented</p>
+                          <p className="text-[11px] text-ink-secondary">
+                            When you rent cameras, camping gear, tools, or tech, your active orders will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ongoingRentingList.map((booking) => (
+                            <div
+                              key={booking.id}
+                              id={`booking-${booking.id}`}
+                              className={`rounded-3xl transition-all duration-300 ${
+                                highlightedBookingId === booking.id ? 'ring-2 ring-brand shadow-pink' : ''
+                              }`}
+                            >
+                              <BookingCard
+                                booking={booking}
+                                onClick={() => setSelectedStageBooking(booking)}
+                                onOpenChat={onOpenChat}
+                                onUpdated={(updated) => {
+                                  setBookings((prev) =>
+                                    prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+                                  );
+                                  if (updated.status === 'COMPLETED') {
+                                    setActiveTab('finished');
+                                    setReviewBooking(updated);
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -841,9 +1124,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               ) : (
                 requestsList.map((booking) => {
+                  const isRecipient = booking.is_proposal
+                    ? (booking.recipient_id === user?.id || booking.recipient_id === (user as any)?.firebase_uid)
+                    : (booking.lender_id === user?.id || booking.lender_id === (user as any)?.firebase_uid);
                   const isLender = booking.lender_id === user?.id;
-                  const requesterName = isLender ? (booking.borrower_name || 'Neighbor') : (booking.lender_name || 'Owner');
-                  const requesterAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
+
+                  const partnerIsBorrower = booking.borrower_id !== user?.id && booking.borrower_id !== (user as any)?.firebase_uid;
+                  const partnerName = partnerIsBorrower
+                    ? (booking.borrower_name || 'Borrower')
+                    : (booking.lender_name || 'Lender');
+                  const partnerAvatar = partnerIsBorrower
+                    ? booking.borrower_avatar
+                    : booking.lender_avatar;
+                  const partnerId = partnerIsBorrower
+                    ? booking.borrower_id
+                    : booking.lender_id;
+
                   const isTimePassed = isBookingRequestPassed(booking);
 
                   return (
@@ -878,7 +1174,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                                 </span>
                               ) : (
                                 <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                                  {isLender ? 'Incoming Request' : 'Proposal Sent'}
+                                  {booking.is_proposal 
+                                    ? (isRecipient ? 'Custom Request' : 'Proposal Sent') 
+                                    : (isLender ? 'Incoming Request' : 'Proposal Sent')}
                                 </span>
                               )}
                             </div>
@@ -895,11 +1193,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                             </div>
 
                             <div className="text-xs text-ink-secondary font-medium flex items-center gap-1.5">
-                              {requesterAvatar && (
-                                <img src={requesterAvatar} alt={requesterName} className="w-4 h-4 rounded-full object-cover" />
+                              {partnerAvatar && (
+                                <img src={partnerAvatar} alt={partnerName} className="w-4 h-4 rounded-full object-cover" />
                               )}
-                              <span>{isLender ? 'Requested by:' : 'Sent to:'}</span>
-                              <strong className="text-ink">{requesterName}</strong>
+                              <span>{isRecipient ? 'Requested by:' : 'Sent to:'}</span>
+                              <strong className="text-ink">{partnerName}</strong>
                             </div>
                           </div>
                         </div>
@@ -908,11 +1206,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         <div className="shrink-0 w-full sm:w-auto">
                           <button
                             type="button"
-                            onClick={() => onOpenChat(booking.id)}
+                            onClick={() => onOpenChat(booking.is_proposal ? `dm_${partnerId}` : booking.id)}
                             className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 w-full sm:w-auto justify-center hover:border-brand hover:text-brand transition-colors"
                           >
                             <MessageSquare className="w-3.5 h-3.5 text-brand" />
-                            <span>Message {requesterName}</span>
+                            <span>Message {partnerName}</span>
                           </button>
                         </div>
                       </div>
@@ -921,14 +1219,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       {isTimePassed && (
                         <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 animate-in fade-in">
                           <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>The scheduled rental time for this request ({booking.start_date} at {formatTime12(booking.start_time || '10:00')}) has already passed. It cannot be accepted. Please message {requesterName} to request upcoming dates.</span>
+                          <span>The scheduled rental time for this request ({booking.start_date} at {formatTime12(booking.start_time || '10:00')}) has already passed. It cannot be accepted. Please message {partnerName} to request upcoming dates.</span>
                         </div>
                       )}
 
                       {/* Requester note if any */}
                       {booking.message && (
                         <div className="p-3 bg-canvas rounded-2xl border border-divider text-xs text-ink-secondary">
-                          <span className="font-bold text-ink">Note from {requesterName}: </span>
+                          <span className="font-bold text-ink">Note from {partnerName}: </span>
                           <span>"{booking.message}"</span>
                         </div>
                       )}
@@ -944,17 +1242,17 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Actions: Accept or Reject (If Lender) */}
+                      {/* Actions: Accept or Reject */}
                       <div className="pt-2 border-t border-divider flex flex-col sm:flex-row items-center justify-between gap-3">
                         <div className="text-xs text-ink-secondary">
                           {isTimePassed
                             ? 'This request is expired because its scheduled pickup time has passed.'
-                            : isLender
+                            : isRecipient
                             ? 'Accepting this request will immediately activate the booking and schedule it on your calendar.'
-                            : 'Waiting for the equipment owner to review and accept your proposal.'}
+                            : `Waiting for ${partnerName} to review and accept your proposal.`}
                         </div>
 
-                        {isLender ? (
+                        {isRecipient ? (
                           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             <button
                               type="button"
@@ -979,7 +1277,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                                 className="btn-primary text-xs px-6 py-2 shadow-pink font-bold cursor-pointer inline-flex items-center gap-1.5"
                               >
                                 <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                <span>Accept Booking</span>
+                                <span>Accept Request & Book</span>
                               </button>
                             )}
                           </div>

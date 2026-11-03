@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   MapPin,
@@ -23,7 +23,8 @@ import {
   Ban,
   Lock,
   Users,
-  AlertCircle
+  AlertCircle,
+  MoreVertical
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { PublicUserProfile, Item, CommunityRequest } from '../lib/types';
@@ -68,6 +69,22 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [isBlocked, setIsBlocked] = useState(false);
   const [isBlockedBy, setIsBlockedBy] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   useEffect(() => {
     fetchProfile();
@@ -154,14 +171,28 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
     }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     const shareUrl = profile?.username
       ? `${window.location.origin}/${profile.username}`
       : (window.location.href || `${window.location.origin}/user/${userId}`);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${profile?.name || 'User'}'s Profile on Rentu`,
+          text: `Check out ${profile?.name || 'this'}'s gear closet and rental profile on Rentu!`,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      } catch {}
     }
   };
 
@@ -226,99 +257,26 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   return (
     <div className="min-h-screen bg-canvas text-ink pb-20 animate-in fade-in duration-300">
 
-      {/* Top Back Navigation Bar */}
-      <div className="sticky top-16 z-30 bg-surface/80 backdrop-blur-md border-b border-divider px-4 sm:px-6 lg:px-8 py-3">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center gap-2 text-xs font-bold text-ink-secondary hover:text-ink transition-colors cursor-pointer group"
-          >
-            <div className="w-7 h-7 rounded-full bg-canvas border border-divider flex items-center justify-center group-hover:scale-105 transition-transform">
-              <ArrowLeft className="w-3.5 h-3.5 text-ink" />
-            </div>
-            <span>Back</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleShare}
-              className="px-3 py-1.5 rounded-full border border-divider bg-canvas hover:bg-surface text-xs font-bold text-ink-secondary hover:text-ink inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>{copiedLink ? 'Link Copied!' : 'Share Profile'}</span>
-            </button>
-
-            {isOwnProfile ? (
-              <button
-                onClick={() => {
-                  if (onOpenMyAccount) {
-                    onOpenMyAccount();
-                  } else {
-                    onClose();
-                  }
-                }}
-                className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>My Profile & Listings</span>
-              </button>
-            ) : (
-              <>
-                {/* Follow / Following Button */}
-                <button
-                  onClick={handleToggleFollow}
-                  disabled={isActionLoading || isBlocked}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${isFollowing
-                    ? 'bg-canvas border border-brand text-brand hover:bg-brand/10'
-                    : 'bg-brand hover:bg-brand-hover text-white shadow-pink'
-                    } disabled:opacity-50`}
-                >
-                  {isFollowing ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-                  <span>{isFollowing ? 'Following' : 'Follow'}</span>
-                </button>
-
-                {/* Message Button */}
-                <button
-                  onClick={() => {
-                    if (!isAuthenticated && onOpenAuth) {
-                      onOpenAuth();
-                    } else if (isBlocked) {
-                      alert('Communication is unavailable because this user is blocked.');
-                    } else if (onOpenChatWithUser) {
-                      onOpenChatWithUser(profile.id, profile.name, profile.avatar_url);
-                    }
-                  }}
-                  disabled={isBlocked}
-                  className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Message</span>
-                </button>
-
-                {/* Block / Unblock Button */}
-                <button
-                  onClick={handleToggleBlock}
-                  className={`px-2.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer ${isBlocked
-                    ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20'
-                    : 'border-divider bg-canvas hover:bg-surface text-ink-muted hover:text-red-500 hover:border-red-500/30'
-                    }`}
-                  title={isBlocked ? 'Unblock user' : 'Block user'}
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{isBlocked ? 'Blocked' : 'Block'}</span>
-                </button>
-              </>
-            )}
+      {/* Top Back Navigation (Clean, crisp, no sticky blur) */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2">
+        <button
+          onClick={onClose}
+          className="inline-flex items-center gap-2 text-xs font-bold text-ink-secondary hover:text-ink transition-colors cursor-pointer group"
+        >
+          <div className="w-7 h-7 rounded-full bg-surface border border-divider flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
+            <ArrowLeft className="w-3.5 h-3.5 text-ink" />
           </div>
-        </div>
+          <span>Back</span>
+        </button>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
 
         {/* Profile Header Hero Card */}
         <div className="bg-surface border border-divider rounded-3xl overflow-hidden shadow-lg relative">
 
           {/* Cover Banner */}
-          <div className="h-40 sm:h-52 w-full overflow-hidden relative bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-brand/20">
+          <div className="h-44 sm:h-60 w-full overflow-hidden relative bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-brand/20">
             <img
               src={bannerSrc}
               alt={`${profile.name} banner`}
@@ -330,7 +288,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
           {/* Profile Identity Details */}
           <div className="px-6 sm:px-8 pb-8 pt-0 relative">
 
-            {/* Avatar & Floating Badges */}
+            {/* Avatar & Action Header */}
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-5">
               <div className="relative inline-block">
                 <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden border-4 border-surface shadow-xl bg-canvas">
@@ -348,21 +306,89 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 </div>
               </div>
 
-              {/* Reputation Badges */}
+              {/* Reputation Badges & Three-Dot Options Menu */}
               <div className="flex flex-wrap items-center gap-2">
-                <div className="px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
-                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <div className="px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   <span>{(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} Rating</span>
                 </div>
 
-                <div className="px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                <div className="px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                   <span>{profile.trust_score}% Trust Score</span>
                 </div>
 
-                <div className="px-3.5 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 text-purple-800 dark:text-purple-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                <div className="px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 text-purple-800 dark:text-purple-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
                   <Zap className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   <span>Verified Neighbor</span>
+                </div>
+
+                {/* Three-Dot Menu (Message, Share, Block) */}
+                <div className="relative" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMenuOpen((prev) => !prev)}
+                    className="w-8 h-8 rounded-full border border-divider bg-surface hover:bg-canvas text-ink flex items-center justify-center transition-colors shadow-xs cursor-pointer"
+                    title="More actions"
+                    aria-label="More actions"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+
+                  {isMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl bg-surface border border-divider shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          if (!isAuthenticated && onOpenAuth) {
+                            onOpenAuth();
+                          } else if (isBlocked) {
+                            alert('Communication is unavailable because this user is blocked.');
+                          } else if (onOpenChatWithUser) {
+                            onOpenChatWithUser(profile.id, profile.name, profile.avatar_url);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-bold text-ink hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
+                      >
+                        <MessageSquare className="w-4 h-4 text-brand" />
+                        <span>Message {profile.name.split(' ')[0]}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          handleShare();
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs font-bold text-ink hover:bg-canvas flex items-center gap-2.5 transition-colors cursor-pointer"
+                      >
+                        <Share2 className="w-4 h-4 text-ink-secondary" />
+                        <span>{copiedLink ? 'Link Copied!' : 'Share Profile'}</span>
+                      </button>
+
+                      {!isOwnProfile && (
+                        <>
+                          <div className="my-1 border-t border-divider" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsMenuOpen(false);
+                              handleToggleBlock();
+                            }}
+                            className={`w-full px-3.5 py-2.5 text-left text-xs font-bold flex items-center gap-2.5 transition-colors cursor-pointer ${
+                              isBlocked
+                                ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
+                                : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20'
+                            }`}
+                          >
+                            <Ban className="w-4 h-4" />
+                            <span>{isBlocked ? 'Unblock User' : 'Block User'}</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -383,6 +409,33 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Follow option right below the name of the user */}
+                {!isOwnProfile && (
+                  <div className="pt-2 pb-1">
+                    <button
+                      onClick={handleToggleFollow}
+                      disabled={isActionLoading || isBlocked}
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                        isFollowing
+                          ? 'bg-surface border border-divider text-ink hover:border-brand hover:text-brand'
+                          : 'bg-brand hover:bg-brand-hover text-white shadow-pink'
+                      } disabled:opacity-50`}
+                    >
+                      {isFollowing ? (
+                        <>
+                          <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Following</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Follow</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-secondary font-medium mt-1">
                   <span className="flex items-center gap-1 text-ink">
@@ -443,40 +496,39 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </div>
 
             {/* Quick Metrics Strip */}
-            <div className="mt-6 pt-6 border-t border-divider grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="p-3 rounded-2xl bg-canvas border border-divider">
-                <div className="text-xl sm:text-2xl font-black text-brand font-display">
+            <div className="mt-6 border-t border-divider grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-divider bg-canvas/30 -mx-6 sm:-mx-8 -mb-8 rounded-b-3xl">
+              <div className="p-4 sm:p-5 text-center sm:text-left">
+                <div className="text-xl sm:text-2xl font-black text-ink font-display">
                   {profile.items.length}
                 </div>
-                <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
+                <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Gear Listed
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-canvas border border-divider">
-                <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 font-display">
+              <div className="p-4 sm:p-5 text-center sm:text-left">
+                <div className="text-xl sm:text-2xl font-black text-ink font-display">
                   {profile.requests.length}
                 </div>
-                <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
+                <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Wishes & Requests
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-canvas border border-divider">
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display">
+              <div className="p-4 sm:p-5 text-center sm:text-left">
+                <div className="text-xl sm:text-2xl font-black text-ink font-display">
                   {profile.stats.completed_lent + profile.stats.completed_borrowed}
                 </div>
-                <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
+                <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Completed Handovers
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-canvas border border-divider">
-                <div className="text-xl sm:text-2xl font-black text-amber-500 font-display flex items-center justify-center gap-1">
-                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)}
-                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+              <div className="p-4 sm:p-5 text-center sm:text-left">
+                <div className="text-xl sm:text-2xl font-black text-ink font-display flex items-center justify-center sm:justify-start gap-1">
+                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(1)} ★
                 </div>
-                <div className="text-[10px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
+                <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Neighbor Score
                 </div>
               </div>

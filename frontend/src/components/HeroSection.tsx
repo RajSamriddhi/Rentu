@@ -82,7 +82,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <button
                   type="button"
                   onClick={onOpenDropWish}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-transparent px-4 text-sm font-bold text-ink-secondary transition-colors hover:bg-surface hover:text-brand"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-transparent px-4 text-sm font-bold text-ink-secondary transition-colors hover:bg-canvas hover:text-brand"
                 >
                   <Zap className="h-4 w-4 text-brand" /> Post a request
                 </button>

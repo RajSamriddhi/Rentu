@@ -54164,7 +54164,7 @@ var updateStatusSchema = external_exports.object({
 });
 function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
   const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
-  const cleanTime = timeStr && timeStr.trim() ? timeStr.slice(0, 5) : "10:00";
+  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
   const [hour, minute] = cleanTime.split(":").map(Number);
   if (typeof tzOffsetMinutes === "number") {
     const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
@@ -54191,7 +54191,7 @@ async function checkAndAutoCancelExpiredBookings() {
     for (const row of expiredRes.rows) {
       const sDate = row.start_date_str;
       if (!sDate) continue;
-      const sTime = row.start_time && row.start_time.trim() ? row.start_time.slice(0, 5) : "10:00";
+      const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
       const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
       if (row.status === "PENDING" && now > startTimestamp) {
         await query(
@@ -54530,7 +54530,143 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
-    return sendSuccess(res, result.rows);
+    const currentMs = Date.now();
+    for (const b of result.rows) {
+      if (b.status === "ACCEPTED" && b.pickup_code) {
+        const sDate = b.start_date;
+        const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
+        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+        if (currentMs < startMs - 5 * 60 * 1e3) {
+          b.pickup_code = null;
+        }
+      }
+    }
+    const proposalsRes = await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      ),
+      my_ids AS (
+        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      )
+      SELECT 
+        m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
+        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
+      FROM messages m
+      JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
+      JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
+      WHERE m.message_type = 'PROPOSAL'
+        AND (m.booking_id IS NULL OR m.booking_id = '')
+        AND (
+          m.sender_id IN (SELECT id_text FROM my_ids) 
+          OR m.receiver_id IN (SELECT id_text FROM my_ids)
+        )
+        AND (
+          (m.proposal_data->>'status') IS NULL 
+          OR (m.proposal_data->>'status') = 'PENDING'
+        )
+      ORDER BY m.created_at DESC`,
+      [userId]
+    );
+    const proposalBookings = [];
+    for (const pRow of proposalsRes.rows) {
+      try {
+        const pData = typeof pRow.proposal_data === "string" ? JSON.parse(pRow.proposal_data) : pRow.proposal_data || {};
+        const isOffer = pData.type === "LISTING" || pData.is_lend_offer === true;
+        const lenderId = pData.lender_id || (isOffer ? pRow.sender_user_id : pRow.receiver_user_id);
+        const borrowerId = pData.borrower_id || (isOffer ? pRow.receiver_user_id : pRow.sender_user_id);
+        if (role === "borrower" && borrowerId !== userId) continue;
+        if (role === "lender" && lenderId !== userId) continue;
+        const durationDays = Math.max(1, Number(pData.duration_days) || 1);
+        const totalPrice = Number(pData.total_price) || 0;
+        const pricePerDay = Number(pData.price_per_day) || (durationDays > 0 ? Math.round(totalPrice / durationDays) : 0);
+        const startDateStr = pData.start_date ? String(pData.start_date).slice(0, 10) : new Date(pRow.created_at).toISOString().slice(0, 10);
+        let endDateStr = pData.end_date ? String(pData.end_date).slice(0, 10) : "";
+        if (!endDateStr) {
+          const s = new Date(startDateStr);
+          if (!isNaN(s.getTime())) {
+            s.setDate(s.getDate() + Math.max(0, durationDays - 1));
+            endDateStr = s.toISOString().slice(0, 10);
+          } else {
+            endDateStr = startDateStr;
+          }
+        }
+        const isDelivery = pData.delivery_option === "LENDER_DELIVERY" || !!(pData.delivery_fee && Number(pData.delivery_fee) > 0);
+        const isPickup = pData.collection_option === "LENDER_COLLECT" || !!(pData.collection_fee && Number(pData.collection_fee) > 0);
+        const borrowerName = isOffer ? pRow.receiver_name : pRow.sender_name;
+        const borrowerAvatar = isOffer ? pRow.receiver_avatar : pRow.sender_avatar;
+        const borrowerPhone = isOffer ? pRow.receiver_phone : pRow.sender_phone;
+        const borrowerEmail = isOffer ? pRow.receiver_email : pRow.sender_email;
+        const lenderName = isOffer ? pRow.sender_name : pRow.receiver_name;
+        const lenderAvatar = isOffer ? pRow.sender_avatar : pRow.receiver_avatar;
+        const lenderPhone = isOffer ? pRow.sender_phone : pRow.receiver_phone;
+        const lenderEmail = isOffer ? pRow.sender_email : pRow.receiver_email;
+        const locality = pData.delivery_location || (isOffer ? pRow.sender_locality : pRow.receiver_locality) || "Local Hub";
+        const address = pData.delivery_location || (isOffer ? pRow.sender_address : pRow.receiver_address) || locality;
+        proposalBookings.push({
+          id: `proposal_${pRow.id}`,
+          item_id: pData.request_id || pData.item_id || pRow.id,
+          borrower_id: borrowerId,
+          lender_id: lenderId,
+          start_date: startDateStr,
+          start_time: pData.start_time || "10:00",
+          end_date: endDateStr,
+          end_time: pData.end_time || "18:00",
+          duration_days: durationDays,
+          pickup_type: isDelivery ? "OWNER_DELIVERY" : "LENDER_LOCATION",
+          pickup_locality: locality,
+          return_type: isPickup ? "OWNER_COLLECT" : "LENDER_LOCATION",
+          return_locality: locality,
+          requires_delivery: isDelivery,
+          delivery_fee: Number(pData.delivery_fee) || 0,
+          requires_pickup: isPickup,
+          pickup_fee: Number(pData.collection_fee) || 0,
+          total_price: totalPrice,
+          status: "PENDING",
+          message: pData.notes || pRow.content || "",
+          pickup_code: null,
+          return_code: null,
+          handed_over_at: null,
+          returned_at: null,
+          completed_at: null,
+          created_at: pRow.created_at,
+          payment_status: "PENDING",
+          payment_method: null,
+          item_title: pData.title || "Custom Gear Proposal",
+          item_images: pData.image_url ? [pData.image_url] : [],
+          item_category: pData.category || "Other",
+          item_locality: locality,
+          item_rate: pricePerDay,
+          pickup_address: address,
+          return_address: address,
+          lender_address: isOffer ? pRow.sender_address : pRow.receiver_address,
+          borrower_name: borrowerName,
+          borrower_avatar: borrowerAvatar,
+          borrower_phone: borrowerPhone,
+          borrower_email: borrowerEmail,
+          lender_name: lenderName,
+          lender_avatar: lenderAvatar,
+          lender_phone: lenderPhone,
+          lender_email: lenderEmail,
+          user_review_id: null,
+          user_rating: null,
+          user_comment: null,
+          user_reviewed_at: null,
+          is_proposal: true,
+          proposal_message_id: pRow.id,
+          proposer_id: pRow.sender_id,
+          recipient_id: pRow.receiver_id
+        });
+      } catch (e) {
+        console.warn("Error parsing proposal message for bookings list:", e);
+      }
+    }
+    const combined = [...proposalBookings, ...result.rows].sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA;
+    });
+    return sendSuccess(res, combined);
   } catch (error) {
     next(error);
   }
@@ -54540,6 +54676,19 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const { id } = req.params;
     const { status } = updateStatusSchema.parse(req.body);
     const userId = req.user.id;
+    if (id.startsWith("proposal_")) {
+      const msgId = id.replace(/^proposal_/, "");
+      const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [msgId]);
+      if (msgRes.rows.length === 0) {
+        return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
+      }
+      const message = msgRes.rows[0];
+      const proposal = typeof message.proposal_data === "string" ? JSON.parse(message.proposal_data) : message.proposal_data || {};
+      const targetStatus = status === "CANCELLED" ? "CANCELLED" : status === "ACCEPTED" ? "ACCEPTED" : "DECLINED";
+      const updatedProposal = { ...proposal, status: targetStatus };
+      await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), msgId]);
+      return sendSuccess(res, { id, status: targetStatus }, `Proposal ${targetStatus.toLowerCase()}`);
+    }
     const bookingRes = await query(
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
@@ -54682,7 +54831,21 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         body: `${actorName} cancelled the rental for "${booking.item_title}".`
       });
     }
-    return sendSuccess(res, updateRes.rows[0], `Proposal updated to ${status}`);
+    const safeBooking = { ...updateRes.rows[0] };
+    if (safeBooking.borrower_id !== userId) {
+      delete safeBooking.pickup_code;
+    } else if (safeBooking.status === "ACCEPTED" && safeBooking.pickup_code) {
+      const sDate2 = safeBooking.start_date_str || safeBooking.start_date;
+      const sTime = safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== "00:00" ? safeBooking.start_time.slice(0, 5) : "10:00";
+      const startMs = parseToUtcTimestamp(String(sDate2), sTime, -330);
+      if (Date.now() < startMs - 5 * 60 * 1e3) {
+        delete safeBooking.pickup_code;
+      }
+    }
+    if (safeBooking.lender_id !== userId) {
+      delete safeBooking.return_code;
+    }
+    return sendSuccess(res, safeBooking, `Proposal updated to ${status}`);
   } catch (error) {
     next(error);
   }
@@ -56112,7 +56275,15 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       [myIds, pIds]
     );
     const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+    if (activeBooking) {
+      delete activeBooking.pickup_code;
+      delete activeBooking.return_code;
+    }
     const mappedMessages = messagesRes.rows.map((row) => {
+      let content = row.content;
+      if (content && typeof content === "string") {
+        content = content.replace(/\.?\s*Pickup Verification Code:\s*\d+\.?/gi, ".");
+      }
       if (row.message_type === "PROPOSAL" && row.proposal_data) {
         let pData = typeof row.proposal_data === "string" ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
         const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : void 0);
@@ -56123,20 +56294,18 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
         } else if (bStatus === "CANCELLED") {
           pData.status = "CANCELLED";
         }
-        const isMeBorrower = myIds.includes(activeBooking?.borrower_id || pData.borrower_id);
-        const isMeLender = myIds.includes(activeBooking?.lender_id || pData.lender_id);
-        if (!isMeBorrower) {
-          delete pData.pickup_code;
-        }
-        if (!isMeLender) {
-          delete pData.return_code;
-        }
+        delete pData.pickup_code;
+        delete pData.return_code;
         return {
           ...row,
+          content,
           proposal_data: pData
         };
       }
-      return row;
+      return {
+        ...row,
+        content
+      };
     });
     return sendSuccess(res, {
       booking: activeBooking,
@@ -56296,8 +56465,6 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         const updatedProposal2 = {
           ...proposal,
           status: "ACCEPTED",
-          pickup_code: pickupCode2,
-          return_code: returnCode2,
           accepted_at: (/* @__PURE__ */ new Date()).toISOString()
         };
         await query(
@@ -56313,7 +56480,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Pickup Verification Code: ${pickupCode2}. Handover is now live in Bookings.`
+            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Handover is now live in Bookings.`
           ]
         );
         await query(
@@ -56322,10 +56489,16 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           [message.sender_id, currentUserId, itemTitle2, existingBookingId]
         ).catch(() => {
         });
+        const safeProposal2 = { ...updatedProposal2 };
+        delete safeProposal2.pickup_code;
+        delete safeProposal2.return_code;
+        const safeBooking = { ...updatedBooking };
+        delete safeBooking.pickup_code;
+        delete safeBooking.return_code;
         return sendSuccess(res, {
-          booking: updatedBooking,
+          booking: safeBooking,
           message_id: messageId,
-          proposal_data: updatedProposal2
+          proposal_data: safeProposal2
         }, "Rental request accepted");
       }
     }
@@ -56401,8 +56574,6 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       status: "ACCEPTED",
       booking_id: createdBooking.id,
       item_id: createdItem.id,
-      pickup_code: pickupCode,
-      return_code: returnCode,
       accepted_at: (/* @__PURE__ */ new Date()).toISOString()
     };
     await query(
@@ -56440,11 +56611,17 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       [currentUserId, message.sender_id, itemTitle, createdBooking.id]
     ).catch(() => {
     });
+    const safeCreatedBooking = { ...createdBooking };
+    delete safeCreatedBooking.pickup_code;
+    delete safeCreatedBooking.return_code;
+    const safeProposal = { ...updatedProposal };
+    delete safeProposal.pickup_code;
+    delete safeProposal.return_code;
     return sendSuccess(res, {
-      booking: createdBooking,
+      booking: safeCreatedBooking,
       item: createdItem,
       message_id: messageId,
-      proposal_data: updatedProposal
+      proposal_data: safeProposal
     }, "Agreement accepted and booking created");
   } catch (error) {
     next(error);
@@ -67073,6 +67250,15 @@ var runMigrations = async () => {
 
       -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
       UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+
+      -- Sanitize any old chat messages so verification codes are not leaked in chat text or proposal_data
+      UPDATE messages
+      SET content = REGEXP_REPLACE(content, '.?s*Pickup Verification Code:s*d+.?', '.', 'gi')
+      WHERE content ILIKE '%Pickup Verification Code%';
+
+      UPDATE messages
+      SET proposal_data = proposal_data - 'pickup_code' - 'return_code'
+      WHERE proposal_data IS NOT NULL AND (proposal_data ? 'pickup_code' OR proposal_data ? 'return_code');
     `);
     await client.query("COMMIT");
     console.log("Database migrations completed successfully!");

@@ -551,24 +551,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
 
               {/* About this item description */}
-              <div>
-                <h3 className="text-sm font-extrabold text-ink uppercase tracking-wider mb-2">About this item</h3>
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-extrabold text-ink uppercase tracking-wider">About this item</h3>
                 <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed font-medium">
-                  {item.description || "Perfect for beginners and hobbyists. Comes with 18-55mm lens, charger, 32GB SD card and camera bag. Great for travel, events or college projects."}
+                  {item.description || "No specific details provided by the owner. You can coordinate details via chat."}
                 </p>
               </div>
 
-              {/* Tags Pills matching Screen 3 */}
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                {['Camera', 'DSLR', '18-55mm', 'With accessories', 'Good condition'].map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-ink-secondary text-xs font-semibold rounded-full border border-zinc-200 dark:border-zinc-700"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {/* Real Category & Condition Badges */}
+              {(item.category || item.condition) && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {item.category && (
+                    <span className="px-3 py-1 bg-canvas text-ink-secondary text-xs font-semibold rounded-full border border-divider">
+                      {item.category}
+                    </span>
+                  )}
+                  {item.condition && (
+                    <span className="px-3 py-1 bg-canvas text-ink-secondary text-xs font-semibold rounded-full border border-divider">
+                      {item.condition} condition
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Dedicated Visible Product Calendar Section */}
               <div className="pt-4 border-t border-divider space-y-3">
@@ -600,9 +604,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     setStartDate(start);
                     setEndDate(end);
                     setErrorMsg('');
+                    if (start === end && endTime <= startTime) {
+                      const [h, m] = startTime.split(':').map(Number);
+                      const newEndH = Math.min(23, (h || 10) + 2);
+                      setEndTime(`${String(newEndH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+                    }
                   }}
-                  onSelectStartTime={(t) => setStartTime(t)}
-                  onSelectEndTime={(t) => setEndTime(t)}
+                  onSelectStartTime={(t) => {
+                    setStartTime(t);
+                    setErrorMsg('');
+                    if (startDate === endDate && endTime <= t) {
+                      const [h, m] = t.split(':').map(Number);
+                      const newEndH = Math.min(23, (h || 10) + 2);
+                      setEndTime(`${String(newEndH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+                    }
+                  }}
+                  onSelectEndTime={(t) => {
+                    setEndTime(t);
+                    setErrorMsg('');
+                  }}
                 />
               </div>
 
@@ -768,17 +788,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     <span>Delivery Address</span>
                                     <span className="text-brand">*</span>
                                   </label>
-                                  {savedLocations.length > 0 && (
+                                  {validSavedLocations.length > 0 && (
                                     <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
                                   )}
                                 </div>
 
                                 {/* Choose from Saved Profile Locations */}
-                                {savedLocations.length > 0 && (
+                                {validSavedLocations.length > 0 && (
                                   <div className="flex flex-wrap gap-1.5">
-                                    {savedLocations.map((loc) => {
+                                    {validSavedLocations.map((loc) => {
                                       const full = formatSavedLocationFull(loc);
                                       const isSelected = deliveryAddress === full;
+                                      const subtitle = loc.locality || loc.building_flat_house;
                                       return (
                                         <button
                                           key={loc.id}
@@ -792,9 +813,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                         >
                                           <MapPin className="w-3 h-3 text-brand shrink-0" />
                                           <span className="font-extrabold">{loc.label}</span>
-                                          <span className="text-[10px] opacity-75 max-w-[130px] truncate">
-                                            ({loc.locality || loc.building_flat_house})
-                                          </span>
+                                          {subtitle && (
+                                            <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                              ({subtitle})
+                                            </span>
+                                          )}
                                         </button>
                                       );
                                     })}
@@ -858,7 +881,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     <span>Return Collection Address</span>
                                     <span className="text-brand">*</span>
                                   </label>
-                                  {savedLocations.length > 0 && (
+                                  {validSavedLocations.length > 0 && (
                                     <span className="text-[10px] text-ink-secondary font-medium">From saved profile locations</span>
                                   )}
                                 </div>
@@ -879,9 +902,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                     </button>
                                   )}
 
-                                  {savedLocations.map((loc) => {
+                                  {validSavedLocations.map((loc) => {
                                     const full = formatSavedLocationFull(loc);
                                     const isSelected = pickupAddress === full;
+                                    const subtitle = loc.locality || loc.building_flat_house;
                                     return (
                                       <button
                                         key={loc.id}
@@ -895,9 +919,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                                       >
                                         <MapPin className="w-3 h-3 text-brand shrink-0" />
                                         <span className="font-extrabold">{loc.label}</span>
-                                        <span className="text-[10px] opacity-75 max-w-[130px] truncate">
-                                          ({loc.locality || loc.building_flat_house})
-                                        </span>
+                                        {subtitle && (
+                                          <span className="text-[10px] opacity-75 max-w-[130px] truncate">
+                                            ({subtitle})
+                                          </span>
+                                        )}
                                       </button>
                                     );
                                   })}

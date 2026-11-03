@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, 
   Check, 
@@ -188,9 +188,20 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isReturnActive, setIsReturnActive] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Live real-time tick every second when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   useEffect(() => {
     // Reset transient errors/state when modal opens for a booking
@@ -202,21 +213,93 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       setIsReturnActive(false);
       setShowCancelConfirm(false);
       setIsCancelling(false);
+      setShowQrModal(false);
     }
   }, [booking?.id, isOpen]);
 
-  const pickupWindow = getHandoverWindowStatus(booking?.start_date, booking?.start_time || '10:00', 60);
+  // Live pickup window calculations with countdown timer
+  const pickupTiming = useMemo(() => {
+    if (!booking?.start_date) {
+      return {
+        isAvailable: true,
+        isBefore: false,
+        isExpired: false,
+        scheduledFormatted: '10:00 AM',
+        windowEndFormatted: '11:00 AM',
+        secondsUntilStart: 0,
+        secondsRemaining: 0,
+        countdownUntilStart: '0m 00s',
+        countdownRemaining: '0m 00s',
+      };
+    }
+    try {
+      const [y, m, d] = booking.start_date.slice(0, 10).split('-').map(Number);
+      const cleanTime = (booking.start_time && booking.start_time.trim() && booking.start_time.slice(0, 5) !== '00:00') ? booking.start_time.slice(0, 5) : '10:00';
+      const [h, min] = cleanTime.split(':').map(Number);
+      const scheduled = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0);
+      const windowEnd = new Date(scheduled.getTime() + 60 * 60 * 1000); // 1-hour window
+      const nowMs = now.getTime();
+      const schedMs = scheduled.getTime();
+      const endMs = windowEnd.getTime();
+
+      const isBefore = nowMs < schedMs;
+      const isExpired = nowMs >= endMs;
+      const isAvailable = !isBefore && !isExpired;
+
+      const secondsUntilStart = Math.max(0, Math.floor((schedMs - nowMs) / 1000));
+      const secondsRemaining = Math.max(0, Math.floor((endMs - nowMs) / 1000));
+
+      const formatTimer = (totalSec: number) => {
+        const hours = Math.floor(totalSec / 3600);
+        const mins = Math.floor((totalSec % 3600) / 60);
+        const secs = totalSec % 60;
+        const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+        if (hours > 0) {
+          return `${hours}h ${pad(mins)}m ${pad(secs)}s`;
+        }
+        return `${mins}m ${pad(secs)}s`;
+      };
+
+      const scheduledFormatted = formatTime12(cleanTime);
+      const endClean = `${String(windowEnd.getHours()).padStart(2, '0')}:${String(windowEnd.getMinutes()).padStart(2, '0')}`;
+      const windowEndFormatted = formatTime12(endClean);
+
+      return {
+        isAvailable,
+        isBefore,
+        isExpired,
+        scheduledFormatted,
+        windowEndFormatted,
+        secondsUntilStart,
+        secondsRemaining,
+        countdownUntilStart: formatTimer(secondsUntilStart),
+        countdownRemaining: formatTimer(secondsRemaining),
+      };
+    } catch {
+      return {
+        isAvailable: true,
+        isBefore: false,
+        isExpired: false,
+        scheduledFormatted: '10:00 AM',
+        windowEndFormatted: '11:00 AM',
+        secondsUntilStart: 0,
+        secondsRemaining: 0,
+        countdownUntilStart: '0m 00s',
+        countdownRemaining: '0m 00s',
+      };
+    }
+  }, [booking?.start_date, booking?.start_time, now]);
 
   // Auto-cancellation effect: If the pickup handover code was not provided within 1 hour of the start time
   useEffect(() => {
-    if (booking && booking.status === 'ACCEPTED' && pickupWindow.isExpired && !booking.handed_over_at) {
+    if (booking && booking.status === 'ACCEPTED' && pickupTiming.isExpired && !booking.handed_over_at) {
       api.updateBookingStatus(booking.id, 'CANCELLED')
         .then((updated) => {
           onUpdated({ ...booking, ...updated, status: 'CANCELLED' });
         })
         .catch(() => {});
     }
-  }, [booking?.id, booking?.status, pickupWindow.isExpired]);
+  }, [booking?.id, booking?.status, pickupTiming.isExpired]);
 
   const handleCancelBooking = async () => {
     if (!booking) return;
@@ -367,8 +450,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   ];
 
   // Fast standard QR rendering for pickup and return
-  const pickupQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_PICKUP:${booking.id}:${booking.pickup_code || '123456'}`)}`;
-  const returnQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_RETURN:${booking.id}:${booking.return_code || '654321'}`)}`;
+  const pickupQrUrl = booking.pickup_code
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_PICKUP:${booking.id}:${booking.pickup_code}`)}`
+    : '';
+  const returnQrUrl = booking.return_code
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_RETURN:${booking.id}:${booking.return_code}`)}`
+    : '';
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
@@ -564,217 +651,170 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           {/* ======================================================== */}
           {currentStage === 2 && (
             <div className="space-y-4 animate-in fade-in">
-              <div className="text-center space-y-1">
-                <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
-                  <span className="text-[11px] font-black uppercase text-brand tracking-wider bg-brand-soft px-2.5 py-0.5 rounded-full border border-brand/20">
-                    Stage 2: Pickup Handover Verification
-                  </span>
-                  {pickupWindow.isExpired ? (
-                    <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/20 inline-flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      1-Hour Window Expired (Auto-Cancelled)
-                    </span>
-                  ) : pickupWindow.isAvailable ? (
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      1-Hour Window Active • {pickupWindow.scheduledTimeFormatted} - {pickupWindow.windowEndFormatted}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      Locked Until {pickupWindow.scheduledTimeFormatted}
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-base font-extrabold text-ink font-display">
-                  {pickupWindow.isExpired
-                    ? '1-Hour Pickup Window Expired'
-                    : !pickupWindow.isAvailable
-                    ? `Pickup Handover Opens at ${pickupWindow.scheduledTimeFormatted}`
-                    : isBorrower
-                    ? 'Give your 6-digit pickup code to the owner'
-                    : 'Enter the pickup code received from the renter'}
-                </h4>
-                <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {pickupWindow.isExpired
-                    ? 'The pickup code was not verified within 1 hour of the scheduled start time. This request has automatically cancelled.'
-                    : !pickupWindow.isAvailable
-                    ? `Pickup code and verification unlock strictly at ${pickupWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.start_date)}.`
-                    : isBorrower
-                    ? `Share this code with ${otherPartyName} when you meet to collect the gear.`
-                    : `Enter the 6-digit pickup code received from ${otherPartyName} to complete pickup handover.`}
-                </p>
-              </div>
-
-              {/* TIMING WINDOW LOCK / EXPIRED: If expired or scheduled pickup time has not arrived yet */}
-              {pickupWindow.isExpired ? (
-                <div className="p-6 rounded-3xl bg-red-500/10 border border-red-500/20 text-center space-y-3 max-w-md mx-auto shadow-sm animate-in fade-in">
-                  <div className="w-16 h-16 mx-auto rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center">
-                    <Clock className="w-8 h-8" />
+              {pickupTiming.isExpired ? (
+                /* EXPIRED */
+                <div className="p-6 rounded-3xl bg-red-500/10 border border-red-500/20 text-center space-y-3 max-w-md mx-auto shadow-xs">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center">
+                    <Clock className="w-7 h-7" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-base font-extrabold text-red-500 font-display">
+                    <h4 className="text-base font-black text-red-500 font-display">
                       Handover Window Expired
                     </h4>
                     <p className="text-xs text-ink-secondary leading-relaxed">
-                      The pickup handover code was not provided within 1 hour of the starting time ({pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}). This rental request has been automatically cancelled.
+                      The 1-hour pickup window ({pickupTiming.scheduledFormatted} – {pickupTiming.windowEndFormatted}) has passed without code verification. This booking has been automatically cancelled.
                     </p>
                   </div>
                 </div>
-              ) : !pickupWindow.isAvailable ? (
-                isBorrower ? (
-                  /* Renter View when locked */
-                  <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
-                    <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
-                      <Lock className="w-9 h-9 stroke-[2]" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                        Pickup Code Locked
-                      </span>
-                      <h4 className="text-base font-extrabold text-ink font-display">
-                        Reveals at {pickupWindow.scheduledTimeFormatted}
-                      </h4>
-                      <p className="text-xs text-ink-secondary leading-relaxed">
-                        Your 6-digit pickup handover code will be visible starting at <span className="font-bold text-ink">{pickupWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.start_date)}</span>.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
-                      <div className="flex items-center justify-between font-medium">
-                        <span>1-Hour Pickup Window:</span>
-                        <span className="font-bold text-brand">{pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}</span>
-                      </div>
-                      <div className="flex items-center justify-between font-medium">
-                        <span>Pickup Location:</span>
-                        <span className="font-bold text-ink truncate max-w-[170px]">
-                          {booking.pickup_locality || booking.item_locality || 'Designated place'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
-                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>Meet {otherPartyName} at the scheduled time to complete handover.</span>
-                    </div>
-                  </div>
-                ) : (
-                  /* Owner View when locked */
-                  <div className="p-6 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center shadow-sm">
-                    <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
-                      <Lock className="w-9 h-9 stroke-[2]" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                        Pickup Verification Locked
-                      </span>
-                      <h4 className="text-base font-extrabold text-ink font-display">
-                        Opens at {pickupWindow.scheduledTimeFormatted}
-                      </h4>
-                      <p className="text-xs text-ink-secondary leading-relaxed">
-                        Pickup code entry and QR verification will unlock at <span className="font-bold text-ink">{pickupWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.start_date)}</span>.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
-                      <div className="flex items-center justify-between font-medium">
-                        <span>1-Hour Verification Window:</span>
-                        <span className="font-bold text-brand">{pickupWindow.scheduledTimeFormatted} – {pickupWindow.windowEndFormatted}</span>
-                      </div>
-                      <div className="flex items-center justify-between font-medium">
-                        <span>Pickup Location:</span>
-                        <span className="font-bold text-ink truncate max-w-[200px]">
-                          {booking.pickup_locality || booking.item_locality || 'Designated place'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-2">
-                      <Clock className="w-4 h-4 shrink-0" />
-                      <span>Verification opens when the scheduled meetup time arrives in the present.</span>
-                    </div>
-                  </div>
-                )
-              ) : isBorrower ? (
-                /* RENTER (BORROWER) VIEW: SHOWS PICKUP CODE */
-                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
-                  <div className="w-52 h-52 mx-auto rounded-2xl bg-white p-3 shadow-md border border-zinc-200 flex items-center justify-center">
-                    <img
-                      src={pickupQrUrl}
-                      alt="Pickup Handover QR Code"
-                      className="w-full h-full object-contain"
-                    />
+              ) : pickupTiming.isBefore ? (
+                /* LOCKED (Meetup time not arrived yet) */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20 shadow-xs">
+                    <Lock className="w-7 h-7 stroke-[2]" />
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-ink-secondary block">
-                      Your 6-Digit Pickup Code:
-                    </span>
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="font-mono text-2xl font-black tracking-widest text-brand bg-surface px-5 py-2 rounded-xl border border-brand/30 shadow-xs">
-                        {booking.pickup_code || '123456'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(booking.pickup_code || '123456')}
-                        className="p-2.5 rounded-xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
-                        title="Copy code"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </div>
-                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">Copied to clipboard</span>}
-                  </div>
-
-                  <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                    <span>Give this code to {otherPartyName} upon receiving the item</span>
-                  </div>
-                </div>
-              ) : (
-                /* OWNER (LENDER) VIEW: INPUT CODE FROM RENTER */
-                <div className="p-5 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center">
-                  <div className="space-y-2 pt-2">
-                    <label className="text-xs font-bold text-ink block">
-                      Enter 6-Digit Pickup Code received from {otherPartyName}:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={pickupCodeInput}
-                        onChange={(e) => setPickupCodeInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Enter 6-digit code"
-                        className="bg-surface border border-divider rounded-xl px-4 py-2.5 text-center font-mono text-lg font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyPickup()}
-                        disabled={isVerifying}
-                        className="btn-primary text-xs px-5 py-3 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-                      >
-                        {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
-                        <span>Confirm Pickup</span>
-                      </button>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-black">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Opens in {pickupTiming.countdownUntilStart}</span>
                     </div>
 
-                    <p className="text-[11px] text-ink-secondary pt-1">
-                      Ask {otherPartyName} to check their ongoing bookings page for their 6-digit pickup code.
+                    <h4 className="text-lg font-black text-ink font-display pt-1">
+                      Pickup Handover Opens at {pickupTiming.scheduledFormatted}
+                    </h4>
+
+                    <p className="text-xs text-ink-secondary max-w-sm mx-auto leading-relaxed">
+                      {isBorrower
+                        ? `Meet ${otherPartyName} at the scheduled time. Your 6-digit pickup code will unlock here at ${pickupTiming.scheduledFormatted}.`
+                        : `Meet ${otherPartyName} at the scheduled time. Code entry will unlock here at ${pickupTiming.scheduledFormatted} to verify handover.`}
                     </p>
                   </div>
 
-                  {/* Camera Scanner Alternative */}
-                  <div className="pt-2 border-t border-divider">
-                    <div className="flex items-center justify-center gap-2">
+                  <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs space-y-1.5 text-left">
+                    <div className="flex items-center justify-between font-medium text-ink-secondary">
+                      <span>1-Hour Verification Window:</span>
+                      <span className="font-bold text-ink">{pickupTiming.scheduledFormatted} – {pickupTiming.windowEndFormatted}</span>
+                    </div>
+                    {(booking.pickup_locality || booking.item_locality) && (
+                      <div className="flex items-center justify-between font-medium text-ink-secondary">
+                        <span>Pickup Location:</span>
+                        <span className="font-bold text-ink truncate max-w-[200px]">
+                          {booking.pickup_locality || booking.item_locality}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : isBorrower ? (
+                /* ACTIVE - RENTER VIEW: SHOWS CODE TO OWNER */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  {/* Live Countdown Timer */}
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-xs font-black shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{pickupTiming.countdownRemaining} left to complete handover</span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-lg font-black text-ink font-display">
+                      Show this code to {otherPartyName}
+                    </h4>
+                    <p className="text-xs text-ink-secondary max-w-xs mx-auto mt-0.5">
+                      Share this 6-digit code upon receiving the gear to verify handover.
+                    </p>
+                  </div>
+
+                  {/* 6-Digit Code */}
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-mono text-3xl font-black tracking-widest text-brand bg-surface px-6 py-3 rounded-2xl border border-brand/30 shadow-pink">
+                      {booking.pickup_code || '------'}
+                    </span>
+                    {booking.pickup_code && (
                       <button
                         type="button"
-                        onClick={isCameraActive ? handleStopCamera : handleStartCamera}
-                        className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                        onClick={() => handleCopy(booking.pickup_code!)}
+                        className="p-3.5 rounded-2xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
+                        title="Copy pickup code"
                       >
-                        <Camera className="w-3.5 h-3.5 text-brand" />
-                        <span>{isCameraActive ? 'Close Camera' : 'Scan Renter QR Code'}</span>
+                        <Copy className="w-4 h-4" />
                       </button>
-                    </div>
+                    )}
+                  </div>
+                  {isCopied && <span className="text-[11px] font-bold text-emerald-500 block">Copied to clipboard!</span>}
+
+                  {/* QR Option Toggle */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowQrModal(!showQrModal)}
+                      className="text-xs font-bold text-ink-secondary hover:text-brand inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Scan className="w-3.5 h-3.5" />
+                      <span>{showQrModal ? 'Hide QR Code' : 'Or show QR code'}</span>
+                    </button>
+
+                    {showQrModal && (
+                      <div className="w-48 h-48 mx-auto mt-3 rounded-2xl bg-white p-2.5 shadow-md border border-zinc-200 flex items-center justify-center animate-in zoom-in-95">
+                        <img src={pickupQrUrl} alt="Pickup Handover QR" className="w-full h-full object-contain" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* ACTIVE - OWNER VIEW: INPUT CODE FROM RENTER */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  {/* Live Countdown Timer */}
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-xs font-black shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{pickupTiming.countdownRemaining} left to enter code</span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-lg font-black text-ink font-display">
+                      Enter pickup code from {otherPartyName}
+                    </h4>
+                    <p className="text-xs text-ink-secondary max-w-xs mx-auto mt-0.5">
+                      Ask {otherPartyName} for their 6-digit code shown on their Rentu screen.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 max-w-sm mx-auto">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={pickupCodeInput}
+                      onChange={(e) => setPickupCodeInput(e.target.value.replace(/\D/g, ''))}
+                      placeholder="6-digit code"
+                      className="bg-surface border border-divider rounded-2xl px-4 py-3 text-center font-mono text-xl font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyPickup()}
+                      disabled={isVerifying || pickupCodeInput.length !== 6}
+                      className="btn-primary text-xs px-5 py-3.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                    >
+                      {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
+                      <span>Confirm</span>
+                    </button>
+                  </div>
+
+                  {/* Camera Scanner Alternative */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={isCameraActive ? handleStopCamera : handleStartCamera}
+                      className="text-xs font-bold text-ink-secondary hover:text-brand inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-brand" />
+                      <span>{isCameraActive ? 'Close Camera' : 'Or scan renter QR code'}</span>
+                    </button>
 
                     {isCameraActive && (
                       <div className="mt-3 relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">
@@ -786,20 +826,17 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                 </div>
               )}
 
-              {/* Cancellation Option for Stage 2: Both renter and lender can cancel before pickup handover verification */}
-              {!pickupWindow.isExpired && (
-                <div className="pt-3 border-t border-divider flex flex-col sm:flex-row items-center justify-between gap-2.5 bg-canvas/40 p-3.5 rounded-2xl">
-                  <div className="text-[11px] text-ink-secondary text-center sm:text-left">
-                    Need to cancel this rental request before pickup handover?
-                  </div>
+              {/* Cancellation Option for Stage 2 */}
+              {!pickupTiming.isExpired && (
+                <div className="pt-2 flex items-center justify-between text-xs text-ink-secondary max-w-md mx-auto">
+                  <span>Need to cancel before pickup?</span>
                   <button
                     type="button"
                     onClick={() => setShowCancelConfirm(true)}
                     disabled={isCancelling}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-red-500 hover:text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                    className="text-red-500 hover:text-red-600 hover:underline font-bold cursor-pointer inline-flex items-center gap-1 disabled:opacity-50"
                   >
-                    {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                    <span>Cancel Rental Request</span>
+                    <span>Cancel Request</span>
                   </button>
                 </div>
               )}
@@ -871,195 +908,142 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
           {/* ======================================================== */}
           {currentStage === 4 && (
             <div className="space-y-4 animate-in fade-in">
-              <div className="text-center space-y-1">
-                <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
-                  <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
-                    Stage 4: Return Handover Verification
-                  </span>
-                  {returnWindow.isAvailable ? (
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Return Handover Active • No Time Limit
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20 inline-flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      Locked Until {returnWindow.scheduledTimeFormatted}
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-base font-extrabold text-ink font-display">
-                  {!returnWindow.isAvailable
-                    ? `Return Handover Opens at ${returnWindow.scheduledTimeFormatted}`
-                    : isLender
-                    ? `Give the return code or QR to ${otherPartyName}`
-                    : `Enter the return code received from ${otherPartyName}`}
-                </h4>
-                <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {!returnWindow.isAvailable
-                    ? `Return code and verification unlock strictly at ${returnWindow.scheduledTimeFormatted} on ${formatFriendlyDate(booking.end_date || booking.start_date)}.`
-                    : isLender
-                    ? `Show this return code or QR to ${otherPartyName} once you have picked back your gear in good condition.`
-                    : `Enter the 6-digit return code or scan the QR code received from ${otherPartyName} to confirm return.`}
-                </p>
-              </div>
-
-              {/* TIMING WINDOW LOCK: If scheduled return time has not arrived yet */}
               {!returnWindow.isAvailable ? (
-                isLender ? (
-                  /* Owner View when return locked */
-                  <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
-                    <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
-                      <Lock className="w-9 h-9 stroke-[2]" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
-                        Return Code Locked
-                      </span>
-                      <h4 className="text-base font-extrabold text-ink font-display">
-                        Reveals at {returnWindow.scheduledTimeFormatted}
-                      </h4>
-                      <p className="text-xs text-ink-secondary leading-relaxed">
-                        Your 6-digit return code and QR will be visible starting at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
-                      <div className="flex items-center justify-between font-medium">
-                        <span>Scheduled Return Time:</span>
-                        <span className="font-bold text-brand">Starts at {returnWindow.scheduledTimeFormatted} (No time limit)</span>
-                      </div>
-                      <div className="flex items-center justify-between font-medium">
-                        <span>Return Location:</span>
-                        <span className="font-bold text-ink truncate max-w-[170px]">
-                          {booking.return_locality || booking.item_locality || 'Designated place'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-ink-secondary flex items-center justify-center gap-1.5 pt-1">
-                      <Clock className="w-4 h-4 text-purple-500 shrink-0" />
-                      <span>Pick back the gear from {otherPartyName} at the scheduled time to complete return.</span>
-                    </div>
+                /* LOCKED (Return time has not arrived yet) */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
+                    <Lock className="w-7 h-7 stroke-[2]" />
                   </div>
-                ) : (
-                  /* Renter View when return locked */
-                  <div className="p-6 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center shadow-sm">
-                    <div className="w-20 h-20 mx-auto rounded-3xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20 shadow-xs">
-                      <Lock className="w-9 h-9 stroke-[2]" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
-                        Return Verification Locked
-                      </span>
-                      <h4 className="text-base font-extrabold text-ink font-display">
-                        Opens at {returnWindow.scheduledTimeFormatted}
-                      </h4>
-                      <p className="text-xs text-ink-secondary leading-relaxed">
-                        Return code entry and QR verification will unlock at <span className="font-bold text-ink">{returnWindow.scheduledTimeFormatted}</span> on <span className="font-bold text-ink">{formatFriendlyDate(booking.end_date || booking.start_date)}</span>.
-                      </p>
+
+                  <div className="space-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-xs font-black">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Starts at {returnWindow.scheduledTimeFormatted}</span>
                     </div>
 
-                    <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs text-ink-secondary space-y-1.5 text-left">
-                      <div className="flex items-center justify-between font-medium">
-                        <span>Scheduled Return Time:</span>
-                        <span className="font-bold text-brand">Starts at {returnWindow.scheduledTimeFormatted} (No time limit)</span>
-                      </div>
-                      <div className="flex items-center justify-between font-medium">
+                    <h4 className="text-lg font-black text-ink font-display pt-1">
+                      Return Handover Opens at {returnWindow.scheduledTimeFormatted}
+                    </h4>
+
+                    <p className="text-xs text-ink-secondary max-w-sm mx-auto leading-relaxed">
+                      {isLender
+                        ? `Meet ${otherPartyName} at the scheduled time. Your 6-digit return code and QR will unlock here at ${returnWindow.scheduledTimeFormatted}.`
+                        : `Meet ${otherPartyName} at the scheduled time. Code entry will unlock here at ${returnWindow.scheduledTimeFormatted} to verify return.`}
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-surface rounded-2xl border border-divider text-xs space-y-1.5 text-left">
+                    <div className="flex items-center justify-between font-medium text-ink-secondary">
+                      <span>Scheduled Return Time:</span>
+                      <span className="font-bold text-ink">Starts at {returnWindow.scheduledTimeFormatted} (No time limit)</span>
+                    </div>
+                    {(booking.return_locality || booking.item_locality) && (
+                      <div className="flex items-center justify-between font-medium text-ink-secondary">
                         <span>Return Location:</span>
                         <span className="font-bold text-ink truncate max-w-[200px]">
-                          {booking.return_locality || booking.item_locality || 'Designated place'}
+                          {booking.return_locality || booking.item_locality}
                         </span>
                       </div>
-                    </div>
-
-                    <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs font-semibold text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2">
-                      <Clock className="w-4 h-4 shrink-0" />
-                      <span>Verification opens when the return handover time arrives in the present.</span>
-                    </div>
+                    )}
                   </div>
-                )
+                </div>
               ) : isLender ? (
-                /* OWNER (LENDER) VIEW: PROVIDES CODE OR QR TO RENTER */
-                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-sm mx-auto shadow-sm">
-                  <div className="w-52 h-52 mx-auto rounded-2xl bg-white p-3 shadow-md border border-zinc-200 flex items-center justify-center">
+                /* ACTIVE - OWNER (LENDER) VIEW: PROVIDES CODE OR QR TO RENTER */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25 text-xs font-black shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                    </span>
+                    <span>Return Handover Active • No Time Limit</span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-lg font-black text-ink font-display">
+                      Show this return code to {otherPartyName}
+                    </h4>
+                    <p className="text-xs text-ink-secondary max-w-xs mx-auto mt-0.5">
+                      Once you have received your product back in good condition, show this code to {otherPartyName}.
+                    </p>
+                  </div>
+
+                  {/* 6-Digit Code */}
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-mono text-3xl font-black tracking-widest text-purple-600 dark:text-purple-400 bg-surface px-6 py-3 rounded-2xl border border-purple-500/30 shadow-xs">
+                      {booking.return_code || '------'}
+                    </span>
+                    {booking.return_code && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(booking.return_code || '')}
+                        className="p-3.5 rounded-2xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
+                        title="Copy return code"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {isCopied && <span className="text-[11px] font-bold text-emerald-500 block">Copied to clipboard!</span>}
+
+                  {/* Return QR Code */}
+                  <div className="w-44 h-44 mx-auto rounded-2xl bg-white p-2.5 shadow-md border border-zinc-200 flex items-center justify-center">
                     <img
                       src={returnQrUrl}
                       alt="Return Handover QR Code"
                       className="w-full h-full object-contain"
                     />
                   </div>
-
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-ink-secondary block">
-                      Your 6-Digit Return Code:
-                    </span>
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="font-mono text-2xl font-black tracking-widest text-purple-600 dark:text-purple-400 bg-surface px-5 py-2 rounded-xl border border-purple-500/30 shadow-xs">
-                        {booking.return_code || '------'}
-                      </span>
-                      {booking.return_code && (
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(booking.return_code || '')}
-                          className="p-2.5 rounded-xl bg-surface border border-divider text-ink-secondary hover:text-brand transition-colors cursor-pointer"
-                          title="Copy return code"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    {isCopied && <span className="text-[10px] font-bold text-emerald-500 block">Copied to clipboard</span>}
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] font-medium text-purple-700 dark:text-purple-300">
-                    Show this code or QR to {otherPartyName} once you have picked back your product in good condition.
-                  </div>
                 </div>
               ) : (
-                /* RENTER (BORROWER) VIEW: INPUTS CODE RECEIVED FROM LENDER / SCANS QR */
-                <div className="p-5 rounded-3xl bg-canvas border border-divider space-y-4 max-w-md mx-auto text-center">
-                  <div className="space-y-2 pt-2">
-                    <label className="text-xs font-bold text-ink block">
-                      Enter 6-Digit Return Code received from {otherPartyName}:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={returnCodeInput}
-                        onChange={(e) => setReturnCodeInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Enter 6-digit code"
-                        className="bg-surface border border-divider rounded-xl px-4 py-2.5 text-center font-mono text-lg font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyReturn()}
-                        disabled={isVerifying}
-                        className="btn-primary text-xs px-5 py-3 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-                      >
-                        {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
-                        <span>Confirm Return</span>
-                      </button>
-                    </div>
+                /* ACTIVE - RENTER VIEW: INPUTS CODE RECEIVED FROM LENDER / SCANS QR */
+                <div className="p-6 rounded-3xl bg-canvas border border-divider text-center space-y-4 max-w-md mx-auto shadow-xs">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25 text-xs font-black shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                    </span>
+                    <span>Return Handover Active • No Time Limit</span>
+                  </div>
 
-                    <p className="text-[11px] text-ink-secondary pt-1">
-                      Ask {otherPartyName} for their 6-digit return code or scan their QR code to verify return.
+                  <div>
+                    <h4 className="text-lg font-black text-ink font-display">
+                      Enter return code from {otherPartyName}
+                    </h4>
+                    <p className="text-xs text-ink-secondary max-w-xs mx-auto mt-0.5">
+                      Hand back the product to {otherPartyName} and enter their 6-digit return code below.
                     </p>
                   </div>
 
+                  <div className="flex items-center gap-2 max-w-sm mx-auto">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={returnCodeInput}
+                      onChange={(e) => setReturnCodeInput(e.target.value.replace(/\D/g, ''))}
+                      placeholder="6-digit return code"
+                      className="bg-surface border border-divider rounded-2xl px-4 py-3 text-center font-mono text-xl font-black tracking-widest text-ink outline-none focus:border-brand flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyReturn()}
+                      disabled={isVerifying || returnCodeInput.length !== 6}
+                      className="btn-primary text-xs px-5 py-3.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                    >
+                      {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
+                      <span>Confirm Return</span>
+                    </button>
+                  </div>
+
                   {/* Camera Scanner Alternative */}
-                  <div className="pt-2 border-t border-divider">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={isCameraActive ? handleStopCamera : handleStartCamera}
-                        className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5"
-                      >
-                        <Camera className="w-3.5 h-3.5 text-brand" />
-                        <span>{isCameraActive ? 'Close Camera' : 'Scan Lender QR Code'}</span>
-                      </button>
-                    </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={isCameraActive ? handleStopCamera : handleStartCamera}
+                      className="text-xs font-bold text-ink-secondary hover:text-brand inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-brand" />
+                      <span>{isCameraActive ? 'Close Camera' : 'Or scan owner QR code'}</span>
+                    </button>
 
                     {isCameraActive && (
                       <div className="mt-3 relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">

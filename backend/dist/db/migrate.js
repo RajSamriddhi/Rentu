@@ -443,6 +443,15 @@ const runMigrations = async () => {
 
       -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
       UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
+
+      -- Sanitize any old chat messages so verification codes are not leaked in chat text or proposal_data
+      UPDATE messages
+      SET content = REGEXP_REPLACE(content, '\.?\s*Pickup Verification Code:\s*\d+\.?', '.', 'gi')
+      WHERE content ILIKE '%Pickup Verification Code%';
+
+      UPDATE messages
+      SET proposal_data = proposal_data - 'pickup_code' - 'return_code'
+      WHERE proposal_data IS NOT NULL AND (proposal_data ? 'pickup_code' OR proposal_data ? 'return_code');
     `);
         await client.query('COMMIT');
         console.log('Database migrations completed successfully!');
