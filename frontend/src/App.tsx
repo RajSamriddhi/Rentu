@@ -18,6 +18,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
 import { SettingsModal } from './components/SettingsModal';
+import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { useAuth } from './lib/authContext';
@@ -258,6 +259,7 @@ export const App: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
 
   const handleOpenAuth = (mode: 'login' | 'signup' = 'login') => {
     setAuthMode(mode);
@@ -598,7 +600,22 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         initialMode={authMode}
         onClose={() => setIsAuthOpen(false)}
-        onSuccess={() => loadFeed()}
+        onSuccess={(isNewUser) => {
+          loadFeed();
+          if (isNewUser) {
+            setIsSetLocationOpen(true);
+          }
+        }}
+      />
+
+      {/* Set Location Onboarding Modal */}
+      <SetLocationModal
+        isOpen={isSetLocationOpen}
+        onClose={() => setIsSetLocationOpen(false)}
+        onSuccess={() => {
+          setIsSetLocationOpen(false);
+          loadFeed();
+        }}
       />
 
       {/* Mobile Bottom Navigation Bar */}

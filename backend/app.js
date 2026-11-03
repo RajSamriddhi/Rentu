@@ -52590,6 +52590,13 @@ router.post("/register", async (req, res, next) => {
       await query("UPDATE users SET username = $1 WHERE id = $2", [generated, user.id]);
       user.username = generated;
     }
+    const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== "Bengaluru, India");
+    const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+    if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === "bengaluru" || user.locality?.toLowerCase() === "bengaluru, india" || user.locality?.toLowerCase() === "bangalore")) {
+      user.locality = "";
+      await query("UPDATE users SET locality = NULL WHERE id = $1", [user.id]).catch(() => {
+      });
+    }
     const token = generateToken(user);
     return sendSuccess(res, { user, token }, "Registration successful. Welcome to Rentu.", 201);
   } catch (error) {
@@ -52612,6 +52619,13 @@ router.post("/login", async (req, res, next) => {
       const generated = await generateUniqueUsername(user.email, user.name);
       await query("UPDATE users SET username = $1 WHERE id = $2", [generated, user.id]);
       user.username = generated;
+    }
+    const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== "Bengaluru, India");
+    const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+    if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === "bengaluru" || user.locality?.toLowerCase() === "bengaluru, india" || user.locality?.toLowerCase() === "bangalore")) {
+      user.locality = "";
+      await query("UPDATE users SET locality = NULL WHERE id = $1", [user.id]).catch(() => {
+      });
     }
     const isMatch = await import_bcryptjs.default.compare(validated.password, user.password_hash);
     if (!isMatch) {
@@ -52755,6 +52769,13 @@ var handleSyncUser = async (req, res, next) => {
         user = { ...created.rows[0], saved_locations: [] };
       }
     }
+    const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== "Bengaluru, India");
+    const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+    if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === "bengaluru" || user.locality?.toLowerCase() === "bengaluru, india" || user.locality?.toLowerCase() === "bangalore")) {
+      user.locality = "";
+      await query("UPDATE users SET locality = NULL WHERE id = $1", [user.id]).catch(() => {
+      });
+    }
     const token = generateToken(user);
     return sendSuccess(res, { user, token }, "Account synchronized with Rentu.");
   } catch (error) {
@@ -52814,6 +52835,13 @@ router.get("/me", authMiddleware, async (req, res, next) => {
       const generated = await generateUniqueUsername(user.email, user.name);
       await query("UPDATE users SET username = $1 WHERE id = $2", [generated, user.id]);
       user.username = generated;
+    }
+    const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== "Bengaluru, India");
+    const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+    if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === "bengaluru" || user.locality?.toLowerCase() === "bengaluru, india" || user.locality?.toLowerCase() === "bangalore")) {
+      user.locality = "";
+      await query("UPDATE users SET locality = NULL WHERE id = $1", [user.id]).catch(() => {
+      });
     }
     const statsResult = await query(
       `SELECT 
@@ -66853,6 +66881,13 @@ var runMigrations = async () => {
       SET latitude = 12.9240, longitude = 77.5340 
       WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
         AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
+
+      -- Clear assumed 'Bengaluru' / 'Bangalore' locality from users who never entered an address
+      UPDATE users 
+      SET locality = NULL, latitude = NULL, longitude = NULL 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%')
+        AND (address_text IS NULL OR TRIM(address_text) = '' OR address_text ILIKE '%bengaluru%')
+        AND (saved_locations IS NULL OR saved_locations = '[]'::jsonb);
 
       -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
       UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';

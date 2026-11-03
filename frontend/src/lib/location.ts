@@ -219,8 +219,13 @@ export function formatFullAddress(entity?: {
   if (!entity) return '';
 
   const address = (entity.address_text || '').trim();
-  const locality = (entity.locality || entity.owner_locality || '').trim();
+  let locality = (entity.locality || entity.owner_locality || '').trim();
   const pincode = (entity.pincode || '').trim();
+
+  // Do NOT assume address: if user never set address_text and locality is Bengaluru, ignore it
+  if ((locality.toLowerCase() === 'bengaluru' || locality.toLowerCase() === 'bengaluru, india' || locality.toLowerCase() === 'bangalore') && !address) {
+    locality = '';
+  }
 
   const rawParts = `${address}, ${locality}`
     .split(',')
@@ -241,7 +246,11 @@ export function formatFullAddress(entity?: {
     parts.push(pincode);
   }
 
-  return parts.join(', ') || locality || address || '';
+  const result = parts.join(', ') || locality || address || '';
+  if (result.toLowerCase() === 'bengaluru' || result.toLowerCase() === 'bengaluru, india') {
+    return '';
+  }
+  return result;
 }
 
 /**
@@ -264,12 +273,14 @@ export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] 
     }
   }
 
+  const cleanLocality = (user.locality?.toLowerCase() === 'bengaluru' && !user.address_text) ? '' : (user.locality || '');
+
   const primaryLoc: SavedLocation = {
     id: 'primary',
     label: 'Primary Profile Address',
     building_flat_house: building,
     street_road_landmark: street,
-    locality: user.locality || '',
+    locality: cleanLocality,
     pincode: user.pincode || '',
     latitude: user.latitude,
     longitude: user.longitude,
@@ -291,5 +302,5 @@ export function formatSavedLocationFull(loc: SavedLocation): string {
     loc.pincode
   ].map(s => (s || '').trim()).filter(Boolean);
 
-  return parts.join(', ') || loc.locality || 'Address not specified';
+  return parts.join(', ') || loc.locality || '';
 }

@@ -455,6 +455,13 @@ export const runMigrations = async () => {
       WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
         AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
 
+      -- Clear assumed 'Bengaluru' / 'Bangalore' locality from users who never entered an address
+      UPDATE users 
+      SET locality = NULL, latitude = NULL, longitude = NULL 
+      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%')
+        AND (address_text IS NULL OR TRIM(address_text) = '' OR address_text ILIKE '%bengaluru%')
+        AND (saved_locations IS NULL OR saved_locations = '[]'::jsonb);
+
       -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
       UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
     `);

@@ -211,10 +211,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Top Left: Locality Pill */}
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 max-w-[85%]">
-            <div className="backdrop-blur-md bg-black/50 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md max-w-full">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(true)}
+              className="backdrop-blur-md bg-black/50 hover:bg-black/70 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-md max-w-full cursor-pointer transition-colors"
+            >
               <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-              <span className="truncate">{formatFullAddress(user)}</span>
-            </div>
+              <span className="truncate">{formatFullAddress(user) || 'Set Your Location'}</span>
+            </button>
           </div>
 
           {/* Top Right: Change Cover Button */}
@@ -404,14 +408,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span>Member since {memberSince}</span>
               </span>
 
-              <button
-                onClick={() => setIsEditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer max-w-full"
-                title="Click to update your location"
-              >
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{formatFullAddress(user)}</span>
-              </button>
+              {formatFullAddress(user) ? (
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 px-3 py-1 rounded-full border border-divider text-brand font-bold transition-colors cursor-pointer max-w-full"
+                  title="Click to update your location"
+                >
+                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{formatFullAddress(user)}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold transition-colors cursor-pointer max-w-full"
+                  title="Location not set — click to add your location"
+                >
+                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span>Set Your Location</span>
+                </button>
+              )}
             </div>
 
           </div>

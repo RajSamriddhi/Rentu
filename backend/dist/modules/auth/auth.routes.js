@@ -92,6 +92,13 @@ router.post('/register', async (req, res, next) => {
             await (0, db_1.query)('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
             user.username = generated;
         }
+        // Do NOT assume address: clear legacy assumed 'Bengaluru' if user never entered an address
+        const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== 'Bengaluru, India');
+        const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+        if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'bengaluru, india' || user.locality?.toLowerCase() === 'bangalore')) {
+            user.locality = '';
+            await (0, db_1.query)('UPDATE users SET locality = NULL WHERE id = $1', [user.id]).catch(() => { });
+        }
         const token = generateToken(user);
         return (0, response_1.sendSuccess)(res, { user, token }, 'Registration successful. Welcome to Rentu.', 201);
     }
@@ -114,6 +121,13 @@ router.post('/login', async (req, res, next) => {
             const generated = await generateUniqueUsername(user.email, user.name);
             await (0, db_1.query)('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
             user.username = generated;
+        }
+        // Do NOT assume address: clear legacy assumed 'Bengaluru' if user never entered an address
+        const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== 'Bengaluru, India');
+        const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+        if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'bengaluru, india' || user.locality?.toLowerCase() === 'bangalore')) {
+            user.locality = '';
+            await (0, db_1.query)('UPDATE users SET locality = NULL WHERE id = $1', [user.id]).catch(() => { });
         }
         const isMatch = await bcryptjs_1.default.compare(validated.password, user.password_hash);
         if (!isMatch) {
@@ -251,6 +265,13 @@ const handleSyncUser = async (req, res, next) => {
                 user = { ...created.rows[0], saved_locations: [] };
             }
         }
+        // Do NOT assume address: clear legacy assumed 'Bengaluru' if user never entered an address
+        const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== 'Bengaluru, India');
+        const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+        if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'bengaluru, india' || user.locality?.toLowerCase() === 'bangalore')) {
+            user.locality = '';
+            await (0, db_1.query)('UPDATE users SET locality = NULL WHERE id = $1', [user.id]).catch(() => { });
+        }
         const token = generateToken(user);
         return (0, response_1.sendSuccess)(res, { user, token }, 'Account synchronized with Rentu.');
     }
@@ -309,6 +330,13 @@ router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
             const generated = await generateUniqueUsername(user.email, user.name);
             await (0, db_1.query)('UPDATE users SET username = $1 WHERE id = $2', [generated, user.id]);
             user.username = generated;
+        }
+        // Do NOT assume address: clear legacy assumed 'Bengaluru' if user never entered an address
+        const hasConcreteAddress = Boolean(user.address_text && user.address_text.trim() && user.address_text.trim() !== 'Bengaluru, India');
+        const hasConcreteSavedLocations = Array.isArray(user.saved_locations) && user.saved_locations.some((l) => l && (l.building_flat_house?.trim() || l.street_road_landmark?.trim()));
+        if (!hasConcreteAddress && !hasConcreteSavedLocations && (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'bengaluru, india' || user.locality?.toLowerCase() === 'bangalore')) {
+            user.locality = '';
+            await (0, db_1.query)('UPDATE users SET locality = NULL WHERE id = $1', [user.id]).catch(() => { });
         }
         // Compute stats
         const statsResult = await (0, db_1.query)(`SELECT 

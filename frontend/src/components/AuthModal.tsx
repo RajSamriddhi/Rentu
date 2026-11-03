@@ -7,7 +7,7 @@ import { api } from '../lib/api';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (isNewUser?: boolean) => void;
   initialMode?: 'login' | 'signup';
 }
 
@@ -84,9 +84,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handlePostAuthSuccess = () => {
+  const handlePostAuthSuccess = (isNewUser?: boolean) => {
     onClose();
-    if (onSuccess) onSuccess();
+    if (onSuccess) onSuccess(isNewUser);
   };
 
   const handleGoogleSignIn = async () => {
@@ -94,7 +94,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     try {
       await loginWithGoogle();
-      handlePostAuthSuccess();
+      handlePostAuthSuccess(false);
     } catch (err: any) {
       console.error('Google sign-in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
@@ -151,7 +151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         try {
           confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
         } catch {}
-        handlePostAuthSuccess();
+        handlePostAuthSuccess(true);
       } catch (err: any) {
         console.error('Sign up error:', err);
         setErrorMsg(err.message || 'Sign up failed. Please try again.');

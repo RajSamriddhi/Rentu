@@ -33,9 +33,11 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
 }) => {
   const { user, refreshUser } = useAuth();
 
-  const [locality, setLocality] = useState(user?.locality || 'Saket, New Delhi');
+  const isDefaultLoc = (user?.locality?.toLowerCase() === 'bengaluru' || user?.locality?.toLowerCase() === 'saket, new delhi') && !user?.address_text;
+  const initialLocality = isDefaultLoc ? '' : (user?.locality || '');
+  const [locality, setLocality] = useState(initialLocality);
   const [addressText, setAddressText] = useState(user?.address_text || '');
-  const [city, setCity] = useState<string>(user?.locality ? extractCity(user.locality) : 'Delhi');
+  const [city, setCity] = useState<string>(initialLocality ? extractCity(initialLocality) : '');
   const [pincode, setPincode] = useState(user?.pincode || '');
   const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
   const [longitude, setLongitude] = useState<number | undefined>(user?.longitude);
@@ -49,9 +51,11 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
   // Prefill state from user profile whenever modal opens
   useEffect(() => {
     if (user) {
-      setLocality(user.locality || 'Saket, New Delhi');
+      const isLegacy = (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'saket, new delhi') && !user.address_text;
+      const cleanLoc = isLegacy ? '' : (user.locality || '');
+      setLocality(cleanLoc);
       setAddressText(user.address_text || '');
-      setCity(user.locality ? extractCity(user.locality) : 'Delhi');
+      setCity(cleanLoc ? extractCity(cleanLoc) : '');
       setPincode(user.pincode || '');
       setLatitude(user.latitude);
       setLongitude(user.longitude);
@@ -272,7 +276,7 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
                     type="text"
                     value={locality}
                     onChange={(e) => setLocality(e.target.value)}
-                    placeholder="e.g. Saket, South Delhi"
+                    placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                     className="w-full bg-canvas border border-divider rounded-xl pl-9 pr-3 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand transition-colors"
                     required
                   />
@@ -305,7 +309,7 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
               <textarea
                 value={addressText}
                 onChange={(e) => setAddressText(e.target.value)}
-                placeholder="e.g. Flat 302, Green Park Apts, Main Ring Road, near Metro Gate 2"
+                placeholder="e.g. Flat 402, Building 3B / House #12, 5th Main Road"
                 rows={2}
                 className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-medium text-ink outline-none focus:border-brand transition-colors"
               />
