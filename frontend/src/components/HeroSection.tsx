@@ -22,7 +22,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   return (
     <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10 sm:pb-14 bg-canvas transition-colors">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        
+
         {/* Main Headline */}
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight font-display leading-[1.1] max-w-3xl mx-auto">
           Borrow. Rent. Lend.{' '}

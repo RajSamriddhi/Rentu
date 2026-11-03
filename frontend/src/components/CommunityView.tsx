@@ -7,9 +7,6 @@ import {
   Award, 
   HeartHandshake, 
   ArrowRight, 
-  Plus, 
-  Target, 
-  Compass, 
   Crown, 
   Medal, 
   CheckCircle2, 
@@ -29,7 +26,6 @@ import {
 import { api } from '../lib/api';
 import { CommunityLeaderboardData, CommunityLeaderboardMember } from '../lib/types';
 import { useAuth } from '../lib/authContext';
-import { HowItWorksSection } from './HowItWorksSection';
 
 interface CommunityViewProps {
   onOpenDropGear: () => void;
@@ -162,114 +158,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   return (
     <div className="min-h-screen bg-canvas text-ink pb-20">
       
-      {/* 1. COMMUNITY HERO SECTION */}
-      <section className="relative overflow-hidden border-b border-divider bg-surface/60 backdrop-blur-md pt-8 sm:pt-14 pb-12 sm:pb-16 px-4 sm:px-6 lg:px-8 transition-colors">
-        {/* Soft Ambient Background Glows */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand/10 dark:bg-brand/15 rounded-full blur-3xl pointer-events-none -translate-y-1/2" />
-        <div className="absolute top-1/2 right-1/4 w-96 h-96 bg-purple-500/10 dark:bg-purple-500/15 rounded-full blur-3xl pointer-events-none translate-y-1/4" />
-
-        <div className="max-w-6xl mx-auto relative z-10 text-center space-y-4 sm:space-y-6">
-          
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-soft border border-brand/20 text-brand text-xs font-black uppercase tracking-wider shadow-xs animate-in fade-in duration-300">
-            <Sparkles className="w-4 h-4 animate-pulse" />
-            <span>Rentu⁺ Neighborhood Collective</span>
-          </div>
-
-          {/* Main Title */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-ink font-display leading-[1.1]">
-            Borrow. Lend. Share. <br className="hidden sm:inline" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand via-pink-500 to-purple-600">
-              Together As A Community.
-            </span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="max-w-2xl mx-auto text-sm sm:text-base text-ink-secondary font-medium leading-relaxed">
-            The anti-ownership peer network where neighbors unlock premium gear, earn passive income, 
-            and celebrate the top 10 verified champions across India.
-          </p>
-
-          {/* Quick Action Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <button
-              onClick={onExploreGear}
-              className="btn-primary text-xs sm:text-sm font-bold shadow-pink inline-flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
-            >
-              <Compass className="w-4 h-4" />
-              <span>Explore Gear Marketplace</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (!isAuthenticated && onOpenAuth) {
-                  onOpenAuth();
-                } else {
-                  onOpenDropGear();
-                }
-              }}
-              className="btn-secondary text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
-            >
-              <Plus className="w-4 h-4 text-brand" />
-              <span>List Gear for Rent</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (!isAuthenticated && onOpenAuth) {
-                  onOpenAuth();
-                } else {
-                  onOpenDropWish();
-                }
-              }}
-              className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 inline-flex items-center gap-2 cursor-pointer transition-all"
-            >
-              <Target className="w-4 h-4" />
-              <span>Post a Wish / Request</span>
-            </button>
-          </div>
-
-          {/* Metric Stats Banner */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto pt-6 text-left">
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">100%</div>
-              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Peer Verified</div>
-              <p className="text-[11px] text-ink-secondary mt-1">Student & Govt ID checked</p>
-            </div>
-
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
-              <div className="text-xl sm:text-2xl font-black text-brand font-display">₹50,000</div>
-              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Trust Shield</div>
-              <p className="text-[11px] text-ink-secondary mt-1">Peer security deposit protection</p>
-            </div>
-
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
-              <div className="text-xl sm:text-2xl font-black text-amber-500 font-display">100%</div>
-              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Verified Reviews</div>
-              <p className="text-[11px] text-ink-secondary mt-1">Genuine post-rental peer feedback</p>
-            </div>
-
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/80 border border-divider shadow-xs backdrop-blur-xs">
-              <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 font-display">Top 10</div>
-              <div className="text-[11px] font-bold text-ink-muted uppercase tracking-wider mt-0.5">Community Board</div>
-              <p className="text-[11px] text-ink-secondary mt-1">Best reviews get rewarded</p>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* 2. HOW IT ALL WORKS SECTION */}
-      <HowItWorksSection
-        onExploreGear={onExploreGear}
-        onOpenDropGear={onOpenDropGear}
-        onOpenDropWish={onOpenDropWish}
-        onOpenAuth={onOpenAuth}
-        showCommunityLink={false}
-      />
-
-      {/* 3. COMMUNITY TOP 10 LEADERBOARD */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+      {/* COMMUNITY TOP 10 LEADERBOARD */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-12 pb-6 sm:pb-10">
         
         {/* Leaderboard Header */}
         <div className="text-center space-y-3 mb-8">
