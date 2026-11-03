@@ -52,11 +52,32 @@ body.dark,
     touch-action: manipulation;
   }
 
+  :where(button, input, select, textarea):disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
   /* Prevent annoying auto-zoom on mobile iOS Safari when focusing form inputs */
   @media (max-width: 640px) {
     input, select, textarea {
       font-size: 16px !important;
     }
+  }
+}
+
+:focus-visible {
+  outline: 3px solid rgba(225, 29, 116, 0.62) !important;
+  outline-offset: 3px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

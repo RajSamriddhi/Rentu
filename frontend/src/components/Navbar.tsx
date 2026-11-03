@@ -698,7 +698,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setShowMobileSearch(!showMobileSearch)}
               className="lg:hidden p-1.5 sm:p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
               title="Search"
-              aria-label="Toggle search"
+              aria-label={showMobileSearch ? 'Close search' : 'Open search'}
+              aria-expanded={showMobileSearch}
+              aria-controls="mobile-search"
             >
               <Search className="w-4 h-4" />
             </button>
@@ -1037,7 +1039,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setShowMobileMenu(!showMobileMenu)}
               className="md:hidden p-1.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer"
               title="Toggle Menu"
-              aria-label="Open mobile navigation menu"
+              aria-label={showMobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={showMobileMenu}
+              aria-controls="mobile-navigation-menu"
             >
               {showMobileMenu ? <X className="w-5 h-5 text-brand" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -1046,7 +1050,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Search Input Dropdown */}
         {showMobileSearch && (
-          <div ref={mobileSearchBoxRef} className="lg:hidden pb-3 pt-1 animate-in slide-in-from-top-2 duration-150 border-t border-divider/40 mt-1 relative">
+          <div id="mobile-search" ref={mobileSearchBoxRef} className="lg:hidden pb-3 pt-1 animate-in slide-in-from-top-2 duration-150 border-t border-divider/40 mt-1 relative">
             <form 
               onSubmit={(e) => { 
                 e.preventDefault(); 
@@ -1146,7 +1150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div className="md:hidden border-t border-divider/60 bg-white dark:bg-[#111218] px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
+          <div id="mobile-navigation-menu" className="md:hidden max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain border-t border-divider/60 bg-white dark:bg-[#111218] px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
 
             {/* Navigation Links */}
             <div className="space-y-1">

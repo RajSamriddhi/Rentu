@@ -29,6 +29,9 @@ interface ExploreViewProps {
   items: Item[];
   requests: CommunityRequest[];
   isLoading: boolean;
+  itemsError?: string | null;
+  requestsError?: string | null;
+  onRetry?: () => void;
   selectedCategory: string;
   setSelectedCategory: (cat: string) => void;
   onSelectItem: (item: Item) => void;
@@ -46,6 +49,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   items,
   requests,
   isLoading,
+  itemsError = null,
+  requestsError = null,
+  onRetry,
   selectedCategory,
   setSelectedCategory,
   onSelectItem,
@@ -77,6 +83,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [sortBy, setSortBy] = useState<'relevance' | 'distance' | 'price_low' | 'price_high'>('relevance');
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
   const [showDesktopFilters, setShowDesktopFilters] = useState<boolean>(true);
+  const [isDesktopLayout, setIsDesktopLayout] = useState<boolean>(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const updateLayout = () => setIsDesktopLayout(mediaQuery.matches);
+    updateLayout();
+    mediaQuery.addEventListener('change', updateLayout);
+    return () => mediaQuery.removeEventListener('change', updateLayout);
+  }, []);
 
   // Active filter count
   const activeFiltersCount = 
@@ -185,35 +200,39 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         {/* View Toggle: Items | Requests (Switches inline on the same page!) */}
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <div className="flex w-full items-center rounded-2xl border border-divider bg-canvas p-1 sm:w-auto sm:rounded-full">
-              <button
-                onClick={() => setActiveView('items')}
-                className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
-                  activeView === 'items'
-                    ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
-                    : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                <Package className="h-3.5 w-3.5" />
-                <span>Gear <span className="ml-1 opacity-70">{(items || []).length}</span></span>
-              </button>
+          <div className="flex w-full items-center rounded-2xl border border-divider bg-canvas p-1 sm:w-auto sm:rounded-full">
+            <button
+              type="button"
+              aria-pressed={activeView === 'items'}
+              onClick={() => setActiveView('items')}
+              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
+                activeView === 'items'
+                  ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
+                  : 'text-ink-secondary hover:text-ink'
+              }`}
+            >
+              <Package className="h-3.5 w-3.5" />
+              <span>Gear <span className="ml-1 opacity-70">{(items || []).length}</span></span>
+            </button>
 
-              <button
-                onClick={() => setActiveView('requests')}
-                className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
-                  activeView === 'requests'
-                    ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
-                    : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                <Target className="h-3.5 w-3.5" />
-                <span>Wanted <span className="ml-1 opacity-70">{(requests || []).length}</span></span>
-              </button>
-            </div>
+            <button
+              type="button"
+              aria-pressed={activeView === 'requests'}
+              onClick={() => setActiveView('requests')}
+              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:flex-none sm:px-4 sm:py-1.5 ${
+                activeView === 'requests'
+                  ? 'bg-surface text-ink shadow-sm ring-1 ring-divider'
+                  : 'text-ink-secondary hover:text-ink'
+              }`}
+            >
+              <Target className="h-3.5 w-3.5" />
+              <span>Wanted <span className="ml-1 opacity-70">{(requests || []).length}</span></span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={isAuthenticated ? onOpenDropGear : onOpenAuth}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl bg-brand px-4 text-xs font-extrabold text-white shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:bg-brand-hover"
+            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-brand px-4 text-xs font-extrabold text-white shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:bg-brand-hover"
           >
             <Plus className="h-4 w-4" /> List gear
           </button>
@@ -227,8 +246,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           return (
             <button
               key={cat}
+              type="button"
+              aria-pressed={isSelected}
               onClick={() => setSelectedCategory(cat === 'All' ? 'All' : cat)}
-              className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`min-h-9 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${
                 isSelected
                   ? 'bg-ink text-canvas shadow-md shadow-ink/10'
                   : 'bg-surface border border-divider text-ink-secondary hover:border-brand/40 hover:text-brand'
@@ -255,9 +276,14 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 {/* Toggle Filter Sidebar Button */}
                 <button
                   type="button"
+                  aria-controls="item-filters"
+                  aria-expanded={isDesktopLayout ? showDesktopFilters : showMobileFilters}
                   onClick={() => {
-                    setShowDesktopFilters(!showDesktopFilters);
-                    setShowMobileFilters(!showMobileFilters);
+                    if (isDesktopLayout) {
+                      setShowDesktopFilters((visible) => !visible);
+                    } else {
+                      setShowMobileFilters((visible) => !visible);
+                    }
                   }}
                   className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                     activeFiltersCount > 0
@@ -266,8 +292,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{showDesktopFilters ? 'Hide Filters' : 'Show Filters'}</span>
-                  <span className="sm:hidden">Filters</span>
+                  <span className="hidden lg:inline">{showDesktopFilters ? 'Hide Filters' : 'Show Filters'}</span>
+                  <span className="lg:hidden">{showMobileFilters ? 'Hide Filters' : 'Filters'}</span>
                   {activeFiltersCount > 0 && (
                     <span className="w-4 h-4 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center">
                       {activeFiltersCount}
@@ -392,9 +418,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             
             {/* Left Filter Sidebar */}
             <aside
-              className={`space-y-5 ${
-                showDesktopFilters ? 'lg:col-span-3' : 'hidden'
-              } ${showMobileFilters ? 'block' : 'hidden lg:block'}`}
+              id="item-filters"
+              className={`space-y-5 ${showMobileFilters ? 'block' : 'hidden'} ${
+                showDesktopFilters ? 'lg:col-span-3 lg:block' : 'lg:hidden'
+              }`}
             >
               <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 shadow-xs space-y-5">
                 
@@ -667,17 +694,30 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                   <p className="text-xs font-bold text-ink-secondary">Loading items...</p>
                 </div>
+              ) : itemsError ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-divider bg-surface px-6 py-12 text-center">
+                  <p className="text-base font-bold text-ink">{itemsError}</p>
+                  <p className="max-w-md text-xs leading-relaxed text-ink-secondary">Check your connection and try again.</p>
+                  {onRetry && <button type="button" onClick={onRetry} className="btn-primary min-h-10 px-4 text-xs">Try again</button>}
+                </div>
               ) : sortedItems.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-2xl p-8">
-                  <p className="text-base font-bold text-ink">No items match your filters.</p>
-                  <p className="text-xs text-ink-secondary mt-1">Try widening your price range or resetting filters.</p>
+                  <p className="text-base font-bold text-ink">
+                    {searchQuery?.trim()
+                      ? `No gear found for “${searchQuery.trim()}”`
+                      : activeFiltersCount > 0
+                        ? 'No gear matches these filters.'
+                        : 'No gear listed yet.'}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-secondary">
+                    {searchQuery?.trim()
+                      ? 'Try a different search, or clear your search in the top bar.'
+                      : activeFiltersCount > 0
+                        ? 'Try widening your price or distance range.'
+                        : 'Be the first to share something useful with your neighborhood.'}
+                  </p>
                   <div className="flex items-center justify-center gap-3 mt-4">
-                    <button
-                      onClick={handleResetFilters}
-                      className="btn-secondary text-xs cursor-pointer font-bold px-4 py-2"
-                    >
-                      Reset All Filters
-                    </button>
+                    {activeFiltersCount > 0 && <button type="button" onClick={handleResetFilters} className="btn-secondary min-h-10 px-4 text-xs font-bold">Reset filters</button>}
                     {isAuthenticated ? (
                       <button
                         onClick={onOpenDropGear}
@@ -777,6 +817,12 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 <div className="py-24 text-center">
                   <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                   <p className="text-xs font-bold text-ink-secondary">Loading community requests...</p>
+                </div>
+              ) : requestsError ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-divider bg-surface px-6 py-12 text-center">
+                  <p className="text-base font-bold text-ink">{requestsError}</p>
+                  <p className="max-w-md text-xs leading-relaxed text-ink-secondary">Check your connection and try again.</p>
+                  {onRetry && <button type="button" onClick={onRetry} className="btn-primary min-h-10 px-4 text-xs">Try again</button>}
                 </div>
               ) : filteredRequests.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-2xl p-8">

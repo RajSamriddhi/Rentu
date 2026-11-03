@@ -43,11 +43,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       {/* Post Action Sheet on Mobile (Only visible when user taps the + button) */}
       {showPostSheet && isAuthenticated && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-150">
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setShowPostSheet(false)} 
+          <button
+            type="button"
+            className="fixed inset-0 cursor-default bg-transparent"
+            onClick={() => setShowPostSheet(false)}
+            aria-label="Close create menu"
           />
-          <div className="relative bg-surface border-t border-divider rounded-t-3xl p-5 shadow-2xl space-y-3 z-10 animate-in slide-in-from-bottom duration-200">
+          <div className="relative bg-surface border-t border-divider rounded-t-3xl p-5 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl space-y-3 z-10 animate-in slide-in-from-bottom duration-200">
             <div className="flex items-center justify-between pb-2 border-b border-divider">
               <span className="text-xs font-black uppercase text-ink tracking-wider font-display">
                 Create on Rentu⁺
@@ -105,8 +107,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {/* Tab 1: Home */}
         <button
           onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-            activeTab === 'home' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+          aria-current={activeTab === 'home' ? 'page' : undefined}
+          className={`flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold transition-all cursor-pointer ${
+            activeTab === 'home' ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:bg-canvas hover:text-ink'
           }`}
         >
           <HomeIcon className="w-5 h-5" />
@@ -116,8 +119,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {/* Tab 2: Marketplace (Items & Requests) */}
         <button
           onClick={() => setActiveTab('explore')}
-          className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-            activeTab === 'explore' || activeTab === 'requests' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+          aria-current={activeTab === 'explore' || activeTab === 'requests' ? 'page' : undefined}
+          className={`flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold transition-all cursor-pointer ${
+            activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:bg-canvas hover:text-ink'
           }`}
         >
           <Compass className="w-5 h-5" />
@@ -140,8 +144,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             {/* Tab 4: Messages */}
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer relative ${
-                activeTab === 'messages' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              aria-current={activeTab === 'messages' ? 'page' : undefined}
+              className={`relative flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold transition-all cursor-pointer ${
+                activeTab === 'messages' ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:bg-canvas hover:text-ink'
               }`}
             >
               <div className="relative">
@@ -158,8 +163,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             {/* Tab 5: Profile */}
             <button
               onClick={() => setActiveTab('profile')}
-              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-                activeTab === 'profile' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              aria-current={activeTab === 'profile' ? 'page' : undefined}
+              className={`flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold transition-all cursor-pointer ${
+                activeTab === 'profile' ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:bg-canvas hover:text-ink'
               }`}
             >
               {user?.avatar_url ? (
@@ -182,8 +188,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             {/* Tab 3: Community */}
             <button
               onClick={() => setActiveTab('community')}
-              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-                activeTab === 'community' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              aria-current={activeTab === 'community' ? 'page' : undefined}
+              className={`flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold transition-all cursor-pointer ${
+                activeTab === 'community' ? 'bg-brand-soft text-brand' : 'text-ink-secondary hover:bg-canvas hover:text-ink'
               }`}
             >
               <Users className="w-5 h-5" />
@@ -193,7 +200,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             {/* Tab 4: Sign In */}
             <button
               onClick={onOpenAuth}
-              className="flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold text-brand transition-all cursor-pointer"
+              className="flex min-h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-bold text-brand transition-all cursor-pointer hover:bg-brand-soft"
             >
               <LogIn className="w-5 h-5" />
               <span>Sign In</span>

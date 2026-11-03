@@ -54,6 +54,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
             }}
             className="absolute right-2.5 top-2.5 flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-white/90 shadow-md backdrop-blur-sm transition-transform hover:scale-105 active:scale-90 dark:border-zinc-700 dark:bg-zinc-900/90"
             title="Save to favorites"
+            aria-label={isLiked ? 'Remove from saved items' : 'Save item'}
+            aria-pressed={isLiked}
           >
             <Heart
               className={`h-4 w-4 transition-colors ${isLiked ? 'fill-brand text-brand' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'

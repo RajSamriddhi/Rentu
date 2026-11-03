@@ -25,7 +25,7 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
       <div className="bg-surface rounded-3xl border border-divider p-6 sm:p-10 shadow-sm space-y-8">
         
         {/* Section Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-divider pb-5">
+        <div className="flex flex-col justify-between gap-4 border-b border-divider pb-5 md:flex-row md:items-end">
           <div>
             <span className="text-[11px] font-black uppercase text-brand tracking-wider">
               Simple & Secure
@@ -38,20 +38,20 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={onExploreGear}
-              className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer inline-flex items-center gap-1.5"
+              className="btn-secondary min-h-10 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold cursor-pointer inline-flex items-center gap-1.5"
             >
               <span>Explore Gear</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onOpenDropGear}
-              className="btn-primary text-xs px-3.5 py-1.5 font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
+              className="btn-primary min-h-10 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold shadow-pink cursor-pointer inline-flex items-center gap-1.5"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>List Item</span>
+              <span>List Gear</span>
             </button>
           </div>
         </div>

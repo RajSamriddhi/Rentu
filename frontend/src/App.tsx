@@ -277,6 +277,8 @@ export const App: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [requests, setRequests] = useState<CommunityRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
 
   // Modals
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -345,6 +347,8 @@ export const App: React.FC = () => {
 
   const loadFeed = async () => {
     setIsLoading(true);
+    setItemsError(null);
+    setRequestsError(null);
     try {
       const [itemsRes, requestsRes] = await Promise.allSettled([
         api.getItems({
@@ -359,15 +363,21 @@ export const App: React.FC = () => {
       if (itemsRes.status === 'fulfilled' && Array.isArray(itemsRes.value)) {
         setItems(itemsRes.value);
       } else if (itemsRes.status === 'rejected') {
+        setItems([]);
+        setItemsError("We couldn't load gear right now.");
         console.error('Failed to load items:', itemsRes.reason);
       }
 
       if (requestsRes.status === 'fulfilled' && Array.isArray(requestsRes.value)) {
         setRequests(requestsRes.value);
       } else if (requestsRes.status === 'rejected') {
+        setRequests([]);
+        setRequestsError("We couldn't load community requests right now.");
         console.error('Failed to load requests:', requestsRes.reason);
       }
     } catch (err) {
+      setItemsError("We couldn't load gear right now.");
+      setRequestsError("We couldn't load community requests right now.");
       console.error('Failed to load feed data:', err);
     } finally {
       setIsLoading(false);
@@ -538,22 +548,40 @@ export const App: React.FC = () => {
                     </div>
                     <button
                       onClick={() => setActiveTab('explore')}
-                      className="text-xs font-bold text-brand hover:underline cursor-pointer"
+                      className="inline-flex min-h-10 items-center rounded-full px-3 text-xs font-bold text-brand transition-colors hover:bg-brand-soft"
                     >
-                      Explore All ({(items || []).length}) →
+                      Browse all gear <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
-                    {(items || []).slice(0, 4).map((item) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                        onClick={() => setSelectedItem(item)}
-                        onOpenUserProfile={handleOpenUserProfile}
-                      />
-                    ))}
-                  </div>
+                  {itemsError ? (
+                    <div className="flex flex-col items-center gap-3 rounded-2xl border border-divider bg-surface px-5 py-8 text-center sm:flex-row sm:justify-between sm:text-left">
+                      <p className="text-sm font-semibold text-ink-secondary">{itemsError} Please try again.</p>
+                      <button type="button" onClick={loadFeed} className="btn-secondary min-h-10 px-4 text-xs">Try again</button>
+                    </div>
+                  ) : isLoading ? (
+                    <div className="flex min-h-36 items-center justify-center gap-3 rounded-2xl border border-divider bg-surface text-sm font-semibold text-ink-secondary">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+                      Finding gear near you…
+                    </div>
+                  ) : items.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+                      {items.slice(0, 4).map((item) => (
+                        <ItemCard
+                          key={item.id}
+                          item={item}
+                          onClick={() => setSelectedItem(item)}
+                          onOpenUserProfile={handleOpenUserProfile}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-divider bg-surface/70 px-5 py-9 text-center">
+                      <p className="text-sm font-bold text-ink">No gear listed yet</p>
+                      <p className="max-w-md text-xs leading-relaxed text-ink-secondary">Be the first to share something useful with your neighborhood.</p>
+                      <button type="button" onClick={() => setIsDropGearOpen(true)} className="btn-primary min-h-10 px-4 text-xs">List your gear</button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -564,6 +592,9 @@ export const App: React.FC = () => {
                 items={items}
                 requests={requests}
                 isLoading={isLoading}
+                itemsError={itemsError}
+                requestsError={requestsError}
+                onRetry={loadFeed}
                 selectedCategory={selectedCategory}
                 setSelectedCategory={setSelectedCategory}
                 onSelectItem={(item) => setSelectedItem(item)}
