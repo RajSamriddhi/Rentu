@@ -103126,9 +103126,11 @@ var runMigrations = async () => {
   console.log("Running database migrations (Supabase Compatible)...");
   const client = await pool.connect();
   try {
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`).catch(() => {
+    await client.query(`CREATE SCHEMA IF NOT EXISTS extensions;`).catch(() => {
     });
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis";`).catch(() => {
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;`).catch(() => {
+    });
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis" WITH SCHEMA extensions;`).catch(() => {
       console.log("PostGIS extension not available locally; using Haversine proximity formulas.");
     });
     await client.query("BEGIN");
@@ -103656,6 +103658,25 @@ var runMigrations = async () => {
       if (check2.rows.length === 0) {
         await client.query(c.sql);
       }
+    }
+    const publicTables = [
+      "bookings",
+      "item_images",
+      "items",
+      "messages",
+      "notifications",
+      "postal_codes",
+      "push_subscriptions",
+      "requests",
+      "reviews",
+      "support_tickets",
+      "user_blocks",
+      "user_follows",
+      "users"
+    ];
+    for (const tbl of publicTables) {
+      await client.query(`ALTER TABLE IF EXISTS public.${tbl} ENABLE ROW LEVEL SECURITY;`).catch(() => {
+      });
     }
     await client.query("COMMIT");
     console.log("Database schema migrations completed successfully!");

@@ -5,8 +5,9 @@ export const runMigrations = async () => {
   const client = await pool.connect();
   try {
     // 1. Extensions (executed outside transaction block)
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`).catch(() => {});
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis";`).catch(() => {
+    await client.query(`CREATE SCHEMA IF NOT EXISTS extensions;`).catch(() => {});
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;`).catch(() => {});
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "postgis" WITH SCHEMA extensions;`).catch(() => {
       console.log('PostGIS extension not available locally; using Haversine proximity formulas.');
     });
 
@@ -569,6 +570,16 @@ export const runMigrations = async () => {
       if (check.rows.length === 0) {
         await client.query(c.sql);
       }
+    }
+
+    // 4.8. ROW LEVEL SECURITY (RLS) FOR PUBLIC TABLES (Clears Supabase Security Advisor Critical Alerts)
+    const publicTables = [
+      'bookings', 'item_images', 'items', 'messages', 'notifications',
+      'postal_codes', 'push_subscriptions', 'requests', 'reviews',
+      'support_tickets', 'user_blocks', 'user_follows', 'users'
+    ];
+    for (const tbl of publicTables) {
+      await client.query(`ALTER TABLE IF EXISTS public.${tbl} ENABLE ROW LEVEL SECURITY;`).catch(() => {});
     }
 
     await client.query('COMMIT');

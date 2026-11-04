@@ -4,9 +4,10 @@
 -- Run directly in: Supabase Dashboard -> SQL Editor -> New query -> RUN
 -- ==============================================================================
 
--- 1. EXTENSIONS
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "postgis";
+-- 1. EXTENSIONS (Installed cleanly in dedicated extensions schema)
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS "postgis" WITH SCHEMA extensions;
 
 -- 2. ENUM TYPES
 DO $$ BEGIN
@@ -271,6 +272,40 @@ DO $$ BEGIN
         CREATE POLICY "Allow public and anon uploads to item-photos" 
         ON storage.objects FOR INSERT TO public 
         WITH CHECK (bucket_id = 'item-photos');
+    END IF;
+END $$;
+
+-- 14.1 ROW LEVEL SECURITY (RLS) FOR PUBLIC TABLES (Clears Supabase Security Advisor Critical Warnings)
+ALTER TABLE IF EXISTS postal_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS item_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS push_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS support_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_blocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_follows ENABLE ROW LEVEL SECURITY;
+
+-- 14.2 PUBLIC CATALOG POLICIES (Safe read-only access for PostgREST)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'postal_codes' AND policyname = 'Allow public read postal_codes') THEN
+        CREATE POLICY "Allow public read postal_codes" ON public.postal_codes FOR SELECT TO public USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'items' AND policyname = 'Allow public read available items') THEN
+        CREATE POLICY "Allow public read available items" ON public.items FOR SELECT TO public USING (status = 'AVAILABLE' AND COALESCE(is_deleted, false) = false);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'item_images' AND policyname = 'Allow public read item_images') THEN
+        CREATE POLICY "Allow public read item_images" ON public.item_images FOR SELECT TO public USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reviews' AND policyname = 'Allow public read reviews') THEN
+        CREATE POLICY "Allow public read reviews" ON public.reviews FOR SELECT TO public USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'requests' AND policyname = 'Allow public read open requests') THEN
+        CREATE POLICY "Allow public read open requests" ON public.requests FOR SELECT TO public USING (status = 'OPEN');
     END IF;
 END $$;
 
