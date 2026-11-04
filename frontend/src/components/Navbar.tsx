@@ -46,7 +46,7 @@ interface NavbarProps {
   onOpenChat: () => void;
   onOpenHowItWorks?: () => void;
   onOpenUserProfile?: (userId: string) => void;
-  onOpenHelpSupport?: () => void;
+  onOpenHelpSupport?: (tab?: 'NEW' | 'HISTORY') => void;
   onOpenSettings?: () => void;
   onNavigateNotification?: (target: {
     tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
@@ -467,10 +467,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     const nType = (notif.type || '').toUpperCase();
     const nBody = (notif.body || '').toLowerCase();
 
-    // Support Notifications -> Direct to Support modal or settings
+    // Support Notifications -> Direct to Support modal (My Submissions tab) or Admin Hustle Hub
     if (notif.reference_type === 'SUPPORT' || nType.startsWith('SUPPORT_')) {
-      if (onOpenHelpSupport) {
-        onOpenHelpSupport();
+      if (nType === 'SUPPORT_TICKET_ADMIN_ALERT') {
+        setActiveTab('hustle');
+      } else if (onOpenHelpSupport) {
+        onOpenHelpSupport('HISTORY');
       } else if (onOpenSettings) {
         onOpenSettings();
       } else {
@@ -1154,8 +1156,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </>
             ) : (
-              /* UNAUTHENTICATED: Distinct Log In and Sign Up buttons */
-              <div className="flex items-center gap-2">
+              /* UNAUTHENTICATED: Distinct Log In and Sign Up buttons + Support access */
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => onOpenHelpSupport?.('NEW')}
+                  className="px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-bold text-ink hover:text-brand transition-colors cursor-pointer rounded-full hover:bg-canvas flex items-center gap-1.5"
+                  title="Help & Community Support"
+                >
+                  <HelpCircle className="w-4 h-4 text-brand" />
+                  <span className="hidden sm:inline">Help</span>
+                </button>
                 <button
                   id="navbar-login-btn"
                   onClick={() => onOpenAuth('login')}
@@ -1412,21 +1422,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="pt-2 border-t border-divider grid grid-cols-2 gap-2">
+              <div className="pt-2 border-t border-divider space-y-2">
                 <button
-                  id="mobile-login-btn"
-                  onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
-                  className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                  onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
                 >
-                  Log In
+                  <HelpCircle className="w-4 h-4 text-brand" />
+                  <span>Help & Community Support</span>
                 </button>
-                <button
-                  id="mobile-signup-btn"
-                  onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
-                  className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
-                >
-                  Sign Up
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    id="mobile-login-btn"
+                    onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
+                    className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                  >
+                    Log In
+                  </button>
+                  <button
+                    id="mobile-signup-btn"
+                    onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
+                    className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
+                  >
+                    Sign Up
+                  </button>
+                </div>
               </div>
             )}
           </div>

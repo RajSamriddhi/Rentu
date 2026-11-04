@@ -288,6 +288,7 @@ export const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [helpInitialTab, setHelpInitialTab] = useState<'NEW' | 'HISTORY'>('NEW');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
 
@@ -468,7 +469,10 @@ export const App: React.FC = () => {
         onOpenChat={() => setActiveTab('messages')}
         onOpenHowItWorks={() => setActiveTab('community')}
         onOpenUserProfile={handleOpenUserProfile}
-        onOpenHelpSupport={() => setIsHelpOpen(true)}
+        onOpenHelpSupport={(tab) => {
+          setHelpInitialTab(tab || 'NEW');
+          setIsHelpOpen(true);
+        }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onNavigateNotification={handleNavigateNotification}
         onOpenChatWithUser={handleOpenChatWithUser}
@@ -743,6 +747,7 @@ export const App: React.FC = () => {
       {/* Help & Community Support Modal */}
       <HelpSupportModal
         isOpen={isHelpOpen}
+        initialTab={helpInitialTab}
         onClose={() => setIsHelpOpen(false)}
       />
 

@@ -28,7 +28,8 @@ import {
   Eye,
   Check,
   X,
-  Star
+  Star,
+  AlertCircle
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
@@ -44,8 +45,9 @@ export const HustleHub: React.FC = () => {
   // 1. Support & Concerns Admin State
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(false);
+  const [ticketsError, setTicketsError] = useState<string | null>(null);
   const [ticketFilterType, setTicketFilterType] = useState<'ALL' | 'CONCERN' | 'FEEDBACK'>('ALL');
-  const [ticketFilterStatus, setTicketFilterStatus] = useState<'ALL' | 'OPEN' | 'RESOLVED'>('ALL');
+  const [ticketFilterStatus, setTicketFilterStatus] = useState<'ALL' | 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED'>('ALL');
   const [adminNoteInputs, setAdminNoteInputs] = useState<Record<string, string>>({});
   const [isUpdatingTicket, setIsUpdatingTicket] = useState<string | null>(null);
 
@@ -103,14 +105,16 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminTickets = async () => {
     setIsLoadingTickets(true);
+    setTicketsError(null);
     try {
       const tickets = await api.getAdminSupportTickets({
         status: ticketFilterStatus,
         type: ticketFilterType,
       });
       setSupportTickets(Array.isArray(tickets) ? tickets : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin support tickets:', err);
+      setTicketsError(err.message || 'Failed to load support tickets. Please check your network connection.');
       setSupportTickets([]);
     } finally {
       setIsLoadingTickets(false);
@@ -208,18 +212,25 @@ export const HustleHub: React.FC = () => {
       loadAdminTickets();
     }
     if (activeSidebar === 'Overview' || activeSidebar === 'Analytics') loadOverviewAnalytics();
-  }, [activeSidebar]);
+  }, [activeSidebar, ticketFilterType, ticketFilterStatus]);
 
   // Support ticket update
   const handleUpdateTicket = async (ticketId: string, newStatus?: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED', notes?: string) => {
     setIsUpdatingTicket(ticketId);
     try {
+      const targetTicket = supportTickets.find(t => t.id === ticketId);
       const updated = await api.updateAdminSupportTicket(ticketId, {
         status: newStatus,
         admin_notes: notes || adminNoteInputs[ticketId] || undefined,
       });
       setSupportTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...updated } : t));
-      alert(`Ticket updated successfully! The user has been notified.`);
+      if (updated.user_notified) {
+        alert('Ticket updated successfully! The user has been notified in-app.');
+      } else if (!targetTicket?.user_id) {
+        alert(`Ticket updated successfully. (Guest ticket: resolution saved for ${targetTicket?.user_email || 'guest'})`);
+      } else {
+        alert('Ticket updated successfully.');
+      }
     } catch (err: any) {
       alert(err.message || 'Could not update ticket');
     } finally {
@@ -636,9 +647,9 @@ export const HustleHub: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-ink mr-1">Status:</span>
-                  {(['ALL', 'OPEN', 'RESOLVED'] as const).map(s => (
+                  {(['ALL', 'OPEN', 'IN_REVIEW', 'RESOLVED', 'CLOSED'] as const).map(s => (
                     <button
                       key={s}
                       onClick={() => setTicketFilterStatus(s)}
@@ -646,7 +657,7 @@ export const HustleHub: React.FC = () => {
                         ticketFilterStatus === s ? 'bg-ink text-canvas shadow-xs' : 'hover:bg-surface text-ink-secondary'
                       }`}
                     >
-                      {s === 'ALL' ? 'All' : s}
+                      {s === 'ALL' ? 'All' : s === 'IN_REVIEW' ? 'In Review' : s === 'RESOLVED' ? 'Resolved' : s === 'CLOSED' ? 'Closed' : 'Open'}
                     </button>
                   ))}
                 </div>
@@ -657,6 +668,22 @@ export const HustleHub: React.FC = () => {
                 <div className="py-20 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading support tickets...</span>
+                </div>
+              ) : ticketsError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Support Tickets</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{ticketsError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminTickets()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
                 </div>
               ) : supportTickets.length === 0 ? (
                 <div className="py-20 text-center space-y-2 bg-canvas rounded-2xl border border-divider">
@@ -775,7 +802,7 @@ export const HustleHub: React.FC = () => {
                                 className="btn-primary text-xs px-4 py-1.5 shadow-pink font-bold inline-flex items-center gap-1 cursor-pointer"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Resolve & Notify User</span>
+                                <span>{ticket.user_id ? 'Resolve & Notify User' : 'Resolve Ticket (Guest)'}</span>
                               </button>
                             ) : (
                               <button

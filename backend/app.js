@@ -102621,7 +102621,7 @@ var createTicketSchema = external_exports.object({
   subject: external_exports.string().min(3, "Subject must be at least 3 characters"),
   description: external_exports.string().min(10, "Please describe your concern or feedback in at least 10 characters"),
   priority: external_exports.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional().default("NORMAL"),
-  user_email: external_exports.string().email().optional()
+  user_email: external_exports.string().email("Please enter a valid email address").optional()
 });
 var updateTicketSchema = external_exports.object({
   status: external_exports.enum(["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"]).optional(),
@@ -102633,8 +102633,11 @@ router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
     const validated = createTicketSchema.parse(req.body);
     const userId = req.user?.id || null;
     const userName = req.user?.name || (userId ? "Community Member" : "Guest Visitor");
-    const userEmail = req.user?.email || (validated.user_email ? `[Unverified] ${validated.user_email}` : "unregistered@rentu.in");
-    const assignedPriority = userId ? validated.priority || "NORMAL" : "NORMAL";
+    if (!userId && !validated.user_email) {
+      return sendError(res, "BAD_REQUEST", "Please provide a valid contact email for guest submissions so we can reach you.", 400);
+    }
+    const userEmail = validated.user_email?.trim() || req.user?.email || "unregistered@rentu.in";
+    const assignedPriority = validated.priority || "NORMAL";
     const insertRes = await query(
       `INSERT INTO support_tickets (user_id, user_name, user_email, type, category, subject, description, priority, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN')
@@ -102662,6 +102665,28 @@ router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
         referenceType: "SUPPORT"
       }).catch(() => {
       });
+    }
+    try {
+      const adminUsersRes = await query(
+        `SELECT id FROM users WHERE role = 'ADMIN' OR LOWER(email) = ANY($1::text[])`,
+        [AUTHORIZED_ADMIN_EMAILS.map((e2) => e2.toLowerCase())]
+      );
+      for (const adminUser of adminUsersRes.rows) {
+        if (adminUser.id !== userId) {
+          await createNotification({
+            userId: adminUser.id,
+            senderId: userId,
+            type: "SUPPORT_TICKET_ADMIN_ALERT",
+            title: `New Support ${validated.type}: ${validated.subject.slice(0, 40)}`,
+            body: `${userName} submitted a new ${validated.type.toLowerCase()} under "${validated.category}". Urgency: ${assignedPriority}.`,
+            referenceId: ticket.id,
+            referenceType: "SUPPORT"
+          }).catch(() => {
+          });
+        }
+      }
+    } catch (e2) {
+      console.warn("Could not dispatch admin notifications for support ticket:", e2);
     }
     return sendSuccess(res, ticket, "Your submission has been sent directly to the Rentu Admin Team.", 201);
   } catch (error) {
@@ -102726,6 +102751,8 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
       fields.push(`status = $${values.length}`);
       if (validated.status === "RESOLVED") {
         fields.push(`resolved_at = CURRENT_TIMESTAMP`);
+      } else {
+        fields.push(`resolved_at = NULL`);
       }
     }
     if (validated.priority !== void 0) {
@@ -102746,9 +102773,10 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
     `;
     const result = await query(updateSql, values);
     const updated = result.rows[0];
+    let userNotified = false;
     if (currentTicket.user_id && (validated.status === "RESOLVED" || validated.admin_notes)) {
       const noteSnippet = validated.admin_notes ? `: "${validated.admin_notes}"` : "";
-      await createNotification({
+      const notif = await createNotification({
         userId: currentTicket.user_id,
         senderId: null,
         type: "SUPPORT_TICKET_RESOLVED",
@@ -102756,10 +102784,12 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
         body: `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
         referenceId: updated.id,
         referenceType: "SUPPORT"
-      }).catch(() => {
-      });
+      }).catch(() => null);
+      if (notif) {
+        userNotified = true;
+      }
     }
-    return sendSuccess(res, updated, "Ticket updated successfully");
+    return sendSuccess(res, { ...updated, user_notified: userNotified }, "Ticket updated successfully");
   } catch (error) {
     next(error);
   }

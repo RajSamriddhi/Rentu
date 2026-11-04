@@ -13,7 +13,9 @@ import {
   MessageSquare,
   Sparkles,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -23,6 +25,7 @@ import { SupportTicket } from '../lib/types';
 interface HelpSupportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'NEW' | 'HISTORY';
 }
 
 const CONCERN_CATEGORIES = [
@@ -42,10 +45,10 @@ const FEEDBACK_CATEGORIES = [
   'General Thought',
 ];
 
-export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onClose }) => {
+export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onClose, initialTab = 'NEW' }) => {
   const { user, isAuthenticated } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY'>('NEW');
+  const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY'>(initialTab);
   const [ticketType, setTicketType] = useState<'CONCERN' | 'FEEDBACK'>('CONCERN');
   const [category, setCategory] = useState<string>(CONCERN_CATEGORIES[0]);
   const [priority, setPriority] = useState<'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'>('NORMAL');
@@ -60,6 +63,29 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
   // History state
   const [myTickets, setMyTickets] = useState<SupportTicket[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialTab === 'HISTORY' && isAuthenticated) {
+        setActiveTab('HISTORY');
+      } else {
+        setActiveTab(initialTab);
+      }
+    }
+  }, [isOpen, initialTab, isAuthenticated]);
+
+  // Keyboard accessibility: Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (user?.email) {
@@ -76,22 +102,30 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
     }
   }, [ticketType]);
 
+  // Auto-poll history every 10s while tab is open so updates don't become stale
   useEffect(() => {
     if (isOpen && activeTab === 'HISTORY' && isAuthenticated) {
       loadHistory();
+      const interval = setInterval(() => {
+        loadHistory(true);
+      }, 10000);
+      return () => clearInterval(interval);
     }
   }, [isOpen, activeTab, isAuthenticated]);
 
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
+  const loadHistory = async (silent = false) => {
+    if (!silent) setIsLoadingHistory(true);
+    setHistoryError(null);
     try {
       const tickets = await api.getMySupportTickets();
       setMyTickets(Array.isArray(tickets) ? tickets : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load tickets history:', err);
-      setMyTickets([]);
+      if (!silent) {
+        setHistoryError(err.message || 'Failed to load your past submissions.');
+      }
     } finally {
-      setIsLoadingHistory(false);
+      if (!silent) setIsLoadingHistory(false);
     }
   };
 
@@ -99,8 +133,24 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject.trim() || !description.trim()) {
+    const trimmedSubject = subject.trim();
+    const trimmedDesc = description.trim();
+    const trimmedEmail = userEmail.trim();
+
+    if (!trimmedSubject || !trimmedDesc) {
       setErrorMsg('Please provide both a subject and details.');
+      return;
+    }
+    if (trimmedSubject.length < 3) {
+      setErrorMsg('Subject must be at least 3 characters.');
+      return;
+    }
+    if (trimmedDesc.length < 10) {
+      setErrorMsg('Please describe your concern or feedback in at least 10 characters.');
+      return;
+    }
+    if (!isAuthenticated && !trimmedEmail) {
+      setErrorMsg('Please enter a valid contact email so our team can follow up with you.');
       return;
     }
 
@@ -111,10 +161,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
       await api.submitSupportTicket({
         type: ticketType,
         category,
-        subject: subject.trim(),
-        description: description.trim(),
+        subject: trimmedSubject,
+        description: trimmedDesc,
         priority: ticketType === 'CONCERN' ? priority : 'NORMAL',
-        user_email: userEmail.trim() || undefined,
+        user_email: trimmedEmail || undefined,
       });
 
       confetti({
@@ -142,8 +192,17 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="relative bg-surface rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden my-4 border border-divider">
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-support-modal-title"
+        className="relative bg-surface rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden my-4 border border-divider"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-divider bg-canvas/30 flex items-center justify-between">
@@ -152,7 +211,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
               <HelpCircle className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-ink uppercase tracking-wider font-display">
+              <h2 id="help-support-modal-title" className="text-sm font-black text-ink uppercase tracking-wider font-display">
                 Help & Community Care
               </h2>
               <p className="text-[11px] text-ink-secondary">
@@ -163,6 +222,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
           <button
             onClick={onClose}
+            aria-label="Close Help & Support dialog"
             className="p-1.5 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -371,16 +431,29 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
                 {/* Contact Email confirmation */}
                 <div>
-                  <label className="block text-xs font-bold text-ink mb-1">
-                    Your Contact Email
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-ink">
+                      Your Contact Email {!isAuthenticated && <span className="text-brand font-black">*</span>}
+                    </label>
+                    {isAuthenticated && (
+                      <span className="text-[10px] text-ink-muted">
+                        (Defaults to your account email)
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="email"
+                    required={!isAuthenticated}
                     value={userEmail}
                     onChange={(e) => setUserEmail(e.target.value)}
-                    placeholder="your-email@domain.com"
+                    placeholder={user?.email || "your-email@domain.com"}
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2 text-xs font-medium text-ink outline-none focus:border-brand"
                   />
+                  {!isAuthenticated && (
+                    <p className="text-[10px] text-ink-secondary mt-1">
+                      Our support team will send resolution updates and answers directly to this email address.
+                    </p>
+                  )}
                 </div>
 
                 {errorMsg && (
@@ -424,10 +497,40 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
         {/* TAB 2: MY TICKETS & REPLIES HISTORY */}
         {activeTab === 'HISTORY' && (
           <div className="p-6 max-h-[460px] overflow-y-auto space-y-3">
-            {isLoadingHistory ? (
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-xs font-bold text-ink">Recent Inquiries & Admin Replies</span>
+              <button
+                type="button"
+                onClick={() => loadHistory()}
+                disabled={isLoadingHistory}
+                className="text-[11px] font-bold text-brand hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Refresh submissions"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {isLoadingHistory && myTickets.length === 0 ? (
               <div className="py-16 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-brand animate-spin" />
                 <span>Loading your past concerns & replies...</span>
+              </div>
+            ) : historyError && myTickets.length === 0 ? (
+              <div className="py-12 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-ink">Failed to Load Inquiries</p>
+                  <p className="text-[11px] text-ink-secondary mt-0.5">{historyError}</p>
+                </div>
+                <button
+                  onClick={() => loadHistory()}
+                  className="btn-secondary text-xs px-3.5 py-1.5 font-bold cursor-pointer"
+                >
+                  Try Again
+                </button>
               </div>
             ) : myTickets.length === 0 ? (
               <div className="py-16 text-center space-y-2 text-ink-secondary">
@@ -464,6 +567,8 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                         ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                         : t.status === 'IN_REVIEW'
                         ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
+                        : t.status === 'CLOSED'
+                        ? 'bg-zinc-600 text-zinc-200 border border-zinc-500/30'
                         : 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20'
                     }`}>
                       {t.status}
@@ -490,7 +595,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
                   <div className="text-[10px] text-ink-muted pt-1 flex items-center justify-between border-t border-divider/50">
                     <span>Submitted on {new Date(t.created_at).toLocaleDateString()}</span>
-                    {t.resolved_at && (
+                    {t.status === 'RESOLVED' && t.resolved_at && (
                       <span className="text-emerald-500 font-bold">
                         Resolved on {new Date(t.resolved_at).toLocaleDateString()}
                       </span>

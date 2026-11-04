@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
-import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest, adminMiddleware } from '../../middleware/auth';
+import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest, adminMiddleware, AUTHORIZED_ADMIN_EMAILS } from '../../middleware/auth';
 import { resolveUserIds } from '../../utils/user';
 import { createNotification } from '../notifications/notifications.service';
 
@@ -14,7 +14,7 @@ const createTicketSchema = z.object({
   subject: z.string().min(3, 'Subject must be at least 3 characters'),
   description: z.string().min(10, 'Please describe your concern or feedback in at least 10 characters'),
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).optional().default('NORMAL'),
-  user_email: z.string().email().optional(),
+  user_email: z.string().email('Please enter a valid email address').optional(),
 });
 
 const updateTicketSchema = z.object({
@@ -30,9 +30,14 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
     const userId = req.user?.id || null;
     const userName = req.user?.name || (userId ? 'Community Member' : 'Guest Visitor');
     
-    // Treat unauthenticated contact info as unverified, and prevent priority elevation
-    const userEmail = req.user?.email || (validated.user_email ? `[Unverified] ${validated.user_email}` : 'unregistered@rentu.in');
-    const assignedPriority = userId ? (validated.priority || 'NORMAL') : 'NORMAL';
+    // Guest tickets require a contact email so the admin team can reply
+    if (!userId && !validated.user_email) {
+      return sendError(res, 'BAD_REQUEST', 'Please provide a valid contact email for guest submissions so we can reach you.', 400);
+    }
+
+    // Allow users and guests to specify their preferred contact email
+    const userEmail = validated.user_email?.trim() || req.user?.email || 'unregistered@rentu.in';
+    const assignedPriority = validated.priority || 'NORMAL';
 
     const insertRes = await query(
       `INSERT INTO support_tickets (user_id, user_name, user_email, type, category, subject, description, priority, status)
@@ -63,6 +68,29 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
         referenceId: ticket.id,
         referenceType: 'SUPPORT',
       }).catch(() => {});
+    }
+
+    // Notify all platform admins of the new ticket submission
+    try {
+      const adminUsersRes = await query(
+        `SELECT id FROM users WHERE role = 'ADMIN' OR LOWER(email) = ANY($1::text[])`,
+        [AUTHORIZED_ADMIN_EMAILS.map(e => e.toLowerCase())]
+      );
+      for (const adminUser of adminUsersRes.rows) {
+        if (adminUser.id !== userId) {
+          await createNotification({
+            userId: adminUser.id,
+            senderId: userId,
+            type: 'SUPPORT_TICKET_ADMIN_ALERT',
+            title: `New Support ${validated.type}: ${validated.subject.slice(0, 40)}`,
+            body: `${userName} submitted a new ${validated.type.toLowerCase()} under "${validated.category}". Urgency: ${assignedPriority}.`,
+            referenceId: ticket.id,
+            referenceType: 'SUPPORT',
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn('Could not dispatch admin notifications for support ticket:', e);
     }
 
     return sendSuccess(res, ticket, 'Your submission has been sent directly to the Rentu Admin Team.', 201);
@@ -142,6 +170,8 @@ router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res:
       fields.push(`status = $${values.length}`);
       if (validated.status === 'RESOLVED') {
         fields.push(`resolved_at = CURRENT_TIMESTAMP`);
+      } else {
+        fields.push(`resolved_at = NULL`);
       }
     }
 
@@ -169,9 +199,10 @@ router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res:
     const updated = result.rows[0];
 
     // Notify the user if ticket was resolved or updated with admin notes
+    let userNotified = false;
     if (currentTicket.user_id && (validated.status === 'RESOLVED' || validated.admin_notes)) {
       const noteSnippet = validated.admin_notes ? `: "${validated.admin_notes}"` : '';
-      await createNotification({
+      const notif = await createNotification({
         userId: currentTicket.user_id,
         senderId: null,
         type: 'SUPPORT_TICKET_RESOLVED',
@@ -179,10 +210,13 @@ router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res:
         body: `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
         referenceId: updated.id,
         referenceType: 'SUPPORT',
-      }).catch(() => {});
+      }).catch(() => null);
+      if (notif) {
+        userNotified = true;
+      }
     }
 
-    return sendSuccess(res, updated, 'Ticket updated successfully');
+    return sendSuccess(res, { ...updated, user_notified: userNotified }, 'Ticket updated successfully');
   } catch (error) {
     next(error);
   }
