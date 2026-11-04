@@ -1124,12 +1124,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               ) : (
                 requestsList.map((booking) => {
+                  const isLender = checkIsLender(booking, user);
                   const isRecipient = booking.is_proposal
-                    ? (booking.recipient_id === user?.id || booking.recipient_id === (user as any)?.firebase_uid)
-                    : (booking.lender_id === user?.id || booking.lender_id === (user as any)?.firebase_uid);
-                  const isLender = booking.lender_id === user?.id;
+                    ? (booking.recipient_id === user?.id || booking.recipient_id === (user as any)?.firebase_uid || (!(booking as any).is_offer && isLender))
+                    : (booking.lender_id === user?.id || booking.lender_id === (user as any)?.firebase_uid || isLender);
 
-                  const partnerIsBorrower = booking.borrower_id !== user?.id && booking.borrower_id !== (user as any)?.firebase_uid;
+                  const partnerIsBorrower = isLender;
                   const partnerName = partnerIsBorrower
                     ? (booking.borrower_name || 'Borrower')
                     : (booking.lender_name || 'Lender');

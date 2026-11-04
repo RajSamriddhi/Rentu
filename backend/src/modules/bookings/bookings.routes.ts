@@ -411,6 +411,26 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   }
 });
 
+// Helper to resolve all database identifiers for a user (both internal ID and firebase_uid)
+const resolveUserIds = async (userId: string): Promise<string[]> => {
+  try {
+    const meRes = await query(
+      `SELECT id::text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text`,
+      [userId]
+    );
+    const myIds: string[] = [userId];
+    if (meRes.rows[0]?.id && !myIds.includes(String(meRes.rows[0].id))) {
+      myIds.push(String(meRes.rows[0].id));
+    }
+    if (meRes.rows[0]?.firebase_uid && !myIds.includes(String(meRes.rows[0].firebase_uid))) {
+      myIds.push(String(meRes.rows[0].firebase_uid));
+    }
+    return myIds;
+  } catch {
+    return [userId];
+  }
+};
+
 // Get User's Bookings (as Borrower and Lender)
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -420,9 +440,17 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
     // Check and auto-cancel any bookings where 1 hour has elapsed after start time without pickup verification
     await checkAndAutoCancelExpiredBookings();
 
+    const myIds = await resolveUserIds(userId);
+
     let sql = `
+      WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      ),
+      my_ids AS (
+        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      )
       SELECT 
-        b.id, b.item_id, b.borrower_id, i.owner_id AS lender_id, 
+        b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
         TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
         b.start_time, 
         TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
@@ -430,14 +458,17 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         b.duration_days,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
-        COALESCE(b.total_price, b.duration_days * i.price_per_day) AS total_price, 
+        COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
         b.status, b.message, 
-        CASE WHEN b.borrower_id = $1 THEN b.pickup_code ELSE NULL END AS pickup_code, 
-        CASE WHEN b.lender_id = $1 OR i.owner_id = $1 THEN b.return_code ELSE NULL END AS return_code, 
+        CASE WHEN b.borrower_id IN (SELECT id_text FROM my_ids) THEN b.pickup_code ELSE NULL END AS pickup_code, 
+        CASE WHEN b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids) THEN b.return_code ELSE NULL END AS return_code, 
         b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
         b.payment_status, b.payment_method,
-        i.title AS item_title, i.image_urls AS item_images, i.category AS item_category,
-        i.locality AS item_locality, i.price_per_day AS item_rate,
+        COALESCE(i.title, 'Rented Gear') AS item_title, 
+        COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
+        COALESCE(i.category, 'Other') AS item_category,
+        COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
+        COALESCE(i.price_per_day, 0) AS item_rate,
         COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
         COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
         lender.address_text AS lender_address,
@@ -450,18 +481,25 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         rev.comment AS user_comment,
         rev.created_at AS user_reviewed_at
       FROM bookings b
-      JOIN items i ON b.item_id = i.id
-      JOIN users borrower ON b.borrower_id = borrower.id
-      JOIN users lender ON i.owner_id = lender.id
-      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = $1
-      WHERE (b.borrower_id = $1 OR i.owner_id = $1)
+      LEFT JOIN items i ON b.item_id = i.id
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      LEFT JOIN users lender ON (
+        b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+        i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+      )
+      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id IN (SELECT id_text FROM my_ids)
+      WHERE (
+        b.borrower_id IN (SELECT id_text FROM my_ids) 
+        OR b.lender_id IN (SELECT id_text FROM my_ids) 
+        OR i.owner_id IN (SELECT id_text FROM my_ids)
+      )
     `;
     const params: any[] = [userId];
 
     if (role === 'borrower') {
-      sql += ` AND b.borrower_id = $1`;
+      sql += ` AND b.borrower_id IN (SELECT id_text FROM my_ids)`;
     } else if (role === 'lender') {
-      sql += ` AND i.owner_id = $1`;
+      sql += ` AND (b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids))`;
     }
 
     sql += ` ORDER BY b.created_at DESC`;
@@ -483,7 +521,7 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
       }
     }
 
-    // Also query pending custom gear request / lend offer proposals from messages that have not yet been accepted
+    // Also query pending proposals from messages so custom gear requests, lend offers, and booking proposals appear in Booking Requests
     const proposalsRes = await query(
       `WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -492,14 +530,13 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
       )
       SELECT 
-        m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at,
+        m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
         sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
         receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
       FROM messages m
-      JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
-      JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
+      LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
+      LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
       WHERE m.message_type = 'PROPOSAL'
-        AND (m.booking_id IS NULL OR m.booking_id = '')
         AND (
           m.sender_id IN (SELECT id_text FROM my_ids) 
           OR m.receiver_id IN (SELECT id_text FROM my_ids)
@@ -512,18 +549,32 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
       [userId]
     );
 
+    const existingBookingIds = new Set<string>();
+    for (const b of result.rows) {
+      if (b.id) existingBookingIds.add(String(b.id));
+    }
+
     const proposalBookings: any[] = [];
     for (const pRow of proposalsRes.rows) {
       try {
         const pData = typeof pRow.proposal_data === 'string' ? JSON.parse(pRow.proposal_data) : (pRow.proposal_data || {});
+        
+        // If this proposal already corresponds to a booking already retrieved, avoid duplicate
+        if (pRow.booking_id && existingBookingIds.has(String(pRow.booking_id))) {
+          continue;
+        }
+        if (pData.booking_id && existingBookingIds.has(String(pData.booking_id))) {
+          continue;
+        }
+
         const isOffer = pData.type === 'LISTING' || pData.is_lend_offer === true;
         // In listing / lend offer: sender is lender, receiver is borrower.
-        // In borrow request: sender is borrower, receiver is lender.
-        const lenderId = pData.lender_id || (isOffer ? pRow.sender_user_id : pRow.receiver_user_id);
-        const borrowerId = pData.borrower_id || (isOffer ? pRow.receiver_user_id : pRow.sender_user_id);
+        // In borrow request / rental request: sender is borrower, receiver is lender.
+        const lenderId = pData.lender_id || (isOffer ? pRow.sender_user_id : pRow.receiver_user_id) || (isOffer ? pRow.sender_id : pRow.receiver_id);
+        const borrowerId = pData.borrower_id || (isOffer ? pRow.receiver_user_id : pRow.sender_user_id) || (isOffer ? pRow.receiver_id : pRow.sender_id);
 
-        if (role === 'borrower' && borrowerId !== userId) continue;
-        if (role === 'lender' && lenderId !== userId) continue;
+        if (role === 'borrower' && !myIds.includes(String(borrowerId))) continue;
+        if (role === 'lender' && !myIds.includes(String(lenderId))) continue;
 
         const durationDays = Math.max(1, Number(pData.duration_days) || 1);
         const totalPrice = Number(pData.total_price) || 0;
@@ -541,24 +592,31 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
           }
         }
 
-        const isDelivery = pData.delivery_option === 'LENDER_DELIVERY' || !!(pData.delivery_fee && Number(pData.delivery_fee) > 0);
-        const isPickup = pData.collection_option === 'LENDER_COLLECT' || !!(pData.collection_fee && Number(pData.collection_fee) > 0);
+        const isDelivery = pData.delivery_option === 'LENDER_DELIVERY' || !!(pData.delivery_fee && Number(pData.delivery_fee) > 0) || !!pData.requires_delivery;
+        const isPickup = pData.collection_option === 'LENDER_COLLECT' || !!(pData.collection_fee && Number(pData.collection_fee) > 0) || !!pData.requires_pickup;
 
-        const borrowerName = isOffer ? pRow.receiver_name : pRow.sender_name;
+        const borrowerName = isOffer ? (pRow.receiver_name || 'Borrower') : (pRow.sender_name || 'Borrower');
         const borrowerAvatar = isOffer ? pRow.receiver_avatar : pRow.sender_avatar;
         const borrowerPhone = isOffer ? pRow.receiver_phone : pRow.sender_phone;
         const borrowerEmail = isOffer ? pRow.receiver_email : pRow.sender_email;
 
-        const lenderName = isOffer ? pRow.sender_name : pRow.receiver_name;
+        const lenderName = isOffer ? (pRow.sender_name || 'Lender') : (pRow.receiver_name || 'Lender');
         const lenderAvatar = isOffer ? pRow.sender_avatar : pRow.receiver_avatar;
         const lenderPhone = isOffer ? pRow.sender_phone : pRow.receiver_phone;
         const lenderEmail = isOffer ? pRow.sender_email : pRow.receiver_email;
 
-        const locality = pData.delivery_location || (isOffer ? pRow.sender_locality : pRow.receiver_locality) || 'Local Hub';
-        const address = pData.delivery_location || (isOffer ? pRow.sender_address : pRow.receiver_address) || locality;
+        const locality = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_locality : pRow.receiver_locality) || 'Local Hub';
+        const address = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_address : pRow.receiver_address) || locality;
+
+        const itemTitle = pData.item_title || pData.title || 'Gear Rental Proposal';
+        const itemImages = Array.isArray(pData.item_images) && pData.item_images.length > 0
+          ? pData.item_images
+          : (pData.image_url ? [pData.image_url] : []);
+
+        const bookingId = pRow.booking_id || pData.booking_id || `proposal_${pRow.id}`;
 
         proposalBookings.push({
-          id: `proposal_${pRow.id}`,
+          id: bookingId,
           item_id: pData.request_id || pData.item_id || pRow.id,
           borrower_id: borrowerId,
           lender_id: lenderId,
@@ -586,8 +644,8 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
           created_at: pRow.created_at,
           payment_status: 'PENDING',
           payment_method: null,
-          item_title: pData.title || 'Custom Gear Proposal',
-          item_images: pData.image_url ? [pData.image_url] : [],
+          item_title: itemTitle,
+          item_images: itemImages,
           item_category: pData.category || 'Other',
           item_locality: locality,
           item_rate: pricePerDay,
@@ -656,11 +714,17 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
               TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       JOIN users lender ON i.owner_id = lender.id
-       JOIN users borrower ON b.borrower_id = borrower.id
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
        WHERE b.id = $1`,
       [id]
     );
@@ -675,8 +739,9 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     // - Lender can ACCEPT or REJECT proposals.
     // - Both Renter (borrower) and Lender (owner) can CANCEL anytime before pickup handover verification (Stages 1 & 2).
     // - Once pickup handover verification code is verified (Stage 3+), cancellation is not permitted.
-    const isLender = booking.lender_id === userId;
-    const isBorrower = booking.borrower_id === userId;
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user!.role === 'ADMIN';
 
     if (!isLender && !isBorrower && !isAdmin) {
@@ -867,11 +932,17 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
               TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       JOIN users lender ON i.owner_id = lender.id
-       JOIN users borrower ON b.borrower_id = borrower.id
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
        WHERE b.id = $1`,
       [id]
     );
@@ -881,8 +952,9 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
     }
 
     const booking = bookingRes.rows[0];
-    const isLender = booking.lender_id === userId;
-    const isBorrower = booking.borrower_id === userId;
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user!.role === 'ADMIN';
 
     if (!isLender && !isBorrower && !isAdmin) {
@@ -1001,11 +1073,17 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
               TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              i.title AS item_title, i.owner_id AS lender_id, lender.name AS lender_name, borrower.name AS borrower_name
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
        FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       JOIN users lender ON i.owner_id = lender.id
-       JOIN users borrower ON b.borrower_id = borrower.id
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
        WHERE b.id = $1`,
       [id]
     );
@@ -1015,8 +1093,9 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
     }
 
     const booking = bookingRes.rows[0];
-    const isLender = booking.lender_id === userId;
-    const isBorrower = booking.borrower_id === userId;
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user!.role === 'ADMIN';
 
     if (!isLender && !isBorrower && !isAdmin) {
