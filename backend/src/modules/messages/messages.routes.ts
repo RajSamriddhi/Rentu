@@ -32,27 +32,22 @@ function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes:
 router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId);
 
     // Mark pending incoming messages as delivered to this user
     await query(
-      `WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      )
-      UPDATE messages
-      SET is_delivered = true,
-          delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-      WHERE (is_delivered = false OR is_delivered IS NULL)
-        AND receiver_id IN (SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL)`,
-      [userId]
+      `UPDATE messages
+       SET is_delivered = true,
+           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+       WHERE (is_delivered = false OR is_delivered IS NULL)
+         AND receiver_id = ANY($1::text[])`,
+      [myIds]
     ).catch(() => {});
 
     // Get consolidated conversations: exactly ONE thread per partner user
     const result = await query(
-      `WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      `WITH my_ids AS (
+        SELECT unnest($1::text[]) AS id_text
       ),
       interacted_partners AS (
         -- 1. From direct and booking messages
@@ -63,8 +58,9 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
           END AS partner_raw_id,
           m.created_at AS interaction_at
         FROM messages m
-        WHERE m.sender_id IN (SELECT id_text FROM my_ids)
-           OR m.receiver_id IN (SELECT id_text FROM my_ids)
+        WHERE (m.sender_id IN (SELECT id_text FROM my_ids)
+           OR m.receiver_id IN (SELECT id_text FROM my_ids))
+          AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
 
         UNION ALL
 
@@ -136,6 +132,7 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
                 OR (b_sub.borrower_id IN (partner.id::text, partner.firebase_uid) AND b_sub.lender_id IN (SELECT id_text FROM my_ids)))
           ))
         )
+        AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
         ORDER BY m.created_at DESC
         LIMIT 1
       ) latest_msg ON true
@@ -341,6 +338,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
                OR (b_sub.borrower_id = ANY($2::text[]) AND (b_sub.lender_id = ANY($1::text[]) OR b_sub.lender_id IS NULL)))
          ))
        )
+       AND (m.deleted_by IS NULL OR NOT (m.deleted_by && $1::text[]))
        ORDER BY m.created_at ASC`,
       [myIds, pIds]
     );
@@ -513,6 +511,31 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     );
 
     const inserted = result.rows[0];
+
+    // Create in-app and push notification for recipient
+    const senderName = req.user!.name || 'A neighbor';
+    const previewText = validated.message_type === 'IMAGE' 
+      ? '📷 Sent a photo'
+      : validated.message_type === 'LOCATION'
+      ? '📍 Shared a location'
+      : validated.message_type === 'CONTACT'
+      ? '👤 Sent a contact card'
+      : validated.message_type === 'DOCUMENT'
+      ? '📄 Sent a note'
+      : validated.content.length > 80
+      ? validated.content.slice(0, 77) + '...'
+      : validated.content;
+
+    await createNotification({
+      userId: targetReceiverId,
+      senderId: senderId,
+      bookingId: targetBookingId || undefined,
+      referenceId: inserted.id,
+      referenceType: 'MESSAGE',
+      type: 'NEW_MESSAGE',
+      title: `Message from ${senderName}`,
+      body: previewText,
+    }).catch((err) => console.warn('Failed to dispatch new message notification:', err));
 
     return sendSuccess(res, {
       ...inserted,
@@ -954,39 +977,66 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
   }
 });
 
-// 6. Delete entire conversation with someone
+// 6. Delete entire conversation with someone (Soft-deletes for the calling user only)
 router.delete('/conversations/:conversationId', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId);
 
     const isDm = conversationId.startsWith('dm_') || !isUuid(conversationId);
     const rawPartnerId = isDm ? conversationId.replace(/^dm_/, '') : null;
 
     if (isDm && rawPartnerId) {
-      // Find all IDs for me and partner
-      const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-      const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+      const pIds = await resolveUserIds(rawPartnerId);
 
-      const pRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
-      const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
-
+      // Soft delete for the calling user only (keeps history intact for partner)
       await query(
-        `DELETE FROM messages
+        `UPDATE messages
+         SET deleted_by = ARRAY(
+           SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+         )
          WHERE (sender_id = ANY($1::text[]) AND receiver_id = ANY($2::text[]))
             OR (sender_id = ANY($2::text[]) AND receiver_id = ANY($1::text[]))`,
         [myIds, pIds]
       );
-      return sendSuccess(res, { conversation_id: conversationId }, 'Chat deleted successfully');
+      return sendSuccess(res, { conversation_id: conversationId }, 'Chat deleted for you');
     }
 
-    // If it's a booking conversation, delete all messages for this booking
-    await query(
-      `DELETE FROM messages WHERE booking_id::text = $1`,
+    // For a booking conversation: verify that the caller is an authorized participant!
+    const bookingRes = await query(
+      `SELECT b.id, b.borrower_id, b.lender_id, i.owner_id AS item_owner_id
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
       [conversationId]
     );
 
-    return sendSuccess(res, { conversation_id: conversationId }, 'Chat cleared');
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'Booking not found', 404);
+    }
+
+    const b = bookingRes.rows[0];
+    const isParticipant = myIds.includes(String(b.borrower_id)) ||
+                          myIds.includes(String(b.lender_id)) ||
+                          myIds.includes(String(b.item_owner_id)) ||
+                          req.user!.role === 'ADMIN';
+
+    if (!isParticipant) {
+      return sendError(res, 'FORBIDDEN', 'Permission denied: You are not a participant in this booking chat.', 403);
+    }
+
+    // Soft delete for the calling user only
+    await query(
+      `UPDATE messages
+       SET deleted_by = ARRAY(
+         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+       )
+       WHERE booking_id::text = $2`,
+      [myIds, conversationId]
+    );
+
+    return sendSuccess(res, { conversation_id: conversationId }, 'Chat cleared for you');
   } catch (error) {
     next(error);
   }
@@ -1028,11 +1078,12 @@ router.put('/:messageId', authMiddleware, async (req: AuthenticatedRequest, res:
   }
 });
 
-// 8. Delete an individual message
+// 8. Delete an individual message (Soft-deletes for the caller)
 router.delete('/:messageId', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { messageId } = req.params;
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId);
 
     const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
     if (checkRes.rows.length === 0) {
@@ -1040,16 +1091,25 @@ router.delete('/:messageId', authMiddleware, async (req: AuthenticatedRequest, r
     }
 
     const msg = checkRes.rows[0];
-    const userRow = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-    const validSenders = [userId, userRow.rows[0]?.id, userRow.rows[0]?.firebase_uid].filter(Boolean);
+    const isSender = myIds.includes(String(msg.sender_id));
+    const isReceiver = myIds.includes(String(msg.receiver_id));
+    const isAdmin = req.user!.role === 'ADMIN';
 
-    if (!validSenders.includes(msg.sender_id)) {
-      return sendError(res, 'FORBIDDEN', 'You can only delete your own messages', 403);
+    if (!isSender && !isReceiver && !isAdmin) {
+      return sendError(res, 'FORBIDDEN', 'Permission denied: You cannot delete this message', 403);
     }
 
-    await query(`DELETE FROM messages WHERE id::text = $1`, [messageId]);
+    // Soft delete for the calling user only
+    await query(
+      `UPDATE messages
+       SET deleted_by = ARRAY(
+         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+       )
+       WHERE id::text = $2`,
+      [myIds, messageId]
+    );
 
-    return sendSuccess(res, { id: messageId }, 'Message deleted');
+    return sendSuccess(res, { id: messageId }, 'Message deleted for you');
   } catch (error) {
     next(error);
   }

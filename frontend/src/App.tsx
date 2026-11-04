@@ -488,6 +488,7 @@ export const App: React.FC = () => {
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenChatWithBooking={handleOpenChatWithBooking}
             onOpenChatWithUser={handleOpenChatWithUser}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         ) : (
           <>
@@ -603,6 +604,7 @@ export const App: React.FC = () => {
                 onOpenDropWish={() => setIsDropWishOpen(true)}
                 onOpenChatWithBooking={handleOpenChatWithBooking}
                 onOpenAuth={() => setIsAuthOpen(true)}
+                onOpenUserProfile={handleOpenUserProfile}
               />
             )}
 
@@ -627,6 +629,7 @@ export const App: React.FC = () => {
                 onOpenDropWish={() => setIsDropWishOpen(true)}
                 onOpenChatWithBooking={handleOpenChatWithBooking}
                 onOpenAuth={() => setIsAuthOpen(true)}
+                onOpenUserProfile={handleOpenUserProfile}
               />
             )}
 

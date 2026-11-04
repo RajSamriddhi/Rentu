@@ -146,6 +146,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const docFileInputRef = useRef<HTMLInputElement>(null);
   const hasUserClosedChatRef = useRef<boolean>(false);
+  const liveLocationWatchIdRef = useRef<number | null>(null);
+
+  // Clean up active geolocation watch on unmount
+  useEffect(() => {
+    return () => {
+      if (liveLocationWatchIdRef.current !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
+        liveLocationWatchIdRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper to reliably check if a conversation matches a selected identifier without null == null false positives
   const isConvMatch = (c: Conversation, targetId: string | null | undefined): boolean => {
@@ -829,6 +840,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             : c;
         })
       );
+
+      return realMsg;
     } catch (err: any) {
       console.error('Failed to send attachment message:', err);
       setSendError(err.message || 'Failed to send attachment.');
@@ -957,28 +970,106 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       const mapsUrl = getGoogleMapsUrl(loc.latitude, loc.longitude, addr);
       const directionsUrl = getGoogleMapsDirectionsUrl(loc.latitude, loc.longitude, addr);
 
-      await handleSendAttachmentMessage({
+      const proposalPayload = {
+        location_type: 'LIVE',
+        is_live: true,
+        duration_minutes: durationMins,
+        started_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        address: addr,
+        locality: loc.locality || loc.city,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy || 10,
+        comment: liveLocationComment.trim() || undefined,
+        google_maps_url: mapsUrl,
+        directions_url: directionsUrl,
+      };
+
+      const realMsg = await handleSendAttachmentMessage({
         content: `🟢 Live Location (${durationMins >= 60 ? `${durationMins / 60}h` : `${durationMins}m`})`,
         message_type: 'LOCATION',
-        proposal_data: {
-          location_type: 'LIVE',
-          is_live: true,
-          duration_minutes: durationMins,
-          started_at: new Date().toISOString(),
-          expires_at: expiresAt,
-          address: addr,
-          locality: loc.locality || loc.city,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          accuracy: loc.accuracy || 10,
-          comment: liveLocationComment.trim() || undefined,
-          google_maps_url: mapsUrl,
-          directions_url: directionsUrl,
-        },
+        proposal_data: proposalPayload,
       });
+
       setIsLocationModalOpen(false);
       setLocationModalTab('options');
       setLiveLocationComment('');
+
+      // Continuous Real-Time Geolocation Streaming: Watch device GPS movements and update message
+      if (realMsg && realMsg.id && 'geolocation' in navigator) {
+        if (liveLocationWatchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
+          liveLocationWatchIdRef.current = null;
+        }
+
+        let lastUpdateMs = Date.now();
+        let lastLat = loc.latitude;
+        let lastLon = loc.longitude;
+
+        const watchId = navigator.geolocation.watchPosition(
+          async (position) => {
+            const now = Date.now();
+            if (now > new Date(expiresAt).getTime()) {
+              if (liveLocationWatchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
+                liveLocationWatchIdRef.current = null;
+              }
+              return;
+            }
+
+            const currentLat = position.coords.latitude;
+            const currentLon = position.coords.longitude;
+            const currentAcc = Math.round(position.coords.accuracy || 10);
+
+            // Throttle: broadcast at most once every 12 seconds, or if user moved > 15 meters
+            const latDiff = Math.abs(currentLat - lastLat);
+            const lonDiff = Math.abs(currentLon - lastLon);
+            const movedSignificantly = (latDiff > 0.00015 || lonDiff > 0.00015);
+            const timeElapsed = (now - lastUpdateMs) > 12000;
+
+            if (!timeElapsed && !movedSignificantly) return;
+
+            lastUpdateMs = now;
+            lastLat = currentLat;
+            lastLon = currentLon;
+
+            const updatedMapsUrl = getGoogleMapsUrl(currentLat, currentLon, addr);
+            const updatedDirectionsUrl = getGoogleMapsDirectionsUrl(currentLat, currentLon, addr);
+
+            const updatedProposal = {
+              ...proposalPayload,
+              latitude: currentLat,
+              longitude: currentLon,
+              accuracy: currentAcc,
+              last_updated_at: new Date().toISOString(),
+              google_maps_url: updatedMapsUrl,
+              directions_url: updatedDirectionsUrl,
+            };
+
+            try {
+              await api.editMessage(realMsg.id, undefined, updatedProposal);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === realMsg.id ? { ...m, proposal_data: updatedProposal } : m
+                )
+              );
+            } catch (streamErr) {
+              console.warn('Live location coordinate stream notice:', streamErr);
+            }
+          },
+          (geoErr) => {
+            console.warn('Geolocation live stream notice:', geoErr);
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 5000,
+            timeout: 15000,
+          }
+        );
+
+        liveLocationWatchIdRef.current = watchId;
+      }
     } catch (err: any) {
       console.error('Failed to start live location:', err);
       alert(err.message || 'Could not start live location sharing. Please check location permissions.');
@@ -990,6 +1081,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Stop Live Location Sharing
   const handleStopLiveLocation = async (messageId: string, currentProposalData: any) => {
+    if (liveLocationWatchIdRef.current !== null && 'geolocation' in navigator) {
+      navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
+      liveLocationWatchIdRef.current = null;
+    }
     try {
       const updatedData = {
         ...currentProposalData,

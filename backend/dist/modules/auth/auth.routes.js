@@ -295,6 +295,8 @@ router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
                 COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
                 COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
                 (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = users.id::text OR reviewee_id = users.firebase_uid) AS reviews_count,
+                (SELECT COUNT(*)::int FROM user_follows WHERE following_id = users.id::text OR following_id = users.firebase_uid) AS followers_count,
+                (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = users.id::text OR follower_id = users.firebase_uid) AS following_count,
                 COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at

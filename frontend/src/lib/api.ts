@@ -13,7 +13,8 @@ import {
   SavedLocation,
   AiChatResponse,
   AiChatContext,
-  AppNotification
+  AppNotification,
+  FollowUser
 } from './types';
 
 export const getApiBase = (): string => {
@@ -634,6 +635,20 @@ export const api = {
   async unfollowUser(userId: string): Promise<{ is_following: boolean; followers_count: number }> {
     const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/unfollow`, {
       method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getFollowers(userId: string): Promise<FollowUser[]> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/followers`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getFollowing(userId: string): Promise<FollowUser[]> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/following`, {
       headers: getHeaders(),
     });
     return handleResponse(res);

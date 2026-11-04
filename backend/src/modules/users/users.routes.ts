@@ -655,20 +655,86 @@ router.post('/:id/follow', authMiddleware, async (req: AuthenticatedRequest, res
       return sendError(res, 'FORBIDDEN', 'Cannot follow a blocked user', 403);
     }
 
-    await query(
-      `INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    const insertRes = await query(
+      `INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *`,
       [followerId, followingId]
     );
 
-    // Notify the followed user
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body)
-       VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
-      [followingId, followerId, `${req.user!.name || 'A neighbor'} started following your gear listings.`]
-    ).catch(() => {});
+    // Notify the followed user only if this was a new follow action (avoids duplicate alerts)
+    if (insertRes.rows.length > 0) {
+      await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body)
+         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
+        [followingId, followerId, `${req.user!.name || 'A neighbor'} started following your gear listings.`]
+      ).catch(() => {});
+    }
 
     const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
     return sendSuccess(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, 'Followed neighbor');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get User's Followers List
+router.get('/:id/followers', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
+  try {
+    const targetUserId = await resolveUserId(req.params.id);
+    if (!targetUserId) {
+      return sendError(res, 'NOT_FOUND', 'User not found', 404);
+    }
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+
+    const result = await query(
+      `SELECT 
+        u.id, u.name, u.username, u.avatar_url, 
+        COALESCE(u.locality, '') AS locality, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        uf.created_at AS followed_at,
+        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
+       FROM user_follows uf
+       JOIN users u ON (uf.follower_id = u.id OR uf.follower_id = u.firebase_uid)
+       WHERE uf.following_id = $1
+       ORDER BY uf.created_at DESC
+       LIMIT 50`,
+      [targetUserId, currentViewerId || '']
+    );
+
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get User's Following List
+router.get('/:id/following', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
+  try {
+    const targetUserId = await resolveUserId(req.params.id);
+    if (!targetUserId) {
+      return sendError(res, 'NOT_FOUND', 'User not found', 404);
+    }
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+
+    const result = await query(
+      `SELECT 
+        u.id, u.name, u.username, u.avatar_url, 
+        COALESCE(u.locality, '') AS locality, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        uf.created_at AS followed_at,
+        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
+       FROM user_follows uf
+       JOIN users u ON (uf.following_id = u.id OR uf.following_id = u.firebase_uid)
+       WHERE uf.follower_id = $1
+       ORDER BY uf.created_at DESC
+       LIMIT 50`,
+      [targetUserId, currentViewerId || '']
+    );
+
+    return sendSuccess(res, result.rows);
   } catch (error) {
     next(error);
   }

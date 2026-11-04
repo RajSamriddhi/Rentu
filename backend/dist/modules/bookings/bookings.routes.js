@@ -6,6 +6,7 @@ const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const notifications_service_1 = require("../notifications/notifications.service");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 const createBookingSchema = zod_1.z.object({
     item_id: zod_1.z.string().uuid('Invalid item ID'),
@@ -361,23 +362,6 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         next(error);
     }
 });
-// Helper to resolve all database identifiers for a user (both internal ID and firebase_uid)
-const resolveUserIds = async (userId) => {
-    try {
-        const meRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text`, [userId]);
-        const myIds = [userId];
-        if (meRes.rows[0]?.id && !myIds.includes(String(meRes.rows[0].id))) {
-            myIds.push(String(meRes.rows[0].id));
-        }
-        if (meRes.rows[0]?.firebase_uid && !myIds.includes(String(meRes.rows[0].firebase_uid))) {
-            myIds.push(String(meRes.rows[0].firebase_uid));
-        }
-        return myIds;
-    }
-    catch {
-        return [userId];
-    }
-};
 // Get User's Bookings (as Borrower and Lender)
 router.get('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
@@ -385,7 +369,7 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         const { role } = req.query; // 'borrower' | 'lender' | all
         // Check and auto-cancel any bookings where 1 hour has elapsed after start time without pickup verification
         await checkAndAutoCancelExpiredBookings();
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
@@ -613,7 +597,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                 return (0, response_1.sendError)(res, 'NOT_FOUND', 'Proposal message not found', 404);
             }
             const message = msgRes.rows[0];
-            const myIds = await resolveUserIds(userId);
+            const myIds = await (0, user_1.resolveUserIds)(userId);
             const isSender = myIds.includes(String(message.sender_id));
             const isReceiver = myIds.includes(String(message.receiver_id));
             const isAdmin = req.user.role === 'ADMIN';
@@ -670,7 +654,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         // - Lender can ACCEPT or REJECT proposals.
         // - Both Renter (borrower) and Lender (owner) can CANCEL anytime before pickup handover verification (Stages 1 & 2).
         // - Once pickup handover verification code is verified (Stage 3+), cancellation is not permitted.
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
         const isBorrower = myIds.includes(String(booking.borrower_id));
         const isAdmin = req.user.role === 'ADMIN';
@@ -870,7 +854,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
         const isBorrower = myIds.includes(String(booking.borrower_id));
         const isAdmin = req.user.role === 'ADMIN';
@@ -974,7 +958,7 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
         const isBorrower = myIds.includes(String(booking.borrower_id));
         const isAdmin = req.user.role === 'ADMIN';
@@ -1040,7 +1024,7 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
         if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
         }
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the renter can submit payment', 403);
         }
@@ -1074,7 +1058,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
         if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
         }
-        const myIds = await resolveUserIds(userId);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the owner can confirm receiving payment', 403);
         }

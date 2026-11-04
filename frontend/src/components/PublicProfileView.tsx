@@ -32,6 +32,7 @@ import { ItemCard } from './ItemCard';
 import { RequestCard } from './RequestCard';
 import { useAuth } from '../lib/authContext';
 import { formatFullAddress } from '../lib/location';
+import { FollowListModal } from './FollowListModal';
 
 interface PublicProfileViewProps {
   userId: string;
@@ -42,6 +43,7 @@ interface PublicProfileViewProps {
   onOpenChatWithBooking?: (bookingId: string) => void;
   onOpenChatWithUser?: (userId: string, userName: string, avatarUrl?: string) => void;
   onOpenAuth?: () => void;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
@@ -53,6 +55,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   onOpenChatWithBooking,
   onOpenChatWithUser,
   onOpenAuth,
+  onOpenUserProfile,
 }) => {
   const { user: currentUser, isAuthenticated } = useAuth();
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
@@ -70,6 +73,13 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
   const [isBlockedBy, setIsBlockedBy] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [followModalState, setFollowModalState] = useState<{
+    isOpen: boolean;
+    type: 'followers' | 'following';
+  }>({
+    isOpen: false,
+    type: 'followers',
+  });
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -455,14 +465,22 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     <span>{profile.reviews.length} Verified Reviews</span>
                   </span>
                   <span className="text-divider">•</span>
-                  <span className="flex items-center gap-1 text-ink">
+                  <button
+                    type="button"
+                    onClick={() => setFollowModalState({ isOpen: true, type: 'followers' })}
+                    className="flex items-center gap-1 text-ink hover:text-brand transition-colors cursor-pointer"
+                  >
                     <Users className="w-3.5 h-3.5 text-brand" />
                     <span><strong className="text-ink">{followersCount}</strong> Followers</span>
-                  </span>
+                  </button>
                   <span className="text-divider">•</span>
-                  <span className="flex items-center gap-1 text-ink">
+                  <button
+                    type="button"
+                    onClick={() => setFollowModalState({ isOpen: true, type: 'following' })}
+                    className="flex items-center gap-1 text-ink hover:text-brand transition-colors cursor-pointer"
+                  >
                     <span><strong className="text-ink">{followingCount}</strong> Following</span>
-                  </span>
+                  </button>
                 </div>
               </div>
 
@@ -927,6 +945,21 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
         )}
 
       </div>
+
+      {/* Followers & Following Modal */}
+      {profile && (
+        <FollowListModal
+          isOpen={followModalState.isOpen}
+          onClose={() => setFollowModalState((prev) => ({ ...prev, isOpen: false }))}
+          userId={profile.id}
+          userName={profile.name}
+          type={followModalState.type}
+          onOpenUserProfile={(targetId) => {
+            setFollowModalState((prev) => ({ ...prev, isOpen: false }));
+            onOpenUserProfile?.(targetId);
+          }}
+        />
+      )}
 
     </div>
   );

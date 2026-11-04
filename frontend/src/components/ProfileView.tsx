@@ -32,7 +32,8 @@ import {
   Mail,
   AtSign,
   Copy,
-  Share2
+  Share2,
+  Users
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -50,6 +51,7 @@ import { ItemDetailModal } from './ItemDetailModal';
 import { ReviewModal } from './ReviewModal';
 import { getReachDistance } from '../lib/distance';
 import { BookingsView } from './BookingsView';
+import { FollowListModal } from './FollowListModal';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
@@ -59,6 +61,7 @@ interface ProfileViewProps {
   initialTab?: 'listings' | 'requests' | 'bookings' | 'reviews';
   initialBookingSubTab?: 'ongoing' | 'requests' | 'finished' | 'cancelled';
   initialBookingId?: string | null;
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -69,6 +72,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   initialTab,
   initialBookingSubTab,
   initialBookingId,
+  onOpenUserProfile,
 }) => {
   const { user, refreshUser } = useAuth();
 
@@ -97,6 +101,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [copiedProfileLink, setCopiedProfileLink] = useState(false);
+  const [followersCount, setFollowersCount] = useState<number>(user?.followers_count || 0);
+  const [followingCount, setFollowingCount] = useState<number>(user?.following_count || 0);
+  const [followModalState, setFollowModalState] = useState<{
+    isOpen: boolean;
+    type: 'followers' | 'following';
+  }>({
+    isOpen: false,
+    type: 'followers',
+  });
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -139,6 +152,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setMyBookings(books || []);
       if (profile && Array.isArray(profile.reviews)) {
         setReceivedReviews(profile.reviews);
+      }
+      if (typeof user.followers_count === 'number') {
+        setFollowersCount(user.followers_count);
+      } else {
+        api.getFollowers(user.id).then((f) => setFollowersCount(Array.isArray(f) ? f.length : 0)).catch(() => {});
+      }
+      if (typeof user.following_count === 'number') {
+        setFollowingCount(user.following_count);
+      } else {
+        api.getFollowing(user.id).then((f) => setFollowingCount(Array.isArray(f) ? f.length : 0)).catch(() => {});
       }
     } catch (err) {
       console.error('Failed to load profile data:', err);
@@ -416,6 +439,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </span>
                 </>
               )}
+
+              <span className="text-divider">•</span>
+
+              <button
+                type="button"
+                onClick={() => setFollowModalState({ isOpen: true, type: 'followers' })}
+                className="inline-flex items-center gap-1 hover:text-brand transition-colors cursor-pointer text-ink font-semibold"
+              >
+                <Users className="w-3.5 h-3.5 text-brand shrink-0" />
+                <span><strong className="text-ink">{followersCount}</strong> Followers</span>
+              </button>
+
+              <span className="text-divider">•</span>
+
+              <button
+                type="button"
+                onClick={() => setFollowModalState({ isOpen: true, type: 'following' })}
+                className="inline-flex items-center gap-1 hover:text-brand transition-colors cursor-pointer text-ink font-semibold"
+              >
+                <span><strong className="text-ink">{followingCount}</strong> Following</span>
+              </button>
             </div>
 
           </div>
@@ -983,6 +1027,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           refreshUser();
         }}
       />
+
+      {/* Followers & Following Modal */}
+      {user && (
+        <FollowListModal
+          isOpen={followModalState.isOpen}
+          onClose={() => setFollowModalState((prev) => ({ ...prev, isOpen: false }))}
+          userId={user.id}
+          userName={user.name}
+          type={followModalState.type}
+          onOpenUserProfile={(targetId) => {
+            setFollowModalState((prev) => ({ ...prev, isOpen: false }));
+            onOpenUserProfile?.(targetId);
+          }}
+        />
+      )}
 
     </div>
   );

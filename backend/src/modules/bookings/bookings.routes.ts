@@ -4,6 +4,7 @@ import { pool, query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { createNotification } from '../notifications/notifications.service';
+import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
 
@@ -466,26 +467,6 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     next(error);
   }
 });
-
-// Helper to resolve all database identifiers for a user (both internal ID and firebase_uid)
-const resolveUserIds = async (userId: string): Promise<string[]> => {
-  try {
-    const meRes = await query(
-      `SELECT id::text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text`,
-      [userId]
-    );
-    const myIds: string[] = [userId];
-    if (meRes.rows[0]?.id && !myIds.includes(String(meRes.rows[0].id))) {
-      myIds.push(String(meRes.rows[0].id));
-    }
-    if (meRes.rows[0]?.firebase_uid && !myIds.includes(String(meRes.rows[0].firebase_uid))) {
-      myIds.push(String(meRes.rows[0].firebase_uid));
-    }
-    return myIds;
-  } catch {
-    return [userId];
-  }
-};
 
 // Get User's Bookings (as Borrower and Lender)
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {

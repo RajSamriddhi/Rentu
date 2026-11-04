@@ -23,6 +23,8 @@ export interface User {
   banner_url?: string;
   bio?: string;
   trust_score?: number;
+  followers_count?: number;
+  following_count?: number;
   role: 'USER' | 'ADMIN';
   notify_nearby_requests_5km?: boolean;
   saved_locations?: SavedLocation[];
@@ -39,6 +41,19 @@ export interface SavedLocation {
   latitude?: number;
   longitude?: number;
   is_default?: boolean;
+}
+
+export interface FollowUser {
+  id: string;
+  name: string;
+  username?: string;
+  avatar_url?: string;
+  locality?: string;
+  bio?: string;
+  rating?: number;
+  trust_score?: number;
+  followed_at?: string;
+  is_following?: boolean;
 }
 
 export interface Item {

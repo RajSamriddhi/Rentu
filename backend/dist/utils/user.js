@@ -10,15 +10,28 @@ const resolveUserIds = async (userId) => {
     if (!userId)
         return [];
     try {
-        const res = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-        const ids = [userId];
-        if (res.rows[0]?.id && !ids.includes(String(res.rows[0].id))) {
-            ids.push(String(res.rows[0].id));
+        const res = await (0, db_1.query)(`SELECT id::text, firebase_uid, email FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+        const ids = new Set([userId]);
+        const emails = new Set();
+        for (const row of res.rows) {
+            if (row.id)
+                ids.add(String(row.id));
+            if (row.firebase_uid)
+                ids.add(String(row.firebase_uid));
+            if (row.email && typeof row.email === 'string' && row.email.trim() && !row.email.includes('.internal')) {
+                emails.add(row.email.trim().toLowerCase());
+            }
         }
-        if (res.rows[0]?.firebase_uid && !ids.includes(String(res.rows[0].firebase_uid))) {
-            ids.push(String(res.rows[0].firebase_uid));
+        if (emails.size > 0) {
+            const emailRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE LOWER(email) = ANY($1::text[])`, [Array.from(emails)]);
+            for (const row of emailRes.rows) {
+                if (row.id)
+                    ids.add(String(row.id));
+                if (row.firebase_uid)
+                    ids.add(String(row.firebase_uid));
+            }
         }
-        return ids;
+        return Array.from(ids);
     }
     catch {
         return [userId];
