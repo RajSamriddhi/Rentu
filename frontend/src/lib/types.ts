@@ -417,9 +417,13 @@ export const AUTHORIZED_ADMIN_EMAILS = [
   'rajsamriddhi60@gmail.com',
 ];
 
-export const isAuthorizedAdmin = (email?: string | null): boolean => {
-  if (!email) return false;
-  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+export const isAuthorizedAdmin = (emailOrUser?: string | null | { email?: string; role?: string }): boolean => {
+  if (!emailOrUser) return false;
+  if (typeof emailOrUser === 'object') {
+    if (emailOrUser.role === 'ADMIN') return true;
+    return Boolean(emailOrUser.email && AUTHORIZED_ADMIN_EMAILS.includes(emailOrUser.email.trim().toLowerCase()));
+  }
+  return AUTHORIZED_ADMIN_EMAILS.includes(emailOrUser.trim().toLowerCase());
 };
 
 export interface UserSearchResult {

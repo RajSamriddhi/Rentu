@@ -866,7 +866,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async updateAdminBookingStatus(id: string, status: 'ACCEPTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<any> {
+  async updateAdminBookingStatus(id: string, status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED'): Promise<any> {
     const res = await fetch(`${API_BASE}/admin/bookings/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
       headers: getHeaders(),

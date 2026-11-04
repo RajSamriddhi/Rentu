@@ -178,13 +178,46 @@ router.patch('/bookings/:id/status', async (req, res, next) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
-        if (!['PENDING', 'ACCEPTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED'].includes(status)) {
+        if (!['PENDING', 'ACCEPTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(status)) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Invalid booking status', 400);
         }
-        const result = await (0, db_1.query)(`UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
-        if (result.rows.length === 0) {
+        const currentRes = await (0, db_1.query)(`SELECT * FROM bookings WHERE id = $1`, [id]);
+        if (currentRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
+        const current = currentRes.rows[0];
+        const fields = ['status = $1', 'updated_at = NOW()'];
+        const values = [status, id];
+        if (status === 'COMPLETED') {
+            fields.push('completed_at = COALESCE(completed_at, NOW())');
+            fields.push('returned_at = COALESCE(returned_at, NOW())');
+            fields.push('payment_status = \'PAID\'');
+            fields.push('is_on_time = COALESCE(is_on_time, true)');
+            if (current.item_id) {
+                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+            }
+        }
+        else if (status === 'HANDED_OVER') {
+            fields.push('handed_over_at = COALESCE(handed_over_at, NOW())');
+            if (current.item_id) {
+                await (0, db_1.query)(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [current.item_id]);
+            }
+        }
+        else if (status === 'CANCELLED' || status === 'REJECTED') {
+            fields.push('payment_status = CASE WHEN payment_status = \'PAID\' THEN \'REFUNDED\' ELSE \'CANCELLED\' END');
+            if (current.item_id) {
+                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+            }
+        }
+        else if (status === 'PENDING') {
+            fields.push('completed_at = NULL');
+            fields.push('handed_over_at = NULL');
+            fields.push('returned_at = NULL');
+            if (current.item_id) {
+                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+            }
+        }
+        const result = await (0, db_1.query)(`UPDATE bookings SET ${fields.join(', ')} WHERE id = $2 RETURNING *`, values);
         return (0, response_1.sendSuccess)(res, result.rows[0], 'Booking status updated by admin');
     }
     catch (error) {
@@ -203,8 +236,8 @@ router.get('/localities', async (req, res, next) => {
         COUNT(DISTINCT u.id)::int AS users_count,
         COUNT(DISTINCT i.id)::int AS items_count
       FROM postal_codes p
-      LEFT JOIN users u ON p.pincode = u.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(u.locality))
-      LEFT JOIN items i ON p.pincode = i.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(i.locality))
+      LEFT JOIN users u ON p.pincode = u.pincode
+      LEFT JOIN items i ON p.pincode = i.pincode
       GROUP BY p.pincode, p.locality, p.city, p.state
       ORDER BY users_count DESC, items_count DESC, p.locality ASC
     `);

@@ -87181,7 +87181,7 @@ var adminMiddleware = async (req, res, next) => {
       return sendError(res, "INVALID_TOKEN", "Session expired or token invalid", 401);
     }
     req.user = user;
-    if (!isAdminEmail(user.email)) {
+    if (user.role !== "ADMIN" && !isAdminEmail(user.email)) {
       return sendError(res, "FORBIDDEN", "Access restricted to authorized platform administrators", 403);
     }
     next();
@@ -98981,15 +98981,38 @@ router5.get("/overview", optionalAuthMiddleware, async (req, res, next) => {
     const pulseSql = `
       SELECT 
         (SELECT COUNT(*) FROM users)::int AS total_users,
-        (SELECT COUNT(DISTINCT owner_id) FROM items)::int AS active_lenders,
-        (SELECT COUNT(DISTINCT borrower_id) FROM bookings)::int AS active_borrowers,
+        (SELECT COUNT(DISTINCT owner_id) FROM items WHERE status IN ('AVAILABLE', 'RENTED'))::int AS active_lenders,
+        (SELECT COUNT(DISTINCT borrower_id) FROM bookings WHERE status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED'))::int AS active_borrowers,
         (SELECT COUNT(*) FROM items WHERE status = 'AVAILABLE')::int AS available_gear,
         (SELECT COUNT(*) FROM items WHERE status = 'RENTED')::int AS currently_rented_gear,
         (SELECT COUNT(*) FROM bookings)::int AS total_bookings,
         (SELECT COUNT(*) FROM bookings WHERE status = 'COMPLETED')::int AS completed_bookings,
         (SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE status IN ('ACCEPTED', 'COMPLETED'))::numeric AS total_community_volume,
         (SELECT COUNT(*) FROM requests WHERE status = 'OPEN')::int AS open_wishes,
-        (SELECT COUNT(*) FROM requests WHERE status = 'FULFILLED')::int AS fulfilled_wishes
+        (SELECT COUNT(*) FROM requests WHERE status = 'FULFILLED')::int AS fulfilled_wishes,
+        (
+          SELECT CASE 
+            WHEN COUNT(*) = 0 THEN 100
+            ELSE ROUND((COUNT(*) FILTER (WHERE status = 'COMPLETED')::numeric / COUNT(*)::numeric) * 100, 0)::int
+          END
+          FROM bookings 
+          WHERE status IN ('COMPLETED', 'CANCELLED', 'REJECTED')
+        ) AS handoff_success_rate,
+        (
+          SELECT COUNT(*)::int 
+          FROM support_tickets 
+          WHERE type = 'CONCERN'
+        ) AS reported_disputes,
+        (
+          SELECT COALESCE(ROUND(AVG(price_per_day), 0), 0)::int 
+          FROM items 
+          WHERE status IN ('AVAILABLE', 'RENTED')
+        ) AS avg_daily_rate,
+        (
+          SELECT COALESCE(ROUND(AVG(trust_score), 0), 90)::int 
+          FROM users 
+          WHERE trust_score IS NOT NULL
+        ) AS avg_trust_score
     `;
     const pulseRes = await query(pulseSql);
     const pulse = pulseRes.rows[0];
@@ -102960,16 +102983,46 @@ router12.patch("/bookings/:id/status", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    if (!["PENDING", "ACCEPTED", "HANDED_OVER", "COMPLETED", "CANCELLED"].includes(status)) {
+    if (!["PENDING", "ACCEPTED", "HANDED_OVER", "COMPLETED", "CANCELLED", "REJECTED"].includes(status)) {
       return sendError(res, "BAD_REQUEST", "Invalid booking status", 400);
     }
-    const result = await query(
-      `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, id]
-    );
-    if (result.rows.length === 0) {
+    const currentRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
+    if (currentRes.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
+    const current = currentRes.rows[0];
+    const fields = ["status = $1", "updated_at = NOW()"];
+    const values = [status, id];
+    if (status === "COMPLETED") {
+      fields.push("completed_at = COALESCE(completed_at, NOW())");
+      fields.push("returned_at = COALESCE(returned_at, NOW())");
+      fields.push("payment_status = 'PAID'");
+      fields.push("is_on_time = COALESCE(is_on_time, true)");
+      if (current.item_id) {
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+      }
+    } else if (status === "HANDED_OVER") {
+      fields.push("handed_over_at = COALESCE(handed_over_at, NOW())");
+      if (current.item_id) {
+        await query(`UPDATE items SET status = 'RENTED' WHERE id = $1`, [current.item_id]);
+      }
+    } else if (status === "CANCELLED" || status === "REJECTED") {
+      fields.push("payment_status = CASE WHEN payment_status = 'PAID' THEN 'REFUNDED' ELSE 'CANCELLED' END");
+      if (current.item_id) {
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+      }
+    } else if (status === "PENDING") {
+      fields.push("completed_at = NULL");
+      fields.push("handed_over_at = NULL");
+      fields.push("returned_at = NULL");
+      if (current.item_id) {
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [current.item_id]);
+      }
+    }
+    const result = await query(
+      `UPDATE bookings SET ${fields.join(", ")} WHERE id = $2 RETURNING *`,
+      values
+    );
     return sendSuccess(res, result.rows[0], "Booking status updated by admin");
   } catch (error) {
     next(error);
@@ -102986,8 +103039,8 @@ router12.get("/localities", async (req, res, next) => {
         COUNT(DISTINCT u.id)::int AS users_count,
         COUNT(DISTINCT i.id)::int AS items_count
       FROM postal_codes p
-      LEFT JOIN users u ON p.pincode = u.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(u.locality))
-      LEFT JOIN items i ON p.pincode = i.pincode OR LOWER(TRIM(p.locality)) = LOWER(TRIM(i.locality))
+      LEFT JOIN users u ON p.pincode = u.pincode
+      LEFT JOIN items i ON p.pincode = i.pincode
       GROUP BY p.pincode, p.locality, p.city, p.state
       ORDER BY users_count DESC, items_count DESC, p.locality ASC
     `);

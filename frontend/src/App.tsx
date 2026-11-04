@@ -56,11 +56,24 @@ const getUserIdFromUrl = (): string | null => {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
   const hash = window.location.hash.replace(/^#\/?/, '');
 
+  // Never parse reserved administration paths or keywords as usernames
+  if (path.toLowerCase() === 'admin' || hash.toLowerCase() === 'admin') {
+    return null;
+  }
+
   // Check /user/:id or /u/:id
   const pathMatch = path.match(/^(?:user|u)\/([^/?#]+)/i);
-  if (pathMatch) return decodeURIComponent(pathMatch[1]);
+  if (pathMatch) {
+    const raw = decodeURIComponent(pathMatch[1]);
+    if (RESERVED_ROUTES.has(raw.toLowerCase())) return null;
+    return raw;
+  }
   const hashMatch = hash.match(/^(?:user|u)\/([^/?#]+)/i);
-  if (hashMatch) return decodeURIComponent(hashMatch[1]);
+  if (hashMatch) {
+    const raw = decodeURIComponent(hashMatch[1]);
+    if (RESERVED_ROUTES.has(raw.toLowerCase())) return null;
+    return raw;
+  }
 
   // Check root slug as unique username (e.g. rentu.site/sadiqua or rentu.site/@sadiqua)
   if (path && !path.includes('/')) {
@@ -98,7 +111,7 @@ const getTabFromUrl = (): TabType => {
 export const App: React.FC = () => {
   const { user, firebaseUser, isAuthenticated } = useAuth();
   const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
-  const isUserAdmin = isAuthorizedAdmin(currentUserEmail);
+  const isUserAdmin = isAuthorizedAdmin(user || currentUserEmail);
 
   // Navigation State with URL synchronization
   const [activeTab, setActiveTabState] = useState<TabType>(getTabFromUrl);
@@ -481,7 +494,7 @@ export const App: React.FC = () => {
 
       {/* Main View Router */}
       <main className="flex-1 pb-20 lg:pb-0 overflow-x-hidden min-w-0 w-full">
-        {viewingUserId ? (
+        {viewingUserId && activeTab !== 'hustle' ? (
           <PublicProfileView
             userId={viewingUserId}
             onClose={handleCloseUserProfile}

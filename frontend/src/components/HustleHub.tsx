@@ -41,6 +41,7 @@ export const HustleHub: React.FC = () => {
   const [activeSidebar, setActiveSidebar] = useState('Overview');
   const [analytics, setAnalytics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   // 1. Support & Concerns Admin State
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
@@ -54,6 +55,7 @@ export const HustleHub: React.FC = () => {
   // 2. Users Admin State
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'ALL' | 'USER' | 'ADMIN'>('ALL');
   const [isUpdatingUser, setIsUpdatingUser] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export const HustleHub: React.FC = () => {
   // 3. Listings Admin State
   const [adminListings, setAdminListings] = useState<any[]>([]);
   const [isLoadingListings, setIsLoadingListings] = useState(false);
+  const [listingsError, setListingsError] = useState<string | null>(null);
   const [listingSearch, setListingSearch] = useState('');
   const [listingStatusFilter, setListingStatusFilter] = useState<string>('ALL');
   const [isUpdatingListing, setIsUpdatingListing] = useState<string | null>(null);
@@ -68,12 +71,14 @@ export const HustleHub: React.FC = () => {
   // 4. Requests Admin State
   const [adminRequests, setAdminRequests] = useState<any[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
   const [requestSearch, setRequestSearch] = useState('');
   const [requestStatusFilter, setRequestStatusFilter] = useState<string>('ALL');
 
   // 5. Bookings Admin State
   const [adminBookings, setAdminBookings] = useState<any[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [bookingSearch, setBookingSearch] = useState('');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
   const [isUpdatingBooking, setIsUpdatingBooking] = useState<string | null>(null);
@@ -81,6 +86,7 @@ export const HustleHub: React.FC = () => {
   // 6. Locality Admin State
   const [adminLocalities, setAdminLocalities] = useState<any[]>([]);
   const [isLoadingLocalities, setIsLoadingLocalities] = useState(false);
+  const [localitiesError, setLocalitiesError] = useState<string | null>(null);
   const [newPincode, setNewPincode] = useState('');
   const [newLocality, setNewLocality] = useState('');
   const [newCity, setNewCity] = useState('Bangalore');
@@ -90,6 +96,8 @@ export const HustleHub: React.FC = () => {
   // 7. Reports Admin State
   const [adminReports, setAdminReports] = useState<any>(null);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [exportingType, setExportingType] = useState<string | null>(null);
 
   useEffect(() => {
     loadOverviewAnalytics();
@@ -97,9 +105,13 @@ export const HustleHub: React.FC = () => {
 
   const loadOverviewAnalytics = () => {
     setIsLoading(true);
+    setOverviewError(null);
     api.getAnalytics()
       .then(res => setAnalytics(res))
-      .catch(err => console.error('Failed to load analytics:', err))
+      .catch(err => {
+        console.error('Failed to load analytics:', err);
+        setOverviewError(err.message || 'Failed to load ecosystem analytics. Please check your network connection.');
+      })
       .finally(() => setIsLoading(false));
   };
 
@@ -123,11 +135,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminUsers = async () => {
     setIsLoadingUsers(true);
+    setUsersError(null);
     try {
       const users = await api.getAdminUsers();
       setAdminUsers(Array.isArray(users) ? users : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin users:', err);
+      setUsersError(err.message || 'Failed to load community members. Please check your network connection.');
       setAdminUsers([]);
     } finally {
       setIsLoadingUsers(false);
@@ -136,11 +150,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminListings = async () => {
     setIsLoadingListings(true);
+    setListingsError(null);
     try {
       const listings = await api.getAdminListings();
       setAdminListings(Array.isArray(listings) ? listings : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin listings:', err);
+      setListingsError(err.message || 'Failed to load gear listings. Please check your network connection.');
       setAdminListings([]);
     } finally {
       setIsLoadingListings(false);
@@ -149,11 +165,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminRequests = async () => {
     setIsLoadingRequests(true);
+    setRequestsError(null);
     try {
       const reqs = await api.getAdminRequests();
       setAdminRequests(Array.isArray(reqs) ? reqs : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin requests:', err);
+      setRequestsError(err.message || 'Failed to load community wishes. Please check your network connection.');
       setAdminRequests([]);
     } finally {
       setIsLoadingRequests(false);
@@ -162,11 +180,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminBookings = async () => {
     setIsLoadingBookings(true);
+    setBookingsError(null);
     try {
       const bookings = await api.getAdminBookings();
       setAdminBookings(Array.isArray(bookings) ? bookings : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin bookings:', err);
+      setBookingsError(err.message || 'Failed to load rental bookings. Please check your network connection.');
       setAdminBookings([]);
     } finally {
       setIsLoadingBookings(false);
@@ -175,11 +195,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminLocalities = async () => {
     setIsLoadingLocalities(true);
+    setLocalitiesError(null);
     try {
       const locs = await api.getAdminLocalities();
       setAdminLocalities(Array.isArray(locs) ? locs : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin localities:', err);
+      setLocalitiesError(err.message || 'Failed to load localities. Please check your network connection.');
       setAdminLocalities([]);
     } finally {
       setIsLoadingLocalities(false);
@@ -188,11 +210,13 @@ export const HustleHub: React.FC = () => {
 
   const loadAdminReports = async () => {
     setIsLoadingReports(true);
+    setReportsError(null);
     try {
       const reports = await api.getAdminReports();
       setAdminReports(reports);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load admin reports:', err);
+      setReportsError(err.message || 'Failed to load platform reports. Please check your network connection.');
       setAdminReports(null);
     } finally {
       setIsLoadingReports(false);
@@ -255,7 +279,8 @@ export const HustleHub: React.FC = () => {
   };
 
   const handleUpdateUserTrust = async (targetUser: any) => {
-    const input = window.prompt(`Enter new trust score for ${targetUser.name} (0 - 100):`, String(targetUser.trust_score || 95));
+    const currentScore = targetUser.trust_score !== null && targetUser.trust_score !== undefined ? targetUser.trust_score : 90;
+    const input = window.prompt(`Enter new trust score for ${targetUser.name} (0 - 100):`, String(currentScore));
     if (input === null) return;
     const score = parseInt(input, 10);
     if (isNaN(score) || score < 0 || score > 100) {
@@ -289,11 +314,14 @@ export const HustleHub: React.FC = () => {
 
   const handleDeleteListing = async (itemId: string, title: string) => {
     if (!window.confirm(`Delete listing "${title}" permanently from Rentu?`)) return;
+    setIsUpdatingListing(itemId);
     try {
       await api.deleteAdminListing(itemId);
       setAdminListings(prev => prev.filter(item => item.id !== itemId));
     } catch (err: any) {
       alert(err.message || 'Failed to delete listing');
+    } finally {
+      setIsUpdatingListing(null);
     }
   };
 
@@ -309,7 +337,7 @@ export const HustleHub: React.FC = () => {
   };
 
   // Booking status override
-  const handleUpdateBookingStatus = async (bookingId: string, status: 'ACCEPTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED') => {
+  const handleUpdateBookingStatus = async (bookingId: string, status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'HANDED_OVER' | 'COMPLETED' | 'CANCELLED') => {
     setIsUpdatingBooking(bookingId);
     try {
       await api.updateAdminBookingStatus(bookingId, status);
@@ -333,7 +361,15 @@ export const HustleHub: React.FC = () => {
         city: newCity.trim(),
         state: newState.trim(),
       });
-      setAdminLocalities(prev => [added, ...prev]);
+      setAdminLocalities(prev => {
+        const idx = prev.findIndex(loc => loc.pincode === added.pincode);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...added };
+          return next;
+        }
+        return [added, ...prev];
+      });
       setNewPincode('');
       setNewLocality('');
       alert('Community zone registered successfully!');
@@ -344,7 +380,7 @@ export const HustleHub: React.FC = () => {
     }
   };
 
-  // CSV Export utility
+  // CSV Export utility with formula injection neutralization
   const exportToCSV = (filename: string, rows: object[]) => {
     if (!rows || !rows.length) {
       alert('No data available to export.');
@@ -358,9 +394,16 @@ export const HustleHub: React.FC = () => {
       rows.map(row => {
         return keys.map(k => {
           let cell = (row as any)[k] === null || (row as any)[k] === undefined ? '' : (row as any)[k];
-          cell = typeof cell === 'object' ? JSON.stringify(cell).replace(/"/g, '""') : cell.toString().replace(/"/g, '""');
-          if (cell.search(/("|,|\n)/g) >= 0) cell = `"${cell}"`;
-          return cell;
+          let str = typeof cell === 'object' ? JSON.stringify(cell) : cell.toString();
+          // Neutralize spreadsheet formula injection (=, +, -, @, \t, \r)
+          if (/^[=+\-@\t\r]/.test(str)) {
+            str = "'" + str;
+          }
+          str = str.replace(/"/g, '""');
+          if (str.search(/("|,|\n|\r)/g) >= 0) {
+            str = `"${str}"`;
+          }
+          return str;
         }).join(separator);
       }).join('\n');
 
@@ -372,6 +415,27 @@ export const HustleHub: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportData = async (type: 'users' | 'listings' | 'bookings') => {
+    try {
+      setExportingType(type);
+      if (type === 'users') {
+        const users = await api.getAdminUsers();
+        exportToCSV('rentu_users', users);
+      } else if (type === 'listings') {
+        const listings = await api.getAdminListings();
+        exportToCSV('rentu_listings', listings);
+      } else if (type === 'bookings') {
+        const bookings = await api.getAdminBookings();
+        exportToCSV('rentu_bookings', bookings);
+      }
+    } catch (err: any) {
+      console.error(`Failed to export ${type}:`, err);
+      alert(err.message || `Failed to export ${type} data. Please check your connection and try again.`);
+    } finally {
+      setExportingType(null);
+    }
   };
 
   // Analytics derivations
@@ -407,7 +471,7 @@ export const HustleHub: React.FC = () => {
     { name: 'Settings', icon: <Settings className="w-4 h-4" /> },
   ];
 
-  if (!isAuthorizedAdmin(currentUserEmail)) {
+  if (!isAuthorizedAdmin(user || currentUserEmail)) {
     return null;
   }
 
@@ -468,11 +532,29 @@ export const HustleHub: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 bg-canvas border border-divider px-3 py-1.5 rounded-full text-xs font-bold text-ink self-start sm:self-auto">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>Live Database</span>
+                  <span className={`w-2 h-2 rounded-full ${overviewError ? 'bg-red-500' : isLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span>{overviewError ? 'Database Offline' : isLoading ? 'Connecting...' : 'Live Database'}</span>
                 </div>
               </div>
 
+              {overviewError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Ecosystem Overview</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{overviewError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadOverviewAnalytics()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
+                </div>
+              ) : (
+                <>
               {/* Top 4 Metrics Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
@@ -602,6 +684,8 @@ export const HustleHub: React.FC = () => {
                   </div>
                 </div>
               </div>
+                </>
+              )}
             </div>
           )}
 
@@ -883,6 +967,22 @@ export const HustleHub: React.FC = () => {
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading community members...</span>
                 </div>
+              ) : usersError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Community Members</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{usersError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminUsers()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
+                </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-divider bg-canvas">
                   <table className="w-full text-left text-xs">
@@ -934,7 +1034,7 @@ export const HustleHub: React.FC = () => {
                             </td>
                             <td className="p-3.5">
                               <div className="flex items-center gap-2">
-                                <span className="font-black text-ink">{u.trust_score || 95}%</span>
+                                <span className="font-black text-ink">{u.trust_score !== null && u.trust_score !== undefined ? u.trust_score : 90}%</span>
                                 <span className="text-amber-500 font-bold inline-flex items-center gap-1">
                                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                                   <span>{Number(u.rating || 0.0).toFixed(1)}</span>
@@ -952,22 +1052,24 @@ export const HustleHub: React.FC = () => {
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
+                                  disabled={isUpdatingUser === u.id}
                                   onClick={() => handleUpdateUserTrust(u)}
-                                  className="px-2.5 py-1 rounded-lg border border-divider hover:border-brand text-[11px] font-bold text-ink cursor-pointer"
+                                  className="px-2.5 py-1 rounded-lg border border-divider hover:border-brand text-[11px] font-bold text-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Edit Trust Score"
                                 >
-                                  Score
+                                  {isUpdatingUser === u.id ? 'Saving...' : 'Score'}
                                 </button>
                                 <button
                                   type="button"
+                                  disabled={isUpdatingUser === u.id}
                                   onClick={() => handleToggleUserRole(u)}
-                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                     u.role === 'ADMIN'
                                       ? 'text-red-500 border border-red-500/30 hover:bg-red-500/10'
                                       : 'text-purple-600 border border-purple-500/30 hover:bg-purple-500/10'
                                   }`}
                                 >
-                                  {u.role === 'ADMIN' ? 'Demote' : 'Make Admin'}
+                                  {isUpdatingUser === u.id ? 'Updating...' : u.role === 'ADMIN' ? 'Demote' : 'Make Admin'}
                                 </button>
                               </div>
                             </td>
@@ -1040,6 +1142,22 @@ export const HustleHub: React.FC = () => {
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading listings...</span>
                 </div>
+              ) : listingsError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Listings</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{listingsError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminListings()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
+                </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-divider bg-canvas">
                   <table className="w-full text-left text-xs">
@@ -1099,8 +1217,9 @@ export const HustleHub: React.FC = () => {
                               <td className="p-3.5">
                                 <select
                                   value={item.status}
+                                  disabled={isUpdatingListing === item.id}
                                   onChange={(e) => handleUpdateListingStatus(item.id, e.target.value as any)}
-                                  className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer ${
+                                  className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                     item.status === 'AVAILABLE'
                                       ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                                       : item.status === 'RENTED'
@@ -1116,8 +1235,9 @@ export const HustleHub: React.FC = () => {
                               <td className="p-3.5 text-right">
                                 <button
                                   type="button"
+                                  disabled={isUpdatingListing === item.id}
                                   onClick={() => handleDeleteListing(item.id, item.title)}
-                                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Delete Listing"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -1192,6 +1312,22 @@ export const HustleHub: React.FC = () => {
                 <div className="py-20 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading community wishes...</span>
+                </div>
+              ) : requestsError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Requests</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{requestsError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminRequests()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-divider bg-canvas">
@@ -1307,7 +1443,7 @@ export const HustleHub: React.FC = () => {
 
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className="font-bold text-ink mr-1">Status:</span>
-                  {(['ALL', 'ACCEPTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED'] as const).map(s => (
+                  {(['ALL', 'PENDING', 'ACCEPTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED', 'REJECTED'] as const).map(s => (
                     <button
                       key={s}
                       onClick={() => setBookingStatusFilter(s)}
@@ -1326,6 +1462,22 @@ export const HustleHub: React.FC = () => {
                 <div className="py-20 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading bookings...</span>
+                </div>
+              ) : bookingsError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Bookings</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{bookingsError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminBookings()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-divider bg-canvas">
@@ -1377,14 +1529,17 @@ export const HustleHub: React.FC = () => {
                             <td className="p-3.5">
                               <select
                                 value={b.status}
+                                disabled={isUpdatingBooking === b.id}
                                 onChange={(e) => handleUpdateBookingStatus(b.id, e.target.value as any)}
-                                className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border outline-none cursor-pointer ${
+                                className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                   b.status === 'COMPLETED'
                                     ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                                     : b.status === 'HANDED_OVER'
                                     ? 'bg-purple-500/10 text-purple-500 border-purple-500/30'
                                     : b.status === 'ACCEPTED'
                                     ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                                    : b.status === 'REJECTED' || b.status === 'CANCELLED'
+                                    ? 'bg-red-500/10 text-red-500 border-red-500/30'
                                     : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'
                                 }`}
                               >
@@ -1393,6 +1548,7 @@ export const HustleHub: React.FC = () => {
                                 <option value="HANDED_OVER">HANDED_OVER</option>
                                 <option value="COMPLETED">COMPLETED</option>
                                 <option value="CANCELLED">CANCELLED</option>
+                                <option value="REJECTED">REJECTED</option>
                               </select>
                             </td>
                           </tr>
@@ -1424,64 +1580,84 @@ export const HustleHub: React.FC = () => {
                 </button>
               </div>
 
-              {/* KPI Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Gross Volume</span>
-                  <div className="text-2xl font-black text-brand font-display">₹{totalVolume.toLocaleString('en-IN')}</div>
-                  <span className="text-[10px] text-emerald-500 font-bold">100% Peer Commission-Free</span>
+              {overviewError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Analytics</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{overviewError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadOverviewAnalytics()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
                 </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Handoff Success</span>
-                  <div className="text-2xl font-black text-ink font-display">100%</div>
-                  <span className="text-[10px] text-ink-muted">0 Reported Disputes</span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Avg Daily Rate</span>
-                  <div className="text-2xl font-black text-ink font-display">₹280</div>
-                  <span className="text-[10px] text-ink-muted">Across All Categories</span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Community Trust Avg</span>
-                  <div className="text-2xl font-black text-emerald-500 font-display">98%</div>
-                  <span className="text-[10px] text-ink-muted">Verified Neighbors</span>
-                </div>
-              </div>
-
-              {/* Top Lenders Leaderboard */}
-              <div className="bg-canvas border border-divider rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-extrabold text-ink flex items-center justify-between">
-                  <span>Top Gear Champions (Lender Supply Leaders)</span>
-                  <span className="text-[11px] text-brand font-bold">Top Verified</span>
-                </h3>
-
-                <div className="divide-y divide-divider/60">
-                  {(analytics?.topLenders || []).map((lender: any, idx: number) => (
-                    <div key={lender.id || idx} className="py-3 flex items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-3">
-                        <span className="font-black text-brand font-display w-4">#{idx + 1}</span>
-                        <img
-                          src={lender.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(lender.name || 'Member')}&background=0F172A&color=fff&bold=true`}
-                          alt={lender.name}
-                          className="w-8 h-8 rounded-full object-cover border border-divider"
-                        />
-                        <div>
-                          <span className="font-bold text-ink block">{lender.name || 'Neighbor'}</span>
-                          <span className="text-[10px] text-ink-muted block">{lender.locality || 'Nearby'}</span>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="font-black text-ink block">{lender.gear_count} gear listed</span>
-                        <span className="text-[10px] text-emerald-500 font-bold block">{lender.trust_score}% Trust</span>
-                      </div>
+              ) : (
+                <>
+                  {/* KPI Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Gross Volume</span>
+                      <div className="text-2xl font-black text-brand font-display">₹{totalVolume.toLocaleString('en-IN')}</div>
+                      <span className="text-[10px] text-emerald-500 font-bold">100% Peer Commission-Free</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Handoff Success</span>
+                      <div className="text-2xl font-black text-ink font-display">{pulse?.handoff_success_rate ?? 100}%</div>
+                      <span className="text-[10px] text-ink-muted">{pulse?.reported_disputes ?? 0} Reported Disputes</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Avg Daily Rate</span>
+                      <div className="text-2xl font-black text-ink font-display">₹{pulse?.avg_daily_rate ?? 0}</div>
+                      <span className="text-[10px] text-ink-muted">Across All Categories</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Community Trust Avg</span>
+                      <div className="text-2xl font-black text-emerald-500 font-display">{pulse?.avg_trust_score ?? 90}%</div>
+                      <span className="text-[10px] text-ink-muted">Verified Neighbors</span>
+                    </div>
+                  </div>
+
+                  {/* Top Lenders Leaderboard */}
+                  <div className="bg-canvas border border-divider rounded-2xl p-5 space-y-4">
+                    <h3 className="text-sm font-extrabold text-ink flex items-center justify-between">
+                      <span>Top Gear Champions (Lender Supply Leaders)</span>
+                      <span className="text-[11px] text-brand font-bold">Top Verified</span>
+                    </h3>
+
+                    <div className="divide-y divide-divider/60">
+                      {(analytics?.topLenders || []).map((lender: any, idx: number) => (
+                        <div key={lender.id || idx} className="py-3 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-3">
+                            <span className="font-black text-brand font-display w-4">#{idx + 1}</span>
+                            <img
+                              src={lender.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(lender.name || 'Member')}&background=0F172A&color=fff&bold=true`}
+                              alt={lender.name}
+                              className="w-8 h-8 rounded-full object-cover border border-divider"
+                            />
+                            <div>
+                              <span className="font-bold text-ink block">{lender.name || 'Neighbor'}</span>
+                              <span className="text-[10px] text-ink-muted block">{lender.locality || 'Nearby'}</span>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="font-black text-ink block">{lender.gear_count} gear listed</span>
+                            <span className="text-[10px] text-emerald-500 font-bold block">{lender.trust_score !== null && lender.trust_score !== undefined ? lender.trust_score : 90}% Trust</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1517,7 +1693,7 @@ export const HustleHub: React.FC = () => {
                   <span>Register New Community Neighborhood</span>
                 </h3>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
                   <div>
                     <label className="block text-[10px] font-bold text-ink-secondary mb-1">Pincode *</label>
                     <input
@@ -1553,11 +1729,22 @@ export const HustleHub: React.FC = () => {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-[10px] font-bold text-ink-secondary mb-1">State</label>
+                    <input
+                      type="text"
+                      value={newState}
+                      onChange={(e) => setNewState(e.target.value)}
+                      placeholder="Karnataka"
+                      className="w-full bg-surface border border-divider rounded-xl px-3 py-1.5 text-xs text-ink outline-none focus:border-brand font-semibold"
+                    />
+                  </div>
+
                   <div className="flex items-end">
                     <button
                       type="submit"
                       disabled={isAddingLocality}
-                      className="w-full btn-primary py-2 px-3 text-xs font-bold rounded-xl shadow-pink cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full btn-primary py-2 px-3 text-xs font-bold rounded-xl shadow-pink cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isAddingLocality ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1577,6 +1764,22 @@ export const HustleHub: React.FC = () => {
                 <div className="py-20 text-center text-xs text-ink-secondary flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-8 h-8 text-brand animate-spin" />
                   <span>Loading localities...</span>
+                </div>
+              ) : localitiesError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Localities</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{localitiesError}</p>
+                  </div>
+                  <button
+                    onClick={() => loadAdminLocalities()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
+                  >
+                    Retry Loading
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-divider bg-canvas">
@@ -1637,79 +1840,117 @@ export const HustleHub: React.FC = () => {
                 </button>
               </div>
 
-              {/* Health Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Database Status</span>
-                  <div className="text-xl font-black text-emerald-500 font-display flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span>Supabase Connected</span>
+              {reportsError ? (
+                <div className="py-16 text-center space-y-3 bg-canvas rounded-2xl border border-divider p-6">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
                   </div>
-                  <span className="text-[10px] text-ink-muted">3NF Schema Relational Integrity</span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Server Uptime</span>
-                  <div className="text-xl font-black text-ink font-display">
-                    {Math.round((adminReports?.server_health?.uptime_seconds || 1200) / 60)} mins
+                  <div>
+                    <p className="text-sm font-bold text-ink">Could Not Load Platform Reports</p>
+                    <p className="text-xs text-ink-secondary mt-1 max-w-sm mx-auto">{reportsError}</p>
                   </div>
-                  <span className="text-[10px] text-emerald-500 font-bold">100% Operational</span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
-                  <span className="text-[11px] font-bold text-ink-secondary">Tickets Resolved</span>
-                  <div className="text-xl font-black text-ink font-display">
-                    {adminReports?.stats?.resolved_support_tickets || 0} / {adminReports?.stats?.total_support_tickets || 0}
-                  </div>
-                  <span className="text-[10px] text-ink-muted">All User Concerns Addressed</span>
-                </div>
-              </div>
-
-              {/* Data Export Cards */}
-              <div className="bg-canvas border border-divider rounded-2xl p-5 space-y-4">
-                <div>
-                  <h3 className="text-sm font-extrabold text-ink">Export Live Platform Data (CSV)</h3>
-                  <p className="text-xs text-ink-secondary">Single-click export of platform tables for offline auditing and reporting.</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
-                    type="button"
-                    onClick={async () => {
-                      const users = await api.getAdminUsers();
-                      exportToCSV('rentu_users', users);
-                    }}
-                    className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group"
+                    onClick={() => loadAdminReports()}
+                    className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer"
                   >
-                    <span>Export Users CSV</span>
-                    <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const listings = await api.getAdminListings();
-                      exportToCSV('rentu_listings', listings);
-                    }}
-                    className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group"
-                  >
-                    <span>Export Listings CSV</span>
-                    <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const bookings = await api.getAdminBookings();
-                      exportToCSV('rentu_bookings', bookings);
-                    }}
-                    className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group"
-                  >
-                    <span>Export Bookings CSV</span>
-                    <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
+                    Retry Loading
                   </button>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Health Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Database Status</span>
+                      <div className={`text-xl font-black font-display flex items-center gap-1.5 ${
+                        adminReports?.server_health?.database_connected && !reportsError ? 'text-emerald-500' : 'text-red-500'
+                      }`}>
+                        <span className={`w-2.5 h-2.5 rounded-full ${
+                          adminReports?.server_health?.database_connected && !reportsError ? 'bg-emerald-500' : 'bg-red-500'
+                        }`} />
+                        <span>
+                          {reportsError || !adminReports?.server_health?.database_connected ? 'Disconnected' : 'Supabase Connected'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-ink-muted">3NF Schema Relational Integrity</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Server Uptime</span>
+                      <div className="text-xl font-black text-ink font-display">
+                        {reportsError || !adminReports?.server_health?.uptime_seconds
+                          ? 'Unavailable'
+                          : `${Math.round(adminReports.server_health.uptime_seconds / 60)} mins`}
+                      </div>
+                      <span className={`text-[10px] font-bold ${
+                        reportsError || !adminReports?.server_health?.database_connected ? 'text-red-500' : 'text-emerald-500'
+                      }`}>
+                        {reportsError || !adminReports?.server_health?.database_connected ? 'Degraded Service' : '100% Operational'}
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
+                      <span className="text-[11px] font-bold text-ink-secondary">Tickets Resolved</span>
+                      <div className="text-xl font-black text-ink font-display">
+                        {adminReports?.stats?.resolved_support_tickets || 0} / {adminReports?.stats?.total_support_tickets || 0}
+                      </div>
+                      <span className="text-[10px] text-ink-muted">All User Concerns Addressed</span>
+                    </div>
+                  </div>
+
+                  {/* Data Export Cards */}
+                  <div className="bg-canvas border border-divider rounded-2xl p-5 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-ink">Export Live Platform Data (CSV)</h3>
+                      <p className="text-xs text-ink-secondary">Single-click export of platform tables for offline auditing and reporting.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        disabled={exportingType !== null}
+                        onClick={() => handleExportData('users')}
+                        className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span>{exportingType === 'users' ? 'Exporting Users...' : 'Export Users CSV'}</span>
+                        {exportingType === 'users' ? (
+                          <Loader2 className="w-4 h-4 text-brand animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={exportingType !== null}
+                        onClick={() => handleExportData('listings')}
+                        className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span>{exportingType === 'listings' ? 'Exporting Listings...' : 'Export Listings CSV'}</span>
+                        {exportingType === 'listings' ? (
+                          <Loader2 className="w-4 h-4 text-brand animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={exportingType !== null}
+                        onClick={() => handleExportData('bookings')}
+                        className="p-3.5 rounded-xl bg-surface border border-divider hover:border-brand flex items-center justify-between text-xs font-bold text-ink transition-colors cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span>{exportingType === 'bookings' ? 'Exporting Bookings...' : 'Export Bookings CSV'}</span>
+                        {exportingType === 'bookings' ? (
+                          <Loader2 className="w-4 h-4 text-brand animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 text-brand group-hover:scale-110 transition-transform" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

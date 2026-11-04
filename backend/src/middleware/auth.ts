@@ -182,7 +182,7 @@ export const adminMiddleware = async (
       return sendError(res, 'INVALID_TOKEN', 'Session expired or token invalid', 401);
     }
     req.user = user;
-    if (!isAdminEmail(user.email)) {
+    if (user.role !== 'ADMIN' && !isAdminEmail(user.email)) {
       return sendError(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
     }
     next();
@@ -196,7 +196,7 @@ export const requireRole = (role: 'USER' | 'ADMIN') => {
     if (!req.user) {
       return sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
     }
-    if (role === 'ADMIN' && !isAdminEmail(req.user.email)) {
+    if (role === 'ADMIN' && req.user.role !== 'ADMIN' && !isAdminEmail(req.user.email)) {
       return sendError(res, 'FORBIDDEN', 'Access restricted to authorized platform administrators', 403);
     }
     if (req.user.role !== role && req.user.role !== 'ADMIN') {

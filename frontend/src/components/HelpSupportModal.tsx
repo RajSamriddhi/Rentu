@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  AlertTriangle, 
-  Lightbulb, 
-  Send, 
-  Loader2, 
-  CheckCircle2, 
-  Clock, 
-  ShieldAlert, 
+import {
+  X,
+  AlertTriangle,
+  Lightbulb,
+  Send,
+  Loader2,
+  CheckCircle2,
+  Clock,
+  ShieldAlert,
   HelpCircle,
   FileQuestion,
   MessageSquare,
@@ -203,7 +203,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
         className="relative bg-surface rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden my-4 border border-divider"
         onClick={(e) => e.stopPropagation()}
       >
-        
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-divider bg-canvas/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -233,22 +233,20 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
         <div className="flex border-b border-divider text-xs font-bold bg-canvas/20">
           <button
             onClick={() => { setActiveTab('NEW'); handleResetForm(); }}
-            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer ${
-              activeTab === 'NEW'
-                ? 'border-brand text-brand font-black'
-                : 'border-transparent text-ink-secondary hover:text-ink'
-            }`}
+            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer ${activeTab === 'NEW'
+              ? 'border-brand text-brand font-black'
+              : 'border-transparent text-ink-secondary hover:text-ink'
+              }`}
           >
             Submit Concern or Feedback
           </button>
           {isAuthenticated && (
             <button
               onClick={() => setActiveTab('HISTORY')}
-              className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeTab === 'HISTORY'
-                  ? 'border-brand text-brand font-black'
-                  : 'border-transparent text-ink-secondary hover:text-ink'
-              }`}
+              className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'HISTORY'
+                ? 'border-brand text-brand font-black'
+                : 'border-transparent text-ink-secondary hover:text-ink'
+                }`}
             >
               <span>My Submissions & Replies</span>
               {myTickets.length > 0 && (
@@ -273,9 +271,9 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                     {ticketType === 'CONCERN' ? 'Concern Submitted' : 'Feedback Received'}
                   </h3>
                   <p className="text-xs text-ink-secondary max-w-sm mx-auto mt-1 leading-relaxed">
-                    Thank you! Your message was delivered directly to the Rentu Admin Portal. 
-                    {ticketType === 'CONCERN' 
-                      ? ' Our team will review the issue and post a resolution update directly to your account notifications.' 
+                    Thank you! Your message was delivered directly to the Rentu Admin Portal.
+                    {ticketType === 'CONCERN'
+                      ? ' Our team will review the issue and post a resolution update directly to your account notifications.'
                       : ' We appreciate your insights to make peer-to-peer sharing even better!'}
                   </p>
                 </div>
@@ -306,11 +304,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                     <button
                       type="button"
                       onClick={() => setTicketType('CONCERN')}
-                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
-                        ticketType === 'CONCERN'
-                          ? 'bg-red-500/10 border-red-500/40 text-red-500 shadow-xs'
-                          : 'bg-canvas border-divider text-ink-secondary hover:text-ink hover:bg-surface'
-                      }`}
+                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${ticketType === 'CONCERN'
+                        ? 'bg-red-500/10 border-red-500/40 text-red-500 shadow-xs'
+                        : 'bg-canvas border-divider text-ink-secondary hover:text-ink hover:bg-surface'
+                        }`}
                     >
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                       <div>
@@ -324,11 +321,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                     <button
                       type="button"
                       onClick={() => setTicketType('FEEDBACK')}
-                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
-                        ticketType === 'FEEDBACK'
-                          ? 'bg-amber-500/10 border-amber-500/40 text-amber-500 shadow-xs'
-                          : 'bg-canvas border-divider text-ink-secondary hover:text-ink hover:bg-surface'
-                      }`}
+                      className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${ticketType === 'FEEDBACK'
+                        ? 'bg-amber-500/10 border-amber-500/40 text-amber-500 shadow-xs'
+                        : 'bg-canvas border-divider text-ink-secondary hover:text-ink hover:bg-surface'
+                        }`}
                     >
                       <Lightbulb className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                       <div>
@@ -352,11 +348,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                         type="button"
                         key={cat}
                         onClick={() => setCategory(cat)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
-                          category === cat
-                            ? 'bg-brand text-white shadow-xs'
-                            : 'bg-canvas border border-divider text-ink-secondary hover:text-ink hover:bg-surface'
-                        }`}
+                        className={`text-xs px-3 py-1.5 rounded-full font-bold transition-all cursor-pointer ${category === cat
+                          ? 'bg-brand text-white shadow-xs'
+                          : 'bg-canvas border border-divider text-ink-secondary hover:text-ink hover:bg-surface'
+                          }`}
                       >
                         {cat}
                       </button>
@@ -376,13 +371,12 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                           type="button"
                           key={lvl}
                           onClick={() => setPriority(lvl)}
-                          className={`py-1.5 rounded-xl border text-center transition-all cursor-pointer text-[11px] ${
-                            priority === lvl
-                              ? lvl === 'URGENT' || lvl === 'HIGH'
-                                ? 'bg-red-500 text-white border-red-500 shadow-xs'
-                                : 'bg-brand text-white border-brand'
-                              : 'bg-canvas border-divider text-ink-secondary hover:text-ink'
-                          }`}
+                          className={`py-1.5 rounded-xl border text-center transition-all cursor-pointer text-[11px] ${priority === lvl
+                            ? lvl === 'URGENT' || lvl === 'HIGH'
+                              ? 'bg-red-500 text-white border-red-500 shadow-xs'
+                              : 'bg-brand text-white border-brand'
+                            : 'bg-canvas border-divider text-ink-secondary hover:text-ink'
+                            }`}
                         >
                           {lvl === 'URGENT' ? 'Urgent' : lvl === 'HIGH' ? 'High' : lvl === 'LOW' ? 'Low' : 'Normal'}
                         </button>
@@ -550,11 +544,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        t.type === 'CONCERN' 
-                          ? 'bg-red-500/10 text-red-500 border border-red-500/20' 
-                          : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${t.type === 'CONCERN'
+                        ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                        : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                        }`}>
                         {t.type}
                       </span>
                       <span className="text-[10px] font-bold text-ink-secondary">
@@ -562,15 +555,14 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                       </span>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                      t.status === 'RESOLVED'
-                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                        : t.status === 'IN_REVIEW'
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${t.status === 'RESOLVED'
+                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                      : t.status === 'IN_REVIEW'
                         ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
                         : t.status === 'CLOSED'
                         ? 'bg-zinc-600 text-zinc-200 border border-zinc-500/30'
                         : 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20'
-                    }`}>
+                      }`}>
                       {t.status}
                     </span>
                   </div>
