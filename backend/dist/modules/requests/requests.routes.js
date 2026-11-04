@@ -7,6 +7,7 @@ const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const city_1 = require("../../utils/city");
 const user_1 = require("../../utils/user");
+const notifications_service_1 = require("../notifications/notifications.service");
 const router = (0, express_1.Router)();
 const createRequestSchema = zod_1.z.object({
     item_name: zod_1.z.string().min(3, 'Item name must be at least 3 characters'),
@@ -444,14 +445,15 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
        RETURNING *`, [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]);
         const createdMessage = msgResult.rows[0];
         // Insert high-priority notification for seeker
-        await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`, [
-            request.seeker_id,
-            lenderId,
-            `${lenderName} is ready to lend gear`,
-            `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
-            request.id,
-        ]).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
+        await (0, notifications_service_1.createNotification)({
+            userId: request.seeker_id,
+            senderId: lenderId,
+            type: 'REQUEST_LEND_OFFER',
+            title: `${lenderName} is ready to lend gear`,
+            body: `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+            referenceId: request.id,
+            referenceType: 'PROPOSAL',
+        }).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
         return (0, response_1.sendSuccess)(res, {
             message: createdMessage,
             proposal: proposalPayload,

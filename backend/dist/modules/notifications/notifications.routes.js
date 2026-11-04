@@ -4,23 +4,16 @@ const express_1 = require("express");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
-const notifications_service_1 = require("./notifications.service");
 const user_1 = require("../../utils/user");
+const webpush_1 = require("./webpush");
 const router = (0, express_1.Router)();
-// GET /notifications - Get current user notifications
+// GET /notifications - Get current user notifications with pagination
 router.get('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
         const myIds = await (0, user_1.resolveUserIds)(userId);
-        // Automatically check and generate active reminders for upcoming pickups and returns
-        await (0, notifications_service_1.checkAndGenerateReminders)(userId).catch(err => {
-            console.warn('Notification reminder check error:', err);
-        });
-        // Automatically purge notifications older than 30 days
-        await (0, db_1.query)(`DELETE FROM notifications 
-       WHERE created_at < NOW() - INTERVAL '30 days'`).catch(err => {
-            console.warn('Notification 30-day purge error:', err);
-        });
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+        const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
         // Mark pending incoming messages as delivered to this active user
         await (0, db_1.query)(`WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -69,7 +62,12 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 150`, [myIds]);
+       LIMIT $2 OFFSET $3`, [myIds, limit, offset]);
+        const totalCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS total FROM notifications 
+       WHERE user_id = ANY($1::text[])
+         AND created_at >= NOW() - INTERVAL '30 days'
+         AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
+         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`, [myIds]);
         const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications 
        WHERE user_id = ANY($1::text[])
          AND created_at >= NOW() - INTERVAL '30 days'
@@ -104,10 +102,13 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
           WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = m.sender_id))
              OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = m.sender_id))
         )`, [userId]);
+        const total = totalCountRes.rows[0]?.total || 0;
         return (0, response_1.sendSuccess)(res, {
             notifications: result.rows,
             unread_count: unreadCountRes.rows[0]?.unread || 0,
             unread_messages_count: unreadMessagesRes.rows[0]?.unread_messages || 0,
+            total_count: total,
+            has_more: offset + result.rows.length < total,
         });
     }
     catch (error) {
@@ -139,6 +140,10 @@ router.put('/read-all', auth_1.authMiddleware, async (req, res, next) => {
         next(error);
     }
 });
+// GET /notifications/vapid-public-key - Retrieve VAPID public key for client push registration
+router.get('/vapid-public-key', (_req, res) => {
+    return (0, response_1.sendSuccess)(res, { publicKey: (0, webpush_1.getVapidPublicKey)() });
+});
 // POST /notifications/push-subscribe - Register or update Web Push subscription
 router.post('/push-subscribe', auth_1.authMiddleware, async (req, res, next) => {
     try {
@@ -147,9 +152,11 @@ router.post('/push-subscribe', auth_1.authMiddleware, async (req, res, next) => 
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Valid push subscription endpoint and cryptographic keys are required', 400);
         }
         const userId = req.user.id;
+        const myIds = await (0, user_1.resolveUserIds)(userId, req.user?.email);
+        const canonicalUserId = myIds[0] || userId;
         await (0, db_1.query)(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`, [userId, endpoint, keys.p256dh, keys.auth]);
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`, [canonicalUserId, endpoint, keys.p256dh, keys.auth]);
         return (0, response_1.sendSuccess)(res, { subscribed: true }, 'Push notification subscription registered');
     }
     catch (error) {

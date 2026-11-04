@@ -1,5 +1,6 @@
 import { query } from '../../config/db';
 import { resolveUserIds } from '../../utils/user';
+import { sendPushNotification } from './webpush';
 
 export interface CreateNotificationParams {
   userId: string;
@@ -14,34 +15,52 @@ export interface CreateNotificationParams {
 }
 
 /**
- * Creates an in-app notification row in the PostgreSQL database.
+ * Creates an in-app notification row in the PostgreSQL database with retry protection
+ * and automatically dispatches Web Push notifications.
  */
-export async function createNotification(params: CreateNotificationParams): Promise<void> {
-  try {
-    await query(
-      `INSERT INTO notifications 
-        (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        params.userId,
-        params.senderId || null,
-        params.type,
-        params.title,
-        params.body,
-        params.bookingId || null,
-        params.messageId || null,
-        params.referenceId || null,
-        params.referenceType || null,
-      ]
-    );
-  } catch (error) {
-    console.error('Failed to create notification:', error);
+export async function createNotification(params: CreateNotificationParams): Promise<{ id?: string; success: boolean }> {
+  const userIds = await resolveUserIds(params.userId);
+  const targetUserId = userIds[0] || params.userId;
+
+  let lastError: any = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await query(
+        `INSERT INTO notifications 
+          (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id`,
+        [
+          targetUserId,
+          params.senderId || null,
+          params.type,
+          params.title,
+          params.body,
+          params.bookingId || null,
+          params.messageId || null,
+          params.referenceId || null,
+          params.referenceType || null,
+        ]
+      );
+
+      // Asynchronously trigger Web Push without blocking caller
+      sendPushNotification(userIds, params).catch((err) => {
+        console.warn('Web Push async dispatch note:', err);
+      });
+
+      return { id: res.rows[0]?.id, success: true };
+    } catch (error) {
+      lastError = error;
+      console.error(`createNotification attempt ${attempt + 1} failed:`, error);
+    }
   }
+
+  throw lastError || new Error('Failed to create notification');
 }
 
 /**
  * Checks for upcoming handoffs, returns, and generates timely reminder notifications.
- * Runs smoothly when notifications are fetched so users receive active alerts for today/tomorrow.
+ * Uses atomic INSERTs and uniqueness constraints to prevent duplicate reminders across concurrent requests.
  */
 export async function checkAndGenerateReminders(userId: string): Promise<void> {
   try {
@@ -70,31 +89,37 @@ export async function checkAndGenerateReminders(userId: string): Promise<void> {
     );
 
     for (const b of upcomingPickups.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_PICKUP'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
+      const isBorrower = userIds.includes(String(b.borrower_id));
+      const dayLabel = b.is_today ? 'today' : 'tomorrow';
+      const senderId = isBorrower ? b.lender_id : b.borrower_id;
+      const title = `Pickup ${b.is_today ? 'Today' : 'Tomorrow'}`;
+      const body = isBorrower
+        ? `Pickup for "${b.item_title}" with ${b.lender_name || 'Lender'} is scheduled ${dayLabel}.`
+        : `Handover for "${b.item_title}" with ${b.borrower_name || 'Borrower'} is scheduled ${dayLabel}.`;
 
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? 'today' : 'tomorrow';
-        
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: 'BOOKING',
+      // Atomic check-and-insert to prevent concurrent duplicate inserts
+      const insertRes = await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body, booking_id, reference_id, reference_type)
+         SELECT $1, $2, 'REMINDER_PICKUP', $3, $4, $5, $5, 'BOOKING'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications 
+           WHERE user_id = ANY($6::text[]) 
+             AND booking_id = $5 
+             AND type = 'REMINDER_PICKUP'
+             AND created_at >= CURRENT_DATE
+         )
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [userId, senderId, title, body, b.id, userIds]
+      ).catch(() => ({ rows: [] }));
+
+      if (insertRes.rows.length > 0) {
+        sendPushNotification(userIds, {
+          title,
+          body,
           type: 'REMINDER_PICKUP',
-          title: `Pickup ${b.is_today ? 'Today' : 'Tomorrow'}`,
-          body: isBorrower
-            ? `Pickup for "${b.item_title}" with ${b.lender_name} is scheduled ${dayLabel}.`
-            : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel}.`,
-        });
+          bookingId: b.id,
+        }).catch(() => {});
       }
     }
 
@@ -121,31 +146,37 @@ export async function checkAndGenerateReminders(userId: string): Promise<void> {
     );
 
     for (const b of upcomingReturns.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_RETURN'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
+      const isBorrower = userIds.includes(String(b.borrower_id));
+      const dayLabel = b.is_today ? 'today' : 'tomorrow';
+      const senderId = isBorrower ? b.lender_id : b.borrower_id;
+      const title = `Return Due ${b.is_today ? 'Today' : 'Tomorrow'}`;
+      const body = isBorrower
+        ? `Return for "${b.item_title}" to ${b.lender_name || 'Owner'} is due ${dayLabel}.`
+        : `Scheduled return for "${b.item_title}" from ${b.borrower_name || 'Borrower'} is ${dayLabel}.`;
 
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? 'today' : 'tomorrow';
-        
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: 'BOOKING',
+      // Atomic check-and-insert to prevent concurrent duplicate inserts
+      const insertRes = await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body, booking_id, reference_id, reference_type)
+         SELECT $1, $2, 'REMINDER_RETURN', $3, $4, $5, $5, 'BOOKING'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications 
+           WHERE user_id = ANY($6::text[]) 
+             AND booking_id = $5 
+             AND type = 'REMINDER_RETURN'
+             AND created_at >= CURRENT_DATE
+         )
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [userId, senderId, title, body, b.id, userIds]
+      ).catch(() => ({ rows: [] }));
+
+      if (insertRes.rows.length > 0) {
+        sendPushNotification(userIds, {
+          title,
+          body,
           type: 'REMINDER_RETURN',
-          title: `Return Due ${b.is_today ? 'Today' : 'Tomorrow'}`,
-          body: isBorrower
-            ? `Return for "${b.item_title}" to ${b.lender_name} is due ${dayLabel}.`
-            : `Scheduled return for "${b.item_title}" from ${b.borrower_name} is ${dayLabel}.`,
-        });
+          bookingId: b.id,
+        }).catch(() => {});
       }
     }
   } catch (error) {

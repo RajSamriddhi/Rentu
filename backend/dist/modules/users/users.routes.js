@@ -6,6 +6,7 @@ const zod_1 = require("zod");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
+const notifications_service_1 = require("../notifications/notifications.service");
 const router = (0, express_1.Router)();
 exports.RESERVED_USERNAMES = new Set([
     'admin', 'api', 'messages', 'chat', 'explore', 'marketplace', 'requests', 'bookings',
@@ -571,8 +572,15 @@ router.post('/:id/follow', auth_1.authMiddleware, async (req, res, next) => {
         const insertRes = await (0, db_1.query)(`INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *`, [followerId, followingId]);
         // Notify the followed user only if this was a new follow action (avoids duplicate alerts)
         if (insertRes.rows.length > 0) {
-            await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body)
-         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`, [followingId, followerId, `${req.user.name || 'A neighbor'} started following your gear listings.`]).catch(() => { });
+            await (0, notifications_service_1.createNotification)({
+                userId: followingId,
+                senderId: followerId,
+                type: 'NEW_FOLLOWER',
+                title: 'New Follower',
+                body: `${req.user.name || 'A neighbor'} started following your gear listings.`,
+            }).catch((err) => {
+                console.warn('Failed to send follower notification:', err);
+            });
         }
         const countRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
         return (0, response_1.sendSuccess)(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, 'Followed neighbor');

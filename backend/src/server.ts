@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { ENV } from './config/env';
 import { runMigrations } from './db/migrate';
+import { startReminderScheduler } from './modules/notifications/reminder.scheduler';
 
 export const app = createApp();
 
@@ -10,6 +11,9 @@ const startServer = async () => {
     await runMigrations().catch((err) => {
       console.warn('Migrations notice on startup:', err.message);
     });
+
+    // Start background reminder and lifecycle scheduler
+    startReminderScheduler();
 
     const server = app.listen(ENV.PORT, () => {
       console.log(`Rentu⁺ API Service listening on http://localhost:${ENV.PORT}`);

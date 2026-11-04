@@ -17911,10 +17911,10 @@ var require_layer = __commonJS({
 var require_methods = __commonJS({
   "../node_modules/methods/index.js"(exports2, module2) {
     "use strict";
-    var http3 = require("http");
+    var http4 = require("http");
     module2.exports = getCurrentNodeMethods() || getBasicNodeMethods();
     function getCurrentNodeMethods() {
-      return http3.METHODS && http3.METHODS.map(function lowerCaseMethod(method) {
+      return http4.METHODS && http4.METHODS.map(function lowerCaseMethod(method) {
         return method.toLowerCase();
       });
     }
@@ -18814,14 +18814,14 @@ var require_etag = __commonJS({
   "../node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto4.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto5.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -20720,7 +20720,7 @@ var require_application = __commonJS({
     var query2 = require_query();
     var debug = require_src()("express:application");
     var View = require_view();
-    var http3 = require("http");
+    var http4 = require("http");
     var compileETag = require_utils2().compileETag;
     var compileQueryParser = require_utils2().compileQueryParser;
     var compileTrust = require_utils2().compileTrust;
@@ -20969,7 +20969,7 @@ var require_application = __commonJS({
       tryRender(view, renderOptions, done);
     };
     app2.listen = function listen() {
-      var server = http3.createServer(this);
+      var server = http4.createServer(this);
       return server.listen.apply(server, arguments);
     };
     function logerror(err) {
@@ -21571,12 +21571,12 @@ var require_request = __commonJS({
     var deprecate3 = require_depd()("express");
     var isIP2 = require("net").isIP;
     var typeis = require_type_is();
-    var http3 = require("http");
+    var http4 = require("http");
     var fresh = require_fresh();
     var parseRange = require_range_parser();
     var parse = require_parseurl();
     var proxyaddr = require_proxy_addr();
-    var req = Object.create(http3.IncomingMessage.prototype);
+    var req = Object.create(http4.IncomingMessage.prototype);
     module2.exports = req;
     req.get = req.header = function header(name) {
       if (!name) {
@@ -21730,11 +21730,11 @@ var require_request = __commonJS({
 // ../node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "../node_modules/cookie-signature/index.js"(exports2) {
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto4.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto5.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -21743,7 +21743,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto4.createHash("sha1").update(str).digest("hex");
+      return crypto5.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -21997,7 +21997,7 @@ var require_response = __commonJS({
     var deprecate3 = require_depd()("express");
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
-    var http3 = require("http");
+    var http4 = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
     var path2 = require("path");
@@ -22013,7 +22013,7 @@ var require_response = __commonJS({
     var mime = send.mime;
     var resolve = path2.resolve;
     var vary = require_vary();
-    var res = Object.create(http3.ServerResponse.prototype);
+    var res = Object.create(http4.ServerResponse.prototype);
     module2.exports = res;
     var charsetRegExp = /;\s*charset\s*=/;
     res.status = function status(code) {
@@ -24903,7 +24903,7 @@ var require_ecdsa_sig_formatter = __commonJS({
       }
       throw new TypeError("ECDSA signature must be a Base64 string or a Buffer");
     }
-    function derToJose(signature, alg) {
+    function derToJose2(signature, alg) {
       signature = signatureAsBuffer(signature);
       var paramBytes = getParamBytesForAlg(alg);
       var maxEncodedParamLength = paramBytes + 1;
@@ -25013,7 +25013,7 @@ var require_ecdsa_sig_formatter = __commonJS({
       return dst;
     }
     module2.exports = {
-      derToJose,
+      derToJose: derToJose2,
       joseToDer
     };
   }
@@ -25057,14 +25057,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "../node_modules/jwa/index.js"(exports2, module2) {
     var Buffer4 = require_safe_buffer().Buffer;
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util2 = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto4.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto5.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -25154,17 +25154,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac2 = crypto4.createHmac("sha" + bits, secret);
+        var hmac2 = crypto5.createHmac("sha" + bits, secret);
         var sig2 = (hmac2.update(thing), hmac2.digest("base64"));
         return fromBase64(sig2);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto4 ? function timingSafeEqual3(a, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto5 ? function timingSafeEqual3(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto4.timingSafeEqual(a, b);
+      return crypto5.timingSafeEqual(a, b);
     } : function timingSafeEqual3(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -25181,7 +25181,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto4.createSign("RSA-SHA" + bits);
+        var signer = crypto5.createSign("RSA-SHA" + bits);
         var sig2 = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig2);
       };
@@ -25191,7 +25191,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto4.createVerify("RSA-SHA" + bits);
+        var verifier = crypto5.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -25200,11 +25200,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto4.createSign("RSA-SHA" + bits);
+        var signer = crypto5.createSign("RSA-SHA" + bits);
         var sig2 = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto4.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto4.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto5.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto5.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig2);
       };
@@ -25214,12 +25214,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto4.createVerify("RSA-SHA" + bits);
+        var verifier = crypto5.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto4.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto4.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto5.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto5.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -29929,8 +29929,8 @@ var require_helpers = __commonJS({
     };
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.req = exports2.json = exports2.toBuffer = void 0;
-    var http3 = __importStar2(require("http"));
-    var https2 = __importStar2(require("https"));
+    var http4 = __importStar2(require("http"));
+    var https3 = __importStar2(require("https"));
     async function toBuffer(stream) {
       let length = 0;
       const chunks = [];
@@ -29955,7 +29955,7 @@ var require_helpers = __commonJS({
     exports2.json = json;
     function req(url, opts = {}) {
       const href = typeof url === "string" ? url : url.href;
-      const req2 = (href.startsWith("https:") ? https2 : http3).request(url, opts);
+      const req2 = (href.startsWith("https:") ? https3 : http4).request(url, opts);
       const promise = new Promise((resolve, reject) => {
         req2.once("response", resolve).once("error", reject).end();
       });
@@ -30003,11 +30003,11 @@ var require_dist = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Agent = void 0;
     var net = __importStar2(require("net"));
-    var http3 = __importStar2(require("http"));
+    var http4 = __importStar2(require("http"));
     var https_1 = require("https");
     __exportStar2(require_helpers(), exports2);
     var INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
-    var Agent = class extends http3.Agent {
+    var Agent = class extends http4.Agent {
       constructor(opts) {
         super(opts);
         this[INTERNAL] = {};
@@ -30079,7 +30079,7 @@ var require_dist = __commonJS({
         const fakeSocket = this.incrementSockets(name);
         Promise.resolve().then(() => this.connect(req, connectOpts)).then((socket) => {
           this.decrementSockets(name, fakeSocket);
-          if (socket instanceof http3.Agent) {
+          if (socket instanceof http4.Agent) {
             try {
               return socket.addRequest(req, connectOpts);
             } catch (err) {
@@ -40087,22 +40087,22 @@ var require_crypto2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.NodeCrypto = void 0;
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     var NodeCrypto = class {
       async sha256DigestBase64(str) {
-        return crypto4.createHash("sha256").update(str).digest("base64");
+        return crypto5.createHash("sha256").update(str).digest("base64");
       }
       randomBytesBase64(count) {
-        return crypto4.randomBytes(count).toString("base64");
+        return crypto5.randomBytes(count).toString("base64");
       }
       async verify(pubkey, data, signature) {
-        const verifier = crypto4.createVerify("RSA-SHA256");
+        const verifier = crypto5.createVerify("RSA-SHA256");
         verifier.update(data);
         verifier.end();
         return verifier.verify(pubkey, signature, "base64");
       }
       async sign(privateKey, data) {
-        const signer = crypto4.createSign("RSA-SHA256");
+        const signer = crypto5.createSign("RSA-SHA256");
         signer.update(data);
         signer.end();
         return signer.sign(privateKey, "base64");
@@ -40120,7 +40120,7 @@ var require_crypto2 = __commonJS({
        *   string in hexadecimal encoding.
        */
       async sha256DigestHex(str) {
-        return crypto4.createHash("sha256").update(str).digest("hex");
+        return crypto5.createHash("sha256").update(str).digest("hex");
       }
       /**
        * Computes the HMAC hash of a message using the provided crypto key and the
@@ -40132,7 +40132,7 @@ var require_crypto2 = __commonJS({
        */
       async signWithHmacSha256(key, msg) {
         const cryptoKey = typeof key === "string" ? key : toBuffer(key);
-        return toArrayBuffer(crypto4.createHmac("sha256", cryptoKey).update(msg).digest());
+        return toArrayBuffer(crypto5.createHmac("sha256", cryptoKey).update(msg).digest());
       }
     };
     exports2.NodeCrypto = NodeCrypto;
@@ -40823,10 +40823,10 @@ var require_oauth2client = __commonJS({
        * https://github.com/googleapis/google-auth-library-nodejs/blob/main/samples/oauth2-codeVerifier.js
        */
       async generateCodeVerifierAsync() {
-        const crypto4 = (0, crypto_1.createCrypto)();
-        const randomString = crypto4.randomBytesBase64(96);
+        const crypto5 = (0, crypto_1.createCrypto)();
+        const randomString = crypto5.randomBytesBase64(96);
         const codeVerifier = randomString.replace(/\+/g, "~").replace(/=/g, "_").replace(/\//g, "-");
-        const unencodedCodeChallenge = await crypto4.sha256DigestBase64(codeVerifier);
+        const unencodedCodeChallenge = await crypto5.sha256DigestBase64(codeVerifier);
         const codeChallenge = unencodedCodeChallenge.split("=")[0].replace(/\+/g, "-").replace(/\//g, "_");
         return { codeVerifier, codeChallenge };
       }
@@ -41267,7 +41267,7 @@ var require_oauth2client = __commonJS({
        * @return Returns a promise resolving to LoginTicket on verification.
        */
       async verifySignedJwtWithCertsAsync(jwt3, certs, requiredAudience, issuers, maxExpiry) {
-        const crypto4 = (0, crypto_1.createCrypto)();
+        const crypto5 = (0, crypto_1.createCrypto)();
         if (!maxExpiry) {
           maxExpiry = _OAuth2Client.DEFAULT_MAX_TOKEN_LIFETIME_SECS_;
         }
@@ -41280,7 +41280,7 @@ var require_oauth2client = __commonJS({
         let envelope;
         let payload;
         try {
-          envelope = JSON.parse(crypto4.decodeBase64StringUtf8(segments[0]));
+          envelope = JSON.parse(crypto5.decodeBase64StringUtf8(segments[0]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token envelope: ${segments[0]}': ${err.message}`;
@@ -41291,7 +41291,7 @@ var require_oauth2client = __commonJS({
           throw new Error("Can't parse token envelope: " + segments[0]);
         }
         try {
-          payload = JSON.parse(crypto4.decodeBase64StringUtf8(segments[1]));
+          payload = JSON.parse(crypto5.decodeBase64StringUtf8(segments[1]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token payload '${segments[0]}`;
@@ -41308,7 +41308,7 @@ var require_oauth2client = __commonJS({
         if (envelope.alg === "ES256") {
           signature = formatEcdsa.joseToDer(signature, "ES256").toString("base64");
         }
-        const verified = await crypto4.verify(cert2, signed, signature);
+        const verified = await crypto5.verify(cert2, signed, signature);
         if (!verified) {
           throw new Error("Invalid token signature: " + jwt3);
         }
@@ -43504,7 +43504,7 @@ var require_certificatesubjecttokensupplier = __commonJS({
     var util_1 = require_util2();
     var fs3 = require("fs");
     var crypto_1 = require("crypto");
-    var https2 = require("https");
+    var https3 = require("https");
     exports2.CERTIFICATE_CONFIGURATION_ENV_VARIABLE = "GOOGLE_API_CERTIFICATE_CONFIG";
     var CertificateSourceUnavailableError = class extends Error {
       constructor(message2) {
@@ -43547,7 +43547,7 @@ var require_certificatesubjecttokensupplier = __commonJS({
         if (!this.key || !this.cert) {
           throw new InvalidConfigurationError("Cannot create mTLS Agent with missing certificate or key");
         }
-        return new https2.Agent({ key: this.key, cert: this.cert });
+        return new https3.Agent({ key: this.key, cert: this.cert });
       }
       /**
        * Constructs the subject token, which is the base64-encoded certificate chain.
@@ -43878,14 +43878,14 @@ var require_awsrequestsigner = __commonJS({
       }
     };
     exports2.AwsRequestSigner = AwsRequestSigner;
-    async function sign(crypto4, key, msg) {
-      return await crypto4.signWithHmacSha256(key, msg);
+    async function sign(crypto5, key, msg) {
+      return await crypto5.signWithHmacSha256(key, msg);
     }
-    async function getSigningKey(crypto4, key, dateStamp, region, serviceName) {
-      const kDate = await sign(crypto4, `AWS4${key}`, dateStamp);
-      const kRegion = await sign(crypto4, kDate, region);
-      const kService = await sign(crypto4, kRegion, serviceName);
-      const kSigning = await sign(crypto4, kService, "aws4_request");
+    async function getSigningKey(crypto5, key, dateStamp, region, serviceName) {
+      const kDate = await sign(crypto5, `AWS4${key}`, dateStamp);
+      const kRegion = await sign(crypto5, kDate, region);
+      const kService = await sign(crypto5, kRegion, serviceName);
+      const kSigning = await sign(crypto5, kService, "aws4_request");
       return kSigning;
     }
     async function generateAuthenticationHeaderMap(options) {
@@ -44851,9 +44851,9 @@ var require_gdchclient = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.GdchClient = exports2.GDCH_SERVICE_ACCOUNT_TYPE = void 0;
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     var fs3 = require("fs");
-    var https2 = require("https");
+    var https3 = require("https");
     var oauth2client_1 = require_oauth2client();
     var DEFAULT_LIFETIME_IN_SECONDS = 3600;
     exports2.GDCH_SERVICE_ACCOUNT_TYPE = "gdch_service_account";
@@ -45042,7 +45042,7 @@ var require_gdchclient = __commonJS({
         const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
         const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
         const signingInput = `${encodedHeader}.${encodedPayload}`;
-        const signature = crypto4.sign("sha256", Buffer.from(signingInput), {
+        const signature = crypto5.sign("sha256", Buffer.from(signingInput), {
           key: this.privateKey,
           dsaEncoding: "ieee-p1363"
         });
@@ -45076,7 +45076,7 @@ var require_gdchclient = __commonJS({
         this.caAgentPromise = (async () => {
           try {
             const ca = await fs3.promises.readFile(currentPath);
-            return new https2.Agent({ ca });
+            return new https3.Agent({ ca });
           } catch (err) {
             if (this.cachedCaCertPath === currentPath) {
               this.caAgentPromise = void 0;
@@ -45905,24 +45905,24 @@ var require_googleauth = __commonJS({
           const signed = await client.sign(data);
           return signed.signedBlob;
         }
-        const crypto4 = (0, crypto_1.createCrypto)();
+        const crypto5 = (0, crypto_1.createCrypto)();
         if (client instanceof jwtclient_1.JWT && client.key) {
-          const sign = await crypto4.sign(client.key, data);
+          const sign = await crypto5.sign(client.key, data);
           return sign;
         }
         const creds = await this.getCredentials();
         if (!creds.client_email) {
           throw new Error("Cannot sign data without `client_email`.");
         }
-        return this.signBlob(crypto4, creds.client_email, data, endpoint);
+        return this.signBlob(crypto5, creds.client_email, data, endpoint);
       }
-      async signBlob(crypto4, emailOrUniqueId, data, endpoint) {
+      async signBlob(crypto5, emailOrUniqueId, data, endpoint) {
         const url = new URL(endpoint + `${emailOrUniqueId}:signBlob`);
         const res = await this.request({
           method: "POST",
           url: url.href,
           data: {
-            payload: crypto4.encodeBase64StringUtf8(data)
+            payload: crypto5.encodeBase64StringUtf8(data)
           },
           retry: true,
           retryConfig: {
@@ -50698,8 +50698,8 @@ var require_api_request = __commonJS({
     var error_1 = require_error();
     var error_2 = require_error2();
     var validator = require_validator();
-    var http3 = require("http");
-    var https2 = require("https");
+    var http4 = require("http");
+    var https3 = require("https");
     var http22 = require("http2");
     var events_1 = require("events");
     var credential_internal_1 = require_credential_internal();
@@ -51172,7 +51172,7 @@ var require_api_request = __commonJS({
         }
       }
       execute() {
-        const transport = this.options.protocol === "https:" ? https2 : http3;
+        const transport = this.options.protocol === "https:" ? https3 : http4;
         const req = transport.request(this.options, (res) => {
           this.handleResponse(res, req);
         });
@@ -55108,8 +55108,8 @@ var require_crypto_signer = __commonJS({
        * @inheritDoc
        */
       sign(buffer) {
-        const crypto4 = require("node:crypto");
-        const sign = crypto4.createSign("RSA-SHA256");
+        const crypto5 = require("node:crypto");
+        const sign = crypto5.createSign("RSA-SHA256");
         sign.update(buffer);
         return Promise.resolve(sign.sign(this.credential.privateKey));
       }
@@ -59031,8 +59031,8 @@ var require_ArgumentError = __commonJS({
 // ../node_modules/jwks-rsa/src/wrappers/request.js
 var require_request2 = __commonJS({
   "../node_modules/jwks-rsa/src/wrappers/request.js"(exports2, module2) {
-    var http3 = require("http");
-    var https2 = require("https");
+    var http4 = require("http");
+    var https3 = require("https");
     var ArgumentError = require_ArgumentError();
     module2.exports.default = (options) => {
       if (options.fetcher) {
@@ -59056,7 +59056,7 @@ var require_request2 = __commonJS({
           ...options.timeout && { timeout: options.timeout },
           ...options.agent && { agent: options.agent }
         };
-        const httpRequestLib = protocol === "https:" ? https2 : http3;
+        const httpRequestLib = protocol === "https:" ? https3 : http4;
         const httpRequest = httpRequestLib.request(requestOptions, (res) => {
           let rawData = "";
           res.setEncoding("utf8");
@@ -64648,7 +64648,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "../node_modules/pg/lib/crypto/sasl.js"(exports2, module2) {
     "use strict";
-    var crypto4 = require_utils6();
+    var crypto5 = require_utils6();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -64666,7 +64666,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto4.randomBytes(18).toString("base64");
+      const clientNonce = crypto5.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -64708,20 +64708,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto4.hashByName(hashName, peerCert);
+        const certHash = await crypto5.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto4.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto4.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto4.sha256(clientKey);
-      const clientSignature = await crypto4.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto5.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto5.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto5.sha256(clientKey);
+      const clientSignature = await crypto5.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto4.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto4.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto5.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto5.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -66960,7 +66960,7 @@ var require_client = __commonJS({
     var Query2 = require_query2();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto4 = require_utils6();
+    var crypto5 = require_utils6();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -67215,7 +67215,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto4.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto5.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e2) {
             this.emit("error", e2);
@@ -68700,7 +68700,7 @@ var require_main = __commonJS({
     var fs3 = require("fs");
     var path2 = require("path");
     var os = require("os");
-    var crypto4 = require("crypto");
+    var crypto5 = require("crypto");
     var packageJson = require_package4();
     var version3 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -68919,7 +68919,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto4.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto5.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error) {
@@ -95799,123 +95799,222 @@ var resolveUserIds = async (userId, emailHint) => {
   }
 };
 
-// src/modules/notifications/notifications.service.ts
-async function createNotification(params) {
+// src/modules/notifications/webpush.ts
+var import_crypto = __toESM(require("crypto"));
+var import_https = __toESM(require("https"));
+var import_http = __toESM(require("http"));
+var import_url = require("url");
+function base64UrlToBuffer(b64url) {
+  let b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return Buffer.from(b64, "base64");
+}
+function bufferToBase64Url(buf) {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function hkdf(salt, ikm, info, length) {
+  const prk = import_crypto.default.createHmac("sha256", salt).update(ikm).digest();
+  let t2 = Buffer.alloc(0);
+  let okm = Buffer.alloc(0);
+  let i2 = 0;
+  while (okm.length < length) {
+    i2++;
+    t2 = import_crypto.default.createHmac("sha256", prk).update(Buffer.concat([t2, info, Buffer.from([i2])])).digest();
+    okm = Buffer.concat([okm, t2]);
+  }
+  return okm.slice(0, length);
+}
+function derToJose(der) {
+  let offset = 3;
+  let rLen = der[offset];
+  offset++;
+  let r2 = der.slice(offset, offset + rLen);
+  offset += rLen + 1;
+  let sLen = der[offset];
+  offset++;
+  let s2 = der.slice(offset, offset + sLen);
+  while (r2.length > 32) r2 = r2.slice(1);
+  while (r2.length < 32) r2 = Buffer.concat([Buffer.alloc(1, 0), r2]);
+  while (s2.length > 32) s2 = s2.slice(1);
+  while (s2.length < 32) s2 = Buffer.concat([Buffer.alloc(1, 0), s2]);
+  return Buffer.concat([r2, s2]);
+}
+function encryptPayload(clientPublicKeyB64, clientAuthSecretB64, payloadStr) {
+  const clientPublicKey = base64UrlToBuffer(clientPublicKeyB64);
+  const clientAuth = base64UrlToBuffer(clientAuthSecretB64);
+  const localECDH = import_crypto.default.createECDH("prime256v1");
+  localECDH.generateKeys();
+  const localPublicKey = localECDH.getPublicKey();
+  const sharedSecret = localECDH.computeSecret(clientPublicKey);
+  const salt = import_crypto.default.randomBytes(16);
+  const keyInfo = Buffer.concat([
+    Buffer.from("WebPush: info\0", "utf8"),
+    clientPublicKey,
+    localPublicKey
+  ]);
+  const prk = import_crypto.default.createHmac("sha256", clientAuth).update(sharedSecret).digest();
+  const ikm = hkdf(salt, prk, keyInfo, 32);
+  const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0", "utf8"), 16);
+  const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0", "utf8"), 12);
+  const recordHeader = Buffer.concat([
+    salt,
+    Buffer.from([0, 0, 16, 0]),
+    // 4096 record size
+    Buffer.from([localPublicKey.length]),
+    localPublicKey
+  ]);
+  const cipher = import_crypto.default.createCipheriv("aes-128-gcm", cek, nonce);
+  const payloadBuf = Buffer.from(payloadStr, "utf8");
+  const padded = Buffer.concat([payloadBuf, Buffer.from([2])]);
+  const encrypted = Buffer.concat([cipher.update(padded), cipher.final(), cipher.getAuthTag()]);
+  return Buffer.concat([recordHeader, encrypted]);
+}
+var vapidKeyPair = null;
+function getOrCreateVapidKeys() {
+  if (!vapidKeyPair) {
+    const kp = import_crypto.default.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const jwk = kp.publicKey.export({ format: "jwk" });
+    const x2 = base64UrlToBuffer(jwk.x);
+    const y = base64UrlToBuffer(jwk.y);
+    const rawPublicKey = Buffer.concat([Buffer.from([4]), x2, y]);
+    vapidKeyPair = {
+      publicKey: kp.publicKey,
+      privateKey: kp.privateKey,
+      rawPublicKeyB64: bufferToBase64Url(rawPublicKey)
+    };
+  }
+  return vapidKeyPair;
+}
+function getVapidPublicKey() {
+  return getOrCreateVapidKeys().rawPublicKeyB64;
+}
+function createVapidJwt(endpointUrl) {
+  const { privateKey } = getOrCreateVapidKeys();
+  const urlObj = new import_url.URL(endpointUrl);
+  const aud = `${urlObj.protocol}//${urlObj.host}`;
+  const header = bufferToBase64Url(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = bufferToBase64Url(
+    Buffer.from(
+      JSON.stringify({
+        aud,
+        exp: Math.floor(Date.now() / 1e3) + 12 * 3600,
+        sub: "mailto:support@rentu.site"
+      })
+    )
+  );
+  const unsignedToken = `${header}.${payload}`;
+  const sign = import_crypto.default.createSign("SHA256");
+  sign.update(unsignedToken);
+  const derSig = sign.sign(privateKey);
+  const signature = bufferToBase64Url(derToJose(derSig));
+  return `${unsignedToken}.${signature}`;
+}
+async function sendWebPush(subscription, payload) {
   try {
-    await query(
-      `INSERT INTO notifications 
-        (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        params.userId,
-        params.senderId || null,
-        params.type,
-        params.title,
-        params.body,
-        params.bookingId || null,
-        params.messageId || null,
-        params.referenceId || null,
-        params.referenceType || null
-      ]
-    );
-  } catch (error) {
-    console.error("Failed to create notification:", error);
+    const payloadStr = JSON.stringify(payload);
+    const encryptedBody = encryptPayload(subscription.p256dh, subscription.auth, payloadStr);
+    const jwt3 = createVapidJwt(subscription.endpoint);
+    const vapidPublicKey = getVapidPublicKey();
+    const parsedUrl = new import_url.URL(subscription.endpoint);
+    const isHttps = parsedUrl.protocol === "https:";
+    const requestFn = isHttps ? import_https.default.request : import_http.default.request;
+    return new Promise((resolve) => {
+      const req = requestFn(
+        parsedUrl,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Encoding": "aes128gcm",
+            "Content-Length": encryptedBody.length,
+            TTL: "86400",
+            Urgency: "high",
+            Authorization: `vapid t=${jwt3}, k=${vapidPublicKey}`
+          },
+          timeout: 1e4
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          if (status === 404 || status === 410) {
+            query(`DELETE FROM push_subscriptions WHERE endpoint = $1`, [subscription.endpoint]).catch(() => {
+            });
+          }
+          resolve({ success: status >= 200 && status < 300, statusCode: status });
+        }
+      );
+      req.on("error", (err) => {
+        console.warn("Web Push delivery network notice:", err.message);
+        resolve({ success: false });
+      });
+      req.write(encryptedBody);
+      req.end();
+    });
+  } catch (err) {
+    console.warn("Web Push encryption/dispatch error:", err.message);
+    return { success: false };
   }
 }
-async function checkAndGenerateReminders(userId) {
+async function sendPushNotification(userIds, notification) {
+  const ids = Array.isArray(userIds) ? userIds : [userIds];
+  if (ids.length === 0) return;
   try {
-    const userIds = await resolveUserIds(userId);
-    const upcomingPickups = await query(
-      `SELECT 
-        b.id, 
-        b.borrower_id, 
-        b.lender_id, 
-        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
-        b.start_time, 
-        i.title AS item_title,
-        borrower.name AS borrower_name,
-        lender.name AS lender_name,
-        (b.start_date = CURRENT_DATE) AS is_today
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
-       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
-         AND b.status = 'ACCEPTED'
-         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userIds]
+    const subsRes = await query(
+      `SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::text[])`,
+      [ids]
     );
-    for (const b of upcomingPickups.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_PICKUP'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? "today" : "tomorrow";
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: "BOOKING",
-          type: "REMINDER_PICKUP",
-          title: `Pickup ${b.is_today ? "Today" : "Tomorrow"}`,
-          body: isBorrower ? `Pickup for "${b.item_title}" with ${b.lender_name} is scheduled ${dayLabel}.` : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel}.`
-        });
-      }
-    }
-    const upcomingReturns = await query(
-      `SELECT 
-        b.id, 
-        b.borrower_id, 
-        b.lender_id, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
-        b.end_time, 
-        i.title AS item_title,
-        borrower.name AS borrower_name,
-        lender.name AS lender_name,
-        (COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
-       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
-         AND b.status = 'HANDED_OVER'
-         AND COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userIds]
+    if (subsRes.rows.length === 0) return;
+    const pushPayload = {
+      title: notification.title,
+      body: notification.body,
+      type: notification.type || "NOTIFICATION",
+      booking_id: notification.bookingId,
+      reference_id: notification.referenceId,
+      reference_type: notification.referenceType,
+      url: notification.type?.includes("MESSAGE") || notification.referenceType === "MESSAGE" ? "/messages" : notification.bookingId || notification.referenceType === "BOOKING" ? "/bookings" : "/",
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    await Promise.allSettled(
+      subsRes.rows.map((sub) => sendWebPush(sub, pushPayload))
     );
-    for (const b of upcomingReturns.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_RETURN'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? "today" : "tomorrow";
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: "BOOKING",
-          type: "REMINDER_RETURN",
-          title: `Return Due ${b.is_today ? "Today" : "Tomorrow"}`,
-          body: isBorrower ? `Return for "${b.item_title}" to ${b.lender_name} is due ${dayLabel}.` : `Scheduled return for "${b.item_title}" from ${b.borrower_name} is ${dayLabel}.`
-        });
-      }
-    }
-  } catch (error) {
-    console.error("Error generating notification reminders:", error);
+  } catch (err) {
+    console.warn("Failed to dispatch user push notifications:", err);
   }
+}
+
+// src/modules/notifications/notifications.service.ts
+async function createNotification(params) {
+  const userIds = await resolveUserIds(params.userId);
+  const targetUserId = userIds[0] || params.userId;
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await query(
+        `INSERT INTO notifications 
+          (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id`,
+        [
+          targetUserId,
+          params.senderId || null,
+          params.type,
+          params.title,
+          params.body,
+          params.bookingId || null,
+          params.messageId || null,
+          params.referenceId || null,
+          params.referenceType || null
+        ]
+      );
+      sendPushNotification(userIds, params).catch((err) => {
+        console.warn("Web Push async dispatch note:", err);
+      });
+      return { id: res.rows[0]?.id, success: true };
+    } catch (error) {
+      lastError = error;
+      console.error(`createNotification attempt ${attempt + 1} failed:`, error);
+    }
+  }
+  throw lastError || new Error("Failed to create notification");
 }
 
 // src/modules/items/items.routes.ts
@@ -97075,17 +97174,15 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]
     );
     const createdMessage = msgResult.rows[0];
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
-      [
-        request.seeker_id,
-        lenderId,
-        `${lenderName} is ready to lend gear`,
-        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
-        request.id
-      ]
-    ).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
+    await createNotification({
+      userId: request.seeker_id,
+      senderId: lenderId,
+      type: "REQUEST_LEND_OFFER",
+      title: `${lenderName} is ready to lend gear`,
+      body: `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+      referenceId: request.id,
+      referenceType: "PROPOSAL"
+    }).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
     return sendSuccess(res, {
       message: createdMessage,
       proposal: proposalPayload,
@@ -97254,7 +97351,7 @@ var requests_routes_default = router3;
 
 // src/modules/bookings/bookings.routes.ts
 var import_express4 = __toESM(require_express2());
-var import_crypto = __toESM(require("crypto"));
+var import_crypto2 = __toESM(require("crypto"));
 var router4 = (0, import_express4.Router)();
 function sanitizeTzOffset(tzOffsetMinutes) {
   if (typeof tzOffsetMinutes === "number" && !isNaN(tzOffsetMinutes) && tzOffsetMinutes >= -840 && tzOffsetMinutes <= 720) {
@@ -97644,7 +97741,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       pickupFee = Number(item.pickup_fee || 0);
     }
     const calculatedTotalPrice = baseCost + deliveryFee + pickupFee;
-    const pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+    const pickupCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
     const proposalData = {
       type: "RENTAL_REQUEST",
       item_id: item.id,
@@ -98169,7 +98266,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
           });
         }
         if (!pickupCode) {
-          pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+          pickupCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
         }
         updateRes = await client.query(
           `UPDATE bookings 
@@ -98400,7 +98497,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
       );
     }
     await resetCodeAttempts(lockoutKey);
-    const returnCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+    const returnCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
     const client = await pool.connect();
     let updateRes;
     try {
@@ -99475,11 +99572,14 @@ router6.post("/:id/follow", authMiddleware, async (req, res, next) => {
       [followerId, followingId]
     );
     if (insertRes.rows.length > 0) {
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body)
-         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
-        [followingId, followerId, `${req.user.name || "A neighbor"} started following your gear listings.`]
-      ).catch(() => {
+      await createNotification({
+        userId: followingId,
+        senderId: followerId,
+        type: "NEW_FOLLOWER",
+        title: "New Follower",
+        body: `${req.user.name || "A neighbor"} started following your gear listings.`
+      }).catch((err) => {
+        console.warn("Failed to send follower notification:", err);
       });
     }
     const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
@@ -99604,7 +99704,7 @@ var users_routes_default = router6;
 
 // src/modules/messages/messages.routes.ts
 var import_express7 = __toESM(require_express2());
-var import_crypto2 = __toESM(require("crypto"));
+var import_crypto3 = __toESM(require("crypto"));
 var router7 = (0, import_express7.Router)();
 var sendMessageSchema = external_exports.object({
   booking_id: external_exports.string().optional().nullable(),
@@ -100298,7 +100398,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             ).catch(() => {
             });
           }
-          const pickupCode = existingBooking.pickup_code || import_crypto2.default.randomInt(1e5, 1e6).toString();
+          const pickupCode = existingBooking.pickup_code || import_crypto3.default.randomInt(1e5, 1e6).toString();
           const updateRes = await client2.query(
             `UPDATE bookings
              SET status = 'ACCEPTED',
@@ -100485,7 +100585,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         ]
       );
       createdItem = itemRes.rows[0];
-      const pickupCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
+      const pickupCode = import_crypto3.default.randomInt(1e5, 1e6).toString();
       const bookingRes = await client.query(
         `INSERT INTO bookings (
           item_id, borrower_id, lender_id, start_date, duration_days, total_price,
@@ -100550,17 +100650,27 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     } finally {
       client.release();
     }
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
-    ).catch(() => {
+    await createNotification({
+      userId: canonicalBorrowerId,
+      senderId: canonicalLenderId,
+      type: "BOOKING_STARTED",
+      title: `Booking Confirmed: ${itemTitle}`,
+      body: "Rental agreement confirmed. Handover is now live in your Ongoing Bookings.",
+      referenceId: createdBooking.id,
+      referenceType: "BOOKING",
+      bookingId: createdBooking.id
+    }).catch(() => {
     });
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
-    ).catch(() => {
+    await createNotification({
+      userId: canonicalLenderId,
+      senderId: canonicalBorrowerId,
+      type: "BOOKING_STARTED",
+      title: `Booking Confirmed: ${itemTitle}`,
+      body: "Rental agreement confirmed. Handover is now live in your Ongoing Bookings.",
+      referenceId: createdBooking.id,
+      referenceType: "BOOKING",
+      bookingId: createdBooking.id
+    }).catch(() => {
     });
     const safeCreatedBooking = { ...createdBooking };
     delete safeCreatedBooking.pickup_code;
@@ -100650,19 +100760,16 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
         ]
       ).catch(() => {
       });
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, $2, $3, $4, 'Your request for "' || $5 || '" ' || $6 || '.', $7, 'BOOKING')`,
-        [
-          notificationRecipientId,
-          currentUserId,
-          isReceiver ? "BOOKING_REJECTED" : "BOOKING_CANCELLED",
-          isReceiver ? "Rental Request Declined" : "Rental Request Cancelled",
-          itemTitle,
-          statusActionText,
-          existingBookingId
-        ]
-      ).catch(() => {
+      await createNotification({
+        userId: notificationRecipientId,
+        senderId: currentUserId,
+        type: isReceiver ? "BOOKING_REJECTED" : "BOOKING_CANCELLED",
+        title: isReceiver ? "Rental Request Declined" : "Rental Request Cancelled",
+        body: `Your request for "${itemTitle}" ${statusActionText}.`,
+        referenceId: existingBookingId,
+        referenceType: "BOOKING",
+        bookingId: existingBookingId
+      }).catch(() => {
       });
     }
     return sendSuccess(res, { proposal_data: updatedProposal }, `Proposal ${targetProposalStatus.toLowerCase()}`);
@@ -102225,15 +102332,8 @@ router10.get("/", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const myIds = await resolveUserIds(userId);
-    await checkAndGenerateReminders(userId).catch((err) => {
-      console.warn("Notification reminder check error:", err);
-    });
-    await query(
-      `DELETE FROM notifications 
-       WHERE created_at < NOW() - INTERVAL '30 days'`
-    ).catch((err) => {
-      console.warn("Notification 30-day purge error:", err);
-    });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     await query(
       `WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -102286,7 +102386,15 @@ router10.get("/", authMiddleware, async (req, res, next) => {
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 150`,
+       LIMIT $2 OFFSET $3`,
+      [myIds, limit, offset]
+    );
+    const totalCountRes = await query(
+      `SELECT COUNT(*)::int AS total FROM notifications 
+       WHERE user_id = ANY($1::text[])
+         AND created_at >= NOW() - INTERVAL '30 days'
+         AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
+         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`,
       [myIds]
     );
     const unreadCountRes = await query(
@@ -102328,10 +102436,13 @@ router10.get("/", authMiddleware, async (req, res, next) => {
         )`,
       [userId]
     );
+    const total = totalCountRes.rows[0]?.total || 0;
     return sendSuccess(res, {
       notifications: result.rows,
       unread_count: unreadCountRes.rows[0]?.unread || 0,
-      unread_messages_count: unreadMessagesRes.rows[0]?.unread_messages || 0
+      unread_messages_count: unreadMessagesRes.rows[0]?.unread_messages || 0,
+      total_count: total,
+      has_more: offset + result.rows.length < total
     });
   } catch (error) {
     next(error);
@@ -102364,6 +102475,9 @@ router10.put("/read-all", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
+router10.get("/vapid-public-key", (_req, res) => {
+  return sendSuccess(res, { publicKey: getVapidPublicKey() });
+});
 router10.post("/push-subscribe", authMiddleware, async (req, res, next) => {
   try {
     const { endpoint, keys } = req.body;
@@ -102371,11 +102485,13 @@ router10.post("/push-subscribe", authMiddleware, async (req, res, next) => {
       return sendError(res, "BAD_REQUEST", "Valid push subscription endpoint and cryptographic keys are required", 400);
     }
     const userId = req.user.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    const canonicalUserId = myIds[0] || userId;
     await query(
       `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
-      [userId, endpoint, keys.p256dh, keys.auth]
+      [canonicalUserId, endpoint, keys.p256dh, keys.auth]
     );
     return sendSuccess(res, { subscribed: true }, "Push notification subscription registered");
   } catch (error) {
@@ -102424,16 +102540,15 @@ router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
     );
     const ticket = insertRes.rows[0];
     if (userId) {
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, NULL, 'SUPPORT_TICKET_RECEIVED', $2, $3, $4, 'SUPPORT')`,
-        [
-          userId,
-          validated.type === "CONCERN" ? "Concern Received" : "Feedback Received",
-          `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
-          ticket.id
-        ]
-      ).catch(() => {
+      await createNotification({
+        userId,
+        senderId: null,
+        type: "SUPPORT_TICKET_RECEIVED",
+        title: validated.type === "CONCERN" ? "Concern Received" : "Feedback Received",
+        body: `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
+        referenceId: ticket.id,
+        referenceType: "SUPPORT"
+      }).catch(() => {
       });
     }
     return sendSuccess(res, ticket, "Your submission has been sent directly to the Rentu Admin Team.", 201);
@@ -102521,16 +102636,15 @@ router11.put("/admin/:id", adminMiddleware, async (req, res, next) => {
     const updated = result.rows[0];
     if (currentTicket.user_id && (validated.status === "RESOLVED" || validated.admin_notes)) {
       const noteSnippet = validated.admin_notes ? `: "${validated.admin_notes}"` : "";
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, NULL, 'SUPPORT_TICKET_RESOLVED', $2, $3, $4, 'SUPPORT')`,
-        [
-          currentTicket.user_id,
-          validated.status === "RESOLVED" ? "Concern Resolved" : "Support Update",
-          `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
-          updated.id
-        ]
-      ).catch(() => {
+      await createNotification({
+        userId: currentTicket.user_id,
+        senderId: null,
+        type: "SUPPORT_TICKET_RESOLVED",
+        title: validated.status === "RESOLVED" ? "Concern Resolved" : "Support Update",
+        body: `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
+        referenceId: updated.id,
+        referenceType: "SUPPORT"
+      }).catch(() => {
       });
     }
     return sendSuccess(res, updated, "Ticket updated successfully");
@@ -103142,6 +103256,7 @@ var runMigrations = async () => {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id UUID;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id UUID;
@@ -103149,12 +103264,21 @@ var runMigrations = async () => {
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
 
-      -- Backfill notifications atomic columns from data JSON
-      UPDATE notifications
-      SET sender_id = COALESCE(sender_id, data->>'sender_id'),
-          booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
-          message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
-      WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+      -- Backfill notifications atomic columns from data JSON safely if column exists
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'data') THEN
+          UPDATE notifications
+          SET sender_id = COALESCE(sender_id, data->>'sender_id'),
+              booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
+              message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
+          WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+        END IF;
+      END $$;
+
+      -- Unique guard for daily pickup and return reminders to prevent duplicate alerts from concurrent requests
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_daily_reminders 
+      ON notifications (user_id, booking_id, type, ((created_at AT TIME ZONE 'UTC')::date)) 
+      WHERE type IN ('REMINDER_PICKUP', 'REMINDER_RETURN');
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (

@@ -31,6 +31,7 @@ import {
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
 import { api } from '../lib/api';
+import { initWebPush } from '../lib/push';
 import { UserSearchResult, isAuthorizedAdmin, AppNotification } from '../lib/types';
 
 interface NavbarProps {
@@ -96,7 +97,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(10);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreServer, setHasMoreServer] = useState(false);
+  const [totalNotificationsCount, setTotalNotificationsCount] = useState<number>(0);
+  const [serverUnreadCount, setServerUnreadCount] = useState<number | null>(null);
   const [latestToast, setLatestToast] = useState<AppNotification | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Unread messages count (falls back to local state if not passed from parent)
   const [localUnreadMessages, setLocalUnreadMessages] = useState<number>(0);
@@ -120,10 +126,13 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (isInitial: boolean = false) => {
     if (!isAuthenticated) return;
+    if (isInitial || notifications.length === 0) {
+      setIsLoadingNotifications(true);
+    }
     try {
-      const data: any = await api.getNotifications();
+      const data: any = await api.getNotifications({ limit: 50, offset: 0 });
       const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
       const rawList: AppNotification[] = Array.isArray(data)
         ? data
@@ -132,6 +141,14 @@ export const Navbar: React.FC<NavbarProps> = ({
         if (!n.created_at) return true;
         return new Date(n.created_at).getTime() >= thirtyDaysAgo;
       });
+
+      if (data && typeof data.unread_count === 'number') {
+        setServerUnreadCount(data.unread_count);
+      }
+      if (data && typeof data.total_count === 'number') {
+        setTotalNotificationsCount(data.total_count);
+      }
+      setHasMoreServer(Boolean(data?.has_more));
 
       if (data && typeof data.unread_messages_count === 'number') {
         setLocalUnreadMessages(data.unread_messages_count);
@@ -142,8 +159,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           const newest = list[0];
           const prevIds = new Set(prev.map((p) => p.id));
           if (!prevIds.has(newest.id) && !newest.is_read && !newest.read_at) {
+            if (toastTimerRef.current) {
+              clearTimeout(toastTimerRef.current);
+            }
             setLatestToast(newest);
-            setTimeout(() => setLatestToast(null), 6000);
+            toastTimerRef.current = setTimeout(() => {
+              setLatestToast(null);
+              toastTimerRef.current = null;
+            }, 6000);
           }
         }
         return list;
@@ -155,22 +178,44 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
+  // Clear notification state on account switch / logout and initialize Web Push (Issue 2 & 8)
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchNotifications();
+    setNotifications([]);
+    setLatestToast(null);
+    setServerUnreadCount(null);
+    setLocalUnreadMessages(0);
+    setVisibleLimit(10);
+    setHasMoreServer(false);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+
+    if (isAuthenticated && user?.id) {
+      fetchNotifications(true);
       fetchUnreadMessages();
+      initWebPush().catch(() => {});
       const interval = setInterval(() => {
-        fetchNotifications();
+        fetchNotifications(false);
         fetchUnreadMessages();
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
+
+  // Clean up toast timer on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Listen for real-time notification and message update events triggered anywhere in app
   useEffect(() => {
     const handleUpdate = () => {
-      fetchNotifications();
+      fetchNotifications(false);
       fetchUnreadMessages();
     };
     window.addEventListener('rentu:notifications-updated', handleUpdate);
@@ -179,7 +224,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       window.removeEventListener('rentu:notifications-updated', handleUpdate);
       window.removeEventListener('rentu:messages-updated', handleUpdate);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
 
   // Debounced user search
   useEffect(() => {
@@ -230,7 +275,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const unreadCount = notifications.filter((n) => !n.is_read && !n.read_at).length;
+  const unreadCount = serverUnreadCount !== null ? serverUnreadCount : notifications.filter((n) => !n.is_read && !n.read_at).length;
 
   const formatInstaTime = (dateStr: string) => {
     if (!dateStr) return '';
@@ -398,10 +443,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleNotificationClick = async (notif: AppNotification) => {
     if (!notif.is_read && !notif.read_at) {
-      await api.markNotificationRead(notif.id).catch(() => {});
       setNotifications((prev) =>
         prev.map((n) => (n.id === notif.id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n))
       );
+      setServerUnreadCount((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+      try {
+        await api.markNotificationRead(notif.id);
+      } catch (err) {
+        console.error('Failed to mark notification read on server:', err);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notif.id ? { ...n, is_read: false, read_at: undefined } : n))
+        );
+        setServerUnreadCount((prev) => (prev !== null ? prev + 1 : null));
+      }
     }
     setShowNotifications(false);
     setLatestToast(null);
@@ -410,17 +464,40 @@ export const Navbar: React.FC<NavbarProps> = ({
     const nType = (notif.type || '').toUpperCase();
     const nBody = (notif.body || '').toLowerCase();
 
+    // Support Notifications -> Direct to Support modal or settings
+    if (notif.reference_type === 'SUPPORT' || nType.startsWith('SUPPORT_')) {
+      if (onOpenHelpSupport) {
+        onOpenHelpSupport();
+      } else if (onOpenSettings) {
+        onOpenSettings();
+      } else {
+        setActiveTab('profile');
+      }
+      return;
+    }
+
+    // Lend Offer for Wish/Request -> Open chat directly with lender so seeker can review & accept
+    if (nType === 'REQUEST_LEND_OFFER') {
+      if (notif.sender_id && onOpenChatWithUser) {
+        onOpenChatWithUser(notif.sender_id, notif.sender_name, notif.sender_avatar);
+      } else {
+        setActiveTab('messages');
+      }
+      return;
+    }
+
     // 1. Rental Request Notifications -> Takes you directly to 'requests' section of Bookings!
     const isRentalRequest = 
       nType === 'BOOKING_PROPOSAL' || 
       nType === 'NEW_PROPOSAL' || 
-      nType.includes('PROPOSAL') ||
+      (nType.includes('PROPOSAL') && nType !== 'REQUEST_LEND_OFFER') ||
       nBody.includes('requested to rent');
 
     // 2. Active / Ongoing Handoff Notifications -> Takes you to 'ongoing' section of Bookings!
     const isOngoing =
       nType === 'BOOKING_ACCEPTED' ||
       nType === 'BOOKING_STARTED' ||
+      nType === 'BOOKING_RECEIVED' ||
       nType.startsWith('REMINDER_') ||
       nType.includes('HANDED_OVER') ||
       nType.includes('PICKUP');
@@ -457,7 +534,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         } else {
           setActiveTab('messages');
         }
-      } else if (notif.reference_type === 'REQUEST' || nType.includes('REQUEST')) {
+      } else if (
+        nType === 'REQUEST_FOLLOWER_ANNOUNCEMENT' ||
+        nType === 'NEARBY_REQUEST_ANNOUNCEMENT' ||
+        notif.reference_type === 'REQUEST'
+      ) {
         onNavigateNotification({ tab: 'requests' });
       } else if (nType === 'NEW_FOLLOWER' && notif.sender_id && onOpenUserProfile) {
         onOpenUserProfile(notif.sender_id);
@@ -471,6 +552,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     } else {
       if (isRentalRequest) {
         setActiveTab('bookings');
+      } else if (
+        nType === 'REQUEST_FOLLOWER_ANNOUNCEMENT' ||
+        nType === 'NEARBY_REQUEST_ANNOUNCEMENT' ||
+        notif.reference_type === 'REQUEST'
+      ) {
+        setActiveTab('requests');
       } else {
         setActiveTab('bookings');
       }
@@ -478,8 +565,51 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const handleMarkAllRead = async () => {
-    await api.markAllNotificationsRead().catch(() => {});
+    const originalNotifications = notifications;
+    const originalCount = serverUnreadCount;
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
+    setServerUnreadCount(0);
+    try {
+      await api.markAllNotificationsRead();
+    } catch (err) {
+      console.error('Failed to mark all notifications read on server:', err);
+      setNotifications(originalNotifications);
+      setServerUnreadCount(originalCount);
+    }
+  };
+
+  const handleShowMore = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextLimit = visibleLimit + 15;
+    setVisibleLimit(nextLimit);
+
+    if (nextLimit >= notifications.length && hasMoreServer && !isLoadingMore) {
+      setIsLoadingMore(true);
+      try {
+        const data: any = await api.getNotifications({
+          limit: 50,
+          offset: notifications.length,
+        });
+        const moreList: AppNotification[] = Array.isArray(data)
+          ? data
+          : (data?.notifications || []);
+        if (moreList.length > 0) {
+          setNotifications((prev) => {
+            const existingIds = new Set(prev.map((n) => n.id));
+            const fresh = moreList.filter((n) => !existingIds.has(n.id));
+            return [...prev, ...fresh];
+          });
+        }
+        setHasMoreServer(Boolean(data?.has_more));
+        if (typeof data?.total_count === 'number') {
+          setTotalNotificationsCount(data.total_count);
+        }
+      } catch (err) {
+        console.error('Failed to load more notifications from server:', err);
+      } finally {
+        setIsLoadingMore(false);
+      }
+    }
   };
 
   return (
@@ -852,22 +982,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                               </div>
                             ))}
 
-                            {/* Show More Notifications Button (displayed when total notifications > visibleLimit) */}
-                            {notifications.length > visibleLimit && (
+                            {/* Show More Notifications Button (displayed when local notifications > visibleLimit or server has more) */}
+                            {(notifications.length > visibleLimit || hasMoreServer) && (
                               <div className="p-3 text-center bg-canvas/40 border-t border-divider">
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setVisibleLimit((prev) => prev + 10);
-                                  }}
+                                  onClick={handleShowMore}
+                                  disabled={isLoadingMore}
                                   className="btn-secondary w-full py-2.5 text-xs font-bold rounded-xl text-ink hover:text-brand hover:border-brand/40 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
                                 >
-                                  <span>Show More Notifications</span>
-                                  <span className="text-[10px] text-ink-secondary">
-                                    ({notifications.length - visibleLimit} remaining)
-                                  </span>
-                                  <ChevronDown className="w-3.5 h-3.5" />
+                                  {isLoadingMore ? (
+                                    <span>Loading older notifications...</span>
+                                  ) : (
+                                    <>
+                                      <span>Show More Notifications</span>
+                                      {totalNotificationsCount > visibleLimit && (
+                                        <span className="text-[10px] text-ink-secondary">
+                                          ({Math.max(0, totalNotificationsCount - visibleLimit)} remaining)
+                                        </span>
+                                      )}
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    </>
+                                  )}
                                 </button>
                               </div>
                             )}

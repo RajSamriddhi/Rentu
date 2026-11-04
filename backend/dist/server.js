@@ -4,6 +4,7 @@ exports.app = void 0;
 const app_1 = require("./app");
 const env_1 = require("./config/env");
 const migrate_1 = require("./db/migrate");
+const reminder_scheduler_1 = require("./modules/notifications/reminder.scheduler");
 exports.app = (0, app_1.createApp)();
 const startServer = async () => {
     try {
@@ -11,6 +12,8 @@ const startServer = async () => {
         await (0, migrate_1.runMigrations)().catch((err) => {
             console.warn('Migrations notice on startup:', err.message);
         });
+        // Start background reminder and lifecycle scheduler
+        (0, reminder_scheduler_1.startReminderScheduler)();
         const server = exports.app.listen(env_1.ENV.PORT, () => {
             console.log(`Rentu⁺ API Service listening on http://localhost:${env_1.ENV.PORT}`);
             console.log(`Environment: ${env_1.ENV.NODE_ENV}`);

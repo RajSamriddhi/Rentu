@@ -5,6 +5,7 @@ import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { extractCity } from '../../utils/city';
 import { resolveUserIds, getCanonicalUserId } from '../../utils/user';
+import { createNotification } from '../notifications/notifications.service';
 
 const router = Router();
 
@@ -521,17 +522,15 @@ router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest,
     const createdMessage = msgResult.rows[0];
 
     // Insert high-priority notification for seeker
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
-      [
-        request.seeker_id,
-        lenderId,
-        `${lenderName} is ready to lend gear`,
-        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
-        request.id,
-      ]
-    ).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
+    await createNotification({
+      userId: request.seeker_id,
+      senderId: lenderId,
+      type: 'REQUEST_LEND_OFFER',
+      title: `${lenderName} is ready to lend gear`,
+      body: `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+      referenceId: request.id,
+      referenceType: 'PROPOSAL',
+    }).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
 
     return sendSuccess(res, {
       message: createdMessage,

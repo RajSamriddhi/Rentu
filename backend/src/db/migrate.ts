@@ -351,6 +351,7 @@ export const runMigrations = async () => {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id TEXT;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id UUID;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_id UUID;
@@ -358,12 +359,21 @@ export const runMigrations = async () => {
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50);
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
 
-      -- Backfill notifications atomic columns from data JSON
-      UPDATE notifications
-      SET sender_id = COALESCE(sender_id, data->>'sender_id'),
-          booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
-          message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
-      WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+      -- Backfill notifications atomic columns from data JSON safely if column exists
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'data') THEN
+          UPDATE notifications
+          SET sender_id = COALESCE(sender_id, data->>'sender_id'),
+              booking_id = COALESCE(booking_id, NULLIF(data->>'booking_id', '')::uuid),
+              message_id = COALESCE(message_id, NULLIF(data->>'message_id', '')::uuid)
+          WHERE data IS NOT NULL AND (sender_id IS NULL OR booking_id IS NULL);
+        END IF;
+      END $$;
+
+      -- Unique guard for daily pickup and return reminders to prevent duplicate alerts from concurrent requests
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_daily_reminders 
+      ON notifications (user_id, booking_id, type, ((created_at AT TIME ZONE 'UTC')::date)) 
+      WHERE type IN ('REMINDER_PICKUP', 'REMINDER_RETURN');
     `);
 
     // 4.5. PUSH SUBSCRIPTIONS

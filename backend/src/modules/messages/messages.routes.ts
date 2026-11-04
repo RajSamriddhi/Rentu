@@ -1132,17 +1132,27 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     }
 
     // 7. Send notifications to both lender and borrower about the ongoing booking
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
-    ).catch(() => {});
+    await createNotification({
+      userId: canonicalBorrowerId,
+      senderId: canonicalLenderId,
+      type: 'BOOKING_STARTED',
+      title: `Booking Confirmed: ${itemTitle}`,
+      body: 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.',
+      referenceId: createdBooking.id,
+      referenceType: 'BOOKING',
+      bookingId: createdBooking.id,
+    }).catch(() => {});
 
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
-    ).catch(() => {});
+    await createNotification({
+      userId: canonicalLenderId,
+      senderId: canonicalBorrowerId,
+      type: 'BOOKING_STARTED',
+      title: `Booking Confirmed: ${itemTitle}`,
+      body: 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.',
+      referenceId: createdBooking.id,
+      referenceType: 'BOOKING',
+      bookingId: createdBooking.id,
+    }).catch(() => {});
 
     const safeCreatedBooking = { ...createdBooking };
     // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
@@ -1249,19 +1259,16 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
         ]
       ).catch(() => {});
 
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, $2, $3, $4, 'Your request for "' || $5 || '" ' || $6 || '.', $7, 'BOOKING')`,
-        [
-          notificationRecipientId,
-          currentUserId,
-          isReceiver ? 'BOOKING_REJECTED' : 'BOOKING_CANCELLED',
-          isReceiver ? 'Rental Request Declined' : 'Rental Request Cancelled',
-          itemTitle,
-          statusActionText,
-          existingBookingId,
-        ]
-      ).catch(() => {});
+      await createNotification({
+        userId: notificationRecipientId,
+        senderId: currentUserId,
+        type: isReceiver ? 'BOOKING_REJECTED' : 'BOOKING_CANCELLED',
+        title: isReceiver ? 'Rental Request Declined' : 'Rental Request Cancelled',
+        body: `Your request for "${itemTitle}" ${statusActionText}.`,
+        referenceId: existingBookingId,
+        referenceType: 'BOOKING',
+        bookingId: existingBookingId,
+      }).catch(() => {});
     }
 
     return sendSuccess(res, { proposal_data: updatedProposal }, `Proposal ${targetProposalStatus.toLowerCase()}`);

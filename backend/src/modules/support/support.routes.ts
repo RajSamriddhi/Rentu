@@ -4,6 +4,7 @@ import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest, adminMiddleware } from '../../middleware/auth';
 import { resolveUserIds } from '../../utils/user';
+import { createNotification } from '../notifications/notifications.service';
 
 const router = Router();
 
@@ -53,16 +54,15 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
 
     // If user is authenticated, create an in-app confirmation notification
     if (userId) {
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, NULL, 'SUPPORT_TICKET_RECEIVED', $2, $3, $4, 'SUPPORT')`,
-        [
-          userId,
-          validated.type === 'CONCERN' ? 'Concern Received' : 'Feedback Received',
-          `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
-          ticket.id,
-        ]
-      ).catch(() => {});
+      await createNotification({
+        userId,
+        senderId: null,
+        type: 'SUPPORT_TICKET_RECEIVED',
+        title: validated.type === 'CONCERN' ? 'Concern Received' : 'Feedback Received',
+        body: `We have received your ${validated.type.toLowerCase()} regarding "${validated.subject}". Our admin team will review and resolve it promptly.`,
+        referenceId: ticket.id,
+        referenceType: 'SUPPORT',
+      }).catch(() => {});
     }
 
     return sendSuccess(res, ticket, 'Your submission has been sent directly to the Rentu Admin Team.', 201);
@@ -171,16 +171,15 @@ router.put('/admin/:id', adminMiddleware, async (req: AuthenticatedRequest, res:
     // Notify the user if ticket was resolved or updated with admin notes
     if (currentTicket.user_id && (validated.status === 'RESOLVED' || validated.admin_notes)) {
       const noteSnippet = validated.admin_notes ? `: "${validated.admin_notes}"` : '';
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, NULL, 'SUPPORT_TICKET_RESOLVED', $2, $3, $4, 'SUPPORT')`,
-        [
-          currentTicket.user_id,
-          validated.status === 'RESOLVED' ? 'Concern Resolved' : 'Support Update',
-          `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
-          updated.id,
-        ]
-      ).catch(() => {});
+      await createNotification({
+        userId: currentTicket.user_id,
+        senderId: null,
+        type: 'SUPPORT_TICKET_RESOLVED',
+        title: validated.status === 'RESOLVED' ? 'Concern Resolved' : 'Support Update',
+        body: `Your ${currentTicket.type.toLowerCase()} regarding "${currentTicket.subject}" has been updated by the Admin team${noteSnippet}`,
+        referenceId: updated.id,
+        referenceType: 'SUPPORT',
+      }).catch(() => {});
     }
 
     return sendSuccess(res, updated, 'Ticket updated successfully');

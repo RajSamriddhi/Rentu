@@ -700,25 +700,54 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getNotifications(): Promise<{ notifications: AppNotification[]; unread_count: number; unread_messages_count?: number } | AppNotification[]> {
-    const res = await fetch(`${API_BASE}/notifications`, {
+  async getNotifications(params?: { limit?: number; offset?: number }): Promise<{
+    notifications: AppNotification[];
+    unread_count: number;
+    unread_messages_count?: number;
+    total_count?: number;
+    has_more?: boolean;
+  }> {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await fetch(`${API_BASE}/notifications${qs}`, {
       headers: getHeaders(),
     });
     return handleResponse(res);
   },
 
   async markNotificationRead(id: string): Promise<void> {
-    await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
+    const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
       method: 'PUT',
       headers: getHeaders(),
     });
+    return handleResponse(res);
   },
 
   async markAllNotificationsRead(): Promise<void> {
-    await fetch(`${API_BASE}/notifications/read-all`, {
+    const res = await fetch(`${API_BASE}/notifications/read-all`, {
       method: 'PUT',
       headers: getHeaders(),
     });
+    return handleResponse(res);
+  },
+
+  async getVapidPublicKey(): Promise<{ publicKey: string | null }> {
+    const res = await fetch(`${API_BASE}/notifications/vapid-public-key`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async subscribePushSubscription(subscription: any): Promise<{ subscribed: boolean }> {
+    const res = await fetch(`${API_BASE}/notifications/push-subscribe`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(subscription),
+    });
+    return handleResponse(res);
   },
 
   // Support & Concerns (Community Care)

@@ -199,9 +199,14 @@ CREATE TABLE IF NOT EXISTS notifications (
     message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
     reference_id TEXT,
     reference_type VARCHAR(50),
+    data JSONB,
     read_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_daily_reminders 
+ON notifications (user_id, booking_id, type, ((created_at AT TIME ZONE 'UTC')::date)) 
+WHERE type IN ('REMINDER_PICKUP', 'REMINDER_RETURN');
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, read_at);

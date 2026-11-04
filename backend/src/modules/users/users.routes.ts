@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { createNotification } from '../notifications/notifications.service';
 
 const router = Router();
 
@@ -645,11 +646,15 @@ router.post('/:id/follow', authMiddleware, async (req: AuthenticatedRequest, res
 
     // Notify the followed user only if this was a new follow action (avoids duplicate alerts)
     if (insertRes.rows.length > 0) {
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body)
-         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
-        [followingId, followerId, `${req.user!.name || 'A neighbor'} started following your gear listings.`]
-      ).catch(() => {});
+      await createNotification({
+        userId: followingId,
+        senderId: followerId,
+        type: 'NEW_FOLLOWER',
+        title: 'New Follower',
+        body: `${req.user!.name || 'A neighbor'} started following your gear listings.`,
+      }).catch((err) => {
+        console.warn('Failed to send follower notification:', err);
+      });
     }
 
     const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);

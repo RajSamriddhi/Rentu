@@ -2,29 +2,19 @@ import { Router, Response } from 'express';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
-import { checkAndGenerateReminders } from './notifications.service';
 import { resolveUserIds } from '../../utils/user';
+import { getVapidPublicKey } from './webpush';
 
 const router = Router();
 
-// GET /notifications - Get current user notifications
+// GET /notifications - Get current user notifications with pagination
 router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.id;
     const myIds = await resolveUserIds(userId);
 
-    // Automatically check and generate active reminders for upcoming pickups and returns
-    await checkAndGenerateReminders(userId).catch(err => {
-      console.warn('Notification reminder check error:', err);
-    });
-
-    // Automatically purge notifications older than 30 days
-    await query(
-      `DELETE FROM notifications 
-       WHERE created_at < NOW() - INTERVAL '30 days'`
-    ).catch(err => {
-      console.warn('Notification 30-day purge error:', err);
-    });
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 50, 1), 100);
+    const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
 
     // Mark pending incoming messages as delivered to this active user
     await query(
@@ -79,7 +69,16 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 150`,
+       LIMIT $2 OFFSET $3`,
+      [myIds, limit, offset]
+    );
+
+    const totalCountRes = await query(
+      `SELECT COUNT(*)::int AS total FROM notifications 
+       WHERE user_id = ANY($1::text[])
+         AND created_at >= NOW() - INTERVAL '30 days'
+         AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
+         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`,
       [myIds]
     );
 
@@ -125,10 +124,14 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
       [userId]
     );
 
+    const total = totalCountRes.rows[0]?.total || 0;
+
     return sendSuccess(res, {
       notifications: result.rows,
       unread_count: unreadCountRes.rows[0]?.unread || 0,
       unread_messages_count: unreadMessagesRes.rows[0]?.unread_messages || 0,
+      total_count: total,
+      has_more: offset + result.rows.length < total,
     });
   } catch (error) {
     next(error);
@@ -170,6 +173,11 @@ router.put('/read-all', authMiddleware, async (req: AuthenticatedRequest, res: R
   }
 });
 
+// GET /notifications/vapid-public-key - Retrieve VAPID public key for client push registration
+router.get('/vapid-public-key', (_req, res: Response) => {
+  return sendSuccess(res, { publicKey: getVapidPublicKey() });
+});
+
 // POST /notifications/push-subscribe - Register or update Web Push subscription
 router.post('/push-subscribe', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -178,12 +186,14 @@ router.post('/push-subscribe', authMiddleware, async (req: AuthenticatedRequest,
       return sendError(res, 'BAD_REQUEST', 'Valid push subscription endpoint and cryptographic keys are required', 400);
     }
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    const canonicalUserId = myIds[0] || userId;
 
     await query(
       `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
-      [userId, endpoint, keys.p256dh, keys.auth]
+      [canonicalUserId, endpoint, keys.p256dh, keys.auth]
     );
 
     return sendSuccess(res, { subscribed: true }, 'Push notification subscription registered');
