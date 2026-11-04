@@ -54,6 +54,14 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   // Saved Pickup & Drop Locations
   const savedLocations = getEffectiveSavedLocations(user);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('primary');
+  const [detectedLocation, setDetectedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    address_text?: string;
+    pincode?: string;
+    locality?: string;
+  } | null>(null);
+  const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
 
   // States
@@ -99,9 +107,19 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
     setErrorMsg('');
+    setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
       setLocality(loc.locality);
+      setDetectedLocation({
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        address_text: loc.address_text,
+        pincode: loc.pincode,
+        locality: loc.locality,
+      });
+      const summary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || 'Current location detected';
+      setLocationSuccessMsg(`Location detected: ${summary}`);
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not detect GPS location.');
     } finally {
@@ -227,7 +245,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
     }
 
     const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
-    const finalLocality = chosenLocation?.locality || locality.trim() || user?.locality || '';
+    const finalLocality = detectedLocation?.locality || chosenLocation?.locality || locality.trim() || user?.locality || '';
     if (!finalLocality) {
       setErrorMsg('Please specify your pickup and drop location or add one to your profile.');
       return;
@@ -237,9 +255,12 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
     setErrorMsg('');
 
     try {
-      const itemAddress = chosenLocation
-        ? [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ')
-        : '';
+      const itemAddress = detectedLocation?.address_text
+        || (chosenLocation ? [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ') : '')
+        || finalLocality;
+      const itemPincode = detectedLocation?.pincode || chosenLocation?.pincode || user?.pincode || undefined;
+      const itemLat = detectedLocation?.latitude ?? chosenLocation?.latitude ?? (user?.latitude ? Number(user.latitude) : undefined);
+      const itemLon = detectedLocation?.longitude ?? chosenLocation?.longitude ?? (user?.longitude ? Number(user.longitude) : undefined);
 
       const createdItem = await api.createItem({
         title: title.trim(),
@@ -251,10 +272,10 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         image_urls: imageUrls.length > 0 ? imageUrls : [imageUrl],
         sticker_badge: 'Available',
         locality: finalLocality,
-        address_text: itemAddress || finalLocality,
-        pincode: chosenLocation?.pincode || user?.pincode || undefined,
-        latitude: chosenLocation?.latitude ?? user?.latitude,
-        longitude: chosenLocation?.longitude ?? user?.longitude,
+        address_text: itemAddress,
+        pincode: itemPincode,
+        latitude: itemLat,
+        longitude: itemLon,
         available_for_borrowing: listingType === 'Borrow',
         offers_delivery: offersDelivery,
         delivery_fee: offersDelivery ? Number(deliveryFee || 0) : 0,
@@ -772,20 +793,58 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsAddLocationOpen(true)}
-                className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Another Location</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  disabled={isDetectingLocation}
+                  className="px-3 py-1.5 rounded-xl border border-divider hover:border-brand/40 text-[11px] font-bold text-ink hover:text-brand bg-surface transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Navigation className={`w-3.5 h-3.5 text-brand ${isDetectingLocation ? 'animate-spin' : ''}`} />
+                  <span>{isDetectingLocation ? 'Detecting...' : 'Use Current Location'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddLocationOpen(true)}
+                  className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Another Location</span>
+                </button>
+              </div>
             </div>
+
+            {locationSuccessMsg && (
+              <div className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 shrink-0" />
+                <span>{locationSuccessMsg}</span>
+              </div>
+            )}
 
             {/* List of Saved Locations in User's Profile */}
             <div className="space-y-2.5">
+              {detectedLocation && (
+                <div className="p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs">
+                  <div className="mt-0.5 w-4 h-4 rounded-full border border-brand bg-brand flex items-center justify-center shrink-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-extrabold text-ink">Detected Current Location (GPS)</span>
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        <Check className="w-2.5 h-2.5" /> Selected for this listing
+                      </span>
+                    </div>
+                    <p className="text-xs text-ink-secondary mt-1 font-medium leading-relaxed">
+                      <MapPin className="w-3.5 h-3.5 text-brand inline shrink-0 mr-1 -mt-0.5" />
+                      <span>{detectedLocation.address_text || detectedLocation.locality}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
               {savedLocations.map((loc) => {
-                const isSelected = selectedLocationId === loc.id;
+                const isSelected = !detectedLocation && selectedLocationId === loc.id;
                 const formattedFull = formatSavedLocationFull(loc);
                 return (
                   <div
@@ -793,6 +852,8 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                     onClick={() => {
                       setSelectedLocationId(loc.id);
                       setLocality(loc.locality);
+                      setDetectedLocation(null);
+                      setLocationSuccessMsg('');
                     }}
                     className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
                       isSelected

@@ -54,9 +54,9 @@ const createApp = () => {
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     }));
-    // 3. Request body parsers with safe limits (prevents memory exhaustion DoS)
-    app.use(express_1.default.json({ limit: '2mb' }));
-    app.use(express_1.default.urlencoded({ extended: true, limit: '2mb' }));
+    // 3. Request body parsers with safe limits (supports image uploads up to 5MB + base64 overhead)
+    app.use(express_1.default.json({ limit: '10mb' }));
+    app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
     // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
     app.use(security_1.generalApiRateLimiter);
     // Run schema migration verification once asynchronously on worker startup

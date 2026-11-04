@@ -99,20 +99,25 @@ export const runMigrations = async () => {
         image_urls JSONB DEFAULT '[]'::JSONB,
         sticker_badge VARCHAR(50) DEFAULT 'Available',
         locality VARCHAR(120),
-        address_text TEXT DEFAULT 'South Delhi',
+        address_text TEXT,
         pincode VARCHAR(10),
-        latitude DOUBLE PRECISION DEFAULT 28.5355,
-        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
         status item_status DEFAULT 'AVAILABLE',
         available_for_borrowing BOOLEAN DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE items ALTER COLUMN address_text DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN latitude DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN longitude DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN latitude DROP NOT NULL;
+      ALTER TABLE items ALTER COLUMN longitude DROP NOT NULL;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_delivery BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
@@ -140,18 +145,24 @@ export const runMigrations = async () => {
         duration_days INTEGER NOT NULL DEFAULT 1 CHECK (duration_days > 0),
         offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount >= 0),
         locality VARCHAR(120),
-        address_text TEXT DEFAULT 'South Delhi',
+        address_text TEXT,
         pincode VARCHAR(10),
-        latitude DOUBLE PRECISION DEFAULT 28.5355,
-        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
         status request_status DEFAULT 'OPEN',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE requests ALTER COLUMN address_text DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN latitude DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN longitude DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN latitude DROP NOT NULL;
+      ALTER TABLE requests ALTER COLUMN longitude DROP NOT NULL;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';

@@ -23,8 +23,8 @@ const updateProfileSchema = z.object({
   bio: z.string().max(300).optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   notify_nearby_requests_5km: z.boolean().optional(),
   saved_locations: z.array(z.any()).optional(),
 });

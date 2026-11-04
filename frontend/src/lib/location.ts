@@ -57,6 +57,21 @@ export const getCoordinates = (
   });
 };
 
+function deduplicateAddressParts(parts: (string | undefined | null)[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of parts) {
+    const trimmed = (part || '').trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
 /**
  * Reverse geocode latitude and longitude into street address, locality, city, and pincode.
  * Tries OpenStreetMap Nominatim first, with BigDataCloud as a reliable instant fallback.
@@ -65,19 +80,15 @@ export const reverseGeocode = async (
   latitude: number,
   longitude: number
 ): Promise<ResolvedLocation> => {
-  // Strategy 1: OpenStreetMap Nominatim
+  // Strategy 1: OpenStreetMap Nominatim with 5s timeout
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
       {
         headers: { 'Accept-Language': 'en' },
-        signal: controller.signal,
+        signal: AbortSignal.timeout(5000),
       }
     );
-    clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
@@ -90,14 +101,14 @@ export const reverseGeocode = async (
         const state = addr.state || '';
         const pincode = addr.postcode || '';
 
-        // Build human-friendly locality
+        // Build human-friendly locality without duplicating identical city/neighbourhood tokens
         const primaryLocality = neighbourhood || road || city;
         const locality = primaryLocality && city && !primaryLocality.toLowerCase().includes(city.toLowerCase())
           ? `${primaryLocality}, ${city}`
           : primaryLocality || city;
 
-        // Build address text
-        const addressParts = [
+        // Build address text with duplicate removal
+        const addressParts = deduplicateAddressParts([
           building_no ? `No. ${building_no}` : '',
           road,
           neighbourhood,
@@ -105,7 +116,7 @@ export const reverseGeocode = async (
           city,
           state,
           pincode
-        ].filter(Boolean);
+        ]);
 
         const address_text = addressParts.slice(0, 3).join(', ') || data.display_name || locality;
 
@@ -126,10 +137,13 @@ export const reverseGeocode = async (
     console.warn('Nominatim reverse geocode error or timeout, trying BigDataCloud fallback:', err);
   }
 
-  // Strategy 2: BigDataCloud Reverse Geocode Fallback
+  // Strategy 2: BigDataCloud Reverse Geocode Fallback with 5s timeout
   try {
     const res = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
+      {
+        signal: AbortSignal.timeout(5000),
+      }
     );
     if (res.ok) {
       const data = await res.json();
@@ -140,7 +154,8 @@ export const reverseGeocode = async (
         : rawLocality;
       const pincode = data.postcode || '';
       const state = data.principalSubdivision || '';
-      const address_text = [rawLocality, city, state, pincode].filter(Boolean).join(', ');
+      const addressParts = deduplicateAddressParts([rawLocality, city, state, pincode]);
+      const address_text = addressParts.join(', ');
 
       return {
         locality,

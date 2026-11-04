@@ -23,8 +23,8 @@ const updateProfileSchema = zod_1.z.object({
     bio: zod_1.z.string().max(300).optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
-    latitude: zod_1.z.number().optional(),
-    longitude: zod_1.z.number().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).optional(),
+    longitude: zod_1.z.number().min(-180).max(180).optional(),
     notify_nearby_requests_5km: zod_1.z.boolean().optional(),
     saved_locations: zod_1.z.array(zod_1.z.any()).optional(),
 });

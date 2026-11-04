@@ -97,11 +97,10 @@ export function getReachDistanceMeters(
   if (
     typeof item.distance_meters === 'number' &&
     !isNaN(item.distance_meters) &&
-    item.distance_meters > 0 &&
+    item.distance_meters >= 0 &&
     item.distance_meters < 500000
   ) {
-    const m = Math.round(item.distance_meters);
-    return m < 100 ? 500 : m;
+    return Math.round(item.distance_meters);
   }
 
   // 2. Resolve coordinates
@@ -110,8 +109,7 @@ export function getReachDistanceMeters(
 
   if (userCoords && itemCoords) {
     const km = haversineDistanceKm(userCoords.lat, userCoords.lon, itemCoords.lat, itemCoords.lon);
-    const m = Math.round(km * 1000);
-    return m < 100 ? 500 : m;
+    return Math.round(km * 1000);
   }
 
   // 3. Locality proximity matching fallback
@@ -150,20 +148,27 @@ export function getReachDistanceKm(
 }
 
 /**
- * Formats distance into meters and kilometers short representation:
- * - If < 1000m: e.g. "500 m away", "600 m away"
- * - If >= 1000m: e.g. "1.2 km away", "2 km away"
+ * Formats distance into meters and kilometers representation:
+ * - If 0m: "At your location"
+ * - If < 100m: "< 100 m away"
+ * - If < 1000m: e.g. "250 m away", "600 m away"
+ * - If >= 1000m: e.g. "1.2 km away", "2.5 km away"
  */
 export function formatDistanceString(totalMeters: number): string {
-  // Round to nearest 50m for clean, realistic distance (500m, 550m, 600m...)
-  const roundedMeters = Math.max(50, Math.round(totalMeters / 50) * 50);
+  if (totalMeters <= 0) {
+    return 'At your location';
+  }
+  if (totalMeters < 100) {
+    return '< 100 m away';
+  }
 
+  const roundedMeters = Math.round(totalMeters / 50) * 50;
   if (roundedMeters < 1000) {
     return `${roundedMeters} m away`;
   }
 
   const km = roundedMeters / 1000;
-  const formattedKm = Number(km.toFixed(2));
+  const formattedKm = Number(km.toFixed(1));
   return `${formattedKm} km away`;
 }
 

@@ -74,6 +74,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   const [streetArea, setStreetArea] = useState('');
   const [locality, setLocality] = useState(user?.locality || '');
   const [pincode, setPincode] = useState(user?.pincode || '');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
 
   // States
@@ -164,6 +165,9 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
       }
       if (loc.pincode) {
         setPincode(loc.pincode);
+      }
+      if (loc.latitude && loc.longitude) {
+        setCoords({ latitude: loc.latitude, longitude: loc.longitude });
       }
       const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
       setLocationSuccessMsg(`Location detected: ${locSummary}`);
@@ -340,6 +344,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
     try {
       const fullDestinationAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
       const extraFeeNumber = (!willPickup || !willDropBack) ? Number(deliveryFee || 0) : 0;
+      const finalLat = coords?.latitude ?? (user?.latitude ? Number(user.latitude) : undefined);
+      const finalLon = coords?.longitude ?? (user?.longitude ? Number(user.longitude) : undefined);
 
       await api.createRequest({
         item_name: itemName.trim(),
@@ -354,6 +360,8 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
         locality: locality.trim(),
         address_text: fullDestinationAddress,
         pincode: pincode.trim() || undefined,
+        latitude: finalLat,
+        longitude: finalLon,
         will_pickup: willPickup,
         will_drop_back: willDropBack,
         delivery_fee: extraFeeNumber,
@@ -946,6 +954,11 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
                           setStreetArea(loc.street_road_landmark || '');
                           setLocality(loc.locality || '');
                           setPincode(loc.pincode || '');
+                          if (loc.latitude && loc.longitude) {
+                            setCoords({ latitude: loc.latitude, longitude: loc.longitude });
+                          } else {
+                            setCoords(null);
+                          }
                           setLocationSuccessMsg(`Location selected: ${loc.label}`);
                         }}
                         className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${isSelected

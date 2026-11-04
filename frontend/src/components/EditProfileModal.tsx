@@ -22,6 +22,7 @@ import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
 import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
+import { resolveCoords } from '../lib/distance';
 import { AddLocationModal } from './AddLocationModal';
 
 interface EditProfileModalProps {
@@ -656,7 +657,20 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <input
                     type="text"
                     value={locality}
-                    onChange={(e) => setLocality(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLocality(val);
+                      setLocationSuccessMsg('');
+                      // If user changes locality manually, do not leave stale GPS coords attached
+                      const resolved = resolveCoords(null, null, val);
+                      if (resolved) {
+                        setLatitude(resolved.lat);
+                        setLongitude(resolved.lon);
+                      } else {
+                        setLatitude(undefined);
+                        setLongitude(undefined);
+                      }
+                    }}
                     placeholder="e.g. Indiranagar, Koramangala, Whitefield"
                     className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand"
                   />

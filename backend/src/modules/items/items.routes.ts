@@ -36,8 +36,8 @@ const createItemSchema = z.object({
   locality: z.string().optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   available_for_borrowing: z.boolean().optional().default(false),
   condition: z.string().optional().default('Good'),
   offers_delivery: z.boolean().optional().default(false),
@@ -58,8 +58,8 @@ const updateItemSchema = z.object({
   locality: z.string().optional(),
   address_text: z.string().optional(),
   pincode: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   status: z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
   available_for_borrowing: z.boolean().optional(),
   offers_delivery: z.boolean().optional(),
@@ -71,15 +71,15 @@ const updateItemSchema = z.object({
 // Browse Items (Includes 100-Meter Proximity Radar)
 router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
-    const { 
-      category, 
-      search, 
-      locality, 
-      status = 'AVAILABLE', 
-      ownerId, 
-      latitude, 
-      longitude, 
-      radar, 
+    const {
+      category,
+      search,
+      locality,
+      status = 'AVAILABLE',
+      ownerId,
+      latitude,
+      longitude,
+      radar,
       max_distance,
       limit,
       offset
@@ -303,15 +303,15 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
         COALESCE(i.locality, u.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
-        COALESCE(u.latitude, i.latitude) AS latitude, 
-        COALESCE(u.longitude, i.longitude) AS longitude,
+        COALESCE(i.address_text, u.address_text) AS address_text, 
+        COALESCE(i.pincode, u.pincode) AS pincode,
+        COALESCE(i.latitude, u.latitude) AS latitude, 
+        COALESCE(i.longitude, u.longitude) AS longitude,
         i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(i.locality, u.locality) AS owner_locality,
+        COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
@@ -457,10 +457,10 @@ router.patch('/:id/borrowing', authMiddleware, async (req: AuthenticatedRequest,
     );
 
     return sendSuccess(
-      res, 
-      result.rows[0], 
-      available_for_borrowing 
-        ? 'Item is now available for borrowing as well.' 
+      res,
+      result.rows[0],
+      available_for_borrowing
+        ? 'Item is now available for borrowing as well.'
         : 'Item is now set to rental only.'
     );
   } catch (error) {
@@ -483,7 +483,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       req.user!.name || 'Rentu Member',
       req.user!.email || `${req.user!.id}@firebase.rentu.internal`,
       validated.locality || ''
-    ]).catch(() => {});
+    ]).catch(() => { });
 
     const userRes = await query('SELECT locality, latitude, longitude FROM users WHERE id = $1', [req.user!.id]);
     const userLocality = userRes.rows[0]?.locality || '';
@@ -511,7 +511,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       await query(
         `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
         [cleanPincode, finalLocality]
-      ).catch(() => {});
+      ).catch(() => { });
     }
 
     const result = await query(
@@ -549,7 +549,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         await query(
           `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
           [createdItem.id, validated.image_urls[i], i]
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }
 
@@ -671,6 +671,16 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
 
     const result = await query(updateSql, values);
 
+    if (validated.pincode && validated.locality) {
+      const cleanPincode = validated.pincode.replace(/\D/g, '').slice(0, 6);
+      if (cleanPincode) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => { });
+      }
+    }
+
     // If images were updated, clean up old storage photos that were removed
     if (validated.image_urls !== undefined) {
       const oldRawImages = check.rows[0].image_urls;
@@ -682,12 +692,12 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
         }
       }
 
-      await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => {});
+      await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => { });
       for (let i = 0; i < validated.image_urls.length; i++) {
         await query(
           `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
           [id, validated.image_urls[i], i]
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }
 

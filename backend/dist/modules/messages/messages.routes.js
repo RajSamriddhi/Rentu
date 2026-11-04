@@ -255,7 +255,7 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
             id: rawPartnerId,
             name: 'Community Member',
             avatar_url: null,
-            locality: 'Bengaluru',
+            locality: '',
         };
         const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean);
         // Block check
@@ -701,8 +701,8 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
                 pricePerDay,
                 Math.max(durationDays, 3),
                 proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-                proposal.locality || lenderInfo.locality || 'Bangalore',
-                proposal.address_text || proposal.delivery_location || lenderInfo.address_text || 'Local pickup',
+                proposal.locality || lenderInfo.locality || '',
+                proposal.address_text || proposal.delivery_location || lenderInfo.address_text || '',
             ]);
             createdItem = itemRes.rows[0];
             // 3. Generate handover security code (6 digits) for pickup (return_code is strictly NULL at acceptance)

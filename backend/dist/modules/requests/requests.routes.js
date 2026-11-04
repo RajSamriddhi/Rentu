@@ -21,8 +21,8 @@ const createRequestSchema = zod_1.z.object({
     locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
-    latitude: zod_1.z.number().optional(),
-    longitude: zod_1.z.number().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).optional(),
+    longitude: zod_1.z.number().min(-180).max(180).optional(),
     image_url: zod_1.z.string().nullable().optional(),
     pickup_type: zod_1.z.string().optional().default('LENDER_LOCATION'),
     pickup_locality: zod_1.z.string().optional(),
@@ -45,6 +45,8 @@ const updateRequestSchema = zod_1.z.object({
     locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).optional(),
+    longitude: zod_1.z.number().min(-180).max(180).optional(),
     status: zod_1.z.enum(['OPEN', 'FULFILLED', 'CANCELLED']).optional(),
     image_url: zod_1.z.string().nullable().optional(),
     pickup_type: zod_1.z.string().optional(),
@@ -301,9 +303,10 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
                     }
                 }
                 else if (finalLocality && u.locality) {
-                    const sCity = (0, city_1.extractCity)(finalLocality)?.toLowerCase();
-                    const uCity = (0, city_1.extractCity)(u.locality)?.toLowerCase();
-                    if (sCity && uCity && sCity === uCity) {
+                    const sLoc = finalLocality.trim().toLowerCase();
+                    const uLoc = u.locality.trim().toLowerCase();
+                    // Only alert when the exact same neighborhood/locality matches; do not alert across an entire city
+                    if (sLoc && uLoc && sLoc === uLoc) {
                         isWithin5Km = true;
                     }
                 }

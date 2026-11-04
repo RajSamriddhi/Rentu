@@ -61,9 +61,9 @@ export const createApp = () => {
     })
   );
 
-  // 3. Request body parsers with safe limits (prevents memory exhaustion DoS)
-  app.use(express.json({ limit: '2mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+  // 3. Request body parsers with safe limits (supports image uploads up to 5MB + base64 overhead)
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
   app.use(generalApiRateLimiter);

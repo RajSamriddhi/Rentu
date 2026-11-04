@@ -313,6 +313,8 @@ export const api = {
     locality: string;
     address_text?: string;
     pincode?: string;
+    latitude?: number;
+    longitude?: number;
     will_pickup?: boolean;
     will_drop_back?: boolean;
     delivery_fee?: number;

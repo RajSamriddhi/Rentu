@@ -277,7 +277,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       id: rawPartnerId,
       name: 'Community Member',
       avatar_url: null,
-      locality: 'Bengaluru',
+      locality: '',
     };
     const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean) as string[];
 
@@ -865,8 +865,8 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           pricePerDay,
           Math.max(durationDays, 3),
           proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-          proposal.locality || lenderInfo.locality || 'Bangalore',
-          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || 'Local pickup',
+          proposal.locality || lenderInfo.locality || '',
+          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || '',
         ]
       );
       createdItem = itemRes.rows[0];

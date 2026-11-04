@@ -37,8 +37,8 @@ const createItemSchema = zod_1.z.object({
     locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
-    latitude: zod_1.z.number().optional(),
-    longitude: zod_1.z.number().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).optional(),
+    longitude: zod_1.z.number().min(-180).max(180).optional(),
     available_for_borrowing: zod_1.z.boolean().optional().default(false),
     condition: zod_1.z.string().optional().default('Good'),
     offers_delivery: zod_1.z.boolean().optional().default(false),
@@ -58,8 +58,8 @@ const updateItemSchema = zod_1.z.object({
     locality: zod_1.z.string().optional(),
     address_text: zod_1.z.string().optional(),
     pincode: zod_1.z.string().optional(),
-    latitude: zod_1.z.number().optional(),
-    longitude: zod_1.z.number().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).optional(),
+    longitude: zod_1.z.number().min(-180).max(180).optional(),
     status: zod_1.z.enum(['AVAILABLE', 'RENTED', 'UNAVAILABLE']).optional(),
     available_for_borrowing: zod_1.z.boolean().optional(),
     offers_delivery: zod_1.z.boolean().optional(),
@@ -279,15 +279,15 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
         COALESCE(i.locality, u.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
-        COALESCE(u.latitude, i.latitude) AS latitude, 
-        COALESCE(u.longitude, i.longitude) AS longitude,
+        COALESCE(i.address_text, u.address_text) AS address_text, 
+        COALESCE(i.pincode, u.pincode) AS pincode,
+        COALESCE(i.latitude, u.latitude) AS latitude, 
+        COALESCE(i.longitude, u.longitude) AS longitude,
         i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(i.locality, u.locality) AS owner_locality,
+        COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
@@ -611,6 +611,12 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
       RETURNING *
     `;
         const result = await (0, db_1.query)(updateSql, values);
+        if (validated.pincode && validated.locality) {
+            const cleanPincode = validated.pincode.replace(/\D/g, '').slice(0, 6);
+            if (cleanPincode) {
+                await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, validated.locality]).catch(() => { });
+            }
+        }
         // If images were updated, clean up old storage photos that were removed
         if (validated.image_urls !== undefined) {
             const oldRawImages = check.rows[0].image_urls;

@@ -95944,8 +95944,8 @@ var createItemSchema = external_exports.object({
   locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
+  latitude: external_exports.number().min(-90).max(90).optional(),
+  longitude: external_exports.number().min(-180).max(180).optional(),
   available_for_borrowing: external_exports.boolean().optional().default(false),
   condition: external_exports.string().optional().default("Good"),
   offers_delivery: external_exports.boolean().optional().default(false),
@@ -95965,8 +95965,8 @@ var updateItemSchema = external_exports.object({
   locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
+  latitude: external_exports.number().min(-90).max(90).optional(),
+  longitude: external_exports.number().min(-180).max(180).optional(),
   status: external_exports.enum(["AVAILABLE", "RENTED", "UNAVAILABLE"]).optional(),
   available_for_borrowing: external_exports.boolean().optional(),
   offers_delivery: external_exports.boolean().optional(),
@@ -96191,15 +96191,15 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
         COALESCE(i.locality, u.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
-        COALESCE(u.latitude, i.latitude) AS latitude, 
-        COALESCE(u.longitude, i.longitude) AS longitude,
+        COALESCE(i.address_text, u.address_text) AS address_text, 
+        COALESCE(i.pincode, u.pincode) AS pincode,
+        COALESCE(i.latitude, u.latitude) AS latitude, 
+        COALESCE(i.longitude, u.longitude) AS longitude,
         i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(i.locality, u.locality) AS owner_locality,
+        COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
@@ -96532,6 +96532,16 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
       RETURNING *
     `;
     const result = await query(updateSql, values);
+    if (validated.pincode && validated.locality) {
+      const cleanPincode = validated.pincode.replace(/\D/g, "").slice(0, 6);
+      if (cleanPincode) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => {
+        });
+      }
+    }
     if (validated.image_urls !== void 0) {
       const oldRawImages = check2.rows[0].image_urls;
       const oldImages = Array.isArray(oldRawImages) ? oldRawImages : [];
@@ -96645,8 +96655,8 @@ var createRequestSchema = external_exports.object({
   locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
+  latitude: external_exports.number().min(-90).max(90).optional(),
+  longitude: external_exports.number().min(-180).max(180).optional(),
   image_url: external_exports.string().nullable().optional(),
   pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
   pickup_locality: external_exports.string().optional(),
@@ -96669,6 +96679,8 @@ var updateRequestSchema = external_exports.object({
   locality: external_exports.string().optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
+  latitude: external_exports.number().min(-90).max(90).optional(),
+  longitude: external_exports.number().min(-180).max(180).optional(),
   status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
   image_url: external_exports.string().nullable().optional(),
   pickup_type: external_exports.string().optional(),
@@ -96918,9 +96930,9 @@ router3.post("/", authMiddleware, async (req, res, next) => {
             isWithin5Km = true;
           }
         } else if (finalLocality && u.locality) {
-          const sCity = extractCity(finalLocality)?.toLowerCase();
-          const uCity = extractCity(u.locality)?.toLowerCase();
-          if (sCity && uCity && sCity === uCity) {
+          const sLoc = finalLocality.trim().toLowerCase();
+          const uLoc = u.locality.trim().toLowerCase();
+          if (sLoc && uLoc && sLoc === uLoc) {
             isWithin5Km = true;
           }
         }
@@ -98738,8 +98750,8 @@ var updateProfileSchema = external_exports.object({
   bio: external_exports.string().max(300).optional(),
   address_text: external_exports.string().optional(),
   pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
+  latitude: external_exports.number().min(-90).max(90).optional(),
+  longitude: external_exports.number().min(-180).max(180).optional(),
   notify_nearby_requests_5km: external_exports.boolean().optional(),
   saved_locations: external_exports.array(external_exports.any()).optional()
 });
@@ -99621,7 +99633,7 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
       id: rawPartnerId,
       name: "Community Member",
       avatar_url: null,
-      locality: "Bengaluru"
+      locality: ""
     };
     const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean);
     const blockCheck = await query(
@@ -100108,8 +100120,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           pricePerDay,
           Math.max(durationDays, 3),
           proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-          proposal.locality || lenderInfo.locality || "Bangalore",
-          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
+          proposal.locality || lenderInfo.locality || "",
+          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || ""
         ]
       );
       createdItem = itemRes.rows[0];
@@ -102414,20 +102426,25 @@ var runMigrations = async () => {
         image_urls JSONB DEFAULT '[]'::JSONB,
         sticker_badge VARCHAR(50) DEFAULT 'Available',
         locality VARCHAR(120),
-        address_text TEXT DEFAULT 'South Delhi',
+        address_text TEXT,
         pincode VARCHAR(10),
-        latitude DOUBLE PRECISION DEFAULT 28.5355,
-        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
         status item_status DEFAULT 'AVAILABLE',
         available_for_borrowing BOOLEAN DEFAULT false,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS address_text TEXT;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
-      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION DEFAULT 77.2167;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE items ALTER COLUMN address_text DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN latitude DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN longitude DROP DEFAULT;
+      ALTER TABLE items ALTER COLUMN latitude DROP NOT NULL;
+      ALTER TABLE items ALTER COLUMN longitude DROP NOT NULL;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS available_for_borrowing BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_delivery BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
@@ -102454,18 +102471,24 @@ var runMigrations = async () => {
         duration_days INTEGER NOT NULL DEFAULT 1 CHECK (duration_days > 0),
         offered_amount NUMERIC(10, 2) NOT NULL CHECK (offered_amount >= 0),
         locality VARCHAR(120),
-        address_text TEXT DEFAULT 'South Delhi',
+        address_text TEXT,
         pincode VARCHAR(10),
-        latitude DOUBLE PRECISION DEFAULT 28.5355,
-        longitude DOUBLE PRECISION DEFAULT 77.2167,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
         status request_status DEFAULT 'OPEN',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT DEFAULT 'South Delhi';
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS address_text TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);
-      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION DEFAULT 28.5355;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+      ALTER TABLE requests ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+      ALTER TABLE requests ALTER COLUMN address_text DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN latitude DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN longitude DROP DEFAULT;
+      ALTER TABLE requests ALTER COLUMN latitude DROP NOT NULL;
+      ALTER TABLE requests ALTER COLUMN longitude DROP NOT NULL;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS image_url TEXT;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_date DATE;
       ALTER TABLE requests ADD COLUMN IF NOT EXISTS end_time VARCHAR(20) DEFAULT '18:00';
@@ -102865,8 +102888,8 @@ var createApp = () => {
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
     })
   );
-  app2.use(import_express13.default.json({ limit: "2mb" }));
-  app2.use(import_express13.default.urlencoded({ extended: true, limit: "2mb" }));
+  app2.use(import_express13.default.json({ limit: "10mb" }));
+  app2.use(import_express13.default.urlencoded({ extended: true, limit: "10mb" }));
   app2.use(generalApiRateLimiter);
   if (!migrationsPromise) {
     ensureMigrations().catch(() => {
