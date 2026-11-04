@@ -588,6 +588,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         const itemTitle = existingBooking.item_title || proposal.item_title || 'Item';
         const totalPrice = updatedBooking.total_price || proposal.total_price || 0;
 
+        const priceDisplay = Number(totalPrice) === 0 ? 'Free' : `₹${totalPrice}`;
         await query(
           `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
            VALUES ($1, $2, $3, $4, 'SYSTEM')`,
@@ -595,7 +596,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Handover is now live in Bookings.`,
+            `Request Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}). Handover is now live in Bookings.`,
           ]
         );
 
@@ -722,6 +723,9 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     );
 
     // 5. Insert system confirmation message into the chat
+    const cleanStartDate = String(startDate).split('T')[0];
+    const cleanEndDate = String(endDateStr).split('T')[0];
+    const priceDisplay = Number(totalPrice) === 0 ? 'Free' : `₹${totalPrice}`;
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
        VALUES ($1, $2, $3, $4, 'SYSTEM')`,
@@ -729,7 +733,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         createdBooking.id,
         currentUserId,
         message.sender_id,
-        `Agreement Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`,
+        `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`,
       ]
     );
 

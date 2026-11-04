@@ -56,12 +56,19 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const { user, isAuthenticated } = useAuth();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [rentType, setRentType] = useState<'Rent' | 'Borrow'>('Rent');
+  const isFreeOnly = Boolean(item && Number(item.price_per_day) <= 0);
+  const isAvailableForBorrowing = Boolean(item?.available_for_borrowing || isFreeOnly);
+  const [rentType, setRentType] = useState<'Rent' | 'Borrow'>(isFreeOnly ? 'Borrow' : 'Rent');
   const [isLiked, setIsLiked] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Available for borrowing status (set by owner during listing/editing)
-  const isAvailableForBorrowing = Boolean(item?.available_for_borrowing);
+  React.useEffect(() => {
+    if (isFreeOnly) {
+      setRentType('Borrow');
+    } else if (!isAvailableForBorrowing) {
+      setRentType('Rent');
+    }
+  }, [isFreeOnly, isAvailableForBorrowing, item?.id]);
   const reachDistanceText = item ? getReachDistance(item, user) : 'Nearby';
 
   // Owner detection: checks user id or firebase_uid against item.owner_id
@@ -319,7 +326,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         pickup_locality: isDeliveredByLender ? deliveryAddress.trim() : (item.locality || 'Lender Locality'),
         return_type: isCollectedByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
         return_locality: isCollectedByLender ? pickupAddress.trim() : (item.locality || 'Lender Locality'),
-        message: proposalMessage || `Hey! I'd love to ${rentType.toLowerCase()} your ${item.title} for ${durationDays} days.`,
+        message: proposalMessage || `Hey! I'd love to ${(isFreeOnly || rentType === 'Borrow') ? 'borrow' : 'rent'} your ${item.title} for ${durationDays} days.`,
       });
 
       confetti({
@@ -331,7 +338,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       setSubmittedBookingId(booking.id);
       onBookingSuccess();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to submit rental request.');
+      setErrorMsg(err.message || `Failed to submit ${(isFreeOnly || rentType === 'Borrow') ? 'borrowing' : 'rental'} request.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -434,9 +441,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </h1>
 
                   <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <span className="text-xl sm:text-2xl font-black text-ink font-display">
-                      ₹{Number(item.price_per_day)} <span className="text-xs font-normal text-ink-secondary">/ day</span>
-                    </span>
+                    {isFreeOnly ? (
+                      <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display flex items-center gap-1.5">
+                        Free <span className="text-xs font-normal text-ink-secondary">to borrow</span>
+                      </span>
+                    ) : (
+                      <span className="text-xl sm:text-2xl font-black text-ink font-display">
+                        ₹{Number(item.price_per_day)} <span className="text-xs font-normal text-ink-secondary">/ day</span>
+                      </span>
+                    )}
 
                     {isAvailableForBorrowing && (
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
@@ -633,11 +646,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="bg-canvas border border-divider rounded-3xl p-6 shadow-md sticky top-6">
                 
                 <h3 className="text-lg font-extrabold text-ink mb-4 font-display">
-                  {rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
+                  {isFreeOnly || rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
                 </h3>
 
-                {/* If available for borrowing, show Rent / Borrow choice. If NOT available for borrowing, hide borrow completely! */}
-                {isAvailableForBorrowing && (
+                {/* If available for borrowing AND has rental price, allow choice. If strictly free borrowing, hide rent choice completely! */}
+                {isAvailableForBorrowing && !isFreeOnly && (
                   <div className="grid grid-cols-2 p-1 bg-surface rounded-full border border-divider mb-5">
                     <button
                       type="button"
@@ -677,7 +690,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     </div>
                     <h4 className="text-lg font-extrabold text-ink">Request Sent!</h4>
                     <p className="text-xs text-ink-secondary max-w-xs mx-auto">
-                      {item.owner_name} has received your rental proposal. Check your coordination chat for updates!
+                      {item.owner_name} has received your {isFreeOnly || rentType === 'Borrow' ? 'borrowing request' : 'rental proposal'}. Check your coordination chat for updates!
                     </p>
                     <button
                       onClick={() => {
@@ -956,7 +969,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         type="text"
                         value={proposalMessage}
                         onChange={(e) => setProposalMessage(e.target.value)}
-                        placeholder="e.g. Shooting a college project this weekend..."
+                        placeholder={isFreeOnly || rentType === 'Borrow'
+                          ? "e.g. Shooting a college project this weekend, promise to return safely!"
+                          : "e.g. Shooting a college project this weekend..."}
                         className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-medium text-ink outline-none focus:border-brand"
                       />
                     </div>
@@ -964,8 +979,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     {/* Total cost & breakdown info box */}
                     <div className="pt-2 border-t border-divider space-y-1">
                       <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
-                        <span>Rental ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
-                        <span>{rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
+                        <span>{isFreeOnly || rentType === 'Borrow' ? 'Borrowing' : 'Rental'} ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
+                        <span>{isFreeOnly || rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
                       </div>
                       {item.offers_delivery && optForDelivery && Number(item.delivery_fee) > 0 && (
                         <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
@@ -1042,7 +1057,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <span>
                           {isSubmitting
                             ? 'Sending Request...'
-                            : rentType === 'Borrow'
+                            : (isFreeOnly || rentType === 'Borrow')
                             ? 'Request to Borrow (Free)'
                             : `Request to Rent (₹${totalCost})`}
                         </span>

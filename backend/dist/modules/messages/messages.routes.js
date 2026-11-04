@@ -495,12 +495,13 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
                 await (0, db_1.query)(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
                 const itemTitle = existingBooking.item_title || proposal.item_title || 'Item';
                 const totalPrice = updatedBooking.total_price || proposal.total_price || 0;
+                const priceDisplay = Number(totalPrice) === 0 ? 'Free' : `₹${totalPrice}`;
                 await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
            VALUES ($1, $2, $3, $4, 'SYSTEM')`, [
                     existingBookingId,
                     currentUserId,
                     message.sender_id,
-                    `Request Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}). Handover is now live in Bookings.`,
+                    `Request Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}). Handover is now live in Bookings.`,
                 ]);
                 await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
            VALUES ($1, $2, 'BOOKING_ACCEPTED', 'Rental Request Accepted', 'Your request for "' || $3 || '" was accepted. Handover is now active in Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, existingBookingId]).catch(() => { });
@@ -600,12 +601,15 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
        SET proposal_data = $1, booking_id = $2
        WHERE id = $3`, [JSON.stringify(updatedProposal), createdBooking.id, messageId]);
         // 5. Insert system confirmation message into the chat
+        const cleanStartDate = String(startDate).split('T')[0];
+        const cleanEndDate = String(endDateStr).split('T')[0];
+        const priceDisplay = Number(totalPrice) === 0 ? 'Free' : `₹${totalPrice}`;
         await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
        VALUES ($1, $2, $3, $4, 'SYSTEM')`, [
             createdBooking.id,
             currentUserId,
             message.sender_id,
-            `Agreement Accepted. Confirmed booking for "${itemTitle}" (₹${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`,
+            `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`,
         ]);
         // 6. If this proposal originated from a community request, mark that request as FULFILLED
         if (proposal.request_id) {

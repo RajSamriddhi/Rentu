@@ -56541,6 +56541,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         );
         const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
         const totalPrice2 = updatedBooking.total_price || proposal.total_price || 0;
+        const priceDisplay2 = Number(totalPrice2) === 0 ? "Free" : `\u20B9${totalPrice2}`;
         await query(
           `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
            VALUES ($1, $2, $3, $4, 'SYSTEM')`,
@@ -56548,7 +56549,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             existingBookingId,
             currentUserId,
             message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle2}" (\u20B9${totalPrice2}). Handover is now live in Bookings.`
+            `Request Accepted. Confirmed booking for "${itemTitle2}" (${priceDisplay2}). Handover is now live in Bookings.`
           ]
         );
         await query(
@@ -56650,6 +56651,9 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
        WHERE id = $3`,
       [JSON.stringify(updatedProposal), createdBooking.id, messageId]
     );
+    const cleanStartDate = String(startDate).split("T")[0];
+    const cleanEndDate = String(endDateStr).split("T")[0];
+    const priceDisplay = Number(totalPrice) === 0 ? "Free" : `\u20B9${totalPrice}`;
     await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
        VALUES ($1, $2, $3, $4, 'SYSTEM')`,
@@ -56657,7 +56661,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         createdBooking.id,
         currentUserId,
         message.sender_id,
-        `Agreement Accepted. Confirmed booking for "${itemTitle}" (\u20B9${totalPrice}) is scheduled from ${startDate} to ${endDateStr}. Active in Bookings.`
+        `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`
       ]
     );
     if (proposal.request_id) {

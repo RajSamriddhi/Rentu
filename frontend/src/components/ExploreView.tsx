@@ -121,7 +121,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     const price = Number(item.price_per_day);
     if (maxPrice < 5000 && price > maxPrice) return false;
     if (selectedType === 'Rent' && price <= 0) return false;
-    if (selectedType === 'Borrow' && price > 0) return false;
+    if (selectedType === 'Borrow' && price > 0 && !item.available_for_borrowing) return false;
     if (selectedCondition !== 'Any') {
       const itemCond = (item.condition || '').toLowerCase();
       if (!itemCond.includes(selectedCondition.toLowerCase())) return false;
