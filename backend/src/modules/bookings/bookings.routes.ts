@@ -513,9 +513,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
       const bookingRes = await client.query(
         `INSERT INTO bookings
-          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
+          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, is_borrowing, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
          VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'PENDING', $19, $20)
          RETURNING *`,
         [
           item.id,
@@ -527,6 +527,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           validated.end_time || '18:00',
           durationDays,
           calculatedTotalPrice,
+          isFreeBorrow,
           validated.pickup_type || 'LENDER_LOCATION',
           validated.pickup_locality || null,
           validated.return_type || 'LENDER_LOCATION',
@@ -611,16 +612,18 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
+        COALESCE(b.is_borrowing, (COALESCE(b.total_price, 0) - COALESCE(b.delivery_fee, 0) - COALESCE(b.pickup_fee, 0) <= 0)) AS is_borrowing,
         b.status, b.message, 
         CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
         CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
-        b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.handed_over_at, b.returned_at, b.completed_at, b.updated_at, b.created_at,
         b.payment_status, b.payment_method,
         COALESCE(i.title, 'Rented Gear') AS item_title, 
         COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
         COALESCE(i.category, 'Other') AS item_category,
         COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
         COALESCE(i.price_per_day, 0) AS item_rate,
+        COALESCE(i.price_per_day, 0) AS price_per_day,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
@@ -1742,7 +1745,7 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
     const userId = req.user!.id;
 
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day
+      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day, i.available_for_borrowing
        FROM bookings b
        LEFT JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -1797,12 +1800,14 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       return sendError(res, 'BAD_REQUEST', 'Reviews can only be submitted after the product is returned and completed', 400);
     }
 
-    if (Number(booking.total_price) > 0 && booking.payment_status !== 'CONFIRMED') {
+    const requiresPayment = (booking.total_price !== null && Number(booking.total_price) > 0) ||
+      (booking.total_price === null && Number(booking.price_per_day || 0) > 0);
+    if (requiresPayment && booking.payment_status !== 'CONFIRMED') {
       return sendError(res, 'BAD_REQUEST', 'Reviews can only be submitted after rental payment has been confirmed by the owner', 400);
     }
 
     // Check 3-day window (at most 3 days after completion)
-    const completedAt = new Date(booking.completed_at || booking.updated_at);
+    const completedAt = new Date(booking.completed_at || booking.updated_at || booking.created_at);
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
     if (Date.now() - completedAt.getTime() > threeDaysMs) {
       return sendError(res, 'BAD_REQUEST', 'Review period has expired. Reviews are available for at most 3 days after completion.', 400);
@@ -1813,7 +1818,8 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
     // 2) Owner reviewing borrower (renter): RENTER
     let resolvedReviewType: 'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER';
     if (isBorrower) {
-      const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
+      const rentalFee = Number(booking.total_price || 0) - Number(booking.delivery_fee || 0) - Number(booking.pickup_fee || 0);
+      const isFree = Boolean(booking.is_borrowing) || rentalFee <= 0 || Number(booking.price_per_day || 0) <= 0;
       resolvedReviewType = isFree ? 'COMMUNITY_LENDER' : 'OWNER_RENTAL';
     } else {
       resolvedReviewType = 'RENTER';
@@ -1821,8 +1827,15 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
 
     const client = await pool.connect();
     let reviewResult: any;
+    let isNewReview = true;
     try {
       await client.query('BEGIN');
+
+      const existingReviewCheck = await client.query(
+        'SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2',
+        [id, reviewerId]
+      );
+      isNewReview = existingReviewCheck.rows.length === 0;
 
       reviewResult = await client.query(
         `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
@@ -1866,7 +1879,10 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
           community_lender_reviews_count = stats.community_lender_count,
           trust_rating = stats.trust_rating,
           rating = stats.trust_rating,
-          trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
+          trust_score = CASE 
+            WHEN stats.total_reviews = 0 THEN 85 
+            ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+          END
         FROM stats
         WHERE users.id = $1 OR users.firebase_uid = $1
       `, [revieweeId]);
@@ -1879,20 +1895,22 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       client.release();
     }
 
-    // Notify reviewee about new feedback
-    const reviewerRes = await query('SELECT name FROM users WHERE id = $1', [reviewerId]);
-    const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || 'Your rental partner';
+    // Only notify reviewee on a new feedback submission to avoid spamming on edits
+    if (isNewReview) {
+      const reviewerRes = await query('SELECT name FROM users WHERE id = $1', [reviewerId]);
+      const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || 'Your rental partner';
 
-    await createNotification({
-      userId: revieweeId,
-      senderId: reviewerId,
-      bookingId: id,
-      referenceId: id,
-      referenceType: 'BOOKING',
-      type: 'BOOKING_REVIEW',
-      title: 'New Review & Rating Received',
-      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || 'rental gear'}".`,
-    }).catch(() => {});
+      await createNotification({
+        userId: revieweeId,
+        senderId: reviewerId,
+        bookingId: id,
+        referenceId: id,
+        referenceType: 'BOOKING',
+        type: 'BOOKING_REVIEW',
+        title: 'New Review & Rating Received',
+        body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || 'rental gear'}".`,
+      }).catch(() => {});
+    }
 
     return sendSuccess(res, reviewResult.rows[0], 'Thank you! Your review and feedback has been recorded.');
   } catch (error) {

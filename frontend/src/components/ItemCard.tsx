@@ -122,7 +122,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
 
           {/* Rating & Reach Proximity */}
           <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-secondary">
-            {Number(item.owner_rating) > 0 ? (
+            {Number(item.owner_rating) > 0 && (item.owner_reviews_count === undefined || Number(item.owner_reviews_count) > 0) ? (
               <>
                 <div className="flex items-center gap-1 font-semibold text-ink">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />

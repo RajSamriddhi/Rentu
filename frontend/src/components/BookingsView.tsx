@@ -520,7 +520,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   // Helper to check 3-day review window for finished bookings
   const getReviewTimeRemaining = (booking: Booking): { isOpen: boolean; label: string } => {
     if (booking.status !== 'COMPLETED') return { isOpen: false, label: '' };
-    const completedAt = new Date(booking.completed_at || booking.created_at);
+    const completedAt = new Date(booking.completed_at || booking.updated_at || booking.created_at);
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
     const diffMs = (completedAt.getTime() + threeDaysMs) - Date.now();
     

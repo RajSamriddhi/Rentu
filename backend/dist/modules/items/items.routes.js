@@ -202,7 +202,8 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         NULL AS owner_address_text,
         NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
-        u.rating AS owner_rating
+        CASE WHEN COALESCE(u.owner_reviews_count, 0) > 0 THEN u.owner_rating ELSE NULL END AS owner_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count
       FROM items i
       LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
@@ -286,7 +287,9 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score,
+        CASE WHEN COALESCE(u.owner_reviews_count, 0) > 0 THEN u.owner_rating ELSE NULL END AS owner_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
         COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,

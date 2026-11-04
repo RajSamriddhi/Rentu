@@ -728,37 +728,54 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </div>
 
             {/* Trust & Safety Verification Badges */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
-                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span>Identity Verified</span>
-                </div>
-                <p className="text-[11px] text-ink-secondary">
-                  Phone and verified community neighbor confirmed on Rentu⁺.
-                </p>
-              </div>
+            {(() => {
+              const isIdentityVerified = Boolean(profile.phone || profile.email);
+              const exchangeCount = (profile.stats?.completed_lent || 0) + (profile.stats?.completed_borrowed || 0) + (profile.reviews_count || 0);
+              const reviewCount = profile.reviews_count || 0;
+              const avgRating = Number(profile.rating || profile.trust_rating || 0);
 
-              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
-                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                  <Clock className="w-4 h-4 text-blue-500" />
-                  <span>100% Punctuality</span>
-                </div>
-                <p className="text-[11px] text-ink-secondary">
-                  Always completes scheduled pick up and handoff returns on time.
-                </p>
-              </div>
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                    <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                      <CheckCircle2 className={`w-4 h-4 ${isIdentityVerified ? 'text-emerald-500' : 'text-ink-muted'}`} />
+                      <span>{isIdentityVerified ? 'Identity Confirmed' : 'Community Member'}</span>
+                    </div>
+                    <p className="text-[11px] text-ink-secondary">
+                      {isIdentityVerified 
+                        ? `Confirmed neighbor on Rentu⁺ with verified ${profile.phone ? 'phone' : 'email'}.`
+                        : 'Neighbor on Rentu⁺ circular economy network.'}
+                    </p>
+                  </div>
 
-              <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
-                <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
-                  <ShieldCheck className="w-4 h-4 text-purple-500" />
-                  <span>Gear Care Guarantee</span>
+                  <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                    <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                      <Clock className={`w-4 h-4 ${exchangeCount > 0 ? 'text-blue-500' : 'text-ink-muted'}`} />
+                      <span>{exchangeCount >= 3 ? '100% Punctuality' : exchangeCount > 0 ? 'Reliable Exchanges' : 'New Exchange Track'}</span>
+                    </div>
+                    <p className="text-[11px] text-ink-secondary">
+                      {exchangeCount > 0 
+                        ? `Completed ${exchangeCount} verified exchange${exchangeCount === 1 ? '' : 's'} on schedule.`
+                        : 'Awaiting first completed gear handover or return.'}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-surface border border-divider space-y-1 shadow-xs">
+                    <div className="flex items-center gap-2 text-xs font-extrabold text-ink">
+                      <ShieldCheck className={`w-4 h-4 ${reviewCount > 0 && avgRating >= 4.0 ? 'text-purple-500' : reviewCount > 0 ? 'text-amber-500' : 'text-ink-muted'}`} />
+                      <span>{reviewCount > 0 && avgRating >= 4.0 ? 'Gear Care Guarantee' : reviewCount > 0 ? 'Community Feedback' : 'Gear Care Pledge'}</span>
+                    </div>
+                    <p className="text-[11px] text-ink-secondary">
+                      {reviewCount > 0 && avgRating >= 4.0
+                        ? `Maintains a stellar ${avgRating.toFixed(1)}-star care and equipment safety record.`
+                        : reviewCount > 0
+                        ? `${reviewCount} verified review${reviewCount === 1 ? '' : 's'} recorded.`
+                        : 'Committed to Rentu⁺ equipment care and safety standards.'}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-ink-secondary">
-                  Maintains pristine cleanliness and equipment safety standards.
-                </p>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Three Distinct Review Ratings Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -931,9 +948,15 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                           )}
                         </div>
 
-                        <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed pl-1">
-                          "{rev.comment}"
-                        </p>
+                        {rev.comment && rev.comment.trim() ? (
+                          <p className="text-xs sm:text-sm text-ink-secondary leading-relaxed pl-1">
+                            "{rev.comment.trim()}"
+                          </p>
+                        ) : (
+                          <p className="text-xs text-ink-muted italic pl-1">
+                            No written review note provided
+                          </p>
+                        )}
                       </div>
                     );
                   })}

@@ -87252,8 +87252,8 @@ router.post("/register", async (req, res, next) => {
     const passwordHash = await import_bcryptjs.default.hash(validated.password, 10);
     const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
     const result = await query(
-      `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'USER')
+      `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
        RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
       [
         email,
@@ -96219,7 +96219,8 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         NULL AS owner_address_text,
         NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
-        u.rating AS owner_rating
+        CASE WHEN COALESCE(u.owner_reviews_count, 0) > 0 THEN u.owner_rating ELSE NULL END AS owner_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count
       FROM items i
       LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
@@ -96297,7 +96298,9 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score,
+        CASE WHEN COALESCE(u.owner_reviews_count, 0) > 0 THEN u.owner_rating ELSE NULL END AS owner_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
         COALESCE(u.locality, i.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
@@ -97777,9 +97780,9 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       await client.query("BEGIN");
       const bookingRes = await client.query(
         `INSERT INTO bookings
-          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
+          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, is_borrowing, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
          VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'PENDING', $19, $20)
          RETURNING *`,
         [
           item.id,
@@ -97791,6 +97794,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
           validated.end_time || "18:00",
           durationDays,
           calculatedTotalPrice,
+          isFreeBorrow,
           validated.pickup_type || "LENDER_LOCATION",
           validated.pickup_locality || null,
           validated.return_type || "LENDER_LOCATION",
@@ -97860,16 +97864,18 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
+        COALESCE(b.is_borrowing, (COALESCE(b.total_price, 0) - COALESCE(b.delivery_fee, 0) - COALESCE(b.pickup_fee, 0) <= 0)) AS is_borrowing,
         b.status, b.message, 
         CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
         CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
-        b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.handed_over_at, b.returned_at, b.completed_at, b.updated_at, b.created_at,
         b.payment_status, b.payment_method,
         COALESCE(i.title, 'Rented Gear') AS item_title, 
         COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
         COALESCE(i.category, 'Other') AS item_category,
         COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
         COALESCE(i.price_per_day, 0) AS item_rate,
+        COALESCE(i.price_per_day, 0) AS price_per_day,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
         CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
@@ -98808,7 +98814,7 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day
+      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day, i.available_for_borrowing
        FROM bookings b
        LEFT JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -98846,25 +98852,33 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     if (booking.status !== "COMPLETED") {
       return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after the product is returned and completed", 400);
     }
-    if (Number(booking.total_price) > 0 && booking.payment_status !== "CONFIRMED") {
+    const requiresPayment = booking.total_price !== null && Number(booking.total_price) > 0 || booking.total_price === null && Number(booking.price_per_day || 0) > 0;
+    if (requiresPayment && booking.payment_status !== "CONFIRMED") {
       return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after rental payment has been confirmed by the owner", 400);
     }
-    const completedAt = new Date(booking.completed_at || booking.updated_at);
+    const completedAt = new Date(booking.completed_at || booking.updated_at || booking.created_at);
     const threeDaysMs = 3 * 24 * 60 * 60 * 1e3;
     if (Date.now() - completedAt.getTime() > threeDaysMs) {
       return sendError(res, "BAD_REQUEST", "Review period has expired. Reviews are available for at most 3 days after completion.", 400);
     }
     let resolvedReviewType;
     if (isBorrower) {
-      const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
+      const rentalFee = Number(booking.total_price || 0) - Number(booking.delivery_fee || 0) - Number(booking.pickup_fee || 0);
+      const isFree = Boolean(booking.is_borrowing) || rentalFee <= 0 || Number(booking.price_per_day || 0) <= 0;
       resolvedReviewType = isFree ? "COMMUNITY_LENDER" : "OWNER_RENTAL";
     } else {
       resolvedReviewType = "RENTER";
     }
     const client = await pool.connect();
     let reviewResult;
+    let isNewReview = true;
     try {
       await client.query("BEGIN");
+      const existingReviewCheck = await client.query(
+        "SELECT id FROM reviews WHERE booking_id = $1 AND reviewer_id = $2",
+        [id, reviewerId]
+      );
+      isNewReview = existingReviewCheck.rows.length === 0;
       reviewResult = await client.query(
         `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -98905,7 +98919,10 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
           community_lender_reviews_count = stats.community_lender_count,
           trust_rating = stats.trust_rating,
           rating = stats.trust_rating,
-          trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
+          trust_score = CASE 
+            WHEN stats.total_reviews = 0 THEN 85 
+            ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+          END
         FROM stats
         WHERE users.id = $1 OR users.firebase_uid = $1
       `, [revieweeId]);
@@ -98916,19 +98933,21 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     } finally {
       client.release();
     }
-    const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [reviewerId]);
-    const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || "Your rental partner";
-    await createNotification({
-      userId: revieweeId,
-      senderId: reviewerId,
-      bookingId: id,
-      referenceId: id,
-      referenceType: "BOOKING",
-      type: "BOOKING_REVIEW",
-      title: "New Review & Rating Received",
-      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || "rental gear"}".`
-    }).catch(() => {
-    });
+    if (isNewReview) {
+      const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [reviewerId]);
+      const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || "Your rental partner";
+      await createNotification({
+        userId: revieweeId,
+        senderId: reviewerId,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_REVIEW",
+        title: "New Review & Rating Received",
+        body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || "rental gear"}".`
+      }).catch(() => {
+      });
+    }
     return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
   } catch (error) {
     next(error);
@@ -99393,13 +99412,18 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     );
     const stats = statsRes.rows[0];
     const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
-    const ownerRevCount = parseInt(user.owner_reviews_count, 10) || 0;
-    const renterRevCount = parseInt(user.renter_reviews_count, 10) || 0;
-    const commLenderRevCount = parseInt(user.community_lender_reviews_count, 10) || 0;
-    const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || 0 : 0;
-    const ownerRating = ownerRevCount > 0 ? parseFloat(user.owner_rating) || 0 : 0;
-    const renterRating = renterRevCount > 0 ? parseFloat(user.renter_rating) || 0 : 0;
-    const communityLenderRating = commLenderRevCount > 0 ? parseFloat(user.community_lender_rating) || 0 : 0;
+    const derivedOwnerReviews = reviewsList.filter((r2) => r2.review_type === "OWNER_RENTAL");
+    const derivedRenterReviews = reviewsList.filter((r2) => r2.review_type === "RENTER");
+    const derivedCommLenderReviews = reviewsList.filter((r2) => r2.review_type === "COMMUNITY_LENDER");
+    const effectiveOwnerCount = parseInt(user.owner_reviews_count, 10) || 0 || derivedOwnerReviews.length;
+    const effectiveRenterCount = parseInt(user.renter_reviews_count, 10) || 0 || derivedRenterReviews.length;
+    const effectiveCommLenderCount = parseInt(user.community_lender_reviews_count, 10) || 0 || derivedCommLenderReviews.length;
+    const calcAvg = (list) => list.length > 0 ? parseFloat((list.reduce((acc, curr) => acc + Number(curr.rating || 0), 0) / list.length).toFixed(2)) : 0;
+    const ownerRating = effectiveOwnerCount > 0 ? parseFloat(user.owner_rating) || calcAvg(derivedOwnerReviews) : 0;
+    const renterRating = effectiveRenterCount > 0 ? parseFloat(user.renter_rating) || calcAvg(derivedRenterReviews) : 0;
+    const communityLenderRating = effectiveCommLenderCount > 0 ? parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews) : 0;
+    const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList) : 0;
+    const computedTrustScore = revCount === 0 ? parseInt(user.trust_score, 10) || 85 : Math.min(100, Math.max(50, Math.round(trustRating / 5 * 90 + Math.min(10, revCount))));
     const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
     return sendSuccess(res, {
       id: user.id,
@@ -99411,15 +99435,15 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
       banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
       bio: user.bio || "Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.",
-      trust_score: parseInt(user.trust_score, 10) || 90,
+      trust_score: computedTrustScore,
       rating: trustRating,
       trust_rating: trustRating,
       owner_rating: ownerRating,
       renter_rating: renterRating,
       community_lender_rating: communityLenderRating,
-      owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
-      renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
-      community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
+      owner_reviews_count: effectiveOwnerCount,
+      renter_reviews_count: effectiveRenterCount,
+      community_lender_reviews_count: effectiveCommLenderCount,
       created_at: user.created_at,
       notify_nearby_requests_5km: user.notify_nearby_requests_5km,
       saved_locations: isSelf ? user.saved_locations || [] : [],
@@ -103231,6 +103255,9 @@ var runMigrations = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique_booking_reviewer ON reviews(booking_id, reviewer_id);
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_borrowing BOOLEAN DEFAULT false;
+      UPDATE bookings SET total_price = 0 WHERE total_price IS NULL;
+
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
@@ -103238,6 +103265,53 @@ var runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
+
+      -- Infer review_type for older reviews from linked booking roles & free/paid terms
+      UPDATE reviews r
+      SET review_type = CASE 
+        WHEN r.reviewer_id = b.borrower_id THEN 
+          CASE WHEN (COALESCE(b.total_price, 0) - COALESCE(b.delivery_fee, 0) - COALESCE(b.pickup_fee, 0) <= 0) OR COALESCE(i.price_per_day, 0) <= 0 THEN 'COMMUNITY_LENDER'
+          ELSE 'OWNER_RENTAL'
+          END
+        WHEN r.reviewer_id = b.lender_id OR r.reviewer_id = i.owner_id THEN 'RENTER'
+        ELSE COALESCE(r.review_type, 'OWNER_RENTAL')
+      END
+      FROM bookings b
+      LEFT JOIN items i ON b.item_id = i.id
+      WHERE r.booking_id = b.id;
+
+      -- Rebuild all category counters and average ratings for existing users
+      WITH stats AS (
+        SELECT 
+          u.id AS user_id,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'OWNER_RENTAL' THEN r.rating END), 0.00), 2) AS owner_rating,
+          COUNT(CASE WHEN r.review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'RENTER' THEN r.rating END), 0.00), 2) AS renter_rating,
+          COUNT(CASE WHEN r.review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'COMMUNITY_LENDER' THEN r.rating END), 0.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN r.review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(r.rating), 0.00), 2) AS trust_rating,
+          COUNT(r.id)::int AS total_reviews
+        FROM users u
+        LEFT JOIN reviews r ON (r.reviewee_id = u.id::text OR r.reviewee_id = u.firebase_uid)
+        GROUP BY u.id
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = CASE 
+          WHEN stats.total_reviews = 0 THEN 85 
+          ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+        END
+      FROM stats
+      WHERE users.id = stats.user_id;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS notifications (

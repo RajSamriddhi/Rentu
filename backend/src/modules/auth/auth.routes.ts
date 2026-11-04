@@ -82,8 +82,8 @@ router.post('/register', async (req: Request, res: Response, next) => {
     const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
 
     const result = await query(
-      `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'USER')
+      `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
        RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
       [
         email,

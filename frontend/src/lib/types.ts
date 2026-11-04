@@ -100,6 +100,7 @@ export interface Item {
   owner_phone?: string;
   owner_email?: string;
   owner_rating?: number;
+  owner_reviews_count?: number;
   related_items?: Item[];
 }
 
@@ -148,6 +149,8 @@ export interface Booking {
   end_time?: string;
   duration_days: number;
   total_price: number | string;
+  is_borrowing?: boolean;
+  price_per_day?: number | string;
   pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
   pickup_locality?: string;
   return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
@@ -162,6 +165,7 @@ export interface Booking {
   handed_over_at?: string;
   returned_at?: string;
   completed_at?: string;
+  updated_at?: string;
   payment_status?: 'PENDING' | 'SUBMITTED' | 'CONFIRMED';
   payment_method?: string;
   user_review_id?: string;
@@ -280,6 +284,7 @@ export interface CommunityLeaderboardMember {
   username?: string;
   name: string;
   email?: string;
+  phone?: string;
   locality?: string;
   address_text?: string;
   pincode?: string;
@@ -332,6 +337,7 @@ export interface PublicUserProfile {
   username?: string;
   name: string;
   email?: string;
+  phone?: string;
   locality?: string;
   address_text?: string;
   pincode?: string;
@@ -421,6 +427,7 @@ export interface UserSearchResult {
   username?: string;
   name: string;
   email?: string;
+  phone?: string;
   locality?: string;
   address_text?: string;
   pincode?: string;

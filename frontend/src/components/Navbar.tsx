@@ -312,6 +312,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         return { Icon: Clock, bg: 'bg-orange-500 text-white' };
       case 'NEW_FOLLOWER':
         return { Icon: UserIcon, bg: 'bg-indigo-500 text-white' };
+      case 'BOOKING_REVIEW':
+      case 'BOOKING_REVIEW_UPDATED':
+        return { Icon: Star, bg: 'bg-amber-400 text-white' };
       default:
         return { Icon: Sparkles, bg: 'bg-brand text-white' };
     }
@@ -506,8 +509,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     const isFinished =
       nType === 'BOOKING_COMPLETED' ||
       nType === 'RETURN_CONFIRMED' ||
+      nType === 'BOOKING_REVIEW' ||
+      nType === 'BOOKING_REVIEW_UPDATED' ||
       nType.includes('COMPLETED') ||
-      nType.includes('REVIEW_REMINDER');
+      nType.includes('REVIEW');
 
     if (onNavigateNotification) {
       if (isRentalRequest) {

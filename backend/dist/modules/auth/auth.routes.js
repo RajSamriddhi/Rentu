@@ -74,8 +74,8 @@ router.post('/register', async (req, res, next) => {
         }
         const passwordHash = await bcryptjs_1.default.hash(validated.password, 10);
         const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
-        const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'USER')
+        const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
        RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`, [
             email,
             passwordHash,

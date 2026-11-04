@@ -57,7 +57,11 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   );
 
   const isFreeItem = Boolean(
-    booking && (Number(booking.total_price) <= 0 || (booking as any).price_per_day === 0)
+    booking && (
+      booking.is_borrowing ||
+      (Number(booking.total_price || 0) - Number(booking.delivery_fee || 0) - Number(booking.pickup_fee || 0) <= 0) ||
+      Number(booking.item_rate ?? (booking as any).price_per_day ?? 0) <= 0
+    )
   );
 
   // Sync state whenever modal opens or booking changes
@@ -201,12 +205,18 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
           {/* Written Feedback Comment */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-ink">
-              Add a note <span className="text-ink-secondary font-normal">(Optional)</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-ink">
+                Add a note <span className="text-ink-secondary font-normal">(Optional)</span>
+              </label>
+              <span className={`text-[10px] font-medium ${comment.length > 950 ? 'text-amber-500 font-bold' : 'text-ink-muted'}`}>
+                {comment.length}/1000
+              </span>
+            </div>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
+              maxLength={1000}
               placeholder={isLender 
                 ? `e.g. Prompt return, took great care of the gear!` 
                 : `e.g. Gear was in excellent condition, smooth handoff!`}

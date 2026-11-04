@@ -52,8 +52,15 @@ CREATE TABLE IF NOT EXISTS users (
     pincode VARCHAR(10) REFERENCES postal_codes(pincode) ON DELETE SET NULL,
     latitude DOUBLE PRECISION,           -- Background GPS for distance matching
     longitude DOUBLE PRECISION,          -- Background GPS for distance matching
-    rating NUMERIC(3, 2) DEFAULT 5.00,   -- Cached rating (dynamically computed via user_scores_3nf_v)
-    trust_score INT DEFAULT 98,          -- Cached trust score
+    rating NUMERIC(3, 2) DEFAULT NULL,   -- Cached overall rating (dynamically computed from reviews)
+    owner_rating NUMERIC(3, 2) DEFAULT NULL,
+    owner_reviews_count INT DEFAULT 0,
+    renter_rating NUMERIC(3, 2) DEFAULT NULL,
+    renter_reviews_count INT DEFAULT 0,
+    community_lender_rating NUMERIC(3, 2) DEFAULT NULL,
+    community_lender_reviews_count INT DEFAULT 0,
+    trust_rating NUMERIC(3, 2) DEFAULT NULL,
+    trust_score INT DEFAULT 85,          -- Baseline trust score for new members
     role user_role DEFAULT 'USER',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -140,7 +147,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     start_date DATE NOT NULL,
     start_time TIME,
     duration_days INTEGER NOT NULL CHECK (duration_days > 0),
-    total_price NUMERIC(10, 2) CHECK (total_price >= 0),   -- Computed dynamically in 3NF view
+    total_price NUMERIC(10, 2) DEFAULT 0 CHECK (total_price >= 0),
+    is_borrowing BOOLEAN DEFAULT false,
     status booking_status DEFAULT 'PENDING',
     pickup_code VARCHAR(6),
     return_code VARCHAR(6),

@@ -324,6 +324,9 @@ export const runMigrations = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique_booking_reviewer ON reviews(booking_id, reviewer_id);
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_borrowing BOOLEAN DEFAULT false;
+      UPDATE bookings SET total_price = 0 WHERE total_price IS NULL;
+
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_rating NUMERIC(3, 2) DEFAULT 0.00;
@@ -331,6 +334,53 @@ export const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
+
+      -- Infer review_type for older reviews from linked booking roles & free/paid terms
+      UPDATE reviews r
+      SET review_type = CASE 
+        WHEN r.reviewer_id = b.borrower_id THEN 
+          CASE WHEN (COALESCE(b.total_price, 0) - COALESCE(b.delivery_fee, 0) - COALESCE(b.pickup_fee, 0) <= 0) OR COALESCE(i.price_per_day, 0) <= 0 THEN 'COMMUNITY_LENDER'
+          ELSE 'OWNER_RENTAL'
+          END
+        WHEN r.reviewer_id = b.lender_id OR r.reviewer_id = i.owner_id THEN 'RENTER'
+        ELSE COALESCE(r.review_type, 'OWNER_RENTAL')
+      END
+      FROM bookings b
+      LEFT JOIN items i ON b.item_id = i.id
+      WHERE r.booking_id = b.id;
+
+      -- Rebuild all category counters and average ratings for existing users
+      WITH stats AS (
+        SELECT 
+          u.id AS user_id,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'OWNER_RENTAL' THEN r.rating END), 0.00), 2) AS owner_rating,
+          COUNT(CASE WHEN r.review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'RENTER' THEN r.rating END), 0.00), 2) AS renter_rating,
+          COUNT(CASE WHEN r.review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+          ROUND(COALESCE(AVG(CASE WHEN r.review_type = 'COMMUNITY_LENDER' THEN r.rating END), 0.00), 2) AS community_lender_rating,
+          COUNT(CASE WHEN r.review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+          ROUND(COALESCE(AVG(r.rating), 0.00), 2) AS trust_rating,
+          COUNT(r.id)::int AS total_reviews
+        FROM users u
+        LEFT JOIN reviews r ON (r.reviewee_id = u.id::text OR r.reviewee_id = u.firebase_uid)
+        GROUP BY u.id
+      )
+      UPDATE users
+      SET 
+        owner_rating = stats.owner_rating,
+        owner_reviews_count = stats.owner_count,
+        renter_rating = stats.renter_rating,
+        renter_reviews_count = stats.renter_count,
+        community_lender_rating = stats.community_lender_rating,
+        community_lender_reviews_count = stats.community_lender_count,
+        trust_rating = stats.trust_rating,
+        rating = stats.trust_rating,
+        trust_score = CASE 
+          WHEN stats.total_reviews = 0 THEN 85 
+          ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+        END
+      FROM stats
+      WHERE users.id = stats.user_id;
     `);
 
     // 4.4. NOTIFICATIONS (1NF: Eliminates non-atomic jsonb data object by storing explicit atomic scalar columns)

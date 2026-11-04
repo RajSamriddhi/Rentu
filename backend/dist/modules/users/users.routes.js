@@ -400,13 +400,20 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`, [targetUserIds]);
         const stats = statsRes.rows[0];
         const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
-        const ownerRevCount = parseInt(user.owner_reviews_count, 10) || 0;
-        const renterRevCount = parseInt(user.renter_reviews_count, 10) || 0;
-        const commLenderRevCount = parseInt(user.community_lender_reviews_count, 10) || 0;
-        const trustRating = revCount > 0 ? (parseFloat(user.trust_rating) || parseFloat(user.rating) || 0.0) : 0.0;
-        const ownerRating = ownerRevCount > 0 ? (parseFloat(user.owner_rating) || 0.0) : 0.0;
-        const renterRating = renterRevCount > 0 ? (parseFloat(user.renter_rating) || 0.0) : 0.0;
-        const communityLenderRating = commLenderRevCount > 0 ? (parseFloat(user.community_lender_rating) || 0.0) : 0.0;
+        const derivedOwnerReviews = reviewsList.filter((r) => r.review_type === 'OWNER_RENTAL');
+        const derivedRenterReviews = reviewsList.filter((r) => r.review_type === 'RENTER');
+        const derivedCommLenderReviews = reviewsList.filter((r) => r.review_type === 'COMMUNITY_LENDER');
+        const effectiveOwnerCount = (parseInt(user.owner_reviews_count, 10) || 0) || derivedOwnerReviews.length;
+        const effectiveRenterCount = (parseInt(user.renter_reviews_count, 10) || 0) || derivedRenterReviews.length;
+        const effectiveCommLenderCount = (parseInt(user.community_lender_reviews_count, 10) || 0) || derivedCommLenderReviews.length;
+        const calcAvg = (list) => list.length > 0 ? parseFloat((list.reduce((acc, curr) => acc + Number(curr.rating || 0), 0) / list.length).toFixed(2)) : 0.0;
+        const ownerRating = effectiveOwnerCount > 0 ? (parseFloat(user.owner_rating) || calcAvg(derivedOwnerReviews)) : 0.0;
+        const renterRating = effectiveRenterCount > 0 ? (parseFloat(user.renter_rating) || calcAvg(derivedRenterReviews)) : 0.0;
+        const communityLenderRating = effectiveCommLenderCount > 0 ? (parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews)) : 0.0;
+        const trustRating = revCount > 0 ? (parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList)) : 0.0;
+        const computedTrustScore = revCount === 0
+            ? (parseInt(user.trust_score, 10) || 85)
+            : Math.min(100, Math.max(50, Math.round((trustRating / 5.0) * 90 + Math.min(10, revCount))));
         const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
         return (0, response_1.sendSuccess)(res, {
             id: user.id,
@@ -418,15 +425,15 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,
             banner_url: user.banner_url || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80',
             bio: user.bio || 'Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.',
-            trust_score: parseInt(user.trust_score, 10) || 90,
+            trust_score: computedTrustScore,
             rating: trustRating,
             trust_rating: trustRating,
             owner_rating: ownerRating,
             renter_rating: renterRating,
             community_lender_rating: communityLenderRating,
-            owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
-            renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
-            community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
+            owner_reviews_count: effectiveOwnerCount,
+            renter_reviews_count: effectiveRenterCount,
+            community_lender_reviews_count: effectiveCommLenderCount,
             created_at: user.created_at,
             notify_nearby_requests_5km: user.notify_nearby_requests_5km,
             saved_locations: isSelf ? (user.saved_locations || []) : [],
