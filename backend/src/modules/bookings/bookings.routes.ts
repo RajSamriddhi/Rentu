@@ -1557,6 +1557,7 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
          SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
              returned_at = CURRENT_TIMESTAMP,
              completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+             is_on_time = (end_date IS NULL OR CURRENT_DATE <= (COALESCE(end_date, start_date))::date),
              payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 AND status = 'HANDED_OVER' AND returned_at IS NULL
@@ -1868,6 +1869,17 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
             UNION
             SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
           )
+        ),
+        punctuality AS (
+          SELECT 
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END)::int AS completed_count,
+            COUNT(CASE WHEN status = 'COMPLETED' AND is_on_time = false THEN 1 END)::int AS late_count
+          FROM bookings
+          WHERE borrower_id IN (
+            SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+            UNION
+            SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+          )
         )
         UPDATE users
         SET 
@@ -1881,9 +1893,13 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
           rating = stats.trust_rating,
           trust_score = CASE 
             WHEN stats.total_reviews = 0 THEN 85 
-            ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+            ELSE LEAST(100, GREATEST(50, ROUND(
+              (stats.trust_rating / 5.0) * 85 + 
+              (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 
+              LEAST(7, stats.total_reviews)
+            ))) 
           END
-        FROM stats
+        FROM stats, punctuality
         WHERE users.id = $1 OR users.firebase_uid = $1
       `, [revieweeId]);
 

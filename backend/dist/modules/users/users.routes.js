@@ -59,7 +59,7 @@ router.get('/check-username/:username', auth_1.optionalAuthMiddleware, async (re
 // Community Leaderboard (Top 10 Lenders, Borrowers, Free Sharers, and Best Reviews/Scores)
 router.get('/leaderboard', async (req, res, next) => {
     try {
-        // 1. Fetch real users and their aggregated gear & community stats
+        // 1. Fetch active community users and their aggregated gear & review stats
         const realUsersRes = await (0, db_1.query)(`
       SELECT 
         u.id, 
@@ -76,18 +76,109 @@ router.get('/leaderboard', async (req, res, next) => {
         COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
         COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score,
         (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE' AND (price_per_day <= 0 OR price_per_day IS NULL OR available_for_borrowing = true)) AS free_items_count,
         (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
         (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
-        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
+        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid)) AND status = 'FULFILLED') AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'OWNER_RENTAL') AS derived_owner_rev_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'RENTER') AS derived_renter_rev_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'COMMUNITY_LENDER') AS derived_sharer_rev_count,
+        NOT EXISTS (SELECT 1 FROM bookings b WHERE (b.borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND b.borrower_id = u.firebase_uid)) AND b.status = 'COMPLETED' AND b.is_on_time = false) AS is_punctual,
         (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
       FROM users u
+      WHERE u.owner_reviews_count > 0 
+         OR u.renter_reviews_count > 0 
+         OR u.community_lender_reviews_count > 0 
+         OR u.trust_rating > 0
+         OR EXISTS (SELECT 1 FROM reviews r WHERE r.reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND r.reviewee_id = u.firebase_uid))
+         OR EXISTS (SELECT 1 FROM items i WHERE (i.owner_id = u.id OR (u.firebase_uid IS NOT NULL AND i.owner_id = u.firebase_uid)) AND i.status != 'UNAVAILABLE')
+         OR EXISTS (SELECT 1 FROM bookings b WHERE (b.borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND b.borrower_id = u.firebase_uid) OR b.lender_id = u.id OR (u.firebase_uid IS NOT NULL AND b.lender_id = u.firebase_uid)) AND b.status = 'COMPLETED')
       ORDER BY u.created_at ASC
     `);
-        // Format real users with fallbacks
+        // Helper functions to generate truthful, data-backed badges
+        const getTopRatedBadges = (m, rank) => {
+            const b = [];
+            if (rank === 1)
+                b.push('#1 Overall Trust');
+            else if (rank <= 3)
+                b.push('Top Trust Neighbor');
+            else
+                b.push('Verified Neighbor');
+            if (m.trust_rating >= 4.95)
+                b.push('5-Star Reputation');
+            else if (m.trust_rating >= 4.5)
+                b.push('Top Rated');
+            else
+                b.push('Active Member');
+            if (m.reviews_count >= 5)
+                b.push('High Feedback');
+            else
+                b.push('Verified Feedback');
+            return b;
+        };
+        const getOwnerBadges = (m, rank) => {
+            const b = [];
+            if (rank === 1)
+                b.push('#1 Gear Owner');
+            else if (rank <= 3)
+                b.push('Top Gear Owner');
+            else
+                b.push('Verified Owner');
+            if (m.owner_rating >= 4.95)
+                b.push('5-Star Owner');
+            else if (m.owner_rating >= 4.5)
+                b.push('Top Rated Owner');
+            else
+                b.push('Active Owner');
+            if (m.lent_count >= 3)
+                b.push('Experienced Lender');
+            else
+                b.push('Gear Sharer');
+            return b;
+        };
+        const getRenterBadges = (m, rank) => {
+            const b = [];
+            if (rank === 1)
+                b.push('#1 Trusted Renter');
+            else if (rank <= 3)
+                b.push('Top Renter');
+            else
+                b.push('Verified Renter');
+            if (m.renter_rating >= 4.95)
+                b.push('5-Star Renter');
+            else if (m.renter_rating >= 4.5)
+                b.push('Top Rated Renter');
+            else
+                b.push('Active Renter');
+            if (m.borrowed_count > 0 && m.is_punctual)
+                b.push('100% Punctual');
+            else if (m.borrowed_count >= 3)
+                b.push('Reliable Borrower');
+            else
+                b.push('Community Peer');
+            return b;
+        };
+        const getSharerBadges = (m, rank) => {
+            const b = [];
+            if (rank === 1)
+                b.push('#1 Community Lender');
+            else if (rank <= 3)
+                b.push('Top Community Lender');
+            else
+                b.push('Community Lender');
+            if (m.community_lender_rating >= 4.95)
+                b.push('5-Star Sharer');
+            else if (m.community_lender_rating >= 4.5)
+                b.push('Top Rated Sharer');
+            else
+                b.push('Gift Economy Contributor');
+            b.push('Free Sharer Badge');
+            return b;
+        };
+        // Format real users with fallbacks and accurate score preservation
         const formattedRealUsers = realUsersRes.rows.map((u) => {
             const name = u.name || 'Community Member';
             const username = u.username || '';
@@ -95,21 +186,23 @@ router.get('/leaderboard', async (req, res, next) => {
                 ? u.avatar_url
                 : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
             const reviews_count = parseInt(u.reviews_count, 10) || 0;
-            const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
-            const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
-            const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+            const owner_reviews_count = (parseInt(u.owner_reviews_count, 10) || 0) || (parseInt(u.derived_owner_rev_count, 10) || 0);
+            const renter_reviews_count = (parseInt(u.renter_reviews_count, 10) || 0) || (parseInt(u.derived_renter_rev_count, 10) || 0);
+            const community_lender_reviews_count = (parseInt(u.community_lender_reviews_count, 10) || 0) || (parseInt(u.derived_sharer_rev_count, 10) || 0);
             // Without genuine reviews, ratings stay strictly 0.00
             const trust_rating = reviews_count > 0 ? (parseFloat(u.trust_rating) || parseFloat(u.rating) || 0.0) : 0.0;
             const owner_rating = owner_reviews_count > 0 ? (parseFloat(u.owner_rating) || 0.0) : 0.0;
             const renter_rating = renter_reviews_count > 0 ? (parseFloat(u.renter_rating) || 0.0) : 0.0;
             const community_lender_rating = community_lender_reviews_count > 0 ? (parseFloat(u.community_lender_rating) || 0.0) : 0.0;
             const rating = trust_rating;
-            const trust_score = parseInt(u.trust_score, 10) || 90;
+            // Preserve a zero score if assigned (do not coerce 0 to 85/90)
+            const trust_score = u.trust_score !== null && u.trust_score !== undefined ? parseInt(u.trust_score, 10) : 85;
             const items_count = parseInt(u.items_count, 10) || 0;
             const free_items_count = parseInt(u.free_items_count, 10) || 0;
             const lent_count = parseInt(u.lent_count, 10) || 0;
             const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
             const requests_count = parseInt(u.requests_count, 10) || 0;
+            const is_punctual = Boolean(u.is_punctual);
             const highlight_review = reviews_count > 0 ? (u.latest_review || '') : '';
             return {
                 id: u.id,
@@ -134,6 +227,7 @@ router.get('/leaderboard', async (req, res, next) => {
                 lent_count,
                 borrowed_count,
                 requests_count,
+                is_punctual,
             };
         });
         const combinedPool = [...formattedRealUsers];
@@ -156,11 +250,7 @@ router.get('/leaderboard', async (req, res, next) => {
             category_type: 'top_rated',
             metric_label: 'Overall Trust Rating',
             metric_value: `${(member.trust_rating || member.rating || 0.0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
-            badges: index === 0
-                ? ['#1 Overall Trust', 'Verified Reputation', 'Top Community Record']
-                : index < 3
-                    ? ['Top Trust Neighbor', 'Verified Trust', 'High Feedback']
-                    : ['Top Rated', 'Verified Neighbor'],
+            badges: getTopRatedBadges(member, index + 1),
         }));
         // 2. CATEGORY: TOP GEAR OWNERS (Strictly members with owner_reviews_count > 0)
         const topLendersSorted = combinedPool
@@ -183,11 +273,7 @@ router.get('/leaderboard', async (req, res, next) => {
             category_type: 'top_lenders',
             metric_label: 'Gear Owner Rating',
             metric_value: `${(member.owner_rating || 0.0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
-            badges: index === 0
-                ? ['#1 Gear Owner', 'Top-Tier Equipment', 'Prompt Handover']
-                : index < 3
-                    ? ['Super Gear Owner', 'Verified Gear Care', 'Active Gear Closet']
-                    : ['Top Gear Owner', 'Gear Sharer'],
+            badges: getOwnerBadges(member, index + 1),
         }));
         // 3. CATEGORY: TOP RENTERS (Strictly members with renter_reviews_count > 0)
         const topBorrowersSorted = combinedPool
@@ -197,8 +283,8 @@ router.get('/leaderboard', async (req, res, next) => {
             const aRr = a.renter_rating ?? 0.0;
             if (bRr !== aRr)
                 return bRr - aRr;
-            const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
-            const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
+            const scoreB = b.borrowed_count * 5 + b.requests_count * 2;
+            const scoreA = a.borrowed_count * 5 + a.requests_count * 2;
             if (scoreB !== scoreA)
                 return scoreB - scoreA;
             return b.renter_reviews_count - a.renter_reviews_count;
@@ -210,11 +296,7 @@ router.get('/leaderboard', async (req, res, next) => {
             category_type: 'top_borrowers',
             metric_label: 'Renter Rating',
             metric_value: `${(member.renter_rating || 0.0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
-            badges: index === 0
-                ? ['#1 Trusted Renter', '100% Punctual', 'Reliable Borrower']
-                : index < 3
-                    ? ['5-Star Renter', 'On-Time Return', 'Trusted Neighbor']
-                    : ['Verified Renter', 'Verified Peer'],
+            badges: getRenterBadges(member, index + 1),
         }));
         // 4. CATEGORY: TOP FREE COMMUNITY LENDERS (Strictly members with community_lender_reviews_count > 0)
         const topSharersSorted = combinedPool
@@ -237,11 +319,7 @@ router.get('/leaderboard', async (req, res, next) => {
             category_type: 'top_sharers',
             metric_label: 'Free Lender Rating',
             metric_value: `${(member.community_lender_rating || 0.0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
-            badges: index === 0
-                ? ['#1 Community Lender', 'Gift Economy Contributor', 'Generous Contributor']
-                : index < 3
-                    ? ['Free Gear Lender', 'Community Champion', 'Neighbor Favorite']
-                    : ['Community Lender', 'Generous Neighbor'],
+            badges: getSharerBadges(member, index + 1),
         }));
         return (0, response_1.sendSuccess)(res, {
             top_rated: topRatedSorted,
@@ -411,9 +489,10 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         const renterRating = effectiveRenterCount > 0 ? (parseFloat(user.renter_rating) || calcAvg(derivedRenterReviews)) : 0.0;
         const communityLenderRating = effectiveCommLenderCount > 0 ? (parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews)) : 0.0;
         const trustRating = revCount > 0 ? (parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList)) : 0.0;
+        const rawScore = user.trust_score !== null && user.trust_score !== undefined ? parseInt(user.trust_score, 10) : null;
         const computedTrustScore = revCount === 0
-            ? (parseInt(user.trust_score, 10) || 85)
-            : Math.min(100, Math.max(50, Math.round((trustRating / 5.0) * 90 + Math.min(10, revCount))));
+            ? (rawScore !== null ? rawScore : 85)
+            : Math.min(100, Math.max(0, Math.round((trustRating / 5.0) * 90 + Math.min(10, revCount))));
         const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
         return (0, response_1.sendSuccess)(res, {
             id: user.id,

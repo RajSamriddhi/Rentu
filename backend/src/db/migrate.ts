@@ -325,7 +325,9 @@ export const runMigrations = async () => {
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_borrowing BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_on_time BOOLEAN DEFAULT true;
       UPDATE bookings SET total_price = 0 WHERE total_price IS NULL;
+      UPDATE bookings SET is_on_time = true WHERE is_on_time IS NULL;
 
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
@@ -364,6 +366,15 @@ export const runMigrations = async () => {
         FROM users u
         LEFT JOIN reviews r ON (r.reviewee_id = u.id::text OR r.reviewee_id = u.firebase_uid)
         GROUP BY u.id
+      ),
+      punctuality AS (
+        SELECT 
+          u.id AS user_id,
+          COUNT(CASE WHEN b.status = 'COMPLETED' THEN 1 END)::int AS completed_count,
+          COUNT(CASE WHEN b.status = 'COMPLETED' AND b.is_on_time = false THEN 1 END)::int AS late_count
+        FROM users u
+        LEFT JOIN bookings b ON (b.borrower_id = u.id::text OR b.borrower_id = u.firebase_uid)
+        GROUP BY u.id
       )
       UPDATE users
       SET 
@@ -377,10 +388,14 @@ export const runMigrations = async () => {
         rating = stats.trust_rating,
         trust_score = CASE 
           WHEN stats.total_reviews = 0 THEN 85 
-          ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+          ELSE LEAST(100, GREATEST(50, ROUND(
+            (stats.trust_rating / 5.0) * 85 + 
+            (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 
+            LEAST(7, stats.total_reviews)
+          ))) 
         END
-      FROM stats
-      WHERE users.id = stats.user_id;
+      FROM stats, punctuality
+      WHERE users.id = stats.user_id AND punctuality.user_id = stats.user_id;
     `);
 
     // 4.4. NOTIFICATIONS (1NF: Eliminates non-atomic jsonb data object by storing explicit atomic scalar columns)

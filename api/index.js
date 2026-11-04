@@ -98659,6 +98659,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
          SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
              returned_at = CURRENT_TIMESTAMP,
              completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+             is_on_time = (end_date IS NULL OR CURRENT_DATE <= (COALESCE(end_date, start_date))::date),
              payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1 AND status = 'HANDED_OVER' AND returned_at IS NULL
@@ -98908,6 +98909,17 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
             UNION
             SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
           )
+        ),
+        punctuality AS (
+          SELECT 
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END)::int AS completed_count,
+            COUNT(CASE WHEN status = 'COMPLETED' AND is_on_time = false THEN 1 END)::int AS late_count
+          FROM bookings
+          WHERE borrower_id IN (
+            SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+            UNION
+            SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+          )
         )
         UPDATE users
         SET 
@@ -98921,9 +98933,13 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
           rating = stats.trust_rating,
           trust_score = CASE 
             WHEN stats.total_reviews = 0 THEN 85 
-            ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+            ELSE LEAST(100, GREATEST(50, ROUND(
+              (stats.trust_rating / 5.0) * 85 + 
+              (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 
+              LEAST(7, stats.total_reviews)
+            ))) 
           END
-        FROM stats
+        FROM stats, punctuality
         WHERE users.id = $1 OR users.firebase_uid = $1
       `, [revieweeId]);
       await client.query("COMMIT");
@@ -99133,36 +99149,96 @@ router6.get("/leaderboard", async (req, res, next) => {
         COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
         COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score,
         (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE' AND (price_per_day <= 0 OR price_per_day IS NULL OR available_for_borrowing = true)) AS free_items_count,
         (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
         (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
-        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
+        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid)) AND status = 'FULFILLED') AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'OWNER_RENTAL') AS derived_owner_rev_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'RENTER') AS derived_renter_rev_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND review_type = 'COMMUNITY_LENDER') AS derived_sharer_rev_count,
+        NOT EXISTS (SELECT 1 FROM bookings b WHERE (b.borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND b.borrower_id = u.firebase_uid)) AND b.status = 'COMPLETED' AND b.is_on_time = false) AS is_punctual,
         (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
       FROM users u
+      WHERE u.owner_reviews_count > 0 
+         OR u.renter_reviews_count > 0 
+         OR u.community_lender_reviews_count > 0 
+         OR u.trust_rating > 0
+         OR EXISTS (SELECT 1 FROM reviews r WHERE r.reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND r.reviewee_id = u.firebase_uid))
+         OR EXISTS (SELECT 1 FROM items i WHERE (i.owner_id = u.id OR (u.firebase_uid IS NOT NULL AND i.owner_id = u.firebase_uid)) AND i.status != 'UNAVAILABLE')
+         OR EXISTS (SELECT 1 FROM bookings b WHERE (b.borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND b.borrower_id = u.firebase_uid) OR b.lender_id = u.id OR (u.firebase_uid IS NOT NULL AND b.lender_id = u.firebase_uid)) AND b.status = 'COMPLETED')
       ORDER BY u.created_at ASC
     `);
+    const getTopRatedBadges = (m2, rank) => {
+      const b = [];
+      if (rank === 1) b.push("#1 Overall Trust");
+      else if (rank <= 3) b.push("Top Trust Neighbor");
+      else b.push("Verified Neighbor");
+      if (m2.trust_rating >= 4.95) b.push("5-Star Reputation");
+      else if (m2.trust_rating >= 4.5) b.push("Top Rated");
+      else b.push("Active Member");
+      if (m2.reviews_count >= 5) b.push("High Feedback");
+      else b.push("Verified Feedback");
+      return b;
+    };
+    const getOwnerBadges = (m2, rank) => {
+      const b = [];
+      if (rank === 1) b.push("#1 Gear Owner");
+      else if (rank <= 3) b.push("Top Gear Owner");
+      else b.push("Verified Owner");
+      if (m2.owner_rating >= 4.95) b.push("5-Star Owner");
+      else if (m2.owner_rating >= 4.5) b.push("Top Rated Owner");
+      else b.push("Active Owner");
+      if (m2.lent_count >= 3) b.push("Experienced Lender");
+      else b.push("Gear Sharer");
+      return b;
+    };
+    const getRenterBadges = (m2, rank) => {
+      const b = [];
+      if (rank === 1) b.push("#1 Trusted Renter");
+      else if (rank <= 3) b.push("Top Renter");
+      else b.push("Verified Renter");
+      if (m2.renter_rating >= 4.95) b.push("5-Star Renter");
+      else if (m2.renter_rating >= 4.5) b.push("Top Rated Renter");
+      else b.push("Active Renter");
+      if (m2.borrowed_count > 0 && m2.is_punctual) b.push("100% Punctual");
+      else if (m2.borrowed_count >= 3) b.push("Reliable Borrower");
+      else b.push("Community Peer");
+      return b;
+    };
+    const getSharerBadges = (m2, rank) => {
+      const b = [];
+      if (rank === 1) b.push("#1 Community Lender");
+      else if (rank <= 3) b.push("Top Community Lender");
+      else b.push("Community Lender");
+      if (m2.community_lender_rating >= 4.95) b.push("5-Star Sharer");
+      else if (m2.community_lender_rating >= 4.5) b.push("Top Rated Sharer");
+      else b.push("Gift Economy Contributor");
+      b.push("Free Sharer Badge");
+      return b;
+    };
     const formattedRealUsers = realUsersRes.rows.map((u) => {
       const name = u.name || "Community Member";
       const username = u.username || "";
       const avatar = u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
       const reviews_count = parseInt(u.reviews_count, 10) || 0;
-      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
-      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
-      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0 || (parseInt(u.derived_owner_rev_count, 10) || 0);
+      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0 || (parseInt(u.derived_renter_rev_count, 10) || 0);
+      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0 || (parseInt(u.derived_sharer_rev_count, 10) || 0);
       const trust_rating = reviews_count > 0 ? parseFloat(u.trust_rating) || parseFloat(u.rating) || 0 : 0;
       const owner_rating = owner_reviews_count > 0 ? parseFloat(u.owner_rating) || 0 : 0;
       const renter_rating = renter_reviews_count > 0 ? parseFloat(u.renter_rating) || 0 : 0;
       const community_lender_rating = community_lender_reviews_count > 0 ? parseFloat(u.community_lender_rating) || 0 : 0;
       const rating = trust_rating;
-      const trust_score = parseInt(u.trust_score, 10) || 90;
+      const trust_score = u.trust_score !== null && u.trust_score !== void 0 ? parseInt(u.trust_score, 10) : 85;
       const items_count = parseInt(u.items_count, 10) || 0;
       const free_items_count = parseInt(u.free_items_count, 10) || 0;
       const lent_count = parseInt(u.lent_count, 10) || 0;
       const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
       const requests_count = parseInt(u.requests_count, 10) || 0;
+      const is_punctual = Boolean(u.is_punctual);
       const highlight_review = reviews_count > 0 ? u.latest_review || "" : "";
       return {
         id: u.id,
@@ -99186,7 +99262,8 @@ router6.get("/leaderboard", async (req, res, next) => {
         free_items_count,
         lent_count,
         borrowed_count,
-        requests_count
+        requests_count,
+        is_punctual
       };
     });
     const combinedPool = [...formattedRealUsers];
@@ -99202,7 +99279,7 @@ router6.get("/leaderboard", async (req, res, next) => {
       category_type: "top_rated",
       metric_label: "Overall Trust Rating",
       metric_value: `${(member.trust_rating || member.rating || 0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
-      badges: index === 0 ? ["#1 Overall Trust", "Verified Reputation", "Top Community Record"] : index < 3 ? ["Top Trust Neighbor", "Verified Trust", "High Feedback"] : ["Top Rated", "Verified Neighbor"]
+      badges: getTopRatedBadges(member, index + 1)
     }));
     const topLendersSorted = combinedPool.filter((m2) => m2.owner_reviews_count > 0).sort((a, b) => {
       const bOr = b.owner_rating ?? 0;
@@ -99218,14 +99295,14 @@ router6.get("/leaderboard", async (req, res, next) => {
       category_type: "top_lenders",
       metric_label: "Gear Owner Rating",
       metric_value: `${(member.owner_rating || 0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
-      badges: index === 0 ? ["#1 Gear Owner", "Top-Tier Equipment", "Prompt Handover"] : index < 3 ? ["Super Gear Owner", "Verified Gear Care", "Active Gear Closet"] : ["Top Gear Owner", "Gear Sharer"]
+      badges: getOwnerBadges(member, index + 1)
     }));
     const topBorrowersSorted = combinedPool.filter((m2) => m2.renter_reviews_count > 0).sort((a, b) => {
       const bRr = b.renter_rating ?? 0;
       const aRr = a.renter_rating ?? 0;
       if (bRr !== aRr) return bRr - aRr;
-      const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
-      const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
+      const scoreB = b.borrowed_count * 5 + b.requests_count * 2;
+      const scoreA = a.borrowed_count * 5 + a.requests_count * 2;
       if (scoreB !== scoreA) return scoreB - scoreA;
       return b.renter_reviews_count - a.renter_reviews_count;
     }).slice(0, 10).map((member, index) => ({
@@ -99234,7 +99311,7 @@ router6.get("/leaderboard", async (req, res, next) => {
       category_type: "top_borrowers",
       metric_label: "Renter Rating",
       metric_value: `${(member.renter_rating || 0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
-      badges: index === 0 ? ["#1 Trusted Renter", "100% Punctual", "Reliable Borrower"] : index < 3 ? ["5-Star Renter", "On-Time Return", "Trusted Neighbor"] : ["Verified Renter", "Verified Peer"]
+      badges: getRenterBadges(member, index + 1)
     }));
     const topSharersSorted = combinedPool.filter((m2) => m2.community_lender_reviews_count > 0).sort((a, b) => {
       const bClr = b.community_lender_rating ?? 0;
@@ -99250,7 +99327,7 @@ router6.get("/leaderboard", async (req, res, next) => {
       category_type: "top_sharers",
       metric_label: "Free Lender Rating",
       metric_value: `${(member.community_lender_rating || 0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
-      badges: index === 0 ? ["#1 Community Lender", "Gift Economy Contributor", "Generous Contributor"] : index < 3 ? ["Free Gear Lender", "Community Champion", "Neighbor Favorite"] : ["Community Lender", "Generous Neighbor"]
+      badges: getSharerBadges(member, index + 1)
     }));
     return sendSuccess(res, {
       top_rated: topRatedSorted,
@@ -99423,7 +99500,8 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const renterRating = effectiveRenterCount > 0 ? parseFloat(user.renter_rating) || calcAvg(derivedRenterReviews) : 0;
     const communityLenderRating = effectiveCommLenderCount > 0 ? parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews) : 0;
     const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList) : 0;
-    const computedTrustScore = revCount === 0 ? parseInt(user.trust_score, 10) || 85 : Math.min(100, Math.max(50, Math.round(trustRating / 5 * 90 + Math.min(10, revCount))));
+    const rawScore = user.trust_score !== null && user.trust_score !== void 0 ? parseInt(user.trust_score, 10) : null;
+    const computedTrustScore = revCount === 0 ? rawScore !== null ? rawScore : 85 : Math.min(100, Math.max(0, Math.round(trustRating / 5 * 90 + Math.min(10, revCount))));
     const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
     return sendSuccess(res, {
       id: user.id,
@@ -103256,7 +103334,9 @@ var runMigrations = async () => {
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_borrowing BOOLEAN DEFAULT false;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_on_time BOOLEAN DEFAULT true;
       UPDATE bookings SET total_price = 0 WHERE total_price IS NULL;
+      UPDATE bookings SET is_on_time = true WHERE is_on_time IS NULL;
 
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_rating NUMERIC(3, 2) DEFAULT 0.00;
@@ -103295,6 +103375,15 @@ var runMigrations = async () => {
         FROM users u
         LEFT JOIN reviews r ON (r.reviewee_id = u.id::text OR r.reviewee_id = u.firebase_uid)
         GROUP BY u.id
+      ),
+      punctuality AS (
+        SELECT 
+          u.id AS user_id,
+          COUNT(CASE WHEN b.status = 'COMPLETED' THEN 1 END)::int AS completed_count,
+          COUNT(CASE WHEN b.status = 'COMPLETED' AND b.is_on_time = false THEN 1 END)::int AS late_count
+        FROM users u
+        LEFT JOIN bookings b ON (b.borrower_id = u.id::text OR b.borrower_id = u.firebase_uid)
+        GROUP BY u.id
       )
       UPDATE users
       SET 
@@ -103308,10 +103397,14 @@ var runMigrations = async () => {
         rating = stats.trust_rating,
         trust_score = CASE 
           WHEN stats.total_reviews = 0 THEN 85 
-          ELSE LEAST(100, GREATEST(50, ROUND((stats.trust_rating / 5.0) * 90 + LEAST(10, stats.total_reviews)))) 
+          ELSE LEAST(100, GREATEST(50, ROUND(
+            (stats.trust_rating / 5.0) * 85 + 
+            (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 
+            LEAST(7, stats.total_reviews)
+          ))) 
         END
-      FROM stats
-      WHERE users.id = stats.user_id;
+      FROM stats, punctuality
+      WHERE users.id = stats.user_id AND punctuality.user_id = stats.user_id;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS notifications (

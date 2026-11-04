@@ -342,7 +342,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         )}
                         <div className="flex items-center gap-1 text-[11px] text-ink-secondary mt-0.5">
                           <MapPin className="w-3 h-3 text-ink-muted" />
-                          <span>{topThree[1].locality || 'Bengaluru'}</span>
+                          <span>{topThree[1].locality || 'Local Neighbor'}</span>
                         </div>
                       </div>
                     </button>
@@ -421,7 +421,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         )}
                         <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
                           <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                          <span className="font-semibold">{topThree[0].locality || 'Bengaluru'}</span>
+                          <span className="font-semibold">{topThree[0].locality || 'Local Neighbor'}</span>
                         </div>
                         <div className="inline-block mt-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
                           Community #1 Ranked
@@ -503,7 +503,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         )}
                         <div className="flex items-center gap-1 text-[11px] text-ink-secondary mt-0.5">
                           <MapPin className="w-3 h-3 text-ink-muted" />
-                          <span>{topThree[2].locality || 'Bengaluru'}</span>
+                          <span>{topThree[2].locality || 'Local Neighbor'}</span>
                         </div>
                       </div>
                     </button>
@@ -598,7 +598,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                 )}
                                 <span className="inline-flex items-center gap-1 text-[11px] text-ink-muted">
                                   <MapPin className="w-3 h-3" />
-                                  <span>{member.locality || 'Bengaluru'}</span>
+                                  <span>{member.locality || 'Local Neighbor'}</span>
                                 </span>
                               </div>
                               <p className="text-xs text-ink-secondary line-clamp-1 max-w-md">
@@ -725,7 +725,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Communicate Early</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
-                Coordinate pickup logistics via Rentu chat. Prompt responders get marked as preferred community peers.
+                Coordinate pickup logistics via Rentu chat. Prompt responders earn top community reputation and verified peer standing.
               </p>
             </div>
 
@@ -735,7 +735,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
               <h4 className="font-extrabold text-xs text-ink uppercase">Give Back & Share</h4>
               <p className="text-xs text-ink-secondary leading-relaxed">
-                List idle items or offer free sharing. Helping students and neighbors unlocks our Free Sharers Badge!
+                List idle items or offer free sharing. Helping students and neighbors unlocks our Free Sharer Badge!
               </p>
             </div>
           </div>
@@ -755,9 +755,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   onOpenDropGear();
                 }
               }}
-              className="btn-secondary text-xs cursor-pointer"
+              className="btn-secondary text-xs cursor-pointer font-bold"
             >
               List Your Gear
+            </button>
+            <button
+              onClick={() => {
+                if (!isAuthenticated && onOpenAuth) {
+                  onOpenAuth();
+                } else {
+                  onOpenDropWish();
+                }
+              }}
+              className="btn-secondary text-xs cursor-pointer font-bold text-brand hover:border-brand/40"
+            >
+              Post a Wish / Request
             </button>
           </div>
         </div>

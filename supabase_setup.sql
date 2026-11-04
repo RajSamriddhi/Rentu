@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     duration_days INTEGER NOT NULL CHECK (duration_days > 0),
     total_price NUMERIC(10, 2) DEFAULT 0 CHECK (total_price >= 0),
     is_borrowing BOOLEAN DEFAULT false,
+    is_on_time BOOLEAN DEFAULT true,
     status booking_status DEFAULT 'PENDING',
     pickup_code VARCHAR(6),
     return_code VARCHAR(6),
