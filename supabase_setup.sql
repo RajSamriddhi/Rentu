@@ -249,6 +249,15 @@ DO $$ BEGIN
         ON storage.objects FOR INSERT TO authenticated 
         WITH CHECK (bucket_id = 'item-photos');
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'objects' AND policyname = 'Allow public and anon uploads to item-photos'
+    ) THEN
+        CREATE POLICY "Allow public and anon uploads to item-photos" 
+        ON storage.objects FOR INSERT TO public 
+        WITH CHECK (bucket_id = 'item-photos');
+    END IF;
 END $$;
 
 -- 15. SEED DATA

@@ -418,6 +418,36 @@ const runMigrations = async () => {
         locked_until TIMESTAMP WITH TIME ZONE,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- 4.10. CONVERSATIONS MANAGEMENT (Deletions, Muting, User Presence)
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+      CREATE TABLE IF NOT EXISTS user_deleted_conversations (
+        user_id TEXT NOT NULL,
+        partner_id TEXT NOT NULL,
+        deleted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, partner_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_deleted_convs_user ON user_deleted_conversations(user_id);
+
+      CREATE TABLE IF NOT EXISTS user_muted_conversations (
+        user_id TEXT NOT NULL,
+        partner_id TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, partner_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_muted_convs_user ON user_muted_conversations(user_id);
+
+      -- Retrofit legacy notification messages into SYSTEM message type once in migration
+      UPDATE messages
+      SET message_type = 'SYSTEM'
+      WHERE (message_type IS NULL OR message_type = 'TEXT')
+        AND (
+          content LIKE 'Proposal accepted.%'
+          OR content LIKE 'Product received and handed over%'
+          OR content LIKE 'Product returned to owner%'
+          OR content LIKE 'Renter has sent the payment via%'
+        );
     `);
         // Clean up unnecessary helper views to maintain clean database tables
         await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);

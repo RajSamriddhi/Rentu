@@ -251,6 +251,9 @@ export interface Conversation {
   last_message?: string;
   last_message_at?: string;
   unread_count?: number;
+  is_online?: boolean;
+  last_seen_at?: string;
+  is_muted?: boolean;
 }
 
 export interface CommunityPulse {

@@ -497,9 +497,25 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getMessages(conversationId: string): Promise<{ booking?: Booking | null; partner?: any; messages: Message[] }> {
-    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}`, {
+  async getMessages(
+    conversationId: string,
+    options?: { mark_read?: boolean; limit?: number }
+  ): Promise<{ booking?: Booking | null; partner?: any; messages: Message[] }> {
+    const params = new URLSearchParams();
+    if (options?.mark_read === false) params.set('mark_read', 'false');
+    if (options?.limit) params.set('limit', String(options.limit));
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(conversationId)}${queryStr}`, {
       headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async muteConversation(partnerId: string, muted: boolean): Promise<{ partner_id: string; is_muted: boolean }> {
+    const res = await fetch(`${API_BASE}/messages/conversations/${encodeURIComponent(partnerId)}/mute`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ muted }),
     });
     return handleResponse(res);
   },

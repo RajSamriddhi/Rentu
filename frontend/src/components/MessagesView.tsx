@@ -147,13 +147,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const docFileInputRef = useRef<HTMLInputElement>(null);
   const hasUserClosedChatRef = useRef<boolean>(false);
   const liveLocationWatchIdRef = useRef<number | null>(null);
+  const liveLocationTimerRef = useRef<any>(null);
+  const deletedConvIdsRef = useRef<Set<string>>(new Set());
 
-  // Clean up active geolocation watch on unmount
+  // Clean up active geolocation watch and expiry timer on unmount
   useEffect(() => {
     return () => {
       if (liveLocationWatchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
         liveLocationWatchIdRef.current = null;
+      }
+      if (liveLocationTimerRef.current) {
+        clearTimeout(liveLocationTimerRef.current);
+        liveLocationTimerRef.current = null;
       }
     };
   }, []);
@@ -281,17 +287,31 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         .then((data) => {
           if (Array.isArray(data)) {
             setConversations((prev) => {
-              let updated = [...data];
+              const filteredData = data.filter((c) => {
+                const key = c.conversation_id || c.booking_id || `dm_${c.partner_id}`;
+                return !deletedConvIdsRef.current.has(key) && !deletedConvIdsRef.current.has(c.partner_id);
+              });
+              let updated = [...filteredData];
               const currentPartner = selectedConvId ? (activePartnerData || initialPartner) : null;
-              if (currentPartner && currentPartner.id) {
+              if (
+                currentPartner &&
+                currentPartner.id &&
+                !deletedConvIdsRef.current.has(currentPartner.id) &&
+                !deletedConvIdsRef.current.has(`dm_${currentPartner.id}`)
+              ) {
                 const dmKey = `dm_${currentPartner.id}`;
-                const exists = updated.some(c => 
-                  c.conversation_id === dmKey || 
-                  c.partner_id === currentPartner.id ||
-                  (currentPartner.firebase_uid && c.partner_id === currentPartner.firebase_uid)
+                const exists = updated.some(
+                  (c) =>
+                    c.conversation_id === dmKey ||
+                    c.partner_id === currentPartner.id ||
+                    (currentPartner.firebase_uid && c.partner_id === currentPartner.firebase_uid)
                 );
                 if (!exists) {
-                  const synth = prev.find(c => c.conversation_id === dmKey || c.partner_id === currentPartner.id);
+                  const synth = prev.find(
+                    (c) =>
+                      (c.conversation_id === dmKey || c.partner_id === currentPartner.id) &&
+                      !deletedConvIdsRef.current.has(c.partner_id)
+                  );
                   if (synth) updated.unshift(synth);
                 }
               }
@@ -301,14 +321,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         })
         .catch(() => {});
 
-      // 2. Refresh messages if a conversation is selected
-      if (selectedConvId) {
-        api.getMessages(selectedConvId)
+      // 2. Refresh messages only if thread is selected AND actively visible to user (prevents false read receipts)
+      const isThreadVisible = window.innerWidth >= 768 || showMobileThread;
+      if (selectedConvId && isThreadVisible) {
+        api.getMessages(selectedConvId, { mark_read: true, limit: 100 })
           .then((data) => {
+            if (data?.partner) {
+              setActivePartnerData((prev: any) => ({ ...(prev || {}), ...data.partner }));
+            }
             if (data?.messages && Array.isArray(data.messages)) {
               setMessages((prev) => {
-                const prevSig = prev.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
-                const nextSig = data.messages.map(m => `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}`).join('|');
+                const getSig = (m: Message) =>
+                  `${m.id}_${m.content}_${m.is_read}_${m.is_delivered}_${m.is_edited}_${(m as any).updated_at || ''}_${JSON.stringify(m.proposal_data || '')}`;
+                const prevSig = prev.map(getSig).join('|');
+                const nextSig = data.messages.map(getSig).join('|');
                 if (prevSig !== nextSig) {
                   return data.messages;
                 }
@@ -321,7 +347,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, selectedConvId, activePartnerData, initialPartner]);
+  }, [isAuthenticated, selectedConvId, showMobileThread, activePartnerData, initialPartner]);
 
   const loadConversations = async () => {
     setIsLoadingConversations(true);
@@ -380,6 +406,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       }
       if (data?.partner) {
         setActivePartnerData(data.partner);
+        if (typeof data.partner.is_muted === 'boolean') {
+          setIsChatMuted(data.partner.is_muted);
+        }
         const dmKey = `dm_${data.partner.id}`;
         if (convId !== dmKey && !convId.startsWith('dm_')) {
           setSelectedConvId(dmKey);
@@ -405,6 +434,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               partner_avatar: data.partner.avatar_url || data.partner.avatar,
               last_message: 'Direct conversation',
               last_message_at: new Date().toISOString(),
+              is_online: data.partner.is_online,
+              last_seen_at: data.partner.last_seen_at,
+              is_muted: data.partner.is_muted,
             };
             return [synth, ...prev];
           }
@@ -472,9 +504,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     try {
       if (deleteTarget.type === 'CONVERSATION') {
         const convId = deleteTarget.id;
+        deletedConvIdsRef.current.add(convId);
+        if (activePartnerData?.id) deletedConvIdsRef.current.add(activePartnerData.id);
         await api.deleteConversation(convId);
         setConversations((prev) =>
-          prev.filter((c) => !isConvMatch(c, convId) && c.conversation_id !== convId)
+          prev.filter((c) => !isConvMatch(c, convId) && c.conversation_id !== convId && c.partner_id !== convId)
         );
 
         const isActive =
@@ -505,6 +539,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       alert(err.message || 'Failed to delete. Please try again.');
     } finally {
       setIsDeletingChat(false);
+    }
+  };
+
+  // Toggle Mute Notifications for Active Conversation
+  const handleToggleMute = async () => {
+    const targetPartnerId = activePartnerData?.id || activeConversation?.partner_id;
+    if (!targetPartnerId) return;
+    const nextMuted = !isChatMuted;
+    setIsChatMuted(nextMuted);
+    try {
+      await api.muteConversation(targetPartnerId, nextMuted);
+      setConversations((prev) =>
+        prev.map((c) =>
+          isConvMatch(c, targetPartnerId) ? { ...c, is_muted: nextMuted } : c
+        )
+      );
+    } catch (err: any) {
+      setIsChatMuted(!nextMuted);
+      console.error('Failed to toggle mute:', err);
     }
   };
 
@@ -588,6 +641,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           }
         : null))
     : null;
+
+  useEffect(() => {
+    if (activeConversation) {
+      setIsChatMuted(Boolean(activeConversation.is_muted));
+    }
+  }, [activeConversation?.conversation_id, activeConversation?.partner_id, activeConversation?.is_muted]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1002,6 +1061,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
           liveLocationWatchIdRef.current = null;
         }
+        if (liveLocationTimerRef.current) {
+          clearTimeout(liveLocationTimerRef.current);
+          liveLocationTimerRef.current = null;
+        }
+
+        // Set explicit expiry timer so GPS watch is reliably stopped when duration finishes
+        const msUntilExpiry = Math.max(0, new Date(expiresAt).getTime() - Date.now());
+        liveLocationTimerRef.current = setTimeout(() => {
+          if (liveLocationWatchIdRef.current !== null && 'geolocation' in navigator) {
+            navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
+            liveLocationWatchIdRef.current = null;
+          }
+          liveLocationTimerRef.current = null;
+        }, msUntilExpiry);
 
         let lastUpdateMs = Date.now();
         let lastLat = loc.latitude;
@@ -1084,6 +1157,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     if (liveLocationWatchIdRef.current !== null && 'geolocation' in navigator) {
       navigator.geolocation.clearWatch(liveLocationWatchIdRef.current);
       liveLocationWatchIdRef.current = null;
+    }
+    if (liveLocationTimerRef.current) {
+      clearTimeout(liveLocationTimerRef.current);
+      liveLocationTimerRef.current = null;
     }
     try {
       const updatedData = {
@@ -1274,11 +1351,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           alt={chat.partner_name || 'Member'}
                           className="w-12 h-12 rounded-full object-cover shrink-0 border border-divider"
                         />
-                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" />
+                        {chat.is_online && (
+                          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" title="Active now" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between text-xs mb-0.5">
-                          <span className="font-bold text-ink truncate text-sm">{chat.partner_name || 'Neighbor'}</span>
+                          <div className="flex items-center gap-1.5 min-w-0 truncate">
+                            <span className="font-bold text-ink truncate text-sm">{chat.partner_name || 'Neighbor'}</span>
+                            {chat.is_muted && (
+                              <span title="Muted">
+                                <BellOff className="w-3 h-3 text-ink-muted shrink-0" />
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 shrink-0 pl-1">
                             {chat.last_message_at && (
                               <span className="text-[10px] text-ink-muted">
@@ -1325,7 +1411,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-divider flex items-center justify-between gap-3 bg-surface z-10">
                   <div className="flex items-center gap-3 min-w-0">
                     <button
-                      onClick={() => setShowMobileThread(false)}
+                      onClick={handleCloseChat}
                       className="md:hidden p-1.5 -ml-1 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink cursor-pointer shrink-0"
                       title="Back to conversation list"
                     >
@@ -1348,7 +1434,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         className="w-10 h-10 rounded-full object-cover border border-divider cursor-pointer hover:ring-2 hover:ring-brand hover:scale-105 transition-all"
                         title={`View ${activeConversation.partner_name || 'Member'}'s public profile`}
                       />
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" title="Active now" />
+                      {activeConversation.is_online && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-surface shrink-0" title="Active now" />
+                      )}
                     </div>
 
                     <div 
@@ -1365,8 +1453,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         {activeConversation.partner_name || 'Neighbor'}
                       </h2>
                       <div className="text-[11px] text-ink-secondary flex items-center gap-1.5 truncate">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                        <span>Active now</span>
+                        {activeConversation.is_online ? (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Active now</span>
+                          </>
+                        ) : (
+                          <span className="text-ink-muted">Available to chat</span>
+                        )}
                         {activeConversation.partner_username && (
                           <>
                             <span>•</span>
@@ -2652,7 +2746,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsChatMuted(!isChatMuted)}
+                    onClick={handleToggleMute}
                     className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                       isChatMuted ? 'bg-brand' : 'bg-canvas-darker border border-divider'
                     }`}

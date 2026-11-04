@@ -14,8 +14,22 @@ const sendMessageSchema = z.object({
   receiver_id: z.string().min(1, 'Receiver is required'),
   content: z.string().min(1, 'Message cannot be empty'),
   message_type: z.string().optional(),
-  proposal_data: z.any().optional(),
+  proposal_data: z.union([z.record(z.any()), z.string()]).optional().nullable(),
 });
+
+export function safeParseJson(data: any): Record<string, any> {
+  if (!data) return {};
+  if (typeof data === 'object') return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
 
 const isUuid = (val: string): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
@@ -35,6 +49,12 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
     const userId = req.user!.id;
     const myIds = await resolveUserIds(userId, req.user?.email);
 
+    // Update caller's presence timestamp
+    await query(
+      `UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id::text = ANY($1::text[]) OR firebase_uid = ANY($1::text[])`,
+      [myIds]
+    ).catch(() => {});
+
     // Mark pending incoming messages as delivered to this user
     await query(
       `UPDATE messages
@@ -50,7 +70,13 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
       `WITH my_ids AS (
         SELECT unnest($1::text[]) AS id_text
       ),
-      interacted_partners AS (
+      user_deleted AS (
+        SELECT partner_id, MAX(deleted_at) AS deleted_at
+        FROM user_deleted_conversations
+        WHERE user_id IN (SELECT id_text FROM my_ids)
+        GROUP BY partner_id
+      ),
+      raw_interactions AS (
         -- 1. From direct and booking messages
         SELECT 
           CASE 
@@ -78,10 +104,20 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
            OR b.lender_id IN (SELECT id_text FROM my_ids)
            OR i.owner_id IN (SELECT id_text FROM my_ids)
       ),
+      filtered_interactions AS (
+        SELECT ri.partner_raw_id, ri.interaction_at
+        FROM raw_interactions ri
+        LEFT JOIN user_deleted ud ON (
+          ri.partner_raw_id = ud.partner_id
+          OR ri.partner_raw_id IN (SELECT u_alias.id::text FROM users u_alias WHERE u_alias.id::text = ud.partner_id OR u_alias.firebase_uid = ud.partner_id)
+          OR ri.partner_raw_id IN (SELECT u_alias.firebase_uid FROM users u_alias WHERE u_alias.id::text = ud.partner_id OR u_alias.firebase_uid = ud.partner_id)
+        )
+        WHERE ud.deleted_at IS NULL OR ri.interaction_at > ud.deleted_at
+      ),
       distinct_partners AS (
-        SELECT u.id AS partner_user_id, MAX(ip.interaction_at) AS latest_interaction
-        FROM interacted_partners ip
-        JOIN users u ON (ip.partner_raw_id = u.id::text OR ip.partner_raw_id = u.firebase_uid)
+        SELECT u.id AS partner_user_id, MAX(fi.interaction_at) AS latest_interaction
+        FROM filtered_interactions fi
+        JOIN users u ON (fi.partner_raw_id = u.id::text OR fi.partner_raw_id = u.firebase_uid)
         WHERE u.id::text NOT IN (SELECT id_text FROM my_ids)
         GROUP BY u.id
       )
@@ -99,6 +135,13 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
         partner.name AS partner_name,
         partner.username AS partner_username,
         partner.avatar_url AS partner_avatar,
+        partner.last_seen_at,
+        (partner.last_seen_at IS NOT NULL AND partner.last_seen_at > (CURRENT_TIMESTAMP - INTERVAL '5 minutes')) AS is_online,
+        EXISTS (
+          SELECT 1 FROM user_muted_conversations umc
+          WHERE umc.user_id IN (SELECT id_text FROM my_ids)
+            AND (umc.partner_id = partner.id::text OR umc.partner_id = partner.firebase_uid)
+        ) AS is_muted,
         NULL AS partner_phone,
         partner.locality AS partner_locality,
         CASE 
@@ -162,6 +205,8 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
         WHERE (m.sender_id = partner.id::text OR m.sender_id = partner.firebase_uid)
           AND m.receiver_id IN (SELECT id_text FROM my_ids)
           AND (m.is_read = false OR m.is_read IS NULL)
+          AND (m.message_type IS NULL OR m.message_type != 'SYSTEM')
+          AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
       ) unread ON true
       WHERE NOT EXISTS (
         SELECT 1 FROM user_blocks ub
@@ -169,7 +214,7 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
            OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = partner.id::text OR ub.blocker_id = partner.firebase_uid))
       )
       ORDER BY COALESCE(latest_msg.created_at, dp.latest_interaction) DESC`,
-      [userId]
+      [myIds]
     );
 
     return sendSuccess(res, result.rows);
@@ -182,35 +227,24 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
 router.get('/unread-count', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
     const result = await query(
-      `WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      `WITH my_ids AS (
+        SELECT unnest($1::text[]) AS id_text
       )
       SELECT COUNT(*)::int AS unread_count
       FROM messages m
       WHERE (m.is_read = false OR m.is_read IS NULL)
         AND (m.message_type IS NULL OR m.message_type != 'SYSTEM')
         AND m.sender_id NOT IN (SELECT id_text FROM my_ids)
-        AND (
-          m.receiver_id IN (SELECT id_text FROM my_ids)
-          OR (
-            m.booking_id IS NOT NULL AND EXISTS (
-              SELECT 1 FROM bookings b
-              WHERE b.id = m.booking_id
-                AND ((b.borrower_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.borrower_id)
-                  OR (b.lender_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.lender_id))
-            )
-          )
-        )
+        AND m.receiver_id IN (SELECT id_text FROM my_ids)
+        AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
         AND NOT EXISTS (
           SELECT 1 FROM user_blocks ub
           WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = m.sender_id))
              OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = m.sender_id))
         )`,
-      [userId]
+      [myIds]
     );
 
     return sendSuccess(res, { unread_count: result.rows[0]?.unread_count || 0 });
@@ -226,8 +260,13 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
     const userId = req.user!.id;
 
     // Resolve my IDs
-    const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-    const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean) as string[];
+    const myIds = await resolveUserIds(userId, req.user?.email);
+
+    // Update caller's presence timestamp
+    await query(
+      `UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id::text = ANY($1::text[]) OR firebase_uid = ANY($1::text[])`,
+      [myIds]
+    ).catch(() => {});
 
     let rawPartnerId: string | null = null;
     let fallbackBooking: any = null;
@@ -270,7 +309,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
 
     // Fetch partner user data
     const pRes = await query(
-      `SELECT id::text, name, username, avatar_url, locality, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+      `SELECT id::text, name, username, avatar_url, locality, firebase_uid, last_seen_at FROM users WHERE id::text = $1 OR firebase_uid = $1`,
       [rawPartnerId]
     );
     const partnerData = pRes.rows[0] || {
@@ -278,6 +317,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       name: 'Community Member',
       avatar_url: null,
       locality: '',
+      last_seen_at: null,
     };
     const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean) as string[];
 
@@ -292,63 +332,57 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       return sendError(res, 'FORBIDDEN', 'Communication with this user is blocked.', 403);
     }
 
-    // Mark unread messages sent to me by partner as READ & DELIVERED
-    await query(
-      `UPDATE messages
-       SET is_read = true,
-           read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
-           is_delivered = true,
-           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-       WHERE (is_read = false OR is_read IS NULL)
-         AND sender_id = ANY($2::text[])
-         AND (
-           receiver_id = ANY($1::text[])
-           OR booking_id IN (
-             SELECT b_sub.id FROM bookings b_sub 
-             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
-                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
-           )
-         )`,
-      [myIds, pIds]
-    ).catch(() => {});
+    // Mark unread messages sent to me by partner as READ & DELIVERED (if requested)
+    if (req.query.mark_read !== 'false') {
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND sender_id = ANY($2::text[])
+           AND (
+             receiver_id = ANY($1::text[])
+             OR booking_id IN (
+               SELECT b_sub.id FROM bookings b_sub 
+               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+             )
+           )`,
+        [myIds, pIds]
+      ).catch(() => {});
+    }
 
-    // Retrofit older milestone notifications into SYSTEM message type
-    await query(
-      `UPDATE messages
-       SET message_type = 'SYSTEM'
-       WHERE (message_type IS NULL OR message_type = 'TEXT')
-         AND (
-           content LIKE 'Proposal accepted.%'
-           OR content LIKE 'Product received and handed over%'
-           OR content LIKE 'Product returned to owner%'
-           OR content LIKE 'Renter has sent the payment via%'
-         )`
-    ).catch(() => {});
-
-    // Fetch unified messages between current user and this partner
+    // Fetch unified messages between current user and this partner (recent limited messages)
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 200);
     const messagesRes = await query(
-      `SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
-        COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
-        COALESCE(m.is_read, false) AS is_read, m.read_at,
-        m.created_at,
-        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
-        b_linked.status AS linked_booking_status
-       FROM messages m
-       LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
-       LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
-       WHERE (
-         (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
-         OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
-         OR (m.booking_id IN (
-           SELECT b_sub.id FROM bookings b_sub 
-           WHERE ((b_sub.borrower_id = ANY($1::text[]) AND (b_sub.lender_id = ANY($2::text[]) OR b_sub.lender_id IS NULL))
-               OR (b_sub.borrower_id = ANY($2::text[]) AND (b_sub.lender_id = ANY($1::text[]) OR b_sub.lender_id IS NULL)))
-         ))
-       )
-       AND (m.deleted_by IS NULL OR NOT (m.deleted_by && $1::text[]))
-       ORDER BY m.created_at ASC`,
-      [myIds, pIds]
+      `SELECT * FROM (
+        SELECT 
+          m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+          COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+          COALESCE(m.is_read, false) AS is_read, m.read_at,
+          m.created_at, m.updated_at,
+          COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
+          b_linked.status AS linked_booking_status
+        FROM messages m
+        LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+        LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
+        WHERE (
+          (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
+          OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
+          OR (m.booking_id IN (
+            SELECT b_sub.id FROM bookings b_sub 
+            WHERE ((b_sub.borrower_id = ANY($1::text[]) AND (b_sub.lender_id = ANY($2::text[]) OR b_sub.lender_id IS NULL))
+                OR (b_sub.borrower_id = ANY($2::text[]) AND (b_sub.lender_id = ANY($1::text[]) OR b_sub.lender_id IS NULL)))
+          ))
+        )
+        AND (m.deleted_by IS NULL OR NOT (m.deleted_by && $1::text[]))
+        ORDER BY m.created_at DESC
+        LIMIT $3
+      ) sub
+      ORDER BY created_at ASC`,
+      [myIds, pIds, limit]
     );
 
     // Fetch latest active booking between them
@@ -379,7 +413,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       }
 
       if (row.message_type === 'PROPOSAL' && row.proposal_data) {
-        let pData = typeof row.proposal_data === 'string' ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
+        let pData = safeParseJson(row.proposal_data);
         const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : undefined);
         if (bStatus === 'ACCEPTED' || bStatus === 'HANDED_OVER' || bStatus === 'COMPLETED') {
           pData.status = 'ACCEPTED';
@@ -405,9 +439,23 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
       };
     });
 
+    const isMutedRes = await query(
+      `SELECT 1 FROM user_muted_conversations
+       WHERE user_id = ANY($1::text[]) AND partner_id = ANY($2::text[])`,
+      [myIds, pIds]
+    ).catch(() => ({ rows: [] }));
+
+    const isOnline = partnerData.last_seen_at
+      ? (Date.now() - new Date(partnerData.last_seen_at).getTime() < 5 * 60 * 1000)
+      : false;
+
     return sendSuccess(res, {
       booking: activeBooking,
-      partner: partnerData,
+      partner: {
+        ...partnerData,
+        is_online: isOnline,
+        is_muted: isMutedRes.rows.length > 0,
+      },
       messages: mappedMessages,
     });
   } catch (error) {
@@ -468,6 +516,13 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
   try {
     const validated = sendMessageSchema.parse(req.body);
     const senderId = req.user!.id;
+    const myIds = await resolveUserIds(senderId, req.user?.email);
+
+    // Update presence
+    await query(
+      `UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id::text = ANY($1::text[]) OR firebase_uid = ANY($1::text[])`,
+      [myIds]
+    ).catch(() => {});
 
     let targetBookingId: string | null = null;
     let targetReceiverId = validated.receiver_id;
@@ -480,13 +535,30 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
          WHERE b.id = $1`,
         [validated.booking_id]
       );
-      if (bookingRes.rows.length > 0) {
-        const booking = bookingRes.rows[0];
-        if (booking.borrower_id === senderId || booking.lender_id === senderId) {
-          targetBookingId = booking.id;
-          targetReceiverId = targetReceiverId || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
-        }
+      if (bookingRes.rows.length === 0) {
+        return sendError(res, 'NOT_FOUND', 'Linked booking not found', 404);
       }
+      const booking = bookingRes.rows[0];
+      const isBorrower = myIds.includes(String(booking.borrower_id));
+      const isLender = myIds.includes(String(booking.lender_id));
+      if (!isBorrower && !isLender && req.user!.role !== 'ADMIN') {
+        return sendError(res, 'FORBIDDEN', 'Access denied: You are not a participant in this booking.', 403);
+      }
+
+      // Verify that receiver is strictly the other participant in this booking
+      const expectedPartnerId = isBorrower ? booking.lender_id : booking.borrower_id;
+      const receiverIds = await resolveUserIds(targetReceiverId);
+      if (!receiverIds.includes(String(expectedPartnerId)) && req.user!.role !== 'ADMIN') {
+        return sendError(
+          res,
+          'BAD_REQUEST',
+          'Receiver must be the other participant in this booking.',
+          400
+        );
+      }
+
+      targetBookingId = booking.id;
+      targetReceiverId = expectedPartnerId;
     }
 
     if (!targetReceiverId) {
@@ -504,6 +576,10 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       return sendError(res, 'FORBIDDEN', 'Cannot send message. Communication between these users is blocked.', 403);
     }
 
+    const cleanProposalData = validated.proposal_data
+      ? (typeof validated.proposal_data === 'string' ? safeParseJson(validated.proposal_data) : validated.proposal_data)
+      : null;
+
     const result = await query(
       `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
        VALUES ($1, $2, $3, $4, $5, $6, false, false)
@@ -514,36 +590,45 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         targetReceiverId,
         validated.content,
         validated.message_type || 'TEXT',
-        validated.proposal_data ? JSON.stringify(validated.proposal_data) : null,
+        cleanProposalData ? JSON.stringify(cleanProposalData) : null,
       ]
     );
 
     const inserted = result.rows[0];
 
-    // Create in-app and push notification for recipient
-    const senderName = req.user!.name || 'A neighbor';
-    const previewText = validated.message_type === 'IMAGE' 
-      ? '📷 Sent a photo'
-      : validated.message_type === 'LOCATION'
-      ? '📍 Shared a location'
-      : validated.message_type === 'CONTACT'
-      ? '👤 Sent a contact card'
-      : validated.message_type === 'DOCUMENT'
-      ? '📄 Sent a note'
-      : validated.content.length > 80
-      ? validated.content.slice(0, 77) + '...'
-      : validated.content;
+    // Check if recipient has muted the sender before dispatching notification
+    const isMutedRes = await query(
+      `SELECT 1 FROM user_muted_conversations
+       WHERE (user_id = $1 OR user_id IN (SELECT firebase_uid FROM users WHERE id::text = $1))
+         AND (partner_id = $2 OR partner_id IN (SELECT firebase_uid FROM users WHERE id::text = $2))`,
+      [targetReceiverId, senderId]
+    ).catch(() => ({ rows: [] }));
 
-    await createNotification({
-      userId: targetReceiverId,
-      senderId: senderId,
-      bookingId: targetBookingId || undefined,
-      referenceId: inserted.id,
-      referenceType: 'MESSAGE',
-      type: 'NEW_MESSAGE',
-      title: `Message from ${senderName}`,
-      body: previewText,
-    }).catch((err) => console.warn('Failed to dispatch new message notification:', err));
+    if (isMutedRes.rows.length === 0) {
+      const senderName = req.user!.name || 'A neighbor';
+      const previewText = validated.message_type === 'IMAGE' 
+        ? '📷 Sent a photo'
+        : validated.message_type === 'LOCATION'
+        ? '📍 Shared a location'
+        : validated.message_type === 'CONTACT'
+        ? '👤 Sent a contact card'
+        : validated.message_type === 'DOCUMENT'
+        ? '📄 Sent a note'
+        : validated.content.length > 80
+        ? validated.content.slice(0, 77) + '...'
+        : validated.content;
+
+      await createNotification({
+        userId: targetReceiverId,
+        senderId: senderId,
+        bookingId: targetBookingId || undefined,
+        referenceId: inserted.id,
+        referenceType: 'MESSAGE',
+        type: 'NEW_MESSAGE',
+        title: `Message from ${senderName}`,
+        body: previewText,
+      }).catch((err) => console.warn('Failed to dispatch new message notification:', err));
+    }
 
     return sendSuccess(res, {
       ...inserted,
@@ -578,13 +663,15 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       return sendError(res, 'FORBIDDEN', 'Only the intended recipient can accept this agreement', 403);
     }
 
+    if (message.message_type !== 'PROPOSAL') {
+      return sendError(res, 'BAD_REQUEST', 'This message is not a proposal.', 400);
+    }
+
     if (!message.proposal_data && !message.booking_id) {
       return sendError(res, 'BAD_REQUEST', 'This message is not a rental proposal or booking offer.', 400);
     }
 
-    const proposal = typeof message.proposal_data === 'string'
-      ? JSON.parse(message.proposal_data)
-      : (message.proposal_data || {});
+    const proposal = safeParseJson(message.proposal_data);
 
     if (proposal.status && proposal.status !== 'PENDING') {
       return sendError(
@@ -1088,6 +1175,11 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
     }
     const message = msgRes.rows[0];
+
+    if (message.message_type !== 'PROPOSAL') {
+      return sendError(res, 'BAD_REQUEST', 'This message is not a proposal.', 400);
+    }
+
     if (!message.proposal_data && !message.booking_id) {
       return sendError(res, 'BAD_REQUEST', 'This message is not a proposal or booking request.', 400);
     }
@@ -1104,9 +1196,15 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       return sendError(res, 'FORBIDDEN', 'Access denied: You are not part of this proposal', 403);
     }
 
-    const proposal = typeof message.proposal_data === 'string'
-      ? JSON.parse(message.proposal_data)
-      : (message.proposal_data || {});
+    const proposal = safeParseJson(message.proposal_data);
+    if (proposal.status && proposal.status !== 'PENDING') {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `This proposal has already been ${proposal.status.toLowerCase()}.`,
+        400
+      );
+    }
 
     const existingBookingId = message.booking_id || proposal.booking_id;
     if (existingBookingId && isUuid(existingBookingId)) {
@@ -1122,13 +1220,6 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
           );
         }
       }
-    } else if (proposal.status && proposal.status !== 'PENDING') {
-      return sendError(
-        res,
-        'BAD_REQUEST',
-        `This proposal has already been ${proposal.status.toLowerCase()}.`,
-        400
-      );
     }
 
     const targetProposalStatus = isReceiver ? 'DECLINED' : 'CANCELLED';
@@ -1191,6 +1282,17 @@ router.delete('/conversations/:conversationId', authMiddleware, async (req: Auth
 
     if (isDm && rawPartnerId) {
       const pIds = await resolveUserIds(rawPartnerId);
+      const canonicalPartnerId = pIds[0] || rawPartnerId;
+
+      // Track per-user conversation deletion timestamp
+      for (const mId of myIds) {
+        await query(
+          `INSERT INTO user_deleted_conversations (user_id, partner_id, deleted_at)
+           VALUES ($1, $2, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, partner_id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP`,
+          [mId, canonicalPartnerId]
+        ).catch(() => {});
+      }
 
       // Soft delete for the calling user only (keeps history intact for partner)
       await query(
@@ -1228,6 +1330,16 @@ router.delete('/conversations/:conversationId', authMiddleware, async (req: Auth
       return sendError(res, 'FORBIDDEN', 'Permission denied: You are not a participant in this booking chat.', 403);
     }
 
+    const partnerId = myIds.includes(String(b.borrower_id)) ? (b.item_owner_id || b.lender_id) : b.borrower_id;
+    for (const mId of myIds) {
+      await query(
+        `INSERT INTO user_deleted_conversations (user_id, partner_id, deleted_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id, partner_id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP`,
+        [mId, String(partnerId)]
+      ).catch(() => {});
+    }
+
     // Soft delete for the calling user only
     await query(
       `UPDATE messages
@@ -1239,6 +1351,48 @@ router.delete('/conversations/:conversationId', authMiddleware, async (req: Auth
     );
 
     return sendSuccess(res, { conversation_id: conversationId }, 'Chat cleared for you');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 6.1 Mute or Unmute a Conversation
+router.post('/conversations/:partnerId/mute', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { partnerId } = req.params;
+    const userId = req.user!.id;
+    const { muted = true } = req.body;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+
+    const isDm = partnerId.startsWith('dm_') || !isUuid(partnerId);
+    const rawPartnerId = isDm ? partnerId.replace(/^dm_/, '') : partnerId;
+    const pIds = await resolveUserIds(rawPartnerId);
+    const canonicalPartnerId = pIds[0] || rawPartnerId;
+
+    if (muted) {
+      for (const mId of myIds) {
+        await query(
+          `INSERT INTO user_muted_conversations (user_id, partner_id, created_at)
+           VALUES ($1, $2, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, partner_id) DO NOTHING`,
+          [mId, canonicalPartnerId]
+        ).catch(() => {});
+      }
+    } else {
+      for (const mId of myIds) {
+        await query(
+          `DELETE FROM user_muted_conversations
+           WHERE user_id = $1 AND partner_id = ANY($2::text[])`,
+          [mId, pIds]
+        ).catch(() => {});
+      }
+    }
+
+    return sendSuccess(
+      res,
+      { partner_id: canonicalPartnerId, is_muted: Boolean(muted) },
+      muted ? 'Conversation muted' : 'Conversation unmuted'
+    );
   } catch (error) {
     next(error);
   }
