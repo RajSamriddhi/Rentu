@@ -152,31 +152,26 @@ export function getReachDistanceKm(
 }
 
 /**
- * Formats distance into meters and kilometers representation:
- * - If < 1000m: e.g. "500 meters away", "600 meters away"
- * - If >= 1000m: e.g. "1 kilometer 600 meter away", "1 kilometer 500 meter away", "2 kilometer away", "2 kilometer 500 meter away"
+ * Formats distance into meters and kilometers short representation:
+ * - If < 1000m: e.g. "500 m away", "600 m away"
+ * - If >= 1000m: e.g. "1.2 km away", "2 km away"
  */
 export function formatDistanceString(totalMeters: number): string {
   // Round to nearest 50m for clean, realistic distance (500m, 550m, 600m...)
   const roundedMeters = Math.max(50, Math.round(totalMeters / 50) * 50);
 
   if (roundedMeters < 1000) {
-    return `${roundedMeters} meters away`;
+    return `${roundedMeters} m away`;
   }
 
-  const km = Math.floor(roundedMeters / 1000);
-  const remMeters = roundedMeters % 1000;
-
-  if (remMeters < 50) {
-    return `${km} kilometer away`;
-  }
-
-  return `${km} kilometer ${remMeters} meter away`;
+  const km = roundedMeters / 1000;
+  const formattedKm = Number(km.toFixed(1));
+  return `${formattedKm} km away`;
 }
 
 /**
  * Formats reach distance into clean user-facing string strictly indicating distance:
- * e.g. "500 meters away", "1 kilometer 500 meter away", "2 kilometer away".
+ * e.g. "500 m away", "1.2 km away", "2 km away".
  * No private user locations/localities are shown.
  */
 export function getReachDistance(
