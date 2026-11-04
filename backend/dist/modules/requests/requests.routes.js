@@ -122,8 +122,9 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             sql += ` AND r.category = $${params.length}`;
         }
         if (seekerId) {
-            params.push(seekerId);
-            sql += ` AND r.seeker_id = $${params.length}`;
+            const resolvedSeekerIds = await (0, user_1.resolveUserIds)(String(seekerId));
+            params.push(resolvedSeekerIds);
+            sql += ` AND r.seeker_id = ANY($${params.length}::text[])`;
         }
         else if (locality) {
             const city = (0, city_1.extractCity)(String(locality));

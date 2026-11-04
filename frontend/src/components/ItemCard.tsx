@@ -3,6 +3,7 @@ import { Heart, Star, Check, Package, MapPin } from 'lucide-react';
 import { Item } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { getReachDistance } from '../lib/distance';
+import { formatCleanTitle } from '../lib/formatters';
 
 interface ItemCardProps {
   item: Item;
@@ -62,7 +63,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
         {/* Content Info matching Screen 2 */}
         <div className="mt-2.5 px-0.5">
           <h4 className="font-bold text-ink text-sm sm:text-base line-clamp-1 group-hover:text-brand transition-colors">
-            {item.title}
+            {formatCleanTitle(item.title)}
           </h4>
 
           <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">

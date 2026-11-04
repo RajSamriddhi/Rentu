@@ -781,7 +781,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
             activeTab === 'ongoing' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
-            {ongoingList.length}
+            {isLoading ? '...' : ongoingList.length}
           </span>
         </button>
 
@@ -808,7 +808,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
             activeTab === 'requests' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
-            {requestsList.length}
+            {isLoading ? '...' : requestsList.length}
           </span>
         </button>
 
@@ -835,7 +835,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
             activeTab === 'finished' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
-            {finishedList.length}
+            {isLoading ? '...' : finishedList.length}
           </span>
         </button>
 
@@ -862,7 +862,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
             activeTab === 'cancelled' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
-            {cancelledList.length}
+            {isLoading ? '...' : cancelledList.length}
           </span>
         </button>
 
@@ -1112,7 +1112,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           {/* TAB 2: BOOKING REQUESTS (Accept / Decline) */}
           {activeTab === 'requests' && (
             <div className="space-y-4">
-              {requestsList.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-4 max-w-2xl mx-auto">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-surface border border-divider rounded-3xl p-5 sm:p-6 space-y-4 animate-pulse">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-zinc-200 dark:bg-zinc-800 shrink-0" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/2" />
+                          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/3" />
+                        </div>
+                      </div>
+                      <div className="h-10 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : requestsList.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-3xl p-8 max-w-2xl mx-auto space-y-2">
                   <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto mb-2">
                     <Clock className="w-6 h-6 stroke-[1.8]" />

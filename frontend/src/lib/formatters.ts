@@ -22,3 +22,16 @@ export function formatTime12(timeStr?: string): string {
   return `${String(h12).padStart(2, '0')}:${m} ${period}`;
 }
 
+/**
+ * Normalizes title capitalization for gear listings and community requests.
+ * Fixes irregular capitalization like "SNake Plant" -> "Snake Plant" and "bottle" -> "Bottle".
+ */
+export function formatCleanTitle(str?: string | null): string {
+  if (!str) return '';
+  return str
+    .trim()
+    .replace(/\b([A-Z]{2,})([a-z]+)/g, (_, upper, lower) => upper.charAt(0) + upper.slice(1).toLowerCase() + lower)
+    .replace(/^([a-z])/, (m) => m.toUpperCase());
+}
+
+

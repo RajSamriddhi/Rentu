@@ -501,6 +501,7 @@ export const App: React.FC = () => {
                   onOpenDropWish={() => setIsDropWishOpen(true)}
                   itemsCount={(items || []).length}
                   requestsCount={(requests || []).length}
+                  isLoading={isLoading}
                   onOpenUserProfile={handleOpenUserProfile}
                 />
 
@@ -540,19 +541,33 @@ export const App: React.FC = () => {
                       onClick={() => setActiveTab('explore')}
                       className="text-xs font-bold text-brand hover:underline cursor-pointer"
                     >
-                      Explore All ({(items || []).length}) →
+                      {isLoading ? 'Explore All →' : `Explore All (${(items || []).length}) →`}
                     </button>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
-                    {(items || []).slice(0, 4).map((item) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                        onClick={() => setSelectedItem(item)}
-                        onOpenUserProfile={handleOpenUserProfile}
-                      />
-                    ))}
+                    {isLoading ? (
+                      [1, 2, 3, 4].map((i) => (
+                        <div key={i} className="bg-surface border border-divider rounded-3xl p-3 sm:p-4 space-y-2.5 animate-pulse">
+                          <div className="aspect-[4/3] w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-md w-3/4" />
+                          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/2" />
+                          <div className="pt-2 border-t border-divider flex items-center justify-between">
+                            <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/3" />
+                            <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-full w-12" />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      (items || []).slice(0, 4).map((item) => (
+                        <ItemCard
+                          key={item.id}
+                          item={item}
+                          onClick={() => setSelectedItem(item)}
+                          onOpenUserProfile={handleOpenUserProfile}
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

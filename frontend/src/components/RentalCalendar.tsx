@@ -266,18 +266,28 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
     return currentMonth.getTime() > firstOfCurrent.getTime();
   }, [currentMonth, today]);
 
-  // Normalize booked date ranges - only include active or future rentals
+  // Normalize booked date ranges - only include active or future rentals with valid YYYY-MM-DD format
   const normalizedBookedRanges = useMemo(() => {
     return (bookedDates || [])
       .map((b) => ({
-        start: b.start_date?.slice(0, 10),
-        end: (b.end_date || b.start_date)?.slice(0, 10),
+        start: String(b?.start_date || '').slice(0, 10),
+        end: String(b?.end_date || b?.start_date || '').slice(0, 10),
       }))
-      .filter((b) => b.start && b.end && b.end >= todayStr);
+      .filter((b) => {
+        return (
+          b.start.length === 10 &&
+          b.end.length === 10 &&
+          /^\d{4}-\d{2}-\d{2}$/.test(b.start) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(b.end) &&
+          b.end >= todayStr &&
+          b.start <= b.end
+        );
+      });
   }, [bookedDates, todayStr]);
 
   // Check if a specific YYYY-MM-DD is booked
   const isDateBooked = (dateStr: string): boolean => {
+    if (!dateStr || dateStr.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
     return normalizedBookedRanges.some((range) => {
       return dateStr >= range.start && dateStr <= range.end;
     });
@@ -285,6 +295,7 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
 
   // Check if any date in a range [startStr, endStr] is booked
   const hasBookedDateInRange = (startStr: string, endStr: string): boolean => {
+    if (!startStr || !endStr) return false;
     return normalizedBookedRanges.some((range) => {
       // Overlap formula: range.start <= endStr && range.end >= startStr
       return range.start <= endStr && range.end >= startStr;

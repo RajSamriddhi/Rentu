@@ -211,8 +211,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     }
 
     if (ownerId) {
-      params.push(ownerId);
-      sql += ` AND i.owner_id = $${params.length}`;
+      const resolvedOwnerIds = await resolveUserIds(String(ownerId));
+      params.push(resolvedOwnerIds);
+      sql += ` AND i.owner_id = ANY($${params.length}::text[])`;
     } else if (locality) {
       const city = extractCity(String(locality));
       if (city) {

@@ -333,19 +333,29 @@ router.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Respons
     try {
       result = await query(
         `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-                COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(trust_rating, 0.00)::numeric(3, 2) AS trust_rating,
                 COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
                 COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
                 COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
                 COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
                 COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
                 COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+                (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = users.id::text OR reviewee_id = users.firebase_uid) AS reviews_count,
                 COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE id = $1`,
         [req.user!.id]
       );
+
+      if (result.rows.length > 0) {
+        const u = result.rows[0];
+        const revCount = parseInt(u.reviews_count, 10) || 0;
+        if (revCount === 0) {
+          u.rating = 0.0;
+          u.trust_rating = 0.0;
+        }
+      }
     } catch (err: any) {
       if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
         await ensureUserColumns();

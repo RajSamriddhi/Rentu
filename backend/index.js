@@ -52790,19 +52790,28 @@ router.get("/me", authMiddleware, async (req, res, next) => {
     try {
       result = await query(
         `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, 
-                COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+                COALESCE(trust_rating, 0.00)::numeric(3, 2) AS trust_rating,
                 COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
                 COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
                 COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
                 COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
                 COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
                 COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+                (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = users.id::text OR reviewee_id = users.firebase_uid) AS reviews_count,
                 COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE id = $1`,
         [req.user.id]
       );
+      if (result.rows.length > 0) {
+        const u = result.rows[0];
+        const revCount = parseInt(u.reviews_count, 10) || 0;
+        if (revCount === 0) {
+          u.rating = 0;
+          u.trust_rating = 0;
+        }
+      }
     } catch (err) {
       if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
         await ensureUserColumns();
@@ -53213,8 +53222,9 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
       sql += ` AND i.category = $${params.length}`;
     }
     if (ownerId) {
-      params.push(ownerId);
-      sql += ` AND i.owner_id = $${params.length}`;
+      const resolvedOwnerIds = await resolveUserIds(String(ownerId));
+      params.push(resolvedOwnerIds);
+      sql += ` AND i.owner_id = ANY($${params.length}::text[])`;
     } else if (locality) {
       const city = extractCity(String(locality));
       if (city) {
@@ -53740,8 +53750,9 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
       sql += ` AND r.category = $${params.length}`;
     }
     if (seekerId) {
-      params.push(seekerId);
-      sql += ` AND r.seeker_id = $${params.length}`;
+      const resolvedSeekerIds = await resolveUserIds(String(seekerId));
+      params.push(resolvedSeekerIds);
+      sql += ` AND r.seeker_id = ANY($${params.length}::text[])`;
     } else if (locality) {
       const city = extractCity(String(locality));
       if (city) {
@@ -54210,9 +54221,9 @@ async function checkAndAutoCancelExpiredBookings() {
              b.start_time, i.title AS item_title,
              lender.name AS lender_name, borrower.name AS borrower_name
       FROM bookings b
-      JOIN items i ON b.item_id = i.id
-      JOIN users lender ON i.owner_id = lender.id
-      JOIN users borrower ON b.borrower_id = borrower.id
+      LEFT JOIN items i ON b.item_id = i.id
+      LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
       WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
          OR (b.status = 'PENDING')
     `);
@@ -54535,12 +54546,6 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     await checkAndAutoCancelExpiredBookings();
     const myIds = await resolveUserIds2(userId);
     let sql = `
-      WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
-      )
       SELECT 
         b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
         TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
@@ -54552,8 +54557,8 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
         b.status, b.message, 
-        CASE WHEN b.borrower_id IN (SELECT id_text FROM my_ids) THEN b.pickup_code ELSE NULL END AS pickup_code, 
-        CASE WHEN b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids) THEN b.return_code ELSE NULL END AS return_code, 
+        CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
+        CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
         b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
         b.payment_status, b.payment_method,
         COALESCE(i.title, 'Rented Gear') AS item_title, 
@@ -54579,18 +54584,18 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
       )
-      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id IN (SELECT id_text FROM my_ids)
+      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
       WHERE (
-        b.borrower_id IN (SELECT id_text FROM my_ids) 
-        OR b.lender_id IN (SELECT id_text FROM my_ids) 
-        OR i.owner_id IN (SELECT id_text FROM my_ids)
+        b.borrower_id = ANY($1::text[]) 
+        OR b.lender_id = ANY($1::text[]) 
+        OR i.owner_id = ANY($1::text[])
       )
     `;
-    const params = [userId];
+    const params = [myIds];
     if (role === "borrower") {
-      sql += ` AND b.borrower_id IN (SELECT id_text FROM my_ids)`;
+      sql += ` AND b.borrower_id = ANY($1::text[])`;
     } else if (role === "lender") {
-      sql += ` AND (b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids))`;
+      sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
@@ -54606,13 +54611,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       }
     }
     const proposalsRes = await query(
-      `WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
-      )
-      SELECT 
+      `SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
         sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
         receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
@@ -54621,15 +54620,15 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
       WHERE m.message_type = 'PROPOSAL'
         AND (
-          m.sender_id IN (SELECT id_text FROM my_ids) 
-          OR m.receiver_id IN (SELECT id_text FROM my_ids)
+          m.sender_id = ANY($1::text[]) 
+          OR m.receiver_id = ANY($1::text[])
         )
         AND (
           (m.proposal_data->>'status') IS NULL 
           OR (m.proposal_data->>'status') = 'PENDING'
         )
       ORDER BY m.created_at DESC`,
-      [userId]
+      [myIds]
     );
     const existingBookingIds = /* @__PURE__ */ new Set();
     for (const b of result.rows) {

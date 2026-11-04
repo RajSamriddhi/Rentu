@@ -29,6 +29,7 @@ import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { getEffectiveSavedLocations, formatSavedLocationFull, formatFullAddress } from '../lib/location';
 import { RentalCalendar, formatTime12 } from './RentalCalendar';
+import { formatCleanTitle } from '../lib/formatters';
 import { getReachDistance } from '../lib/distance';
 import { AddLocationModal } from './AddLocationModal';
 
@@ -124,9 +125,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   React.useEffect(() => {
     if (item) {
-      if (!item.available_for_borrowing) {
-        setRentType('Rent');
-      }
       if (item.booked_dates && item.booked_dates.length > 0) {
         setBookedDates(item.booked_dates);
       } else {
@@ -135,7 +133,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         }).catch(() => {});
       }
     }
-  }, [item]);
+  }, [item?.id]);
 
   // Booking Form State
   const tomorrow = new Date();
@@ -437,7 +435,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="flex items-start justify-between gap-4 pt-1">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight font-display">
-                    {item.title}
+                    {formatCleanTitle(item.title)}
                   </h1>
 
                   <div className="mt-2 flex flex-wrap items-center gap-3">

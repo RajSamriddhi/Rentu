@@ -18,6 +18,7 @@ export interface User {
   owner_reviews_count?: number;
   renter_reviews_count?: number;
   community_lender_reviews_count?: number;
+  reviews_count?: number;
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
@@ -328,6 +329,7 @@ export interface PublicUserProfile {
   owner_reviews_count?: number;
   renter_reviews_count?: number;
   community_lender_reviews_count?: number;
+  reviews_count?: number;
   created_at?: string;
   is_following?: boolean;
   is_blocked?: boolean;

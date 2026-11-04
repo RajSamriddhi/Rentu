@@ -133,8 +133,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     }
 
     if (seekerId) {
-      params.push(seekerId);
-      sql += ` AND r.seeker_id = $${params.length}`;
+      const resolvedSeekerIds = await resolveUserIds(String(seekerId));
+      params.push(resolvedSeekerIds);
+      sql += ` AND r.seeker_id = ANY($${params.length}::text[])`;
     } else if (locality) {
       const city = extractCity(String(locality));
       if (city) {

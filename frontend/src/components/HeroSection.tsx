@@ -7,6 +7,7 @@ interface HeroSectionProps {
   onGetStarted: () => void;
   itemsCount?: number;
   requestsCount?: number;
+  isLoading?: boolean;
   searchQuery?: string;
   setSearchQuery?: (query: string) => void;
   onSearch?: () => void;
@@ -18,6 +19,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onGetStarted,
   itemsCount = 0,
   requestsCount = 0,
+  isLoading = false,
 }) => {
   return (
     <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10 sm:pb-14 bg-canvas transition-colors">
@@ -76,11 +78,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* Minimalist Stats Strip */}
         <div className="mt-10 border-t border-divider pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
           <div className="p-3">
-            <div className="text-xl sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
+            )}
             <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Gear Available</div>
           </div>
           <div className="p-3">
-            <div className="text-xl sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
+            )}
             <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
           </div>
           <div className="p-3">

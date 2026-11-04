@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
-import { formatTime12 } from '../lib/formatters';
+import { formatTime12, formatCleanTitle } from '../lib/formatters';
 import { getBookingLogisticsInfo, checkIsLender } from '../lib/logistics';
 
 interface BookingCardProps {
@@ -201,8 +201,8 @@ export const BookingCard: React.FC<BookingCardProps> = ({
         {/* Content Info: Title & Price */}
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">
-            <h4 className="font-extrabold text-ink text-base sm:text-lg capitalize line-clamp-1 group-hover:text-brand transition-colors font-display">
-              {booking.item_title || 'Rented Item'}
+            <h4 className="font-extrabold text-ink text-base sm:text-lg line-clamp-1 group-hover:text-brand transition-colors font-display">
+              {formatCleanTitle(booking.item_title) || 'Rented Item'}
             </h4>
             <div className="text-right shrink-0">
               <span className="text-base sm:text-lg font-black text-ink font-display">

@@ -132,8 +132,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         api.getBookings(),
         api.getUserProfile(user.id).catch(() => null),
       ]);
-      setMyItems(items || []);
-      setMyRequests(reqs || []);
+      const effectiveItems = (items && items.length > 0) ? items : (profile?.items || []);
+      const effectiveReqs = (reqs && reqs.length > 0) ? reqs : (profile?.requests || []);
+      setMyItems(effectiveItems);
+      setMyRequests(effectiveReqs);
       setMyBookings(books || []);
       if (profile && Array.isArray(profile.reviews)) {
         setReceivedReviews(profile.reviews);
@@ -188,7 +190,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     : 'Recent';
 
   const completedCount = myBookings.filter(b => b.status === 'COMPLETED').length;
-  const ratingDisplay = user?.rating ? Number(user.rating).toFixed(1) : null;
+  const hasReviews = Boolean((user?.reviews_count && Number(user.reviews_count) > 0) || receivedReviews.length > 0);
+  const ratingDisplay = hasReviews ? Number(user?.trust_rating || user?.rating || 0).toFixed(1) : null;
 
   const bannerSrc = user?.banner_url || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1600&q=80';
   const avatarSrc = user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu');
@@ -438,9 +441,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <div className="p-4 sm:p-5 text-center sm:text-left">
             <div className="text-xl sm:text-2xl font-black text-ink font-display">
-              {ratingDisplay ? `${ratingDisplay} ★` : '100%'}
+              {ratingDisplay ? `${ratingDisplay} ★` : `${user?.trust_score ?? 95}%`}
             </div>
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Trust Score</div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
+              {ratingDisplay ? 'Trust Rating' : 'Trust Score'}
+            </div>
           </div>
         </div>
 

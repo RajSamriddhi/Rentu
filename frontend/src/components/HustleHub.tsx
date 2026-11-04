@@ -466,7 +466,11 @@ export const HustleHub: React.FC = () => {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
                   <div className="text-xs font-semibold text-ink-secondary">Total Users</div>
-                  <div className="text-2xl font-black text-ink font-display">{totalUsers}</div>
+                  {isLoading ? (
+                    <div className="h-8 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-1" />
+                  ) : (
+                    <div className="text-2xl font-black text-ink font-display">{totalUsers}</div>
+                  )}
                   <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5">
                     <ArrowUpRight className="w-3 h-3" /> Live
                   </div>
@@ -474,7 +478,11 @@ export const HustleHub: React.FC = () => {
 
                 <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
                   <div className="text-xs font-semibold text-ink-secondary">Active Lenders</div>
-                  <div className="text-2xl font-black text-ink font-display">{activeLenders}</div>
+                  {isLoading ? (
+                    <div className="h-8 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-1" />
+                  ) : (
+                    <div className="text-2xl font-black text-ink font-display">{activeLenders}</div>
+                  )}
                   <div className="text-[11px] font-bold text-ink-secondary">
                     {pulse?.available_gear || 0} gear available
                   </div>
@@ -482,7 +490,11 @@ export const HustleHub: React.FC = () => {
 
                 <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
                   <div className="text-xs font-semibold text-ink-secondary">Active Borrowers</div>
-                  <div className="text-2xl font-black text-ink font-display">{activeBorrowers}</div>
+                  {isLoading ? (
+                    <div className="h-8 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-1" />
+                  ) : (
+                    <div className="text-2xl font-black text-ink font-display">{activeBorrowers}</div>
+                  )}
                   <div className="text-[11px] font-bold text-ink-secondary">
                     {pulse?.open_wishes || 0} open wishes
                   </div>
@@ -490,7 +502,11 @@ export const HustleHub: React.FC = () => {
 
                 <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-1">
                   <div className="text-xs font-semibold text-ink-secondary">Rental Value Handled</div>
-                  <div className="text-2xl font-black text-brand font-display">₹{totalVolume.toLocaleString('en-IN')}</div>
+                  {isLoading ? (
+                    <div className="h-8 w-24 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-1" />
+                  ) : (
+                    <div className="text-2xl font-black text-brand font-display">₹{totalVolume.toLocaleString('en-IN')}</div>
+                  )}
                   <div className="text-[11px] font-bold text-ink-secondary">
                     {pulse?.completed_bookings || 0} completed handoffs
                   </div>
@@ -788,7 +804,7 @@ export const HustleHub: React.FC = () => {
                   <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight font-display flex items-center gap-2">
                     <span>Registered Community Members</span>
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-brand/10 text-brand font-black">
-                      {adminUsers.length} Users
+                      {isLoadingUsers ? 'Loading...' : `${adminUsers.length} Users`}
                     </span>
                   </h2>
                   <p className="text-xs text-ink-secondary font-medium mt-0.5">
@@ -945,7 +961,7 @@ export const HustleHub: React.FC = () => {
                   <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight font-display flex items-center gap-2">
                     <span>Gear Listings Management</span>
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-brand/10 text-brand font-black">
-                      {adminListings.length} Listed Items
+                      {isLoadingListings ? 'Loading...' : `${adminListings.length} Listed Items`}
                     </span>
                   </h2>
                   <p className="text-xs text-ink-secondary font-medium mt-0.5">
@@ -1094,7 +1110,7 @@ export const HustleHub: React.FC = () => {
                   <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight font-display flex items-center gap-2">
                     <span>Community Gear Wishes & Requests</span>
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-brand/10 text-brand font-black">
-                      {adminRequests.length} Wishes
+                      {isLoadingRequests ? 'Loading...' : `${adminRequests.length} Wishes`}
                     </span>
                   </h2>
                   <p className="text-xs text-ink-secondary font-medium mt-0.5">
@@ -1228,7 +1244,7 @@ export const HustleHub: React.FC = () => {
                   <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight font-display flex items-center gap-2">
                     <span>Rental Transactions & Handoffs</span>
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-brand/10 text-brand font-black">
-                      {adminBookings.length} Bookings
+                      {isLoadingBookings ? 'Loading...' : `${adminBookings.length} Bookings`}
                     </span>
                   </h2>
                   <p className="text-xs text-ink-secondary font-medium mt-0.5">

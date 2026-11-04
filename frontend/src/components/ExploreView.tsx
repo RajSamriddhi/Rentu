@@ -75,8 +75,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [selectedCondition, setSelectedCondition] = useState<string>('Any');
   const [selectedPerks, setSelectedPerks] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'relevance' | 'distance' | 'price_low' | 'price_high'>('relevance');
-  const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
-  const [showDesktopFilters, setShowDesktopFilters] = useState<boolean>(true);
+  const [showFilters, setShowFilters] = useState<boolean>(true);
 
   // Active filter count
   const activeFiltersCount = 
@@ -243,10 +242,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 {/* Toggle Filter Sidebar Button */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowDesktopFilters(!showDesktopFilters);
-                    setShowMobileFilters(!showMobileFilters);
-                  }}
+                  onClick={() => setShowFilters(!showFilters)}
                   className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                     activeFiltersCount > 0
                       ? 'bg-brand-soft border-brand/30 text-brand shadow-xs'
@@ -254,8 +250,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{showDesktopFilters ? 'Hide Filters' : 'Show Filters'}</span>
-                  <span className="sm:hidden">Filters</span>
+                  <span>{showFilters ? 'Hide Filters' : 'Show Filters'}</span>
                   {activeFiltersCount > 0 && (
                     <span className="w-4 h-4 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center">
                       {activeFiltersCount}
@@ -265,7 +260,14 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
                 {/* Items Counter */}
                 <span className="text-xs text-ink-secondary font-medium">
-                  Showing <strong className="text-ink font-bold">{sortedItems.length}</strong> {sortedItems.length === 1 ? 'item' : 'items'}
+                  {isLoading ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-brand animate-pulse" />
+                      Loading items...
+                    </span>
+                  ) : (
+                    <>Showing <strong className="text-ink font-bold">{sortedItems.length}</strong> {sortedItems.length === 1 ? 'item' : 'items'}</>
+                  )}
                 </span>
               </div>
 
@@ -380,9 +382,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             
             {/* Left Filter Sidebar */}
             <aside
-              className={`space-y-5 ${
-                showDesktopFilters ? 'lg:col-span-3' : 'hidden'
-              } ${showMobileFilters ? 'block' : 'hidden lg:block'}`}
+              className={`space-y-5 transition-all ${
+                showFilters ? 'block lg:col-span-3' : 'hidden'
+              }`}
             >
               <div className="bg-surface border border-divider rounded-2xl p-4 sm:p-5 shadow-xs space-y-5">
                 
@@ -647,13 +649,22 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             </aside>
 
             {/* Right Main Grid */}
-            <main className={`${showDesktopFilters ? 'lg:col-span-9' : 'lg:col-span-12'} transition-all`}>
+            <main className={`${showFilters ? 'lg:col-span-9' : 'lg:col-span-12'} transition-all`}>
               
               {/* Items Grid */}
               {isLoading ? (
-                <div className="py-24 text-center">
-                  <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-xs font-bold text-ink-secondary">Loading items...</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="bg-surface border border-divider rounded-3xl p-4 space-y-3 animate-pulse">
+                      <div className="aspect-[4/3] w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+                      <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-md w-3/4" />
+                      <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/2" />
+                      <div className="pt-2 border-t border-divider flex items-center justify-between">
+                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded-md w-1/4" />
+                        <div className="h-6 bg-zinc-200 dark:bg-zinc-800 rounded-full w-16" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : sortedItems.length === 0 ? (
                 <div className="py-20 text-center bg-surface border border-divider rounded-2xl p-8">

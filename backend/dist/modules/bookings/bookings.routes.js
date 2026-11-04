@@ -53,9 +53,9 @@ async function checkAndAutoCancelExpiredBookings() {
              b.start_time, i.title AS item_title,
              lender.name AS lender_name, borrower.name AS borrower_name
       FROM bookings b
-      JOIN items i ON b.item_id = i.id
-      JOIN users lender ON i.owner_id = lender.id
-      JOIN users borrower ON b.borrower_id = borrower.id
+      LEFT JOIN items i ON b.item_id = i.id
+      LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
       WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
          OR (b.status = 'PENDING')
     `);
@@ -343,12 +343,6 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         await checkAndAutoCancelExpiredBookings();
         const myIds = await resolveUserIds(userId);
         let sql = `
-      WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
-      )
       SELECT 
         b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
         TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
@@ -360,8 +354,8 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
         COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
         b.status, b.message, 
-        CASE WHEN b.borrower_id IN (SELECT id_text FROM my_ids) THEN b.pickup_code ELSE NULL END AS pickup_code, 
-        CASE WHEN b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids) THEN b.return_code ELSE NULL END AS return_code, 
+        CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
+        CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
         b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
         b.payment_status, b.payment_method,
         COALESCE(i.title, 'Rented Gear') AS item_title, 
@@ -387,19 +381,19 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
       )
-      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id IN (SELECT id_text FROM my_ids)
+      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
       WHERE (
-        b.borrower_id IN (SELECT id_text FROM my_ids) 
-        OR b.lender_id IN (SELECT id_text FROM my_ids) 
-        OR i.owner_id IN (SELECT id_text FROM my_ids)
+        b.borrower_id = ANY($1::text[]) 
+        OR b.lender_id = ANY($1::text[]) 
+        OR i.owner_id = ANY($1::text[])
       )
     `;
-        const params = [userId];
+        const params = [myIds];
         if (role === 'borrower') {
-            sql += ` AND b.borrower_id IN (SELECT id_text FROM my_ids)`;
+            sql += ` AND b.borrower_id = ANY($1::text[])`;
         }
         else if (role === 'lender') {
-            sql += ` AND (b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids))`;
+            sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
         }
         sql += ` ORDER BY b.created_at DESC`;
         const result = await (0, db_1.query)(sql, params);
@@ -418,13 +412,7 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
             }
         }
         // Also query pending proposals from messages so custom gear requests, lend offers, and booking proposals appear in Booking Requests
-        const proposalsRes = await (0, db_1.query)(`WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
-      )
-      SELECT 
+        const proposalsRes = await (0, db_1.query)(`SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
         sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
         receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
@@ -433,14 +421,14 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
       LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
       WHERE m.message_type = 'PROPOSAL'
         AND (
-          m.sender_id IN (SELECT id_text FROM my_ids) 
-          OR m.receiver_id IN (SELECT id_text FROM my_ids)
+          m.sender_id = ANY($1::text[]) 
+          OR m.receiver_id = ANY($1::text[])
         )
         AND (
           (m.proposal_data->>'status') IS NULL 
           OR (m.proposal_data->>'status') = 'PENDING'
         )
-      ORDER BY m.created_at DESC`, [userId]);
+      ORDER BY m.created_at DESC`, [myIds]);
         const existingBookingIds = new Set();
         for (const b of result.rows) {
             if (b.id)
