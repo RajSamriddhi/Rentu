@@ -320,7 +320,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
            WHERE item_id = $1 
              AND borrower_id = ANY($2::text[]) 
              AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+             AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
            LIMIT 1`, [item.id, viewerIds]);
                 canViewAddress = acceptedBookingCheck.rows.length > 0;
             }
@@ -338,13 +338,13 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
         const bookedRes = await (0, db_1.query)(`SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`, [id]);
         // Fetch related items in same category and city
         const itemCity = (0, city_1.extractCity)(item.locality);
@@ -369,13 +369,13 @@ router.get('/:id/availability', async (req, res, next) => {
         const { id } = req.params;
         const result = await (0, db_1.query)(`SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`, [id]);
         return (0, response_1.sendSuccess)(res, result.rows);
     }

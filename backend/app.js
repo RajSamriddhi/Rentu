@@ -95874,19 +95874,19 @@ async function checkAndGenerateReminders(userId) {
         b.id, 
         b.borrower_id, 
         b.lender_id, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
         b.end_time, 
         i.title AS item_title,
         borrower.name AS borrower_name,
         lender.name AS lender_name,
-        (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
+        (COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
        LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
        WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'HANDED_OVER'
-         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+         AND COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
       [userIds]
     );
     for (const b of upcomingReturns.rows) {
@@ -96235,7 +96235,7 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
            WHERE item_id = $1 
              AND borrower_id = ANY($2::text[]) 
              AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+             AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
            LIMIT 1`,
           [item.id, viewerIds]
         );
@@ -96255,13 +96255,13 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const bookedRes = await query(
       `SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );
@@ -96289,13 +96289,13 @@ router2.get("/:id/availability", async (req, res, next) => {
     const result = await query(
       `SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );
@@ -97240,6 +97240,8 @@ var createBookingSchema = external_exports.object({
   end_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive("Duration must be at least 1 day"),
   total_price: external_exports.number().min(0).optional(),
+  is_borrowing: external_exports.boolean().optional(),
+  booking_type: external_exports.enum(["RENT", "BORROW"]).optional(),
   pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
   pickup_locality: external_exports.string().optional(),
   return_type: external_exports.string().optional().default("LENDER_LOCATION"),
@@ -97276,11 +97278,13 @@ async function checkAndAutoCancelExpiredBookings() {
       SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
              b.start_time, i.title AS item_title,
-             lender.name AS lender_name, borrower.name AS borrower_name
+             lender.name AS lender_name, borrower.name AS borrower_name,
+             (m.proposal_data->>'timezone_offset_minutes')::numeric AS tz_offset
       FROM bookings b
       LEFT JOIN items i ON b.item_id = i.id
       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      LEFT JOIN messages m ON (m.booking_id = b.id AND m.message_type = 'PROPOSAL')
       WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
          OR (b.status = 'PENDING')
     `);
@@ -97289,7 +97293,8 @@ async function checkAndAutoCancelExpiredBookings() {
       const sDate = row.start_date_str;
       if (!sDate) continue;
       const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
-      const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
+      const tz = row.tz_offset !== null && row.tz_offset !== void 0 && !isNaN(Number(row.tz_offset)) ? Number(row.tz_offset) : -330;
+      const startTimestamp = parseToUtcTimestamp(sDate, sTime, tz);
       if (row.status === "PENDING" && now2 > startTimestamp) {
         await query(
           `UPDATE bookings 
@@ -97460,29 +97465,35 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       `SELECT 
         id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        start_time,
+        end_time
        FROM bookings 
        WHERE item_id = $1 
          AND status IN ('ACCEPTED', 'HANDED_OVER')
          AND (
            start_date <= $3::date 
-           AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $2::date
-         )
-       LIMIT 1`,
+           AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $2::date
+         )`,
       [item.id, validated.start_date, finalEndDate]
     );
-    if (overlapRes.rows.length > 0) {
-      const conflict = overlapRes.rows[0];
-      return sendError(
-        res,
-        "CONFLICT",
-        `This product is unavailable from ${conflict.start_date} to ${conflict.end_date} because it is already rented. Please pick different dates on the calendar.`,
-        409
-      );
+    const reqStartTs = parseToUtcTimestamp(validated.start_date, validated.start_time || "10:00", tzOffset);
+    const reqEndTs = parseToUtcTimestamp(finalEndDate, validated.end_time || "18:00", tzOffset);
+    for (const conflict of overlapRes.rows) {
+      const cStartTs = parseToUtcTimestamp(conflict.start_date, conflict.start_time || "10:00", tzOffset);
+      const cEndTs = parseToUtcTimestamp(conflict.end_date || conflict.start_date, conflict.end_time || "18:00", tzOffset);
+      if (reqStartTs < cEndTs && cStartTs < reqEndTs) {
+        return sendError(
+          res,
+          "CONFLICT",
+          `This product is unavailable from ${conflict.start_date} ${conflict.start_time || "10:00"} to ${conflict.end_date} ${conflict.end_time || "18:00"} because it is already reserved. Please pick different dates or hours on the calendar.`,
+          409
+        );
+      }
     }
     const itemRate = Number(item.price_per_day || 0);
-    const isFreeBorrow = itemRate <= 0 || item.available_for_borrowing;
-    if (validated.total_price === 0 && itemRate > 0 && !item.available_for_borrowing) {
+    const wantsBorrowing = validated.is_borrowing === true || validated.booking_type === "BORROW" || validated.total_price === 0 && itemRate === 0;
+    if (wantsBorrowing && itemRate > 0 && !item.available_for_borrowing) {
       return sendError(
         res,
         "BAD_REQUEST",
@@ -97490,23 +97501,31 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         400
       );
     }
-    const borrowerRes = await query("SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1", [borrowerId]);
-    const borrower = borrowerRes.rows[0];
-    const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== "Bengaluru, India";
-    const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
-    if (!hasAddressText && !hasSavedLocations) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        "Address required: Please set your address in your profile before requesting to rent or order items.",
-        400
-      );
+    const needsDeliveryAddress = Boolean(
+      validated.requires_delivery || validated.pickup_type === "MY_LOCATION" || validated.requires_pickup || validated.return_type === "MY_LOCATION"
+    );
+    if (needsDeliveryAddress) {
+      const borrowerRes = await query("SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1", [borrowerId]);
+      const borrower = borrowerRes.rows[0];
+      const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== "Bengaluru, India";
+      const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
+      if (!hasAddressText && !hasSavedLocations) {
+        return sendError(
+          res,
+          "BAD_REQUEST",
+          "Delivery address required: Please add a delivery address to your profile for items that require home delivery or collection.",
+          400
+        );
+      }
     }
-    const sDateObj = new Date(validated.start_date);
-    const eDateObj = new Date(finalEndDate);
-    const dayDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1e3 * 60 * 60 * 24)));
-    const durationDays = validated.duration_days ? Math.max(1, validated.duration_days) : dayDiff;
-    const baseCost = isFreeBorrow || itemRate <= 0 ? 0 : itemRate * durationDays;
+    const [sY, sM, sD] = validated.start_date.split("-").map(Number);
+    const [eY, eM, eD] = finalEndDate.split("-").map(Number);
+    const sUtc = Date.UTC(sY, (sM || 1) - 1, sD || 1);
+    const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
+    const calendarDiff = Math.round((eUtc - sUtc) / (1e3 * 60 * 60 * 24));
+    const durationDays = Math.max(1, calendarDiff);
+    const isFreeBorrow = wantsBorrowing && (itemRate <= 0 || item.available_for_borrowing);
+    const baseCost = isFreeBorrow ? 0 : itemRate * durationDays;
     let deliveryFee = 0;
     if (validated.requires_delivery) {
       if (!item.offers_delivery) {
@@ -97538,6 +97557,9 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       start_time: validated.start_time || "10:00",
       end_date: finalEndDate,
       end_time: validated.end_time || "18:00",
+      timezone_offset_minutes: tzOffset,
+      is_borrowing: isFreeBorrow,
+      booking_type: isFreeBorrow ? "BORROW" : "RENT",
       pickup_type: validated.pickup_type || "LENDER_LOCATION",
       pickup_locality: validated.pickup_locality || item.locality || "",
       return_type: validated.return_type || "LENDER_LOCATION",
@@ -97632,7 +97654,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
         TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
         b.start_time, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
         b.end_time, 
         b.duration_days,
         b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
@@ -97864,7 +97886,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     const bookingRes = await query(
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
               COALESCE(i.title, 'Rented Gear') AS item_title, 
               COALESCE(b.lender_id, i.owner_id) AS lender_id, 
               i.owner_id AS item_owner_id,
@@ -97937,16 +97959,16 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     let conflictingPendingList = [];
     if (status === "ACCEPTED") {
       const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-      const endTimestamp = parseToUtcTimestamp(
-        eDate,
-        booking.end_time || "18:00",
+      const startTimestamp = parseToUtcTimestamp(
+        sDate,
+        booking.start_time || "10:00",
         tzOffset
       );
-      if (endTimestamp < Date.now()) {
+      if (startTimestamp < Date.now()) {
         return sendError(
           res,
           "BAD_REQUEST",
-          "This booking request cannot be accepted because its scheduled rental time has already passed. Please ask the renter to send a request for upcoming dates.",
+          "This booking request cannot be accepted because its scheduled pickup time has already passed. Please ask the renter to send a request for upcoming dates.",
           400
         );
       }
@@ -97956,42 +97978,59 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         await client.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [booking.item_id]);
         const conflictRes = await client.query(
           `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+                  TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                  start_time, end_time
            FROM bookings
            WHERE item_id = $1
              AND id != $2
              AND status IN ('ACCEPTED', 'HANDED_OVER')
              AND (
                start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-             )
-           LIMIT 1`,
+               AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
+             )`,
           [booking.item_id, id, sDate, eDate]
         );
-        if (conflictRes.rows.length > 0) {
+        const reqStartTs = parseToUtcTimestamp(sDate, booking.start_time || "10:00", tzOffset);
+        const reqEndTs = parseToUtcTimestamp(eDate, booking.end_time || "18:00", tzOffset);
+        let actualConflict = null;
+        for (const c of conflictRes.rows) {
+          const cStartTs = parseToUtcTimestamp(c.start_date, c.start_time || "10:00", tzOffset);
+          const cEndTs = parseToUtcTimestamp(c.end_date || c.start_date, c.end_time || "18:00", tzOffset);
+          if (reqStartTs < cEndTs && cStartTs < reqEndTs) {
+            actualConflict = c;
+            break;
+          }
+        }
+        if (actualConflict) {
           await client.query("ROLLBACK");
-          const c = conflictRes.rows[0];
           return sendError(
             res,
             "CONFLICT",
-            `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+            `Cannot accept booking: This item is already booked from ${actualConflict.start_date} ${actualConflict.start_time || "10:00"} to ${actualConflict.end_date} ${actualConflict.end_time || "18:00"}.`,
             409
           );
         }
         const conflictingPendingRes = await client.query(
-          `SELECT id, borrower_id 
+          `SELECT id, borrower_id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+                  TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                  start_time, end_time
            FROM bookings
            WHERE item_id = $1
              AND id != $2
              AND status = 'PENDING'
              AND (
                start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+               AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
              )`,
           [booking.item_id, id, sDate, eDate]
         );
-        conflictingPendingList = conflictingPendingRes.rows;
-        for (const conflicting of conflictingPendingList) {
+        const toCancelPending = conflictingPendingRes.rows.filter((cp) => {
+          const cpStartTs = parseToUtcTimestamp(cp.start_date, cp.start_time || "10:00", tzOffset);
+          const cpEndTs = parseToUtcTimestamp(cp.end_date || cp.start_date, cp.end_time || "18:00", tzOffset);
+          return reqStartTs < cpEndTs && cpStartTs < reqEndTs;
+        });
+        conflictingPendingList = toCancelPending;
+        for (const conflicting of toCancelPending) {
           await client.query(
             `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
             [conflicting.id]
@@ -98062,7 +98101,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`,
         [id, booking.lender_id, booking.borrower_id]
-      );
+      ).catch((err) => console.warn("Failed to insert system acceptance message:", err));
       await createNotification({
         userId: booking.borrower_id,
         senderId: booking.lender_id,
@@ -98072,7 +98111,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         type: "BOOKING_ACCEPTED",
         title: "Rental Accepted",
         body: `${booking.lender_name} accepted your request for "${booking.item_title}".`
-      });
+      }).catch((err) => console.warn("Failed to send acceptance notification:", err));
     } else if (status === "REJECTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
@@ -98094,7 +98133,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         type: "BOOKING_REJECTED",
         title: "Rental Request Declined",
         body: `${booking.lender_name} declined your request for "${booking.item_title}".`
-      });
+      }).catch((err) => console.warn("Failed to send rejection notification:", err));
     } else if (status === "CANCELLED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
@@ -98118,7 +98157,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         type: "BOOKING_CANCELLED",
         title: "Rental Cancelled",
         body: `${actorName} cancelled the rental for "${booking.item_title}".`
-      });
+      }).catch((err) => console.warn("Failed to send cancellation notification:", err));
     }
     const safeBooking = { ...updateRes.rows[0] };
     if (safeBooking.borrower_id !== userId) {
@@ -98147,7 +98186,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     const bookingRes = await query(
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
               COALESCE(i.title, 'Rented Gear') AS item_title, 
               COALESCE(b.lender_id, i.owner_id) AS lender_id, 
               i.owner_id AS item_owner_id,
@@ -98284,7 +98323,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     const bookingRes = await query(
       `SELECT b.*, 
               TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
               COALESCE(i.title, 'Rented Gear') AS item_title, 
               COALESCE(b.lender_id, i.owner_id) AS lender_id, 
               i.owner_id AS item_owner_id,
@@ -99883,6 +99922,9 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     if (!myIds.includes(String(message2.receiver_id))) {
       return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this agreement", 403);
     }
+    if (!message2.proposal_data && !message2.booking_id) {
+      return sendError(res, "BAD_REQUEST", "This message is not a rental proposal or booking offer.", 400);
+    }
     const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
     if (proposal.status && proposal.status !== "PENDING") {
       return sendError(
@@ -99897,7 +99939,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       const bRes = await query(
         `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.owner_id AS item_owner_id,
                 TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-                TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
+                TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
          FROM bookings b
          JOIN items i ON b.item_id = i.id
          WHERE b.id = $1`,
@@ -99910,16 +99952,17 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         }
         const sDate2 = existingBooking.start_date_str || existingBooking.start_date;
         const eDate2 = existingBooking.end_date_str || existingBooking.end_date;
-        const endTimestamp = parseToUtcTimestamp2(
-          eDate2,
-          existingBooking.end_time || "18:00",
-          -330
+        const tzOffset2 = typeof req.body?.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : proposal.timezone_offset_minutes ?? -330;
+        const startTimestamp2 = parseToUtcTimestamp2(
+          sDate2,
+          existingBooking.start_time || "10:00",
+          tzOffset2
         );
-        if (endTimestamp < Date.now()) {
+        if (startTimestamp2 < Date.now()) {
           return sendError(
             res,
             "BAD_REQUEST",
-            "This booking request cannot be accepted because its scheduled rental time has already passed.",
+            "This booking request cannot be accepted because its scheduled pickup time has already passed.",
             400
           );
         }
@@ -99930,45 +99973,68 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
         try {
           await client2.query("BEGIN");
+          await client2.query("SELECT id, proposal_data FROM messages WHERE id = $1 FOR UPDATE", [messageId]);
+          const lockedBookingRes = await client2.query("SELECT id, status FROM bookings WHERE id = $1 FOR UPDATE", [existingBookingId]);
+          if (lockedBookingRes.rows.length === 0 || lockedBookingRes.rows[0].status !== "PENDING") {
+            await client2.query("ROLLBACK");
+            return sendError(res, "CONFLICT", "This booking request is no longer pending or has already been updated.", 409);
+          }
           await client2.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [existingBooking.item_id]);
           const conflictRes = await client2.query(
             `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                    TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+                    TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                    start_time, end_time
              FROM bookings
              WHERE item_id = $1
                AND id != $2
                AND status IN ('ACCEPTED', 'HANDED_OVER')
                AND (
                  start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-               )
-             LIMIT 1`,
+                 AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
+               )`,
             [existingBooking.item_id, existingBookingId, sDate2, eDate2]
           );
-          if (conflictRes.rows.length > 0) {
+          const reqStartTs = parseToUtcTimestamp2(sDate2, existingBooking.start_time || "10:00", tzOffset2);
+          const reqEndTs = parseToUtcTimestamp2(eDate2, existingBooking.end_time || "18:00", tzOffset2);
+          let actualConflict = null;
+          for (const c of conflictRes.rows) {
+            const cStartTs = parseToUtcTimestamp2(c.start_date, c.start_time || "10:00", tzOffset2);
+            const cEndTs = parseToUtcTimestamp2(c.end_date || c.start_date, c.end_time || "18:00", tzOffset2);
+            if (reqStartTs < cEndTs && cStartTs < reqEndTs) {
+              actualConflict = c;
+              break;
+            }
+          }
+          if (actualConflict) {
             await client2.query("ROLLBACK");
-            const c = conflictRes.rows[0];
             return sendError(
               res,
               "CONFLICT",
-              `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+              `Cannot accept proposal: This item is already booked from ${actualConflict.start_date} ${actualConflict.start_time || "10:00"} to ${actualConflict.end_date} ${actualConflict.end_time || "18:00"}.`,
               409
             );
           }
           const conflictingPendingRes = await client2.query(
-            `SELECT id, borrower_id 
+            `SELECT id, borrower_id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+                    TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                    start_time, end_time
              FROM bookings
              WHERE item_id = $1
                AND id != $2
                AND status = 'PENDING'
                AND (
                  start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+                 AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
                )`,
             [existingBooking.item_id, existingBookingId, sDate2, eDate2]
           );
-          conflictingPendingList = conflictingPendingRes.rows;
-          for (const conflicting of conflictingPendingList) {
+          const toCancelPending = conflictingPendingRes.rows.filter((cp) => {
+            const cpStartTs = parseToUtcTimestamp2(cp.start_date, cp.start_time || "10:00", tzOffset2);
+            const cpEndTs = parseToUtcTimestamp2(cp.end_date || cp.start_date, cp.end_time || "18:00", tzOffset2);
+            return reqStartTs < cpEndTs && cpStartTs < reqEndTs;
+          });
+          conflictingPendingList = toCancelPending;
+          for (const conflicting of toCancelPending) {
             await client2.query(
               `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
               [conflicting.id]
@@ -100057,6 +100123,11 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         }, "Rental request accepted");
       }
     }
+    if (!existingBookingId) {
+      if (!proposal.type && !proposal.title && !proposal.item_title) {
+        return sendError(res, "BAD_REQUEST", "This message is not a rental proposal or agreement offer.", 400);
+      }
+    }
     const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
     const lenderId = isOffer ? message2.sender_id : currentUserId;
     const borrowerId = isOffer ? currentUserId : message2.sender_id;
@@ -100074,8 +100145,18 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     const totalPrice = Number(proposal.total_price) || pricePerDay * durationDays;
     const sDate = new Date(startDate);
     const eDate = new Date(sDate);
-    eDate.setDate(sDate.getDate() + durationDays);
+    eDate.setDate(sDate.getDate() + Math.max(0, durationDays - 1));
     const endDateStr = proposal.end_date || eDate.toISOString().split("T")[0];
+    const tzOffset = typeof req.body?.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : proposal.timezone_offset_minutes ?? -330;
+    const startTimestamp = parseToUtcTimestamp2(startDate, proposal.start_time || "10:00", tzOffset);
+    if (startTimestamp < Date.now()) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "This custom proposal cannot be accepted because its scheduled pickup time has already passed.",
+        400
+      );
+    }
     const client = await pool.connect();
     let createdItem;
     let createdBooking;
@@ -100083,6 +100164,20 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     const itemTitle = proposal.title || "Personal Agreement Item";
     try {
       await client.query("BEGIN");
+      const msgLock = await client.query(
+        `SELECT id, proposal_data, booking_id FROM messages WHERE id = $1 FOR UPDATE`,
+        [messageId]
+      );
+      if (msgLock.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
+      }
+      const lockedMsg = msgLock.rows[0];
+      const currentProposal = typeof lockedMsg.proposal_data === "string" ? JSON.parse(lockedMsg.proposal_data) : lockedMsg.proposal_data || {};
+      if (lockedMsg.booking_id || currentProposal.status === "ACCEPTED" || currentProposal.status && currentProposal.status !== "PENDING") {
+        await client.query("ROLLBACK");
+        return sendError(res, "CONFLICT", "This proposal has already been accepted or processed.", 409);
+      }
       if (proposal.request_id) {
         const reqCheck = await client.query(
           `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
@@ -100227,6 +100322,9 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
       return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
     }
     const message2 = msgRes.rows[0];
+    if (!message2.proposal_data && !message2.booking_id) {
+      return sendError(res, "BAD_REQUEST", "This message is not a proposal or booking request.", 400);
+    }
     const myIds = await resolveUserIds(currentUserId, req.user?.email);
     if (!myIds.includes(String(message2.receiver_id)) && !myIds.includes(String(message2.sender_id))) {
       return sendError(res, "FORBIDDEN", "Access denied", 403);
@@ -100237,14 +100335,35 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
       return sendError(res, "FORBIDDEN", "Access denied: You are not part of this proposal", 403);
     }
     const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
+    const existingBookingId = message2.booking_id || proposal.booking_id;
+    if (existingBookingId && isUuid(existingBookingId)) {
+      const bRes = await query(`SELECT id, status FROM bookings WHERE id = $1`, [existingBookingId]);
+      if (bRes.rows.length > 0) {
+        const currentBookingStatus = bRes.rows[0].status;
+        if (currentBookingStatus !== "PENDING") {
+          return sendError(
+            res,
+            "BAD_REQUEST",
+            `Cannot decline: booking is currently in "${currentBookingStatus}" state and can no longer be rejected or cancelled through this proposal.`,
+            400
+          );
+        }
+      }
+    } else if (proposal.status && proposal.status !== "PENDING") {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `This proposal has already been ${proposal.status.toLowerCase()}.`,
+        400
+      );
+    }
     const targetProposalStatus = isReceiver ? "DECLINED" : "CANCELLED";
     const targetBookingStatus = isReceiver ? "REJECTED" : "CANCELLED";
     const updatedProposal = { ...proposal, status: targetProposalStatus };
     await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
-    const existingBookingId = message2.booking_id || proposal.booking_id;
     if (existingBookingId && isUuid(existingBookingId)) {
       await query(
-        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND status = 'PENDING'`,
         [targetBookingStatus, existingBookingId]
       ).catch(() => {
       });

@@ -353,7 +353,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
            WHERE item_id = $1 
              AND borrower_id = ANY($2::text[]) 
              AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+             AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
            LIMIT 1`,
           [item.id, viewerIds]
         );
@@ -376,13 +376,13 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     const bookedRes = await query(
       `SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );
@@ -415,13 +415,13 @@ router.get('/:id/availability', async (req: Request, res: Response, next) => {
     const result = await query(
       `SELECT 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
         end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+        AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= CURRENT_DATE
       ORDER BY start_date ASC`,
       [id]
     );

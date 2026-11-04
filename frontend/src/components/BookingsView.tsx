@@ -167,27 +167,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   };
 
   const isBookingRequestPassed = (b: Booking): boolean => {
-  try {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const endD = (b.end_date || b.start_date || '').slice(0, 10);
-    if (endD < todayStr) return true;
-    if (endD === todayStr) {
-      const endT = (b.end_time || '18:00').slice(0, 5);
-      if (endT <= currentHourMin) return true;
+    try {
+      const sDate = (b.start_date || '').slice(0, 10);
+      if (!sDate) return false;
+      const sTime = (b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== '00:00') ? b.start_time.slice(0, 5) : '10:00';
+      const startMs = new Date(`${sDate}T${sTime}:00`).getTime();
+      return !isNaN(startMs) && Date.now() > startMs;
+    } catch {
+      return false;
     }
-
-    const startD = (b.start_date || '').slice(0, 10);
-    if (startD < todayStr) return true;
-    if (startD === todayStr) {
-      const startT = (b.start_time || '10:00').slice(0, 5);
-      if (startT <= currentHourMin) return true;
-    }
-  } catch {}
-  return false;
-};
+  };
 
   // Accept or Decline a proposal
   const handleStatusUpdate = async (bookingId: string, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
@@ -278,6 +267,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         }, 150);
       }
     } catch (err: any) {
+      await loadBookings().catch(() => {});
       window.dispatchEvent(new CustomEvent('rentu:toast', {
         detail: {
           type: 'error',

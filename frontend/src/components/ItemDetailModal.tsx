@@ -278,8 +278,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
-    if (!hasUserAddress) {
-      setErrorMsg('You must first set your address before placing a rental order.');
+    const needsAddress = (item.offers_delivery && optForDelivery) || (item.offers_pickup && optForPickup);
+    if (needsAddress && !hasUserAddress) {
+      setErrorMsg('You must first set your delivery address before requesting delivery or collection.');
       setIsAddLocationOpen(true);
       return;
     }
@@ -323,15 +324,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       return;
     }
 
-    // CALENDAR CHECK: Ensure selected dates do not overlap with booked dates
+    // CALENDAR CHECK: Ensure selected dates and times do not overlap with booked dates
     const hasOverlap = bookedDates.some((b: any) => {
       const bStart = b.start_date?.slice(0, 10);
       const bEnd = (b.end_date || b.start_date)?.slice(0, 10);
-      return bStart && bEnd && bStart <= endDate && bEnd >= startDate;
+      if (!bStart || !bEnd) return false;
+      if (bStart > endDate || bEnd < startDate) return false;
+
+      // If dates overlap, check if time slots overlap
+      const bStartTime = b.start_time || '10:00';
+      const bEndTime = b.end_time || '18:00';
+      const reqStart = `${startDate}T${startTime}`;
+      const reqEnd = `${endDate}T${endTime}`;
+      const existingStart = `${bStart}T${bStartTime}`;
+      const existingEnd = `${bEnd}T${bEndTime}`;
+
+      return reqStart < existingEnd && existingStart < reqEnd;
     });
 
     if (hasOverlap) {
-      setErrorMsg('This product is unavailable during the selected dates because it is already rented. Please pick different dates on the calendar.');
+      setErrorMsg('This product is unavailable during the selected dates and times because it is already reserved. Please pick different dates or hours on the calendar.');
       return;
     }
 
@@ -365,6 +377,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         end_time: endTime,
         duration_days: durationDays,
         total_price: totalCost,
+        is_borrowing: rentType === 'Borrow',
+        booking_type: rentType === 'Borrow' ? 'BORROW' : 'RENT',
         requires_delivery: isDeliveredByLender,
         delivery_fee: deliveryCost,
         requires_pickup: isCollectedByLender,

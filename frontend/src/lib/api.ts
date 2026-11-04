@@ -378,6 +378,8 @@ export const api = {
     end_time?: string;
     duration_days: number;
     total_price?: number;
+    is_borrowing?: boolean;
+    booking_type?: 'RENT' | 'BORROW';
     pickup_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
     pickup_locality?: string;
     return_type?: 'LENDER_LOCATION' | 'MY_LOCATION' | 'CUSTOM_LOCATION';
@@ -534,6 +536,9 @@ export const api = {
     const res = await fetch(`${API_BASE}/messages/proposal/${encodeURIComponent(messageId)}/accept`, {
       method: 'POST',
       headers: getHeaders(),
+      body: JSON.stringify({
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
+      }),
     });
     return handleResponse(res);
   },

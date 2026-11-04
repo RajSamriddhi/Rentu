@@ -104,19 +104,19 @@ export async function checkAndGenerateReminders(userId: string): Promise<void> {
         b.id, 
         b.borrower_id, 
         b.lender_id, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
         b.end_time, 
         i.title AS item_title,
         borrower.name AS borrower_name,
         lender.name AS lender_name,
-        (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
+        (COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
        LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
        WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'HANDED_OVER'
-         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+         AND COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
       [userIds]
     );
 

@@ -578,6 +578,10 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       return sendError(res, 'FORBIDDEN', 'Only the intended recipient can accept this agreement', 403);
     }
 
+    if (!message.proposal_data && !message.booking_id) {
+      return sendError(res, 'BAD_REQUEST', 'This message is not a rental proposal or booking offer.', 400);
+    }
+
     const proposal = typeof message.proposal_data === 'string'
       ? JSON.parse(message.proposal_data)
       : (message.proposal_data || {});
@@ -597,7 +601,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       const bRes = await query(
         `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.owner_id AS item_owner_id,
                 TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-                TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
+                TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
          FROM bookings b
          JOIN items i ON b.item_id = i.id
          WHERE b.id = $1`,
@@ -615,17 +619,21 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         // PAST TIME CHECK ON ACCEPTANCE:
         const sDate = existingBooking.start_date_str || existingBooking.start_date;
         const eDate = existingBooking.end_date_str || existingBooking.end_date;
-        const endTimestamp = parseToUtcTimestamp(
-          eDate,
-          existingBooking.end_time || '18:00',
-          -330
+        const tzOffset = typeof req.body?.timezone_offset_minutes === 'number'
+          ? req.body.timezone_offset_minutes
+          : (proposal.timezone_offset_minutes ?? -330);
+
+        const startTimestamp = parseToUtcTimestamp(
+          sDate,
+          existingBooking.start_time || '10:00',
+          tzOffset
         );
 
-        if (endTimestamp < Date.now()) {
+        if (startTimestamp < Date.now()) {
           return sendError(
             res,
             'BAD_REQUEST',
-            'This booking request cannot be accepted because its scheduled rental time has already passed.',
+            'This booking request cannot be accepted because its scheduled pickup time has already passed.',
             400
           );
         }
@@ -639,52 +647,77 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         try {
           await client.query('BEGIN');
 
-          // ATOMIC LOCK: Lock the item row to prevent concurrent race condition acceptances
+          // ATOMIC LOCK: Lock the message, booking, and item to prevent concurrent acceptances
+          await client.query('SELECT id, proposal_data FROM messages WHERE id = $1 FOR UPDATE', [messageId]);
+          const lockedBookingRes = await client.query('SELECT id, status FROM bookings WHERE id = $1 FOR UPDATE', [existingBookingId]);
+          if (lockedBookingRes.rows.length === 0 || lockedBookingRes.rows[0].status !== 'PENDING') {
+            await client.query('ROLLBACK');
+            return sendError(res, 'CONFLICT', 'This booking request is no longer pending or has already been updated.', 409);
+          }
           await client.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [existingBooking.item_id]);
 
           // CALENDAR OVERLAP CHECK (under atomic item lock):
           const conflictRes = await client.query(
             `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                    TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+                    TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                    start_time, end_time
              FROM bookings
              WHERE item_id = $1
                AND id != $2
                AND status IN ('ACCEPTED', 'HANDED_OVER')
                AND (
                  start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-               )
-             LIMIT 1`,
+                 AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
+               )`,
             [existingBooking.item_id, existingBookingId, sDate, eDate]
           );
 
-          if (conflictRes.rows.length > 0) {
+          const reqStartTs = parseToUtcTimestamp(sDate, existingBooking.start_time || '10:00', tzOffset);
+          const reqEndTs = parseToUtcTimestamp(eDate, existingBooking.end_time || '18:00', tzOffset);
+
+          let actualConflict: any = null;
+          for (const c of conflictRes.rows) {
+            const cStartTs = parseToUtcTimestamp(c.start_date, c.start_time || '10:00', tzOffset);
+            const cEndTs = parseToUtcTimestamp(c.end_date || c.start_date, c.end_time || '18:00', tzOffset);
+            if (reqStartTs < cEndTs && cStartTs < reqEndTs) {
+              actualConflict = c;
+              break;
+            }
+          }
+
+          if (actualConflict) {
             await client.query('ROLLBACK');
-            const c = conflictRes.rows[0];
             return sendError(
               res,
               'CONFLICT',
-              `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+              `Cannot accept proposal: This item is already booked from ${actualConflict.start_date} ${actualConflict.start_time || '10:00'} to ${actualConflict.end_date} ${actualConflict.end_time || '18:00'}.`,
               409
             );
           }
 
-          // Auto-cancel any conflicting pending requests for this item during the same dates
+          // Auto-cancel any conflicting pending requests for this item during the same dates/times
           const conflictingPendingRes = await client.query(
-            `SELECT id, borrower_id 
+            `SELECT id, borrower_id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+                    TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+                    start_time, end_time
              FROM bookings
              WHERE item_id = $1
                AND id != $2
                AND status = 'PENDING'
                AND (
                  start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+                 AND COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date) >= $3::date
                )`,
             [existingBooking.item_id, existingBookingId, sDate, eDate]
           );
-          conflictingPendingList = conflictingPendingRes.rows;
+          const toCancelPending = conflictingPendingRes.rows.filter((cp: any) => {
+            const cpStartTs = parseToUtcTimestamp(cp.start_date, cp.start_time || '10:00', tzOffset);
+            const cpEndTs = parseToUtcTimestamp(cp.end_date || cp.start_date, cp.end_time || '18:00', tzOffset);
+            return reqStartTs < cpEndTs && cpStartTs < reqEndTs;
+          });
+          conflictingPendingList = toCancelPending;
 
-          for (const conflicting of conflictingPendingList) {
+          for (const conflicting of toCancelPending) {
             await client.query(
               `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
               [conflicting.id]
@@ -786,6 +819,12 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       }
     }
 
+    if (!existingBookingId) {
+      if (!proposal.type && !proposal.title && !proposal.item_title) {
+        return sendError(res, 'BAD_REQUEST', 'This message is not a rental proposal or agreement offer.', 400);
+      }
+    }
+
     // Determine lender and borrower based on proposal type for custom deals:
     // If proposal was created as LISTING or is a lend offer from owner: creator/lender is message.sender_id, recipient is borrower.
     // If proposal was created as REQUEST: creator is borrower, recipient is lender.
@@ -811,8 +850,21 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     // Calculate end date
     const sDate = new Date(startDate);
     const eDate = new Date(sDate);
-    eDate.setDate(sDate.getDate() + durationDays);
+    eDate.setDate(sDate.getDate() + Math.max(0, durationDays - 1));
     const endDateStr = proposal.end_date || eDate.toISOString().split('T')[0];
+
+    const tzOffset = typeof req.body?.timezone_offset_minutes === 'number'
+      ? req.body.timezone_offset_minutes
+      : (proposal.timezone_offset_minutes ?? -330);
+    const startTimestamp = parseToUtcTimestamp(startDate, proposal.start_time || '10:00', tzOffset);
+    if (startTimestamp < Date.now()) {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'This custom proposal cannot be accepted because its scheduled pickup time has already passed.',
+        400
+      );
+    }
 
     const client = await pool.connect();
     let createdItem: any;
@@ -822,6 +874,25 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
 
     try {
       await client.query('BEGIN');
+
+      // ATOMIC LOCK: Lock the message row to prevent concurrent race condition acceptances
+      const msgLock = await client.query(
+        `SELECT id, proposal_data, booking_id FROM messages WHERE id = $1 FOR UPDATE`,
+        [messageId]
+      );
+      if (msgLock.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
+      }
+      const lockedMsg = msgLock.rows[0];
+      const currentProposal = typeof lockedMsg.proposal_data === 'string'
+        ? JSON.parse(lockedMsg.proposal_data)
+        : (lockedMsg.proposal_data || {});
+
+      if (lockedMsg.booking_id || currentProposal.status === 'ACCEPTED' || (currentProposal.status && currentProposal.status !== 'PENDING')) {
+        await client.query('ROLLBACK');
+        return sendError(res, 'CONFLICT', 'This proposal has already been accepted or processed.', 409);
+      }
 
       // 1. If this proposal originated from a community request, atomically check and claim it:
       if (proposal.request_id) {
@@ -990,6 +1061,10 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
     }
     const message = msgRes.rows[0];
+    if (!message.proposal_data && !message.booking_id) {
+      return sendError(res, 'BAD_REQUEST', 'This message is not a proposal or booking request.', 400);
+    }
+
     const myIds = await resolveUserIds(currentUserId, req.user?.email);
     if (!myIds.includes(String(message.receiver_id)) && !myIds.includes(String(message.sender_id))) {
       return sendError(res, 'FORBIDDEN', 'Access denied', 403);
@@ -1006,16 +1081,38 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       ? JSON.parse(message.proposal_data)
       : (message.proposal_data || {});
 
+    const existingBookingId = message.booking_id || proposal.booking_id;
+    if (existingBookingId && isUuid(existingBookingId)) {
+      const bRes = await query(`SELECT id, status FROM bookings WHERE id = $1`, [existingBookingId]);
+      if (bRes.rows.length > 0) {
+        const currentBookingStatus = bRes.rows[0].status;
+        if (currentBookingStatus !== 'PENDING') {
+          return sendError(
+            res,
+            'BAD_REQUEST',
+            `Cannot decline: booking is currently in "${currentBookingStatus}" state and can no longer be rejected or cancelled through this proposal.`,
+            400
+          );
+        }
+      }
+    } else if (proposal.status && proposal.status !== 'PENDING') {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `This proposal has already been ${proposal.status.toLowerCase()}.`,
+        400
+      );
+    }
+
     const targetProposalStatus = isReceiver ? 'DECLINED' : 'CANCELLED';
     const targetBookingStatus = isReceiver ? 'REJECTED' : 'CANCELLED';
 
     const updatedProposal = { ...proposal, status: targetProposalStatus };
     await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
 
-    const existingBookingId = message.booking_id || proposal.booking_id;
     if (existingBookingId && isUuid(existingBookingId)) {
       await query(
-        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND status = 'PENDING'`,
         [targetBookingStatus, existingBookingId]
       ).catch(() => {});
 
