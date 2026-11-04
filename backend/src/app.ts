@@ -18,11 +18,11 @@ import { authMiddleware, AuthenticatedRequest } from './middleware/auth';
 import { query } from './config/db';
 import { ENV } from './config/env';
 import { runMigrations } from './db/migrate';
-import { 
-  securityHeaders, 
-  authRateLimiter, 
-  generalApiRateLimiter, 
-  isAllowedOrigin 
+import {
+  securityHeaders,
+  authRateLimiter,
+  generalApiRateLimiter,
+  isAllowedOrigin
 } from './middleware/security';
 
 let migrationsPromise: Promise<void> | null = null;
@@ -70,7 +70,7 @@ export const createApp = () => {
 
   // Run schema migration verification once asynchronously on worker startup
   if (!migrationsPromise) {
-    ensureMigrations().catch(() => {});
+    ensureMigrations().catch(() => { });
   }
 
   // Health Check (Matches both /api/health and /health) - Sanitized so no internal endpoints leak

@@ -24,6 +24,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
   const [condition, setCondition] = useState('Like new');
+  const [listingType, setListingType] = useState<'Rent' | 'Borrow'>('Rent');
   const { user } = useAuth();
   const savedLocations = getEffectiveSavedLocations(user);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('keep_current');
@@ -32,7 +33,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [locality, setLocality] = useState('');
   const [status, setStatus] = useState<'AVAILABLE' | 'RENTED' | 'UNAVAILABLE'>('AVAILABLE');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
   const [offersPickup, setOffersPickup] = useState(false);
@@ -49,14 +50,17 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     if (item && isOpen) {
       setTitle(item.title || '');
       setDescription(item.description || '');
-      setCategory(item.category || 'Electronics & Tech');
+      const rawCat = item.category || 'Electronics & Tech';
+      setCategory(rawCat === 'Clothing & Accessories' ? 'Clothing & Fits' : rawCat);
       setCondition(item.condition || 'Good');
       setSelectedLocationId('keep_current');
-      setPricePerDay(Number(item.price_per_day) || '');
+      const isBorrow = Boolean(item.available_for_borrowing && (Number(item.price_per_day) <= 0 || !item.price_per_day));
+      setListingType(isBorrow ? 'Borrow' : 'Rent');
+      setPricePerDay(item.price_per_day !== undefined && item.price_per_day !== null ? Number(item.price_per_day) : '');
       setMaxDurationDays(item.max_duration_days || 5);
       setLocality(item.locality || '');
       setStatus(item.status || 'AVAILABLE');
-      setImageUrl(item.image_urls?.[0] || '');
+      setImageUrls(Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean) : []);
       setOffersDelivery(Boolean(item.offers_delivery));
       setDeliveryFee(item.delivery_fee !== undefined ? Number(item.delivery_fee) : 0);
       setOffersPickup(Boolean(item.offers_pickup));
@@ -86,13 +90,18 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     setErrorMsg('');
     try {
       const publicUrl = await uploadItemPhoto(file, 'gear');
-      setImageUrl(publicUrl);
+      setImageUrls((prev) => [...prev, publicUrl]);
     } catch (err: any) {
       console.error('Photo upload error:', err);
       setErrorMsg('Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setImageUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -102,8 +111,12 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       setErrorMsg('Title is required');
       return;
     }
-    if (pricePerDay === '' || Number(pricePerDay) < 0) {
-      setErrorMsg('Please specify a valid daily rate');
+    if (listingType === 'Rent' && (pricePerDay === '' || Number(pricePerDay) <= 0)) {
+      setErrorMsg('Please specify a valid daily rate for rental.');
+      return;
+    }
+    if (imageUrls.length === 0) {
+      setErrorMsg('Please provide at least one photo of your gear.');
       return;
     }
 
@@ -132,7 +145,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
         description: description.trim(),
         category,
         condition,
-        price_per_day: Number(pricePerDay),
+        price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay),
         max_duration_days: Number(maxDurationDays),
         locality: finalLocality,
         address_text: itemAddress || finalLocality,
@@ -140,12 +153,12 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
         latitude,
         longitude,
         status,
-        available_for_borrowing: item.available_for_borrowing ?? false,
+        available_for_borrowing: listingType === 'Borrow',
         offers_delivery: offersDelivery,
         delivery_fee: offersDelivery ? Number(deliveryFee || 0) : 0,
         offers_pickup: offersPickup,
         pickup_fee: offersPickup ? Number(pickupFee || 0) : 0,
-        image_urls: imageUrl ? [imageUrl] : item.image_urls,
+        image_urls: imageUrls,
       });
 
       onSuccess();
@@ -211,43 +224,85 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
             </div>
           )}
 
-          {/* Photo Preview & Replace */}
+          {/* Photos Gallery */}
           <div>
-            <label className="block text-xs font-bold text-ink mb-1.5">Gear Photo</label>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-2xl bg-canvas border border-divider overflow-hidden shrink-0 relative group">
-                <img
-                  src={imageUrl || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80'}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                />
-                {isUploading && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  </div>
-                )}
-              </div>
+            <label className="block text-xs font-bold text-ink mb-2">Item Photos ({imageUrls.length}) *</label>
+            <div className="flex items-center gap-3 overflow-x-auto pb-2">
+              {imageUrls.map((url, idx) => (
+                <div key={idx} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-divider bg-canvas shrink-0 group shadow-xs">
+                  <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                    title="Remove photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  {idx === 0 && (
+                    <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] font-bold text-center py-0.5">
+                      Cover
+                    </span>
+                  )}
+                </div>
+              ))}
 
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="px-3.5 py-1.5 rounded-full border border-divider hover:bg-canvas text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1.5 transition-colors"
-                >
-                  <Upload className="w-3.5 h-3.5 text-brand" />
-                  <span>{isUploading ? 'Uploading...' : 'Replace Photo'}</span>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
-                <p className="text-[11px] text-ink-secondary">Upload a clear photo of your gear</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="w-20 h-20 rounded-2xl border border-dashed border-divider hover:border-brand/60 bg-canvas hover:bg-brand-soft/20 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors shrink-0 text-ink-secondary hover:text-brand"
+              >
+                {isUploading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-brand" />
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    <span className="text-[10px] font-bold">Add Photo</span>
+                  </>
+                )}
+              </button>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+            <p className="text-[11px] text-ink-secondary mt-1">Add clear photos of your gear to attract borrowers.</p>
+          </div>
+
+          {/* Listing Type Toggle: Rent vs Free Borrow */}
+          <div className="p-1.5 bg-surface border border-divider rounded-2xl flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setListingType('Rent');
+                if (pricePerDay === 0) setPricePerDay('');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                listingType === 'Rent'
+                  ? 'bg-brand text-white shadow-xs'
+                  : 'text-ink-secondary hover:text-ink'
+              }`}
+            >
+              Rent Gear (Paid)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setListingType('Borrow');
+                setPricePerDay(0);
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                listingType === 'Borrow'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-ink-secondary hover:text-ink'
+              }`}
+            >
+              Free Borrowing (₹0)
+            </button>
           </div>
 
           {/* Title */}
@@ -274,7 +329,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
               >
                 <option value="Electronics & Tech">Electronics & Tech</option>
                 <option value="Camping & Outdoor">Camping & Outdoor</option>
-                <option value="Clothing & Accessories">Clothing & Accessories</option>
+                <option value="Clothing & Fits">Clothing & Fits</option>
                 <option value="Tools & DIY">Tools & DIY</option>
                 <option value="Home & Appliances">Home & Appliances</option>
                 <option value="Sports & Fitness">Sports & Fitness</option>
@@ -313,16 +368,24 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           {/* Price & Duration */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-ink mb-1">Price Per Day (₹) *</label>
-              <input
-                type="number"
-                min="0"
-                value={pricePerDay}
-                onChange={(e) => setPricePerDay(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="e.g. 350"
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                required
-              />
+              <label className="block text-xs font-bold text-ink mb-1">
+                {listingType === 'Rent' ? 'Price Per Day (₹) *' : 'Pricing Mode'}
+              </label>
+              {listingType === 'Rent' ? (
+                <input
+                  type="number"
+                  min="1"
+                  value={pricePerDay}
+                  onChange={(e) => setPricePerDay(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 350"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                  required
+                />
+              ) : (
+                <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                  ₹0 (Free community borrowing)
+                </div>
+              )}
             </div>
 
             <div>

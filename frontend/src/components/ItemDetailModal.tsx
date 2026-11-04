@@ -288,6 +288,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const currentHourMin = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
+    if (item.status === 'RENTED') {
+      setErrorMsg('This item is currently rented out to another neighbor and cannot accept new rental requests right now.');
+      return;
+    }
+
+    if (item.status === 'UNAVAILABLE') {
+      setErrorMsg('This listing has been paused by the owner and is currently unavailable.');
+      return;
+    }
+
     if (startDate < todayStr) {
       setErrorMsg('Start date cannot be in the past. Please select an upcoming date.');
       return;
@@ -1088,6 +1098,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <MapPin className="w-4 h-4" />
                         <span>Set Address to Order</span>
                       </button>
+                    ) : item.status === 'RENTED' || (item as any).is_currently_booked ? (
+                      <div className="space-y-1.5 mt-2">
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full py-3 text-xs sm:text-sm font-extrabold rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <AlertCircle className="w-4 h-4" />
+                          <span>Currently Rented Out</span>
+                        </button>
+                        <p className="text-[11px] text-center text-ink-secondary">
+                          This item is currently out with another neighbor. You can select future dates on the calendar or browse nearby listings.
+                        </p>
+                      </div>
+                    ) : item.status === 'UNAVAILABLE' ? (
+                      <div className="space-y-1.5 mt-2">
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full py-3 text-xs sm:text-sm font-extrabold rounded-2xl bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border border-zinc-500/30 cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <AlertCircle className="w-4 h-4" />
+                          <span>Listing Currently Paused</span>
+                        </button>
+                        <p className="text-[11px] text-center text-ink-secondary">
+                          The owner has paused this listing from accepting requests.
+                        </p>
+                      </div>
                     ) : (
                       <button
                         type="submit"

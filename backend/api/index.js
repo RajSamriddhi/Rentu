@@ -87572,4565 +87572,6 @@ var auth_routes_default = router;
 // src/modules/items/items.routes.ts
 var import_express2 = __toESM(require_express2());
 
-// src/utils/city.ts
-function extractCity(locality) {
-  if (!locality) return "Delhi";
-  const loc = locality.toLowerCase();
-  if (loc.includes("bangalore") || loc.includes("bengaluru") || loc.includes("koramangala") || loc.includes("kengeri") || loc.includes("indiranagar") || loc.includes("whitefield") || loc.includes("hsr")) {
-    return "Bangalore";
-  }
-  if (loc.includes("mumbai") || loc.includes("bandra") || loc.includes("powai") || loc.includes("andheri") || loc.includes("juhu") || loc.includes("colaba")) {
-    return "Mumbai";
-  }
-  return "Delhi";
-}
-
-// src/utils/user.ts
-var resolveUserIds = async (userId, emailHint) => {
-  if (!userId) return [];
-  try {
-    const ids = /* @__PURE__ */ new Set([userId]);
-    const emails = /* @__PURE__ */ new Set();
-    if (emailHint && emailHint.trim() && !emailHint.includes(".internal")) {
-      emails.add(emailHint.trim().toLowerCase());
-    }
-    const res = await query(
-      `SELECT id::text, firebase_uid, clerk_id, email 
-       FROM users 
-       WHERE id::text = $1 
-          OR firebase_uid = $1 
-          OR clerk_id = $1
-          OR (email IS NOT NULL AND LOWER(email) = LOWER($1))`,
-      [userId]
-    );
-    for (const row of res.rows) {
-      if (row.id) ids.add(String(row.id));
-      if (row.firebase_uid) ids.add(String(row.firebase_uid));
-      if (row.clerk_id) ids.add(String(row.clerk_id));
-      if (row.email && typeof row.email === "string" && row.email.trim() && !row.email.includes(".internal")) {
-        emails.add(row.email.trim().toLowerCase());
-      }
-    }
-    if (emails.size > 0) {
-      const emailRes = await query(
-        `SELECT id::text, firebase_uid, clerk_id FROM users WHERE LOWER(email) = ANY($1::text[])`,
-        [Array.from(emails)]
-      );
-      for (const row of emailRes.rows) {
-        if (row.id) ids.add(String(row.id));
-        if (row.firebase_uid) ids.add(String(row.firebase_uid));
-        if (row.clerk_id) ids.add(String(row.clerk_id));
-      }
-    }
-    return Array.from(ids);
-  } catch {
-    return [userId];
-  }
-};
-
-// src/modules/notifications/notifications.service.ts
-async function createNotification(params) {
-  try {
-    await query(
-      `INSERT INTO notifications 
-        (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        params.userId,
-        params.senderId || null,
-        params.type,
-        params.title,
-        params.body,
-        params.bookingId || null,
-        params.messageId || null,
-        params.referenceId || null,
-        params.referenceType || null
-      ]
-    );
-  } catch (error) {
-    console.error("Failed to create notification:", error);
-  }
-}
-async function checkAndGenerateReminders(userId) {
-  try {
-    const userIds = await resolveUserIds(userId);
-    const upcomingPickups = await query(
-      `SELECT 
-        b.id, 
-        b.borrower_id, 
-        b.lender_id, 
-        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
-        b.start_time, 
-        i.title AS item_title,
-        borrower.name AS borrower_name,
-        lender.name AS lender_name,
-        (b.start_date = CURRENT_DATE) AS is_today
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
-       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
-         AND b.status = 'ACCEPTED'
-         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userIds]
-    );
-    for (const b of upcomingPickups.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_PICKUP'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? "today" : "tomorrow";
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: "BOOKING",
-          type: "REMINDER_PICKUP",
-          title: `Pickup ${b.is_today ? "Today" : "Tomorrow"}`,
-          body: isBorrower ? `Pickup for "${b.item_title}" with ${b.lender_name} is scheduled ${dayLabel}.` : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel}.`
-        });
-      }
-    }
-    const upcomingReturns = await query(
-      `SELECT 
-        b.id, 
-        b.borrower_id, 
-        b.lender_id, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
-        b.end_time, 
-        i.title AS item_title,
-        borrower.name AS borrower_name,
-        lender.name AS lender_name,
-        (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
-       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
-         AND b.status = 'HANDED_OVER'
-         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userIds]
-    );
-    for (const b of upcomingReturns.rows) {
-      const alreadyNotified = await query(
-        `SELECT id FROM notifications 
-         WHERE user_id = ANY($1::text[]) 
-           AND booking_id = $2 
-           AND type = 'REMINDER_RETURN'
-           AND created_at >= CURRENT_DATE`,
-        [userIds, b.id]
-      );
-      if (alreadyNotified.rows.length === 0) {
-        const isBorrower = userIds.includes(String(b.borrower_id));
-        const dayLabel = b.is_today ? "today" : "tomorrow";
-        await createNotification({
-          userId,
-          senderId: isBorrower ? b.lender_id : b.borrower_id,
-          bookingId: b.id,
-          referenceId: b.id,
-          referenceType: "BOOKING",
-          type: "REMINDER_RETURN",
-          title: `Return Due ${b.is_today ? "Today" : "Tomorrow"}`,
-          body: isBorrower ? `Return for "${b.item_title}" to ${b.lender_name} is due ${dayLabel}.` : `Scheduled return for "${b.item_title}" from ${b.borrower_name} is ${dayLabel}.`
-        });
-      }
-    }
-  } catch (error) {
-    console.error("Error generating notification reminders:", error);
-  }
-}
-
-// src/modules/items/items.routes.ts
-var router2 = (0, import_express2.Router)();
-var createItemSchema = external_exports.object({
-  title: external_exports.string().min(3, "Title must be at least 3 characters"),
-  description: external_exports.string().min(10, "Description must be at least 10 characters"),
-  category: external_exports.string().min(2, "Category is required"),
-  price_per_day: external_exports.number().min(0, "Price per day cannot be negative"),
-  max_duration_days: external_exports.number().int().positive().default(3),
-  image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).min(1, "At least one photo is required"),
-  sticker_badge: external_exports.string().default("Available"),
-  locality: external_exports.string().optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
-  available_for_borrowing: external_exports.boolean().optional().default(false),
-  condition: external_exports.string().optional().default("Good"),
-  offers_delivery: external_exports.boolean().optional().default(false),
-  delivery_fee: external_exports.number().min(0).optional().default(0),
-  offers_pickup: external_exports.boolean().optional().default(false),
-  pickup_fee: external_exports.number().min(0).optional().default(0)
-});
-var updateItemSchema = external_exports.object({
-  title: external_exports.string().min(3).optional(),
-  description: external_exports.string().min(10).optional(),
-  category: external_exports.string().optional(),
-  condition: external_exports.string().optional(),
-  price_per_day: external_exports.number().min(0).optional(),
-  max_duration_days: external_exports.number().int().positive().optional(),
-  image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).optional(),
-  sticker_badge: external_exports.string().optional(),
-  locality: external_exports.string().optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
-  status: external_exports.enum(["AVAILABLE", "RENTED", "UNAVAILABLE"]).optional(),
-  available_for_borrowing: external_exports.boolean().optional(),
-  offers_delivery: external_exports.boolean().optional(),
-  delivery_fee: external_exports.number().min(0).optional(),
-  offers_pickup: external_exports.boolean().optional(),
-  pickup_fee: external_exports.number().min(0).optional()
-});
-router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const {
-      category,
-      search,
-      locality,
-      status = "AVAILABLE",
-      ownerId,
-      latitude,
-      longitude,
-      radar,
-      max_distance,
-      limit,
-      offset
-    } = req.query;
-    const params = [];
-    let distanceField = "NULL AS distance_meters";
-    let distanceFilter = "";
-    let userLat = latitude ? parseFloat(String(latitude)) : NaN;
-    let userLon = longitude ? parseFloat(String(longitude)) : NaN;
-    if ((isNaN(userLat) || isNaN(userLon)) && req.user?.id) {
-      const uRes = await query(
-        `SELECT latitude, longitude, locality FROM users WHERE id::text = $1 OR firebase_uid = $1`,
-        [req.user.id]
-      );
-      if (uRes.rows.length > 0) {
-        if (uRes.rows[0].latitude && uRes.rows[0].longitude) {
-          userLat = parseFloat(uRes.rows[0].latitude);
-          userLon = parseFloat(uRes.rows[0].longitude);
-        } else if (uRes.rows[0].locality) {
-          const loc = uRes.rows[0].locality.toLowerCase();
-          if (loc.includes("beml")) {
-            userLat = 12.914;
-            userLon = 77.4993;
-          } else if (loc.includes("mylasandra")) {
-            userLat = 12.885;
-            userLon = 77.505;
-          }
-        }
-      }
-    }
-    if (!isNaN(userLat) && !isNaN(userLon)) {
-      params.push(userLat);
-      const latIdx = params.length;
-      params.push(userLon);
-      const lonIdx = params.length;
-      distanceField = `
-        ROUND(
-          6371000 * acos(
-            LEAST(1.0, GREATEST(-1.0, 
-              cos(radians($${latIdx})) * cos(radians(
-                CASE 
-                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
-                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
-                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
-                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
-                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
-                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
-                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
-                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
-                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
-                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
-                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
-                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
-                  ELSE $${latIdx}
-                END
-              )) *
-              cos(radians(
-                CASE 
-                  WHEN i.longitude IS NOT NULL AND i.longitude != 0 THEN i.longitude
-                  WHEN u.longitude IS NOT NULL AND u.longitude != 0 THEN u.longitude
-                  WHEN i.locality ILIKE '%beml%' THEN 77.4993
-                  WHEN i.locality ILIKE '%mylasandra%' THEN 77.5050
-                  WHEN i.locality ILIKE '%kengeri%' THEN 77.4838
-                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 77.5150
-                  WHEN i.locality ILIKE '%jayanagar%' THEN 77.5838
-                  WHEN i.locality ILIKE '%koramangala%' THEN 77.6245
-                  WHEN i.locality ILIKE '%indiranagar%' THEN 77.6408
-                  WHEN i.locality ILIKE '%hsr%' THEN 77.6446
-                  WHEN i.locality ILIKE '%whitefield%' THEN 77.7500
-                  WHEN i.locality ILIKE '%electronic city%' THEN 77.6602
-                  ELSE $${lonIdx}
-                END
-              ) - radians($${lonIdx})) +
-              sin(radians($${latIdx})) * sin(radians(
-                CASE 
-                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
-                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
-                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
-                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
-                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
-                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
-                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
-                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
-                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
-                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
-                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
-                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
-                  ELSE $${latIdx}
-                END
-              ))
-            ))
-          )
-        ) AS distance_meters
-      `;
-      if (radar === "true" || radar === "100m" || max_distance) {
-        const limitMeters = max_distance ? parseFloat(String(max_distance)) : 100;
-        params.push(limitMeters);
-        distanceFilter = ` AND (
-          6371000 * acos(
-            LEAST(1.0, GREATEST(-1.0, 
-              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
-              cos(radians(i.longitude) - radians($${lonIdx})) +
-              sin(radians($${latIdx})) * sin(radians(i.latitude))
-            ))
-          )
-        ) <= $${params.length}`;
-      }
-    }
-    let sql = `
-      SELECT 
-        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(i.locality, u.locality) AS locality, 
-        NULL AS address_text, 
-        NULL AS pincode,
-        NULL AS latitude, 
-        NULL AS longitude, 
-        i.status AS status, 
-        EXISTS (
-          SELECT 1 FROM bookings b
-          WHERE b.item_id = i.id
-            AND b.status IN ('ACCEPTED', 'HANDED_OVER')
-            AND CURRENT_DATE BETWEEN b.start_date::date AND (COALESCE(b.end_date, b.start_date))::date
-        ) AS is_currently_booked,
-        i.available_for_borrowing,
-        i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
-        ${distanceField},
-        COALESCE(u.id, i.owner_id) AS owner_id, 
-        COALESCE(u.name, 'Community Member') AS owner_name, 
-        u.username AS owner_username,
-        u.avatar_url AS owner_avatar,
-        COALESCE(i.locality, u.locality) AS owner_locality, 
-        NULL AS owner_address_text,
-        NULL AS owner_pincode,
-        u.trust_score AS owner_trust_score,
-        u.rating AS owner_rating
-      FROM items i
-      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
-      WHERE 1=1 ${distanceFilter}
-    `;
-    if (status === "AVAILABLE") {
-      sql += ` AND i.status != 'UNAVAILABLE'`;
-    } else if (status && status !== "ALL") {
-      params.push(status);
-      sql += ` AND i.status = $${params.length}`;
-    }
-    if (category && category !== "All") {
-      params.push(category);
-      sql += ` AND i.category = $${params.length}`;
-    }
-    if (ownerId) {
-      const resolvedOwnerIds = await resolveUserIds(String(ownerId));
-      params.push(resolvedOwnerIds);
-      sql += ` AND i.owner_id = ANY($${params.length}::text[])`;
-    } else if (locality) {
-      const city = extractCity(String(locality));
-      if (city) {
-        params.push(`%${city}%`);
-        sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
-      }
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
-    }
-    const currentViewerId = req.user?.id;
-    if (currentViewerId) {
-      params.push(currentViewerId);
-      sql += ` AND i.owner_id NOT IN (
-        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
-        UNION
-        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
-      )`;
-    }
-    if (radar === "true" || radar === "100m") {
-      sql += ` ORDER BY distance_meters ASC, i.created_at DESC`;
-    } else {
-      sql += ` ORDER BY i.created_at DESC`;
-    }
-    if (limit) {
-      const parsedLimit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
-      params.push(parsedLimit);
-      sql += ` LIMIT $${params.length}`;
-    }
-    if (offset) {
-      const parsedOffset = Math.max(0, parseInt(String(offset), 10) || 0);
-      params.push(parsedOffset);
-      sql += ` OFFSET $${params.length}`;
-    }
-    const result = await query(sql, params);
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await query(
-      `SELECT 
-        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
-        i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(i.locality, u.locality) AS locality, 
-        COALESCE(u.address_text, i.address_text) AS address_text, 
-        COALESCE(u.pincode, i.pincode) AS pincode,
-        COALESCE(u.latitude, i.latitude) AS latitude, 
-        COALESCE(u.longitude, i.longitude) AS longitude,
-        i.status AS status, 
-        i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
-        u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
-        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(i.locality, u.locality) AS owner_locality,
-        COALESCE(u.address_text, i.address_text) AS owner_address_text,
-        COALESCE(u.pincode, i.pincode) AS owner_pincode,
-        u.email AS owner_email, u.phone AS owner_phone
-      FROM items i
-      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
-      WHERE i.id = $1`,
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Item not found", 404);
-    }
-    const item = result.rows[0];
-    const currentViewerId = req.user?.id;
-    if (currentViewerId && item.owner_id && currentViewerId !== item.owner_id) {
-      const blockCheck = await query(
-        `SELECT 1 FROM user_blocks 
-         WHERE (blocker_id = $1 AND blocked_id = $2)
-            OR (blocker_id = $2 AND blocked_id = $1)`,
-        [currentViewerId, item.owner_id]
-      );
-      if (blockCheck.rows.length > 0) {
-        return sendError(res, "FORBIDDEN", "This item is not available", 403);
-      }
-    }
-    let canViewAddress = false;
-    if (currentViewerId) {
-      const viewerIds = await resolveUserIds(currentViewerId);
-      if (viewerIds.includes(String(item.owner_id))) {
-        canViewAddress = true;
-      } else {
-        const acceptedBookingCheck = await query(
-          `SELECT 1 FROM bookings 
-           WHERE item_id = $1 
-             AND borrower_id = ANY($2::text[]) 
-             AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
-           LIMIT 1`,
-          [item.id, viewerIds]
-        );
-        canViewAddress = acceptedBookingCheck.rows.length > 0;
-      }
-    }
-    if (!canViewAddress) {
-      item.address_text = null;
-      item.owner_address_text = null;
-      item.pincode = null;
-      item.owner_pincode = null;
-      item.owner_email = null;
-      item.owner_phone = null;
-      item.latitude = null;
-      item.longitude = null;
-    }
-    const bookedRes = await query(
-      `SELECT 
-        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
-        start_time,
-        end_time
-      FROM bookings
-      WHERE item_id = $1 
-        AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
-      ORDER BY start_date ASC`,
-      [id]
-    );
-    const itemCity = extractCity(item.locality);
-    const relatedResult = await query(
-      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee
-       FROM items
-       WHERE category = $1 AND id != $2 AND status != 'UNAVAILABLE' AND locality ILIKE $3
-       LIMIT 4`,
-      [item.category, item.id, `%${itemCity}%`]
-    );
-    return sendSuccess(res, {
-      ...item,
-      can_view_address: canViewAddress,
-      booked_dates: bookedRes.rows,
-      related_items: relatedResult.rows
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-router2.get("/:id/availability", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await query(
-      `SELECT 
-        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
-        start_time,
-        end_time
-      FROM bookings
-      WHERE item_id = $1 
-        AND status IN ('ACCEPTED', 'HANDED_OVER')
-        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
-      ORDER BY start_date ASC`,
-      [id]
-    );
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router2.patch("/:id/borrowing", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { available_for_borrowing } = external_exports.object({ available_for_borrowing: external_exports.boolean() }).parse(req.body);
-    const check2 = await query("SELECT owner_id FROM items WHERE id = $1", [id]);
-    if (check2.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Item not found", 404);
-    }
-    const ownerIds = await resolveUserIds(req.user.id);
-    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "Only the item owner can change borrowing options", 403);
-    }
-    const result = await query(
-      `UPDATE items 
-       SET available_for_borrowing = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [available_for_borrowing, id]
-    );
-    return sendSuccess(
-      res,
-      result.rows[0],
-      available_for_borrowing ? "Item is now available for borrowing as well." : "Item is now set to rental only."
-    );
-  } catch (error) {
-    next(error);
-  }
-});
-router2.post("/", authMiddleware, async (req, res, next) => {
-  try {
-    const validated = createItemSchema.parse(req.body);
-    await query(`
-      INSERT INTO users (id, name, email, role, locality)
-      VALUES ($1, $2, $3, 'USER', $4)
-      ON CONFLICT (id) DO NOTHING;
-    `, [
-      req.user.id,
-      req.user.name || "Rentu Member",
-      req.user.email || `${req.user.id}@firebase.rentu.internal`,
-      validated.locality || ""
-    ]).catch(() => {
-    });
-    const userRes = await query("SELECT locality, latitude, longitude FROM users WHERE id = $1", [req.user.id]);
-    const userLocality = userRes.rows[0]?.locality || "";
-    let finalLocality = validated.locality?.trim() || userLocality;
-    const cleanPincode = validated.pincode?.trim() || null;
-    let itemLat = validated.latitude ?? (userRes.rows[0]?.latitude ? parseFloat(userRes.rows[0].latitude) : null);
-    let itemLon = validated.longitude ?? (userRes.rows[0]?.longitude ? parseFloat(userRes.rows[0].longitude) : null);
-    if ((itemLat === null || isNaN(itemLat)) && finalLocality) {
-      const lower2 = finalLocality.toLowerCase();
-      if (lower2.includes("beml")) {
-        itemLat = 12.914;
-        itemLon = 77.4993;
-      } else if (lower2.includes("mylasandra")) {
-        itemLat = 12.885;
-        itemLon = 77.505;
-      } else if (lower2.includes("kengeri")) {
-        itemLat = 12.9177;
-        itemLon = 77.4838;
-      } else if (lower2.includes("rajarajeshwari") || lower2.includes("rr nagar")) {
-        itemLat = 12.9275;
-        itemLon = 77.515;
-      } else if (lower2.includes("jayanagar")) {
-        itemLat = 12.9308;
-        itemLon = 77.5838;
-      } else if (lower2.includes("koramangala")) {
-        itemLat = 12.9352;
-        itemLon = 77.6245;
-      } else if (lower2.includes("indiranagar")) {
-        itemLat = 12.9784;
-        itemLon = 77.6408;
-      } else if (lower2.includes("hsr")) {
-        itemLat = 12.9121;
-        itemLon = 77.6446;
-      }
-    }
-    if (cleanPincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [cleanPincode, finalLocality]
-      ).catch(() => {
-      });
-    }
-    const result = await query(
-      `INSERT INTO items 
-        (owner_id, title, description, category, condition, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
-       VALUES 
-        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, 'AVAILABLE', $15, $16, $17, $18, $19)
-       RETURNING *`,
-      [
-        req.user.id,
-        validated.title,
-        validated.description,
-        validated.category,
-        validated.condition || "Good",
-        validated.price_per_day,
-        validated.max_duration_days,
-        JSON.stringify(validated.image_urls),
-        validated.sticker_badge,
-        finalLocality,
-        validated.address_text || finalLocality,
-        cleanPincode,
-        itemLat ?? null,
-        itemLon ?? null,
-        validated.available_for_borrowing ?? false,
-        validated.offers_delivery ?? false,
-        validated.delivery_fee ?? 0,
-        validated.offers_pickup ?? false,
-        validated.pickup_fee ?? 0
-      ]
-    );
-    const createdItem = result.rows[0];
-    if (Array.isArray(validated.image_urls) && validated.image_urls.length > 0) {
-      for (let i2 = 0; i2 < validated.image_urls.length; i2++) {
-        await query(
-          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
-          [createdItem.id, validated.image_urls[i2], i2]
-        ).catch(() => {
-        });
-      }
-    }
-    return sendSuccess(res, createdItem, "Gear listed successfully. It is now live on the feed.", 201);
-  } catch (error) {
-    next(error);
-  }
-});
-router2.put("/:id", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const validated = updateItemSchema.parse(req.body);
-    const check2 = await query("SELECT owner_id FROM items WHERE id = $1", [id]);
-    if (check2.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Item not found", 404);
-    }
-    const ownerIds = await resolveUserIds(req.user.id);
-    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "You do not have permission to edit this listing", 403);
-    }
-    const fields = [];
-    const values = [];
-    if (validated.title !== void 0) {
-      values.push(validated.title);
-      fields.push(`title = $${values.length}`);
-    }
-    if (validated.description !== void 0) {
-      values.push(validated.description);
-      fields.push(`description = $${values.length}`);
-    }
-    if (validated.category !== void 0) {
-      values.push(validated.category);
-      fields.push(`category = $${values.length}`);
-    }
-    if (validated.condition !== void 0) {
-      values.push(validated.condition);
-      fields.push(`condition = $${values.length}`);
-    }
-    if (validated.price_per_day !== void 0) {
-      values.push(validated.price_per_day);
-      fields.push(`price_per_day = $${values.length}`);
-    }
-    if (validated.max_duration_days !== void 0) {
-      values.push(validated.max_duration_days);
-      fields.push(`max_duration_days = $${values.length}`);
-    }
-    if (validated.image_urls !== void 0) {
-      values.push(JSON.stringify(validated.image_urls));
-      fields.push(`image_urls = $${values.length}::jsonb`);
-    }
-    if (validated.sticker_badge !== void 0) {
-      values.push(validated.sticker_badge);
-      fields.push(`sticker_badge = $${values.length}`);
-    }
-    if (validated.locality !== void 0) {
-      values.push(validated.locality);
-      fields.push(`locality = $${values.length}`);
-    }
-    if (validated.status !== void 0) {
-      values.push(validated.status);
-      fields.push(`status = $${values.length}`);
-    }
-    if (validated.available_for_borrowing !== void 0) {
-      values.push(validated.available_for_borrowing);
-      fields.push(`available_for_borrowing = $${values.length}`);
-    }
-    if (validated.offers_delivery !== void 0) {
-      values.push(validated.offers_delivery);
-      fields.push(`offers_delivery = $${values.length}`);
-    }
-    if (validated.delivery_fee !== void 0) {
-      values.push(validated.delivery_fee);
-      fields.push(`delivery_fee = $${values.length}`);
-    }
-    if (validated.offers_pickup !== void 0) {
-      values.push(validated.offers_pickup);
-      fields.push(`offers_pickup = $${values.length}`);
-    }
-    if (validated.pickup_fee !== void 0) {
-      values.push(validated.pickup_fee);
-      fields.push(`pickup_fee = $${values.length}`);
-    }
-    if (fields.length === 0) {
-      return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
-    }
-    values.push(id);
-    const updateSql = `
-      UPDATE items 
-      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $${values.length}
-      RETURNING *
-    `;
-    const result = await query(updateSql, values);
-    if (Array.isArray(validated.image_urls)) {
-      await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => {
-      });
-      for (let i2 = 0; i2 < validated.image_urls.length; i2++) {
-        await query(
-          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
-          [id, validated.image_urls[i2], i2]
-        ).catch(() => {
-        });
-      }
-    }
-    if (validated.status === "UNAVAILABLE") {
-      await createNotification({
-        userId: req.user.id,
-        type: "ITEM_UNAVAILABLE",
-        title: "Listing Marked Unavailable",
-        body: `"${result.rows[0]?.title || "Item"}" is now marked unavailable and paused from rental listings.`,
-        referenceId: id,
-        referenceType: "ITEM"
-      });
-    } else if (validated.status === "AVAILABLE") {
-      await createNotification({
-        userId: req.user.id,
-        type: "ITEM_AVAILABLE",
-        title: "Listing Marked Available",
-        body: `"${result.rows[0]?.title || "Item"}" is active and available for rent on the marketplace.`,
-        referenceId: id,
-        referenceType: "ITEM"
-      });
-    }
-    return sendSuccess(res, result.rows[0], "Listing updated successfully");
-  } catch (error) {
-    next(error);
-  }
-});
-router2.delete("/:id", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const check2 = await query("SELECT owner_id FROM items WHERE id = $1", [id]);
-    if (check2.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Item not found", 404);
-    }
-    const ownerIds = await resolveUserIds(req.user.id);
-    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "Permission denied", 403);
-    }
-    await query("DELETE FROM items WHERE id = $1", [id]);
-    return sendSuccess(res, { id }, "Listing deleted successfully");
-  } catch (error) {
-    next(error);
-  }
-});
-var items_routes_default = router2;
-
-// src/modules/requests/requests.routes.ts
-var import_express3 = __toESM(require_express2());
-var router3 = (0, import_express3.Router)();
-var createRequestSchema = external_exports.object({
-  item_name: external_exports.string().min(3, "Item name must be at least 3 characters"),
-  description: external_exports.string().min(5, "Description is required"),
-  category: external_exports.string().default("Other"),
-  start_date: external_exports.string().min(1, "Needed date is required"),
-  start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
-  end_time: external_exports.string().optional(),
-  duration_days: external_exports.number().int().positive().default(1),
-  offered_amount: external_exports.number().min(0, "Offered budget cannot be negative"),
-  locality: external_exports.string().optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
-  image_url: external_exports.string().nullable().optional(),
-  pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
-  pickup_locality: external_exports.string().optional(),
-  return_type: external_exports.string().optional().default("LENDER_LOCATION"),
-  return_locality: external_exports.string().optional(),
-  will_pickup: external_exports.boolean().optional().default(true),
-  will_drop_back: external_exports.boolean().optional().default(true),
-  delivery_fee: external_exports.number().min(0).optional().default(0)
-});
-var updateRequestSchema = external_exports.object({
-  item_name: external_exports.string().min(3).optional(),
-  description: external_exports.string().min(5).optional(),
-  category: external_exports.string().optional(),
-  start_date: external_exports.string().optional(),
-  start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
-  end_time: external_exports.string().optional(),
-  duration_days: external_exports.number().int().positive().optional(),
-  offered_amount: external_exports.number().min(0).optional(),
-  locality: external_exports.string().optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
-  image_url: external_exports.string().nullable().optional(),
-  pickup_type: external_exports.string().optional(),
-  pickup_locality: external_exports.string().optional(),
-  return_type: external_exports.string().optional(),
-  return_locality: external_exports.string().optional(),
-  will_pickup: external_exports.boolean().optional(),
-  will_drop_back: external_exports.boolean().optional(),
-  delivery_fee: external_exports.number().min(0).optional()
-});
-var lastRequestsExpirationRun = 0;
-async function autoCancelExpiredRequests() {
-  const now = Date.now();
-  if (now - lastRequestsExpirationRun < 60 * 1e3) return;
-  lastRequestsExpirationRun = now;
-  try {
-    await query(`
-      UPDATE requests
-      SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
-      WHERE status = 'OPEN'
-        AND (
-          start_date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
-          OR (
-            start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
-            AND (COALESCE(NULLIF(TRIM(start_time), ''), '10:00') || ':00')::time < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
-          )
-        )
-    `);
-  } catch (err) {
-    console.warn("autoCancelExpiredRequests error:", err);
-  }
-}
-router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    await autoCancelExpiredRequests();
-    const { category, locality, status = "OPEN", seekerId } = req.query;
-    let sql = `
-      SELECT 
-        r.id, r.item_name, r.description, r.category, 
-        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, 
-        NULL AS address_text, NULL AS pincode,
-        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
-        r.will_pickup, r.will_drop_back, r.delivery_fee,
-        r.status, r.created_at, r.image_url,
-        COALESCE(u.id, r.seeker_id) AS seeker_id, 
-        COALESCE(u.name, 'Community Member') AS seeker_name, 
-        u.username AS seeker_username,
-        u.avatar_url AS seeker_avatar,
-        COALESCE(u.locality, r.locality) AS seeker_locality, 
-        u.trust_score AS seeker_trust_score,
-        NULL AS seeker_phone, 
-        NULL AS seeker_email
-      FROM requests r
-      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
-      WHERE 1=1
-    `;
-    const params = [];
-    if (status && status !== "ALL") {
-      params.push(status);
-      sql += ` AND r.status = $${params.length}`;
-    }
-    if (category && category !== "All") {
-      params.push(category);
-      sql += ` AND r.category = $${params.length}`;
-    }
-    if (seekerId) {
-      const resolvedSeekerIds = await resolveUserIds(String(seekerId));
-      params.push(resolvedSeekerIds);
-      sql += ` AND r.seeker_id = ANY($${params.length}::text[])`;
-    } else if (locality) {
-      const city = extractCity(String(locality));
-      if (city) {
-        params.push(`%${city}%`);
-        sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
-      }
-    }
-    const currentViewerId = req.user?.id;
-    if (currentViewerId) {
-      params.push(currentViewerId);
-      sql += ` AND r.seeker_id NOT IN (
-        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
-        UNION
-        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
-      )`;
-    }
-    sql += ` ORDER BY r.created_at DESC`;
-    const result = await query(sql, params);
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router3.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    await autoCancelExpiredRequests();
-    const { id } = req.params;
-    const result = await query(
-      `SELECT 
-        r.id, r.item_name, r.description, r.category, 
-        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.address_text, r.pincode,
-        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
-        r.will_pickup, r.will_drop_back, r.delivery_fee,
-        r.status, r.created_at, r.image_url,
-        u.id AS seeker_id, u.name AS seeker_name, u.username AS seeker_username, u.avatar_url AS seeker_avatar,
-        u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
-        u.phone AS seeker_phone, u.email AS seeker_email
-      FROM requests r
-      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
-      WHERE r.id = $1`,
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
-    }
-    const requestItem = result.rows[0];
-    const currentViewerId = req.user?.id;
-    let canViewPrivate = false;
-    if (currentViewerId) {
-      const viewerIds = await resolveUserIds(currentViewerId);
-      canViewPrivate = viewerIds.includes(String(requestItem.seeker_id)) || req.user?.role === "ADMIN";
-    }
-    if (!canViewPrivate) {
-      requestItem.address_text = null;
-      requestItem.pincode = null;
-      requestItem.seeker_phone = null;
-      requestItem.seeker_email = null;
-      requestItem.latitude = null;
-      requestItem.longitude = null;
-    }
-    return sendSuccess(res, requestItem);
-  } catch (error) {
-    next(error);
-  }
-});
-router3.post("/", authMiddleware, async (req, res, next) => {
-  try {
-    const validated = createRequestSchema.parse(req.body);
-    await query(`
-      INSERT INTO users (id, name, email, role, locality)
-      VALUES ($1, $2, $3, 'USER', $4)
-      ON CONFLICT (id) DO NOTHING;
-    `, [
-      req.user.id,
-      req.user.name || "Rentu Member",
-      req.user.email || `${req.user.id}@firebase.rentu.internal`,
-      validated.locality || ""
-    ]).catch(() => {
-    });
-    let finalLocality = validated.locality?.trim() || "";
-    const cleanPincode = validated.pincode?.trim() || null;
-    if (cleanPincode && finalLocality) {
-      await query(
-        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-        [cleanPincode, finalLocality]
-      ).catch(() => {
-      });
-    }
-    const result = await query(
-      `INSERT INTO requests
-        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, will_pickup, will_drop_back, delivery_fee, status)
-       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 'OPEN')
-       RETURNING *`,
-      [
-        req.user.id,
-        validated.item_name,
-        validated.description,
-        validated.category,
-        validated.start_date,
-        validated.start_time || "10:00",
-        validated.end_date || null,
-        validated.end_time || "18:00",
-        validated.duration_days,
-        validated.offered_amount,
-        finalLocality,
-        validated.address_text || finalLocality,
-        cleanPincode,
-        validated.latitude ?? null,
-        validated.longitude ?? null,
-        validated.image_url ?? null,
-        validated.pickup_type || "LENDER_LOCATION",
-        validated.pickup_locality || null,
-        validated.return_type || "LENDER_LOCATION",
-        validated.return_locality || null,
-        validated.will_pickup ?? true,
-        validated.will_drop_back ?? true,
-        validated.delivery_fee ?? 0
-      ]
-    );
-    const createdRequest = result.rows[0];
-    const seekerId = req.user.id;
-    const seekerName = req.user.name || "A neighbor";
-    try {
-      const followersRes = await query(
-        `SELECT uf.follower_id FROM user_follows uf
-         WHERE uf.following_id = $1
-         AND uf.follower_id NOT IN (
-           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
-           UNION
-           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
-         )`,
-        [seekerId]
-      );
-      const notifiedUserIds = /* @__PURE__ */ new Set();
-      notifiedUserIds.add(seekerId);
-      for (const f3 of followersRes.rows) {
-        notifiedUserIds.add(f3.follower_id);
-        await query(
-          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-           VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
-          [
-            f3.follower_id,
-            seekerId,
-            `New Request from ${seekerName}`,
-            `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: \u20B9${validated.offered_amount})`,
-            createdRequest.id
-          ]
-        ).catch(() => {
-        });
-      }
-      const nearbyUsersRes = await query(
-        `SELECT id, locality, latitude, longitude FROM users
-         WHERE id != $1
-         AND COALESCE(notify_nearby_requests_5km, TRUE) = TRUE
-         AND id NOT IN (
-           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
-           UNION
-           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
-         )`,
-        [seekerId]
-      );
-      const seekerLat = validated.latitude;
-      const seekerLon = validated.longitude;
-      for (const u of nearbyUsersRes.rows) {
-        if (notifiedUserIds.has(u.id)) continue;
-        let isWithin5Km = false;
-        if (seekerLat && seekerLon && u.latitude && u.longitude) {
-          const R = 6371;
-          const dLat = (u.latitude - seekerLat) * Math.PI / 180;
-          const dLon = (u.longitude - seekerLon) * Math.PI / 180;
-          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(seekerLat * Math.PI / 180) * Math.cos(u.latitude * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distKm = R * c;
-          if (distKm <= 5) {
-            isWithin5Km = true;
-          }
-        } else if (finalLocality && u.locality) {
-          const sCity = extractCity(finalLocality)?.toLowerCase();
-          const uCity = extractCity(u.locality)?.toLowerCase();
-          if (sCity && uCity && sCity === uCity) {
-            isWithin5Km = true;
-          }
-        }
-        if (isWithin5Km) {
-          notifiedUserIds.add(u.id);
-          await query(
-            `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-             VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
-            [
-              u.id,
-              seekerId,
-              `Nearby Gear Request`,
-              `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || "nearby"})`,
-              createdRequest.id
-            ]
-          ).catch(() => {
-          });
-        }
-      }
-    } catch (announcementErr) {
-      console.warn("Failed to dispatch request announcements:", announcementErr);
-    }
-    return sendSuccess(res, createdRequest, "Wish dropped to community feed. Nearby owners will see your request.", 201);
-  } catch (error) {
-    next(error);
-  }
-});
-router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const lenderId = req.user.id;
-    const lenderName = req.user.name || "A Neighbor";
-    const reqResult = await query(
-      `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
-       FROM requests r
-       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
-       WHERE r.id = $1`,
-      [id]
-    );
-    if (reqResult.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Request not found", 404);
-    }
-    const request = reqResult.rows[0];
-    const myIds = await resolveUserIds(lenderId);
-    if (myIds.includes(String(request.seeker_id))) {
-      return sendError(res, "BAD_REQUEST", "You cannot lend gear to your own request", 400);
-    }
-    if (request.status !== "OPEN") {
-      return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
-    }
-    const existingOffer = await query(
-      `SELECT id FROM bookings 
-       WHERE request_id = $1 
-         AND lender_id = ANY($2::text[]) 
-         AND status = 'PENDING'
-       LIMIT 1`,
-      [request.id, myIds]
-    );
-    if (existingOffer.rows.length > 0) {
-      return sendError(res, "BAD_REQUEST", "You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.", 400);
-    }
-    const blockCheck = await query(
-      `SELECT 1 FROM user_blocks 
-       WHERE (blocker_id = $1 AND blocked_id = $2)
-          OR (blocker_id = $2 AND blocked_id = $1)`,
-      [lenderId, request.seeker_id]
-    );
-    if (blockCheck.rows.length > 0) {
-      return sendError(res, "FORBIDDEN", "Cannot send lend offer. Communication between these users is blocked.", 403);
-    }
-    const durationDays = Math.max(1, Number(request.duration_days) || 1);
-    const offeredAmount = Number(request.offered_amount) || 0;
-    const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
-    const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
-    const totalDealPrice = offeredAmount + deliveryFee + returnFee;
-    const pricePerDay = Math.round(offeredAmount / durationDays);
-    const fullDestinationAddress = request.address_text || request.locality || "Handover location";
-    const proposalPayload = {
-      type: "REQUEST",
-      is_lend_offer: true,
-      request_id: request.id,
-      lender_id: lenderId,
-      borrower_id: request.seeker_id,
-      title: request.item_name,
-      description: request.description,
-      category: request.category || "Other",
-      price_per_day: pricePerDay,
-      total_price: totalDealPrice,
-      duration_days: durationDays,
-      start_date: request.start_date,
-      end_date: request.end_date,
-      start_time: request.start_time || "10:00:00",
-      end_time: request.end_time || "18:00:00",
-      delivery_option: !request.will_pickup ? "LENDER_DELIVERY" : "SELF",
-      delivery_fee: deliveryFee,
-      collection_option: !request.will_drop_back ? "LENDER_COLLECT" : "SELF",
-      collection_fee: returnFee,
-      delivery_location: fullDestinationAddress,
-      return_location: fullDestinationAddress,
-      notes: request.description,
-      image_url: request.image_url || null,
-      status: "PENDING"
-    };
-    const summaryText = `I Can Lend This: ${lenderName} offered to fulfill your request for "${request.item_name}" (\u20B9${totalDealPrice} for ${durationDays} days)`;
-    const msgResult = await query(
-      `INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
-       VALUES ($1, $2, $3, 'PROPOSAL', $4)
-       RETURNING *`,
-      [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]
-    );
-    const createdMessage = msgResult.rows[0];
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
-      [
-        request.seeker_id,
-        lenderId,
-        `${lenderName} is ready to lend gear`,
-        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
-        request.id
-      ]
-    ).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
-    return sendSuccess(res, {
-      message: createdMessage,
-      proposal: proposalPayload,
-      partner: {
-        id: request.seeker_id,
-        name: request.seeker_name,
-        avatar: request.seeker_avatar
-      }
-    }, "Lend offer sent to seeker! When they accept, the booking will automatically start in Ongoing Bookings.");
-  } catch (error) {
-    next(error);
-  }
-});
-router3.put("/:id", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const validated = updateRequestSchema.parse(req.body);
-    const check2 = await query("SELECT seeker_id, status FROM requests WHERE id = $1", [id]);
-    if (check2.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
-    }
-    const userIds = await resolveUserIds(req.user.id);
-    const isSeeker = userIds.includes(String(check2.rows[0].seeker_id)) || req.user.role === "ADMIN";
-    if (!isSeeker) {
-      return sendError(res, "FORBIDDEN", "Permission denied: Only the wish creator can edit or update the status of this request.", 403);
-    }
-    const fields = [];
-    const values = [];
-    if (validated.item_name !== void 0) {
-      values.push(validated.item_name);
-      fields.push(`item_name = $${values.length}`);
-    }
-    if (validated.description !== void 0) {
-      values.push(validated.description);
-      fields.push(`description = $${values.length}`);
-    }
-    if (validated.category !== void 0) {
-      values.push(validated.category);
-      fields.push(`category = $${values.length}`);
-    }
-    if (validated.start_date !== void 0) {
-      values.push(validated.start_date);
-      fields.push(`start_date = $${values.length}`);
-    }
-    if (validated.start_time !== void 0) {
-      values.push(validated.start_time);
-      fields.push(`start_time = $${values.length}`);
-    }
-    if (validated.end_date !== void 0) {
-      values.push(validated.end_date);
-      fields.push(`end_date = $${values.length}`);
-    }
-    if (validated.end_time !== void 0) {
-      values.push(validated.end_time);
-      fields.push(`end_time = $${values.length}`);
-    }
-    if (validated.duration_days !== void 0) {
-      values.push(validated.duration_days);
-      fields.push(`duration_days = $${values.length}`);
-    }
-    if (validated.offered_amount !== void 0) {
-      values.push(validated.offered_amount);
-      fields.push(`offered_amount = $${values.length}`);
-    }
-    if (validated.locality !== void 0) {
-      values.push(validated.locality);
-      fields.push(`locality = $${values.length}`);
-    }
-    if (validated.status !== void 0) {
-      values.push(validated.status);
-      fields.push(`status = $${values.length}`);
-    }
-    if (validated.image_url !== void 0) {
-      values.push(validated.image_url);
-      fields.push(`image_url = $${values.length}`);
-    }
-    if (validated.pickup_type !== void 0) {
-      values.push(validated.pickup_type);
-      fields.push(`pickup_type = $${values.length}`);
-    }
-    if (validated.pickup_locality !== void 0) {
-      values.push(validated.pickup_locality);
-      fields.push(`pickup_locality = $${values.length}`);
-    }
-    if (validated.return_type !== void 0) {
-      values.push(validated.return_type);
-      fields.push(`return_type = $${values.length}`);
-    }
-    if (validated.return_locality !== void 0) {
-      values.push(validated.return_locality);
-      fields.push(`return_locality = $${values.length}`);
-    }
-    if (validated.address_text !== void 0) {
-      values.push(validated.address_text);
-      fields.push(`address_text = $${values.length}`);
-    }
-    if (validated.pincode !== void 0) {
-      values.push(validated.pincode);
-      fields.push(`pincode = $${values.length}`);
-    }
-    if (validated.will_pickup !== void 0) {
-      values.push(validated.will_pickup);
-      fields.push(`will_pickup = $${values.length}`);
-    }
-    if (validated.will_drop_back !== void 0) {
-      values.push(validated.will_drop_back);
-      fields.push(`will_drop_back = $${values.length}`);
-    }
-    if (validated.delivery_fee !== void 0) {
-      values.push(validated.delivery_fee);
-      fields.push(`delivery_fee = $${values.length}`);
-    }
-    if (fields.length === 0) {
-      return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
-    }
-    values.push(id);
-    const updateSql = `
-      UPDATE requests
-      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $${values.length}
-      RETURNING *
-    `;
-    const result = await query(updateSql, values);
-    return sendSuccess(res, result.rows[0], "Wish request updated successfully");
-  } catch (error) {
-    next(error);
-  }
-});
-router3.delete("/:id", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const check2 = await query("SELECT seeker_id FROM requests WHERE id = $1", [id]);
-    if (check2.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
-    }
-    const userIds = await resolveUserIds(req.user.id);
-    if (!userIds.includes(String(check2.rows[0].seeker_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "Permission denied", 403);
-    }
-    await query("DELETE FROM requests WHERE id = $1", [id]);
-    return sendSuccess(res, { id }, "Wish request deleted");
-  } catch (error) {
-    next(error);
-  }
-});
-var requests_routes_default = router3;
-
-// src/modules/bookings/bookings.routes.ts
-var import_express4 = __toESM(require_express2());
-var import_crypto = __toESM(require("crypto"));
-var router4 = (0, import_express4.Router)();
-var failedCodeAttempts = /* @__PURE__ */ new Map();
-function checkCodeLockout(key) {
-  const record = failedCodeAttempts.get(key);
-  if (!record) return { locked: false };
-  const now = Date.now();
-  if (record.lockedUntil > now) {
-    return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1e3) };
-  }
-  if (record.lockedUntil <= now && record.attempts >= 5) {
-    failedCodeAttempts.delete(key);
-  }
-  return { locked: false };
-}
-function recordFailedCodeAttempt(key) {
-  const now = Date.now();
-  const record = failedCodeAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
-  record.attempts += 1;
-  if (record.attempts >= 5) {
-    record.lockedUntil = now + 15 * 60 * 1e3;
-  }
-  failedCodeAttempts.set(key, record);
-  return record.attempts;
-}
-function resetCodeAttempts(key) {
-  failedCodeAttempts.delete(key);
-}
-var createBookingSchema = external_exports.object({
-  item_id: external_exports.string().uuid("Invalid item ID"),
-  start_date: external_exports.string().min(1, "Start date is required"),
-  start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
-  end_time: external_exports.string().optional(),
-  duration_days: external_exports.number().int().positive("Duration must be at least 1 day"),
-  total_price: external_exports.number().min(0).optional(),
-  pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
-  pickup_locality: external_exports.string().optional(),
-  return_type: external_exports.string().optional().default("LENDER_LOCATION"),
-  return_locality: external_exports.string().optional(),
-  requires_delivery: external_exports.boolean().optional().default(false),
-  delivery_fee: external_exports.number().min(0).optional().default(0),
-  requires_pickup: external_exports.boolean().optional().default(false),
-  pickup_fee: external_exports.number().min(0).optional().default(0),
-  message: external_exports.string().optional(),
-  timezone_offset_minutes: external_exports.number().optional()
-});
-var updateStatusSchema = external_exports.object({
-  status: external_exports.enum(["ACCEPTED", "REJECTED", "CANCELLED"]),
-  timezone_offset_minutes: external_exports.number().optional()
-});
-function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
-  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
-  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
-  const [hour, minute] = cleanTime.split(":").map(Number);
-  if (typeof tzOffsetMinutes === "number") {
-    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-    return localUtcMs + tzOffsetMinutes * 6e4;
-  }
-  const d = /* @__PURE__ */ new Date(`${dateStr.slice(0, 10)}T${cleanTime}:00`);
-  return d.getTime();
-}
-var lastBookingsExpirationRun = 0;
-async function checkAndAutoCancelExpiredBookings() {
-  const now = Date.now();
-  if (now - lastBookingsExpirationRun < 60 * 1e3) return;
-  lastBookingsExpirationRun = now;
-  try {
-    const expiredRes = await query(`
-      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
-             TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
-             b.start_time, i.title AS item_title,
-             lender.name AS lender_name, borrower.name AS borrower_name
-      FROM bookings b
-      LEFT JOIN items i ON b.item_id = i.id
-      LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
-      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-      WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
-         OR (b.status = 'PENDING')
-    `);
-    const now2 = Date.now();
-    for (const row of expiredRes.rows) {
-      const sDate = row.start_date_str;
-      if (!sDate) continue;
-      const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
-      const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
-      if (row.status === "PENDING" && now2 > startTimestamp) {
-        await query(
-          `UPDATE bookings 
-           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
-           WHERE id = $1 AND status = 'PENDING'`,
-          [row.id]
-        );
-        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
-        await query(
-          `UPDATE messages 
-           SET proposal_data = jsonb_set(
-             COALESCE(proposal_data, '{}'::jsonb),
-             '{status}',
-             '"CANCELLED"'::jsonb
-           )
-           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-          [row.id]
-        ).catch(() => {
-        });
-        await query(
-          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled start time arrived without being accepted.', 'SYSTEM')`,
-          [row.id, row.lender_id, row.borrower_id]
-        ).catch(() => {
-        });
-        await createNotification({
-          userId: row.borrower_id,
-          bookingId: row.id,
-          referenceId: row.id,
-          referenceType: "BOOKING",
-          type: "BOOKING_CANCELLED",
-          title: "Request Auto-Cancelled",
-          body: `Your rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed without being accepted.`
-        }).catch(() => {
-        });
-        await createNotification({
-          userId: row.lender_id,
-          bookingId: row.id,
-          referenceId: row.id,
-          referenceType: "BOOKING",
-          type: "BOOKING_CANCELLED",
-          title: "Request Expired & Cancelled",
-          body: `Rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed.`
-        }).catch(() => {
-        });
-        continue;
-      }
-      const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
-      if (row.status === "ACCEPTED" && now2 > oneHourAfterStart) {
-        await query(
-          `UPDATE bookings 
-           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
-           WHERE id = $1 AND status = 'ACCEPTED' AND handed_over_at IS NULL`,
-          [row.id]
-        );
-        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
-        await query(
-          `UPDATE messages 
-           SET proposal_data = jsonb_set(
-             COALESCE(proposal_data, '{}'::jsonb),
-             '{status}',
-             '"CANCELLED"'::jsonb
-           )
-           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-          [row.id]
-        ).catch(() => {
-        });
-        await query(
-          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the pickup handover code was not verified within 1 hour of the scheduled start time.', 'SYSTEM')`,
-          [row.id, row.lender_id, row.borrower_id]
-        ).catch(() => {
-        });
-        await createNotification({
-          userId: row.borrower_id,
-          bookingId: row.id,
-          referenceId: row.id,
-          referenceType: "BOOKING",
-          type: "BOOKING_CANCELLED",
-          title: "Rental Auto-Cancelled",
-          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`
-        }).catch(() => {
-        });
-        await createNotification({
-          userId: row.lender_id,
-          bookingId: row.id,
-          referenceId: row.id,
-          referenceType: "BOOKING",
-          type: "BOOKING_CANCELLED",
-          title: "Rental Auto-Cancelled",
-          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`
-        }).catch(() => {
-        });
-      }
-    }
-  } catch (err) {
-    console.warn("checkAndAutoCancelExpiredBookings notice:", err);
-  }
-}
-var verifyCodeSchema = external_exports.object({
-  code: external_exports.string().min(4, "Verification code is required")
-});
-var submitReviewSchema = external_exports.object({
-  rating: external_exports.number().int().min(1, "Rating must be between 1 and 5 stars").max(5, "Rating must be between 1 and 5 stars"),
-  comment: external_exports.string().max(1e3, "Comment cannot exceed 1000 characters").optional().default(""),
-  review_type: external_exports.enum(["OWNER_RENTAL", "RENTER", "COMMUNITY_LENDER"]).optional()
-});
-router4.post("/", authMiddleware, async (req, res, next) => {
-  try {
-    const validated = createBookingSchema.parse(req.body);
-    const borrowerId = req.user.id;
-    const itemRes = await query(
-      `SELECT id, owner_id, price_per_day, title, status, available_for_borrowing, 
-              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category
-       FROM items WHERE id = $1`,
-      [validated.item_id]
-    );
-    if (itemRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Item not found", 404);
-    }
-    const item = itemRes.rows[0];
-    if (item.status && item.status !== "AVAILABLE") {
-      return sendError(res, "BAD_REQUEST", "This item is currently unavailable for rent or borrowing.", 400);
-    }
-    if (item.owner_id === borrowerId) {
-      return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear.", 400);
-    }
-    const blockCheck = await query(
-      `SELECT 1 FROM user_blocks 
-       WHERE (blocker_id = $1 AND blocked_id = $2)
-          OR (blocker_id = $2 AND blocked_id = $1)`,
-      [borrowerId, item.owner_id]
-    );
-    if (blockCheck.rows.length > 0) {
-      return sendError(res, "FORBIDDEN", "Cannot rent from this user due to a block.", 403);
-    }
-    let finalEndDate = validated.end_date;
-    if (!finalEndDate) {
-      const sDate = new Date(validated.start_date);
-      if (!isNaN(sDate.getTime())) {
-        sDate.setDate(sDate.getDate() + Math.max(0, validated.duration_days - 1));
-        finalEndDate = sDate.toISOString().split("T")[0];
-      } else {
-        finalEndDate = validated.start_date;
-      }
-    }
-    const tzOffset = typeof validated.timezone_offset_minutes === "number" ? validated.timezone_offset_minutes : -330;
-    const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
-    const currentTimestampWithGrace = Date.now() - 2 * 60 * 1e3;
-    if (startTimestamp < currentTimestampWithGrace) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Cannot book in the past. The selected start time (${validated.start_date} ${validated.start_time || ""}) has already passed. Please select an upcoming date and time.`,
-        400
-      );
-    }
-    const endTimestamp = parseToUtcTimestamp(finalEndDate, validated.end_time || "18:00", tzOffset);
-    if (endTimestamp <= startTimestamp) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        "Rental return time must be strictly after the pickup start time.",
-        400
-      );
-    }
-    const overlapRes = await query(
-      `SELECT 
-        id, 
-        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-       FROM bookings 
-       WHERE item_id = $1 
-         AND status IN ('ACCEPTED', 'HANDED_OVER')
-         AND (
-           start_date <= $3::date 
-           AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $2::date
-         )
-       LIMIT 1`,
-      [item.id, validated.start_date, finalEndDate]
-    );
-    if (overlapRes.rows.length > 0) {
-      const conflict = overlapRes.rows[0];
-      return sendError(
-        res,
-        "CONFLICT",
-        `This product is unavailable from ${conflict.start_date} to ${conflict.end_date} because it is already rented. Please pick different dates on the calendar.`,
-        409
-      );
-    }
-    const itemRate = Number(item.price_per_day || 0);
-    const isFreeBorrow = itemRate <= 0 || item.available_for_borrowing;
-    if (validated.total_price === 0 && itemRate > 0 && !item.available_for_borrowing) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        "The owner has not made this item available for free borrowing. It is only available for paid rent.",
-        400
-      );
-    }
-    const borrowerRes = await query("SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1", [borrowerId]);
-    const borrower = borrowerRes.rows[0];
-    const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== "Bengaluru, India";
-    const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
-    if (!hasAddressText && !hasSavedLocations) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        "Address required: Please set your address in your profile before requesting to rent or order items.",
-        400
-      );
-    }
-    const sDateObj = new Date(validated.start_date);
-    const eDateObj = new Date(finalEndDate);
-    const dayDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1e3 * 60 * 60 * 24)));
-    const durationDays = validated.duration_days ? Math.max(1, validated.duration_days) : dayDiff;
-    const baseCost = isFreeBorrow || itemRate <= 0 ? 0 : itemRate * durationDays;
-    let deliveryFee = 0;
-    if (validated.requires_delivery) {
-      if (!item.offers_delivery) {
-        return sendError(res, "BAD_REQUEST", "The owner does not offer delivery for this item.", 400);
-      }
-      deliveryFee = Number(item.delivery_fee || 0);
-    }
-    let pickupFee = 0;
-    if (validated.requires_pickup) {
-      if (!item.offers_pickup) {
-        return sendError(res, "BAD_REQUEST", "The owner does not offer collection/pickup for this item.", 400);
-      }
-      pickupFee = Number(item.pickup_fee || 0);
-    }
-    const calculatedTotalPrice = baseCost + deliveryFee + pickupFee;
-    const pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
-    const proposalData = {
-      type: "RENTAL_REQUEST",
-      item_id: item.id,
-      item_title: item.title,
-      title: item.title,
-      item_images: item.image_urls || [],
-      image_url: Array.isArray(item.image_urls) && item.image_urls.length > 0 ? item.image_urls[0] : item.image_url || "",
-      category: item.category,
-      price_per_day: itemRate,
-      total_price: calculatedTotalPrice,
-      duration_days: durationDays,
-      start_date: validated.start_date,
-      start_time: validated.start_time || "10:00",
-      end_date: finalEndDate,
-      end_time: validated.end_time || "18:00",
-      pickup_type: validated.pickup_type || "LENDER_LOCATION",
-      pickup_locality: validated.pickup_locality || item.locality || "",
-      return_type: validated.return_type || "LENDER_LOCATION",
-      return_locality: validated.return_locality || item.locality || "",
-      requires_delivery: validated.requires_delivery ?? false,
-      delivery_fee: deliveryFee,
-      requires_pickup: validated.requires_pickup ?? false,
-      pickup_fee: pickupFee,
-      status: "PENDING",
-      notes: validated.message || `Hey! I'd love to rent your ${item.title} for ${durationDays} days.`
-    };
-    const client = await pool.connect();
-    let booking;
-    try {
-      await client.query("BEGIN");
-      const bookingRes = await client.query(
-        `INSERT INTO bookings
-          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
-         VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
-         RETURNING *`,
-        [
-          item.id,
-          borrowerId,
-          item.owner_id,
-          validated.start_date,
-          validated.start_time || "10:00",
-          finalEndDate,
-          validated.end_time || "18:00",
-          durationDays,
-          calculatedTotalPrice,
-          validated.pickup_type || "LENDER_LOCATION",
-          validated.pickup_locality || null,
-          validated.return_type || "LENDER_LOCATION",
-          validated.return_locality || null,
-          validated.requires_delivery ?? false,
-          deliveryFee,
-          validated.requires_pickup ?? false,
-          pickupFee,
-          validated.message || `Hey! Would love to rent your ${item.title}.`,
-          pickupCode
-        ]
-      );
-      booking = bookingRes.rows[0];
-      const fullProposalData = {
-        ...proposalData,
-        booking_id: booking.id
-      };
-      await client.query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
-         VALUES ($1, $2, $3, $4, 'PROPOSAL', $5, false, false)`,
-        [
-          booking.id,
-          borrowerId,
-          item.owner_id,
-          validated.message || `Rental request for ${item.title} (${durationDays} days)`,
-          JSON.stringify(fullProposalData)
-        ]
-      );
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    const borrowerUserRes = await query("SELECT name FROM users WHERE id = $1", [borrowerId]);
-    const borrowerName = borrowerUserRes.rows[0]?.name || "A community member";
-    await createNotification({
-      userId: item.owner_id,
-      senderId: borrowerId,
-      bookingId: booking.id,
-      referenceId: booking.id,
-      referenceType: "BOOKING",
-      type: "BOOKING_PROPOSAL",
-      title: "Rental Request",
-      body: `${borrowerName} requested to rent "${item.title}".`
-    }).catch((err) => console.warn("Failed to dispatch booking proposal notification:", err));
-    return sendSuccess(res, booking, "Proposal sent to lender! You will be notified when they accept.", 201);
-  } catch (error) {
-    next(error);
-  }
-});
-router4.get("/", authMiddleware, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { role } = req.query;
-    await checkAndAutoCancelExpiredBookings();
-    const myIds = await resolveUserIds(userId, req.user?.email);
-    let sql = `
-      SELECT 
-        b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
-        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
-        b.start_time, 
-        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
-        b.end_time, 
-        b.duration_days,
-        b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
-        b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
-        COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
-        b.status, b.message, 
-        CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
-        CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
-        b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
-        b.payment_status, b.payment_method,
-        COALESCE(i.title, 'Rented Gear') AS item_title, 
-        COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
-        COALESCE(i.category, 'Other') AS item_category,
-        COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
-        COALESCE(i.price_per_day, 0) AS item_rate,
-        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
-        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
-        lender.address_text AS lender_address,
-        borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
-        borrower.phone AS borrower_phone, borrower.email AS borrower_email,
-        lender.name AS lender_name, lender.avatar_url AS lender_avatar,
-        lender.phone AS lender_phone, lender.email AS lender_email,
-        rev.id AS user_review_id,
-        rev.rating AS user_rating,
-        rev.comment AS user_comment,
-        rev.created_at AS user_reviewed_at
-      FROM bookings b
-      LEFT JOIN items i ON b.item_id = i.id
-      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-      LEFT JOIN users lender ON (
-        b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-        i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
-      )
-      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
-      WHERE (
-        b.borrower_id = ANY($1::text[]) 
-        OR b.lender_id = ANY($1::text[]) 
-        OR i.owner_id = ANY($1::text[])
-      )
-    `;
-    const params = [myIds];
-    if (role === "borrower") {
-      sql += ` AND b.borrower_id = ANY($1::text[])`;
-    } else if (role === "lender") {
-      sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
-    }
-    sql += ` ORDER BY b.created_at DESC`;
-    const result = await query(sql, params);
-    const currentMs = Date.now();
-    for (const b of result.rows) {
-      if (b.status === "ACCEPTED" && b.pickup_code) {
-        const sDate = b.start_date;
-        const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
-        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
-        if (currentMs < startMs - 5 * 60 * 1e3) {
-          b.pickup_code = null;
-        }
-      }
-    }
-    const proposalsRes = await query(
-      `SELECT 
-        m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
-        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
-        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
-      FROM messages m
-      LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
-      LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
-      WHERE m.message_type = 'PROPOSAL'
-        AND (
-          m.sender_id = ANY($1::text[]) 
-          OR m.receiver_id = ANY($1::text[])
-          OR (m.booking_id IS NOT NULL AND m.booking_id IN (
-            SELECT b_sub.id FROM bookings b_sub 
-            WHERE b_sub.borrower_id = ANY($1::text[]) 
-               OR b_sub.lender_id = ANY($1::text[])
-          ))
-        )
-        AND (
-          (m.proposal_data->>'status') IS NULL 
-          OR (m.proposal_data->>'status') = 'PENDING'
-        )
-      ORDER BY m.created_at DESC`,
-      [myIds]
-    );
-    const existingBookingIds = /* @__PURE__ */ new Set();
-    for (const b of result.rows) {
-      if (b.id) existingBookingIds.add(String(b.id));
-    }
-    const proposalBookings = [];
-    for (const pRow of proposalsRes.rows) {
-      try {
-        const pData = typeof pRow.proposal_data === "string" ? JSON.parse(pRow.proposal_data) : pRow.proposal_data || {};
-        if (pRow.booking_id && existingBookingIds.has(String(pRow.booking_id))) {
-          continue;
-        }
-        if (pData.booking_id && existingBookingIds.has(String(pData.booking_id))) {
-          continue;
-        }
-        const isOffer = pData.type === "LISTING" || pData.is_lend_offer === true;
-        const lenderId = pData.lender_id || (isOffer ? pRow.sender_user_id : pRow.receiver_user_id) || (isOffer ? pRow.sender_id : pRow.receiver_id);
-        const borrowerId = pData.borrower_id || (isOffer ? pRow.receiver_user_id : pRow.sender_user_id) || (isOffer ? pRow.receiver_id : pRow.sender_id);
-        if (role === "borrower" && !myIds.includes(String(borrowerId))) continue;
-        if (role === "lender" && !myIds.includes(String(lenderId))) continue;
-        const durationDays = Math.max(1, Number(pData.duration_days) || 1);
-        const totalPrice = Number(pData.total_price) || 0;
-        const pricePerDay = Number(pData.price_per_day) || (durationDays > 0 ? Math.round(totalPrice / durationDays) : 0);
-        const startDateStr = pData.start_date ? String(pData.start_date).slice(0, 10) : new Date(pRow.created_at).toISOString().slice(0, 10);
-        let endDateStr = pData.end_date ? String(pData.end_date).slice(0, 10) : "";
-        if (!endDateStr) {
-          const s2 = new Date(startDateStr);
-          if (!isNaN(s2.getTime())) {
-            s2.setDate(s2.getDate() + Math.max(0, durationDays - 1));
-            endDateStr = s2.toISOString().slice(0, 10);
-          } else {
-            endDateStr = startDateStr;
-          }
-        }
-        const isDelivery = pData.delivery_option === "LENDER_DELIVERY" || !!(pData.delivery_fee && Number(pData.delivery_fee) > 0) || !!pData.requires_delivery;
-        const isPickup = pData.collection_option === "LENDER_COLLECT" || !!(pData.collection_fee && Number(pData.collection_fee) > 0) || !!pData.requires_pickup;
-        const borrowerName = isOffer ? pRow.receiver_name || "Borrower" : pRow.sender_name || "Borrower";
-        const borrowerAvatar = isOffer ? pRow.receiver_avatar : pRow.sender_avatar;
-        const borrowerPhone = isOffer ? pRow.receiver_phone : pRow.sender_phone;
-        const borrowerEmail = isOffer ? pRow.receiver_email : pRow.sender_email;
-        const lenderName = isOffer ? pRow.sender_name || "Lender" : pRow.receiver_name || "Lender";
-        const lenderAvatar = isOffer ? pRow.sender_avatar : pRow.receiver_avatar;
-        const lenderPhone = isOffer ? pRow.sender_phone : pRow.receiver_phone;
-        const lenderEmail = isOffer ? pRow.sender_email : pRow.receiver_email;
-        const locality = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_locality : pRow.receiver_locality) || "Local Hub";
-        const address = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_address : pRow.receiver_address) || locality;
-        const itemTitle = pData.item_title || pData.title || "Gear Rental Proposal";
-        const itemImages = Array.isArray(pData.item_images) && pData.item_images.length > 0 ? pData.item_images : pData.image_url ? [pData.image_url] : [];
-        const bookingId = pRow.booking_id || pData.booking_id || `proposal_${pRow.id}`;
-        proposalBookings.push({
-          id: bookingId,
-          item_id: pData.request_id || pData.item_id || pRow.id,
-          borrower_id: borrowerId,
-          lender_id: lenderId,
-          start_date: startDateStr,
-          start_time: pData.start_time || "10:00",
-          end_date: endDateStr,
-          end_time: pData.end_time || "18:00",
-          duration_days: durationDays,
-          pickup_type: isDelivery ? "OWNER_DELIVERY" : "LENDER_LOCATION",
-          pickup_locality: locality,
-          return_type: isPickup ? "OWNER_COLLECT" : "LENDER_LOCATION",
-          return_locality: locality,
-          requires_delivery: isDelivery,
-          delivery_fee: Number(pData.delivery_fee) || 0,
-          requires_pickup: isPickup,
-          pickup_fee: Number(pData.collection_fee) || 0,
-          total_price: totalPrice,
-          status: "PENDING",
-          message: pData.notes || pRow.content || "",
-          pickup_code: null,
-          return_code: null,
-          handed_over_at: null,
-          returned_at: null,
-          completed_at: null,
-          created_at: pRow.created_at,
-          payment_status: "PENDING",
-          payment_method: null,
-          item_title: itemTitle,
-          item_images: itemImages,
-          item_category: pData.category || "Other",
-          item_locality: locality,
-          item_rate: pricePerDay,
-          pickup_address: address,
-          return_address: address,
-          lender_address: isOffer ? pRow.sender_address : pRow.receiver_address,
-          borrower_name: borrowerName,
-          borrower_avatar: borrowerAvatar,
-          borrower_phone: borrowerPhone,
-          borrower_email: borrowerEmail,
-          lender_name: lenderName,
-          lender_avatar: lenderAvatar,
-          lender_phone: lenderPhone,
-          lender_email: lenderEmail,
-          user_review_id: null,
-          user_rating: null,
-          user_comment: null,
-          user_reviewed_at: null,
-          is_proposal: true,
-          proposal_message_id: pRow.id,
-          proposer_id: pRow.sender_id,
-          recipient_id: pRow.receiver_id
-        });
-      } catch (e2) {
-        console.warn("Error parsing proposal message for bookings list:", e2);
-      }
-    }
-    const combined = [...proposalBookings, ...result.rows].sort((a, b) => {
-      const timeA = new Date(a.created_at).getTime();
-      const timeB = new Date(b.created_at).getTime();
-      return timeB - timeA;
-    });
-    return sendSuccess(res, combined);
-  } catch (error) {
-    next(error);
-  }
-});
-router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status } = updateStatusSchema.parse(req.body);
-    const userId = req.user.id;
-    if (id.startsWith("proposal_")) {
-      const msgId = id.replace(/^proposal_/, "");
-      const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [msgId]);
-      if (msgRes.rows.length === 0) {
-        return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
-      }
-      const message2 = msgRes.rows[0];
-      const myIds2 = await resolveUserIds(userId);
-      const isSender = myIds2.includes(String(message2.sender_id));
-      const isReceiver = myIds2.includes(String(message2.receiver_id));
-      const isAdmin2 = req.user.role === "ADMIN";
-      if (!isSender && !isReceiver && !isAdmin2) {
-        return sendError(res, "FORBIDDEN", "Permission denied: You are not a participant in this agreement.", 403);
-      }
-      if (status === "ACCEPTED" && !isReceiver && !isAdmin2) {
-        return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this proposal.", 403);
-      }
-      const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
-      const targetStatus = status === "CANCELLED" ? "CANCELLED" : status === "ACCEPTED" ? "ACCEPTED" : "DECLINED";
-      const updatedProposal = { ...proposal, status: targetStatus };
-      await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), msgId]);
-      return sendSuccess(res, { id, status: targetStatus }, `Proposal ${targetStatus.toLowerCase()}`);
-    }
-    const bookingRes = await query(
-      `SELECT b.*, 
-              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              COALESCE(i.title, 'Rented Gear') AS item_title, 
-              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
-              i.owner_id AS item_owner_id,
-              lender.name AS lender_name, borrower.name AS borrower_name
-       FROM bookings b
-       LEFT JOIN items i ON b.item_id = i.id
-       LEFT JOIN users lender ON (
-         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
-       )
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       WHERE b.id = $1`,
-      [id]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    if (status === "ACCEPTED") {
-      if (booking.status !== "PENDING") {
-        return sendError(res, "BAD_REQUEST", `Cannot accept booking. Current status is ${booking.status}.`, 400);
-      }
-    } else if (status === "REJECTED") {
-      if (booking.status !== "PENDING") {
-        return sendError(res, "BAD_REQUEST", `Cannot reject booking. Current status is ${booking.status}.`, 400);
-      }
-    } else if (status === "CANCELLED") {
-      if (booking.status !== "PENDING" && booking.status !== "ACCEPTED") {
-        return sendError(
-          res,
-          "BAD_REQUEST",
-          `Cannot cancel booking with current status "${booking.status}". Cancellation is only allowed before handover.`,
-          400
-        );
-      }
-    } else {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Direct status updates to "${status}" are not allowed. Handover and completion require verified security codes and payment.`,
-        400
-      );
-    }
-    const myIds = await resolveUserIds(userId);
-    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
-    const isBorrower = myIds.includes(String(booking.borrower_id));
-    const isAdmin = req.user.role === "ADMIN";
-    if (!isLender && !isBorrower && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Permission denied", 403);
-    }
-    if (status === "ACCEPTED" || status === "REJECTED") {
-      if (!isLender && !isAdmin) {
-        return sendError(res, "FORBIDDEN", "Only the gear owner can accept or reject proposals", 403);
-      }
-    }
-    if (status === "CANCELLED") {
-      if (booking.status === "HANDED_OVER" || booking.status === "COMPLETED") {
-        return sendError(
-          res,
-          "BAD_REQUEST",
-          "Cancellation is not allowed after pickup handover verification. The rental is actively in use from Stage 3 onwards.",
-          400
-        );
-      }
-    }
-    const sDate = booking.start_date_str || booking.start_date;
-    const eDate = booking.end_date_str || booking.end_date;
-    let pickupCode = booking.pickup_code;
-    let updateRes;
-    let conflictingPendingList = [];
-    if (status === "ACCEPTED") {
-      const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-      const endTimestamp = parseToUtcTimestamp(
-        eDate,
-        booking.end_time || "18:00",
-        tzOffset
-      );
-      if (endTimestamp < Date.now()) {
-        return sendError(
-          res,
-          "BAD_REQUEST",
-          "This booking request cannot be accepted because its scheduled rental time has already passed. Please ask the renter to send a request for upcoming dates.",
-          400
-        );
-      }
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [booking.item_id]);
-        const conflictRes = await client.query(
-          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-           FROM bookings
-           WHERE item_id = $1
-             AND id != $2
-             AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND (
-               start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-             )
-           LIMIT 1`,
-          [booking.item_id, id, sDate, eDate]
-        );
-        if (conflictRes.rows.length > 0) {
-          await client.query("ROLLBACK");
-          const c = conflictRes.rows[0];
-          return sendError(
-            res,
-            "CONFLICT",
-            `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
-            409
-          );
-        }
-        const conflictingPendingRes = await client.query(
-          `SELECT id, borrower_id 
-           FROM bookings
-           WHERE item_id = $1
-             AND id != $2
-             AND status = 'PENDING'
-             AND (
-               start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-             )`,
-          [booking.item_id, id, sDate, eDate]
-        );
-        conflictingPendingList = conflictingPendingRes.rows;
-        for (const conflicting of conflictingPendingList) {
-          await client.query(
-            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [conflicting.id]
-          );
-          await client.query(
-            `UPDATE messages 
-             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
-             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-            [conflicting.id]
-          ).catch(() => {
-          });
-        }
-        if (!pickupCode) {
-          pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
-        }
-        updateRes = await client.query(
-          `UPDATE bookings 
-           SET status = 'ACCEPTED', 
-               pickup_code = COALESCE(pickup_code, $1),
-               return_code = NULL,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2
-           RETURNING *`,
-          [pickupCode, id]
-        );
-        await client.query("COMMIT");
-      } catch (txErr) {
-        await client.query("ROLLBACK");
-        throw txErr;
-      } finally {
-        client.release();
-      }
-      for (const conflicting of conflictingPendingList) {
-        createNotification({
-          userId: conflicting.borrower_id,
-          bookingId: conflicting.id,
-          referenceId: conflicting.id,
-          referenceType: "BOOKING",
-          type: "BOOKING_CANCELLED",
-          title: "Request Auto-Cancelled",
-          body: `Your rental request for "${booking.item_title}" was cancelled because the owner accepted another booking for those dates.`
-        }).catch(() => {
-        });
-      }
-    } else {
-      updateRes = await query(
-        `UPDATE bookings 
-         SET status = $1, 
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`,
-        [status, id]
-      );
-    }
-    if (status === "ACCEPTED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await query(
-        `UPDATE messages 
-         SET proposal_data = jsonb_set(
-           COALESCE(proposal_data, '{}'::jsonb),
-           '{status}',
-           '"ACCEPTED"'::jsonb
-         )
-         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-        [id]
-      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
-      await query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`,
-        [id, booking.lender_id, booking.borrower_id]
-      );
-      await createNotification({
-        userId: booking.borrower_id,
-        senderId: booking.lender_id,
-        bookingId: id,
-        referenceId: id,
-        referenceType: "BOOKING",
-        type: "BOOKING_ACCEPTED",
-        title: "Rental Accepted",
-        body: `${booking.lender_name} accepted your request for "${booking.item_title}".`
-      });
-    } else if (status === "REJECTED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await query(
-        `UPDATE messages 
-         SET proposal_data = jsonb_set(
-           COALESCE(proposal_data, '{}'::jsonb),
-           '{status}',
-           '"DECLINED"'::jsonb
-         )
-         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-        [id]
-      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
-      await createNotification({
-        userId: booking.borrower_id,
-        senderId: booking.lender_id,
-        bookingId: id,
-        referenceId: id,
-        referenceType: "BOOKING",
-        type: "BOOKING_REJECTED",
-        title: "Rental Request Declined",
-        body: `${booking.lender_name} declined your request for "${booking.item_title}".`
-      });
-    } else if (status === "CANCELLED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await query(
-        `UPDATE messages 
-         SET proposal_data = jsonb_set(
-           COALESCE(proposal_data, '{}'::jsonb),
-           '{status}',
-           '"CANCELLED"'::jsonb
-         )
-         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-        [id]
-      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
-      const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
-      const actorName = isBorrower ? booking.borrower_name || "Borrower" : booking.lender_name || "Owner";
-      await createNotification({
-        userId: otherPartyId,
-        senderId: userId,
-        bookingId: id,
-        referenceId: id,
-        referenceType: "BOOKING",
-        type: "BOOKING_CANCELLED",
-        title: "Rental Cancelled",
-        body: `${actorName} cancelled the rental for "${booking.item_title}".`
-      });
-    }
-    const safeBooking = { ...updateRes.rows[0] };
-    if (safeBooking.borrower_id !== userId) {
-      delete safeBooking.pickup_code;
-    } else if (safeBooking.status === "ACCEPTED" && safeBooking.pickup_code) {
-      const sDate2 = safeBooking.start_date_str || safeBooking.start_date;
-      const sTime = safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== "00:00" ? safeBooking.start_time.slice(0, 5) : "10:00";
-      const startMs = parseToUtcTimestamp(String(sDate2), sTime, -330);
-      if (Date.now() < startMs - 5 * 60 * 1e3) {
-        delete safeBooking.pickup_code;
-      }
-    }
-    if (safeBooking.lender_id !== userId) {
-      delete safeBooking.return_code;
-    }
-    return sendSuccess(res, safeBooking, `Proposal updated to ${status}`);
-  } catch (error) {
-    next(error);
-  }
-});
-router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { code } = verifyCodeSchema.parse(req.body);
-    const userId = req.user.id;
-    const bookingRes = await query(
-      `SELECT b.*, 
-              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              COALESCE(i.title, 'Rented Gear') AS item_title, 
-              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
-              i.owner_id AS item_owner_id,
-              lender.name AS lender_name, borrower.name AS borrower_name
-       FROM bookings b
-       LEFT JOIN items i ON b.item_id = i.id
-       LEFT JOIN users lender ON (
-         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
-       )
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       WHERE b.id = $1`,
-      [id]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    const myIds = await resolveUserIds(userId);
-    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
-    const isBorrower = myIds.includes(String(booking.borrower_id));
-    const isAdmin = req.user.role === "ADMIN";
-    if (!isLender && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Only the gear owner/lender can enter and verify the renter\u2019s handover code to confirm pickup.", 403);
-    }
-    if (booking.status !== "ACCEPTED") {
-      return sendError(res, "BAD_REQUEST", `Cannot verify handover for booking with status ${booking.status}`, 400);
-    }
-    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-    const startTimestamp = parseToUtcTimestamp(
-      booking.start_date_str || booking.start_date,
-      booking.start_time || "10:00",
-      tzOffset
-    );
-    const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
-    if (Date.now() > oneHourAfterStart) {
-      await query(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        "The 1-hour pickup handover window has expired. This rental request has been automatically cancelled.",
-        400
-      );
-    }
-    if (Date.now() < startTimestamp - 2 * 60 * 1e3) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Pickup handover code is not active yet. It will unlock at the scheduled pickup time (${booking.start_date_str || booking.start_date} at ${booking.start_time || "10:00"}).`,
-        400
-      );
-    }
-    const lockoutKey = `pickup_${id}_${userId}`;
-    const lockoutStatus = checkCodeLockout(lockoutKey);
-    if (lockoutStatus.locked) {
-      return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
-    }
-    if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
-      const attempts = recordFailedCodeAttempt(lockoutKey);
-      const remaining = Math.max(0, 5 - attempts);
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Incorrect 6-digit handover code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : "Too many failed attempts. Locked for 15 minutes."}`,
-        400
-      );
-    }
-    resetCodeAttempts(lockoutKey);
-    const returnCode = import_crypto.default.randomInt(1e5, 1e6).toString();
-    const client = await pool.connect();
-    let updateRes;
-    try {
-      await client.query("BEGIN");
-      updateRes = await client.query(
-        `UPDATE bookings 
-         SET status = 'HANDED_OVER', 
-             handed_over_at = CURRENT_TIMESTAMP, 
-             return_code = $1, 
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`,
-        [returnCode, id]
-      );
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await client.query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
-        [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
-      );
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    const sDate = booking.start_date_str || booking.start_date;
-    const eDate = booking.end_date_str || booking.end_date;
-    await createNotification({
-      userId: booking.borrower_id,
-      senderId: booking.lender_id,
-      bookingId: id,
-      referenceId: id,
-      referenceType: "BOOKING",
-      type: "BOOKING_RECEIVED",
-      title: "Handover Completed",
-      body: `${booking.lender_name || "Owner"} handed over "${booking.item_title}" to you.`
-    });
-    await createNotification({
-      userId: booking.lender_id,
-      senderId: booking.borrower_id,
-      bookingId: id,
-      referenceId: id,
-      referenceType: "BOOKING",
-      type: "BOOKING_HANDED_OVER",
-      title: "Handover Completed",
-      body: `${booking.borrower_name || "Borrower"} received "${booking.item_title}".`
-    });
-    const updatedRow = { ...updateRes.rows[0] };
-    if (!isLender && !isAdmin) {
-      updatedRow.return_code = null;
-    }
-    return sendSuccess(res, updatedRow, "Product accepted & handed over successfully! Rental is now in use.");
-  } catch (error) {
-    next(error);
-  }
-});
-router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { code } = verifyCodeSchema.parse(req.body);
-    const userId = req.user.id;
-    const bookingRes = await query(
-      `SELECT b.*, 
-              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
-              COALESCE(i.title, 'Rented Gear') AS item_title, 
-              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
-              i.owner_id AS item_owner_id,
-              lender.name AS lender_name, borrower.name AS borrower_name
-       FROM bookings b
-       LEFT JOIN items i ON b.item_id = i.id
-       LEFT JOIN users lender ON (
-         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
-       )
-       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
-       WHERE b.id = $1`,
-      [id]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    const myIds = await resolveUserIds(userId);
-    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
-    const isBorrower = myIds.includes(String(booking.borrower_id));
-    const isAdmin = req.user.role === "ADMIN";
-    if (!isBorrower && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Only the renter can enter and verify the owner\u2019s return code to complete the return.", 403);
-    }
-    if (booking.status !== "HANDED_OVER") {
-      return sendError(res, "BAD_REQUEST", `Cannot verify return for booking with status ${booking.status}`, 400);
-    }
-    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-    const returnTimestamp = parseToUtcTimestamp(
-      booking.end_date_str || booking.start_date_str,
-      booking.end_time || "18:00",
-      tzOffset
-    );
-    if (Date.now() < returnTimestamp - 2 * 60 * 1e3) {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Return handover code is not active yet. It will unlock at the scheduled return time (${booking.end_date_str || booking.start_date_str} at ${booking.end_time || "18:00"}).`,
-        400
-      );
-    }
-    const lockoutKey = `return_${id}_${userId}`;
-    const lockoutStatus = checkCodeLockout(lockoutKey);
-    if (lockoutStatus.locked) {
-      return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Return code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
-    }
-    if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
-      const attempts = recordFailedCodeAttempt(lockoutKey);
-      const remaining = Math.max(0, 5 - attempts);
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Incorrect 6-digit return code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : "Too many failed attempts. Locked for 15 minutes."}`,
-        400
-      );
-    }
-    resetCodeAttempts(lockoutKey);
-    const isFree = Number(booking.total_price) === 0;
-    const client = await pool.connect();
-    let updateRes;
-    try {
-      await client.query("BEGIN");
-      updateRes = await client.query(
-        `UPDATE bookings 
-         SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
-             returned_at = CURRENT_TIMESTAMP,
-             completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
-             payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1
-         RETURNING *`,
-        [id, isFree]
-      );
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await client.query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-        [
-          id,
-          userId,
-          isBorrower ? booking.lender_id : booking.borrower_id,
-          isFree ? "Product returned to owner. The rental process is completed. Please leave reviews for each other." : "Product returned to owner. Final payment confirmation is now active."
-        ]
-      );
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    const safeResult = { ...updateRes.rows[0] };
-    delete safeResult.pickup_code;
-    delete safeResult.return_code;
-    return sendSuccess(
-      res,
-      safeResult,
-      isFree ? "Product returned successfully! Whole process completed." : "Product return verified! Please proceed to payment settlement."
-    );
-  } catch (error) {
-    next(error);
-  }
-});
-router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { payment_method = "UPI" } = req.body;
-    const userId = req.user.id;
-    const bookingRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    if (!booking.returned_at && booking.status !== "HANDED_OVER" && booking.status !== "COMPLETED") {
-      return sendError(res, "BAD_REQUEST", "Payment can only be submitted once the product has been handed over or returned.", 400);
-    }
-    const myIds = await resolveUserIds(userId);
-    if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "Only the renter can submit payment", 403);
-    }
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET payment_status = 'SUBMITTED',
-           payment_method = $1,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [payment_method, id]
-    );
-    await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.', 'SYSTEM')`,
-      [id, userId, booking.lender_id, payment_method]
-    );
-    return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
-  } catch (error) {
-    next(error);
-  }
-});
-router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const bookingRes = await query(
-      `SELECT b.*, COALESCE(b.lender_id, i.owner_id) AS lender_id, b.item_id, i.title AS item_title
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       WHERE b.id = $1`,
-      [id]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    if (!booking.returned_at) {
-      return sendError(res, "BAD_REQUEST", "Item must be verified as returned via 6-digit return code before final payment and completion can be confirmed.", 400);
-    }
-    if (Number(booking.total_price || 0) > 0 && booking.payment_status !== "SUBMITTED") {
-      return sendError(res, "BAD_REQUEST", "Renter must mark payment as sent before the owner can verify and confirm payment.", 400);
-    }
-    const myIds = await resolveUserIds(userId);
-    if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== "ADMIN") {
-      return sendError(res, "FORBIDDEN", "Only the owner can confirm receiving payment", 403);
-    }
-    const client = await pool.connect();
-    let updateRes;
-    try {
-      await client.query("BEGIN");
-      updateRes = await client.query(
-        `UPDATE bookings 
-         SET status = 'COMPLETED',
-             completed_at = CURRENT_TIMESTAMP,
-             payment_status = 'CONFIRMED',
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1
-         RETURNING *`,
-        [id]
-      );
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
-      await client.query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
-        [id, userId, booking.borrower_id]
-      );
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    await createNotification({
-      userId: booking.borrower_id,
-      senderId: booking.lender_id,
-      bookingId: id,
-      referenceId: id,
-      referenceType: "BOOKING",
-      type: "BOOKING_COMPLETED",
-      title: "Rental Completed",
-      body: `${booking.lender_name || "Owner"} confirmed the return of "${booking.item_title}".`
-    });
-    return sendSuccess(res, updateRes.rows[0], "Product returned successfully! You can now leave a review.");
-  } catch (error) {
-    next(error);
-  }
-});
-router4.post("/:id/review", authMiddleware, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
-    const userId = req.user.id;
-    const bookingRes = await query(
-      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day
-       FROM bookings b
-       LEFT JOIN items i ON b.item_id = i.id
-       WHERE b.id = $1`,
-      [id]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const booking = bookingRes.rows[0];
-    const [currentUserRes, borrowerRes, lenderRes] = await Promise.all([
-      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [userId]),
-      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [booking.borrower_id]),
-      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [booking.lender_id])
-    ]);
-    const currentUser = currentUserRes.rows[0];
-    const borrowerUser = borrowerRes.rows[0];
-    const lenderUser = lenderRes.rows[0];
-    const currentId = currentUser?.id || userId;
-    const currentFbUid = currentUser?.firebase_uid;
-    const isLender = Boolean(
-      lenderUser && (lenderUser.id === currentId || currentFbUid && lenderUser.firebase_uid === currentFbUid) || booking.lender_id === userId || currentFbUid && booking.lender_id === currentFbUid
-    );
-    const isBorrower = Boolean(
-      borrowerUser && (borrowerUser.id === currentId || currentFbUid && borrowerUser.firebase_uid === currentFbUid) || booking.borrower_id === userId || currentFbUid && booking.borrower_id === currentFbUid
-    );
-    if (!isLender && !isBorrower) {
-      return sendError(res, "FORBIDDEN", "Only verified participants of this rental can leave reviews", 403);
-    }
-    const targetUser = isBorrower ? lenderUser : borrowerUser;
-    const revieweeId = targetUser?.id || (isBorrower ? booking.lender_id : booking.borrower_id);
-    const reviewerId = currentId;
-    if (!revieweeId || revieweeId === reviewerId) {
-      return sendError(res, "BAD_REQUEST", "Self-reviews are strictly forbidden", 400);
-    }
-    if (booking.status !== "COMPLETED") {
-      return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after the product is returned and completed", 400);
-    }
-    if (Number(booking.total_price) > 0 && booking.payment_status !== "CONFIRMED") {
-      return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after rental payment has been confirmed by the owner", 400);
-    }
-    const completedAt = new Date(booking.completed_at || booking.updated_at);
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1e3;
-    if (Date.now() - completedAt.getTime() > threeDaysMs) {
-      return sendError(res, "BAD_REQUEST", "Review period has expired. Reviews are available for at most 3 days after completion.", 400);
-    }
-    let resolvedReviewType;
-    if (isBorrower) {
-      const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
-      resolvedReviewType = isFree ? "COMMUNITY_LENDER" : "OWNER_RENTAL";
-    } else {
-      resolvedReviewType = "RENTER";
-    }
-    const client = await pool.connect();
-    let reviewResult;
-    try {
-      await client.query("BEGIN");
-      reviewResult = await client.query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (booking_id, reviewer_id)
-         DO UPDATE SET 
-           rating = EXCLUDED.rating, 
-           comment = EXCLUDED.comment, 
-           review_type = EXCLUDED.review_type, 
-           created_at = CURRENT_TIMESTAMP
-         RETURNING *`,
-        [id, reviewerId, revieweeId, rating, comment || "", resolvedReviewType]
-      );
-      await client.query(`
-        WITH stats AS (
-          SELECT 
-            ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 0.00), 2) AS owner_rating,
-            COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
-            ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 0.00), 2) AS renter_rating,
-            COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
-            ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 0.00), 2) AS community_lender_rating,
-            COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
-            ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
-            COUNT(*)::int AS total_reviews
-          FROM reviews
-          WHERE reviewee_id IN (
-            SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
-            UNION
-            SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
-          )
-        )
-        UPDATE users
-        SET 
-          owner_rating = stats.owner_rating,
-          owner_reviews_count = stats.owner_count,
-          renter_rating = stats.renter_rating,
-          renter_reviews_count = stats.renter_count,
-          community_lender_rating = stats.community_lender_rating,
-          community_lender_reviews_count = stats.community_lender_count,
-          trust_rating = stats.trust_rating,
-          rating = stats.trust_rating,
-          trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
-        FROM stats
-        WHERE users.id = $1 OR users.firebase_uid = $1
-      `, [revieweeId]);
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [reviewerId]);
-    const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || "Your rental partner";
-    await createNotification({
-      userId: revieweeId,
-      senderId: reviewerId,
-      bookingId: id,
-      referenceId: id,
-      referenceType: "BOOKING",
-      type: "BOOKING_REVIEW",
-      title: "New Review & Rating Received",
-      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || "rental gear"}".`
-    }).catch(() => {
-    });
-    return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
-  } catch (error) {
-    next(error);
-  }
-});
-var bookings_routes_default = router4;
-
-// src/modules/analytics/analytics.routes.ts
-var import_express5 = __toESM(require_express2());
-var router5 = (0, import_express5.Router)();
-router5.get("/overview", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const pulseSql = `
-      SELECT 
-        (SELECT COUNT(*) FROM users)::int AS total_users,
-        (SELECT COUNT(DISTINCT owner_id) FROM items)::int AS active_lenders,
-        (SELECT COUNT(DISTINCT borrower_id) FROM bookings)::int AS active_borrowers,
-        (SELECT COUNT(*) FROM items WHERE status = 'AVAILABLE')::int AS available_gear,
-        (SELECT COUNT(*) FROM items WHERE status = 'RENTED')::int AS currently_rented_gear,
-        (SELECT COUNT(*) FROM bookings)::int AS total_bookings,
-        (SELECT COUNT(*) FROM bookings WHERE status = 'COMPLETED')::int AS completed_bookings,
-        (SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE status IN ('ACCEPTED', 'COMPLETED'))::numeric AS total_community_volume,
-        (SELECT COUNT(*) FROM requests WHERE status = 'OPEN')::int AS open_wishes,
-        (SELECT COUNT(*) FROM requests WHERE status = 'FULFILLED')::int AS fulfilled_wishes
-    `;
-    const pulseRes = await query(pulseSql);
-    const pulse = pulseRes.rows[0];
-    const categoryRes = await query(`
-      SELECT 
-        category, 
-        COUNT(*)::int AS count, 
-        ROUND(AVG(price_per_day), 0)::numeric AS avg_rate
-      FROM items
-      GROUP BY category
-      ORDER BY count DESC
-    `);
-    const topLendersRes = await query(`
-      SELECT 
-        u.id, u.name, u.avatar_url, u.locality, u.trust_score,
-        COUNT(i.id)::int AS gear_count
-      FROM users u
-      JOIN items i ON u.id = i.owner_id
-      GROUP BY u.id
-      ORDER BY gear_count DESC
-      LIMIT 5
-    `);
-    const localityRes = await query(`
-      SELECT 
-        COALESCE(NULLIF(TRIM(locality), ''), 'Nearby') AS locality,
-        COUNT(*)::int AS user_count
-      FROM users
-      GROUP BY 1
-      ORDER BY user_count DESC
-      LIMIT 5
-    `);
-    return sendSuccess(res, {
-      pulse,
-      categories: categoryRes.rows,
-      topLenders: topLendersRes.rows,
-      localities: localityRes.rows
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-router5.get("/categories", async (req, res, next) => {
-  try {
-    const result = await query(`
-      SELECT 
-        category, 
-        COUNT(*)::int AS item_count, 
-        ROUND(AVG(price_per_day), 0)::numeric AS avg_rate,
-        (SELECT COUNT(*) FROM requests r WHERE r.category = i.category)::int AS demand_count
-      FROM items i
-      GROUP BY category
-      ORDER BY item_count DESC
-    `);
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-var analytics_routes_default = router5;
-
-// src/modules/users/users.routes.ts
-var import_express6 = __toESM(require_express2());
-var router6 = (0, import_express6.Router)();
-var RESERVED_USERNAMES = /* @__PURE__ */ new Set([
-  "admin",
-  "api",
-  "messages",
-  "chat",
-  "explore",
-  "marketplace",
-  "requests",
-  "bookings",
-  "community",
-  "hustle",
-  "profile",
-  "settings",
-  "help",
-  "login",
-  "signup",
-  "auth",
-  "terms",
-  "privacy",
-  "about",
-  "contact",
-  "user",
-  "u",
-  "root",
-  "bot",
-  "support",
-  "null",
-  "undefined",
-  "item",
-  "items",
-  "request",
-  "booking",
-  "notifications"
-]);
-var updateProfileSchema = external_exports.object({
-  name: external_exports.string().min(2).optional(),
-  username: external_exports.string().min(3).max(30).optional(),
-  phone: external_exports.string().optional(),
-  locality: external_exports.string().min(2).optional(),
-  avatar_url: external_exports.string().url().or(external_exports.literal("")).optional(),
-  banner_url: external_exports.string().url().or(external_exports.literal("")).optional(),
-  bio: external_exports.string().max(300).optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  latitude: external_exports.number().optional(),
-  longitude: external_exports.number().optional(),
-  notify_nearby_requests_5km: external_exports.boolean().optional(),
-  saved_locations: external_exports.array(external_exports.any()).optional()
-});
-router6.get("/check-username/:username", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const rawUsername = (req.params.username || "").trim().toLowerCase();
-    const currentUserId = req.user?.id;
-    if (!rawUsername || rawUsername.length < 3) {
-      return sendSuccess(res, { available: false, message: "Username must be at least 3 characters" });
-    }
-    if (rawUsername.length > 30) {
-      return sendSuccess(res, { available: false, message: "Username cannot exceed 30 characters" });
-    }
-    if (!/^[a-z0-9_]+$/.test(rawUsername)) {
-      return sendSuccess(res, { available: false, message: "Only lowercase letters, numbers, and underscores allowed" });
-    }
-    if (RESERVED_USERNAMES.has(rawUsername)) {
-      return sendSuccess(res, { available: false, message: "This username is reserved" });
-    }
-    const result = await query(
-      `SELECT id FROM users WHERE LOWER(username) = LOWER($1) ${currentUserId ? "AND id != $2" : ""} LIMIT 1`,
-      currentUserId ? [rawUsername, currentUserId] : [rawUsername]
-    );
-    if (result.rows.length > 0) {
-      return sendSuccess(res, { available: false, message: "Username is already taken" });
-    }
-    return sendSuccess(res, { available: true, message: "Username is available" });
-  } catch (error) {
-    next(error);
-  }
-});
-router6.get("/leaderboard", async (req, res, next) => {
-  try {
-    const realUsersRes = await query(`
-      SELECT 
-        u.id, 
-        u.username,
-        u.name, 
-        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
-        COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
-        COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
-        COALESCE(u.owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
-        COALESCE(u.renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
-        COALESCE(u.community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
-        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
-        COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
-        COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
-        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
-        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
-        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
-        (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
-      FROM users u
-      ORDER BY u.created_at ASC
-    `);
-    const formattedRealUsers = realUsersRes.rows.map((u) => {
-      const name = u.name || "Community Member";
-      const username = u.username || "";
-      const avatar = u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
-      const reviews_count = parseInt(u.reviews_count, 10) || 0;
-      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
-      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
-      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
-      const trust_rating = reviews_count > 0 ? parseFloat(u.trust_rating) || parseFloat(u.rating) || 0 : 0;
-      const owner_rating = owner_reviews_count > 0 ? parseFloat(u.owner_rating) || 0 : 0;
-      const renter_rating = renter_reviews_count > 0 ? parseFloat(u.renter_rating) || 0 : 0;
-      const community_lender_rating = community_lender_reviews_count > 0 ? parseFloat(u.community_lender_rating) || 0 : 0;
-      const rating = trust_rating;
-      const trust_score = parseInt(u.trust_score, 10) || 90;
-      const items_count = parseInt(u.items_count, 10) || 0;
-      const free_items_count = parseInt(u.free_items_count, 10) || 0;
-      const lent_count = parseInt(u.lent_count, 10) || 0;
-      const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
-      const requests_count = parseInt(u.requests_count, 10) || 0;
-      const highlight_review = reviews_count > 0 ? u.latest_review || "" : "";
-      return {
-        id: u.id,
-        username,
-        name,
-        locality: u.locality,
-        avatar_url: avatar,
-        bio: u.bio,
-        rating,
-        trust_rating,
-        owner_rating,
-        renter_rating,
-        community_lender_rating,
-        owner_reviews_count,
-        renter_reviews_count,
-        community_lender_reviews_count,
-        trust_score,
-        reviews_count,
-        highlight_review,
-        items_count,
-        free_items_count,
-        lent_count,
-        borrowed_count,
-        requests_count
-      };
-    });
-    const combinedPool = [...formattedRealUsers];
-    const topRatedSorted = combinedPool.filter((m2) => m2.reviews_count > 0).sort((a, b) => {
-      const bTr = b.trust_rating ?? b.rating ?? 0;
-      const aTr = a.trust_rating ?? a.rating ?? 0;
-      if (bTr !== aTr) return bTr - aTr;
-      if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
-      return b.reviews_count - a.reviews_count;
-    }).slice(0, 10).map((member, index) => ({
-      ...member,
-      rank: index + 1,
-      category_type: "top_rated",
-      metric_label: "Overall Trust Rating",
-      metric_value: `${(member.trust_rating || member.rating || 0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
-      badges: index === 0 ? ["#1 Overall Trust", "Verified Reputation", "Top Community Record"] : index < 3 ? ["Top Trust Neighbor", "Verified Trust", "High Feedback"] : ["Top Rated", "Verified Neighbor"]
-    }));
-    const topLendersSorted = combinedPool.filter((m2) => m2.owner_reviews_count > 0).sort((a, b) => {
-      const bOr = b.owner_rating ?? 0;
-      const aOr = a.owner_rating ?? 0;
-      if (bOr !== aOr) return bOr - aOr;
-      const scoreB = b.lent_count * 3 + b.items_count * 2;
-      const scoreA = a.lent_count * 3 + a.items_count * 2;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-      return b.owner_reviews_count - a.owner_reviews_count;
-    }).slice(0, 10).map((member, index) => ({
-      ...member,
-      rank: index + 1,
-      category_type: "top_lenders",
-      metric_label: "Gear Owner Rating",
-      metric_value: `${(member.owner_rating || 0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
-      badges: index === 0 ? ["#1 Gear Owner", "Top-Tier Equipment", "Prompt Handover"] : index < 3 ? ["Super Gear Owner", "Verified Gear Care", "Active Gear Closet"] : ["Top Gear Owner", "Gear Sharer"]
-    }));
-    const topBorrowersSorted = combinedPool.filter((m2) => m2.renter_reviews_count > 0).sort((a, b) => {
-      const bRr = b.renter_rating ?? 0;
-      const aRr = a.renter_rating ?? 0;
-      if (bRr !== aRr) return bRr - aRr;
-      const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
-      const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-      return b.renter_reviews_count - a.renter_reviews_count;
-    }).slice(0, 10).map((member, index) => ({
-      ...member,
-      rank: index + 1,
-      category_type: "top_borrowers",
-      metric_label: "Renter Rating",
-      metric_value: `${(member.renter_rating || 0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
-      badges: index === 0 ? ["#1 Trusted Renter", "100% Punctual", "Reliable Borrower"] : index < 3 ? ["5-Star Renter", "On-Time Return", "Trusted Neighbor"] : ["Verified Renter", "Verified Peer"]
-    }));
-    const topSharersSorted = combinedPool.filter((m2) => m2.community_lender_reviews_count > 0).sort((a, b) => {
-      const bClr = b.community_lender_rating ?? 0;
-      const aClr = a.community_lender_rating ?? 0;
-      if (bClr !== aClr) return bClr - aClr;
-      const scoreB = b.free_items_count * 3 + b.requests_count;
-      const scoreA = a.free_items_count * 3 + a.requests_count;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-      return b.community_lender_reviews_count - a.community_lender_reviews_count;
-    }).slice(0, 10).map((member, index) => ({
-      ...member,
-      rank: index + 1,
-      category_type: "top_sharers",
-      metric_label: "Free Lender Rating",
-      metric_value: `${(member.community_lender_rating || 0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
-      badges: index === 0 ? ["#1 Community Lender", "Gift Economy Contributor", "Generous Contributor"] : index < 3 ? ["Free Gear Lender", "Community Champion", "Neighbor Favorite"] : ["Community Lender", "Generous Neighbor"]
-    }));
-    return sendSuccess(res, {
-      top_rated: topRatedSorted,
-      top_lenders: topLendersSorted,
-      top_borrowers: topBorrowersSorted,
-      top_sharers: topSharersSorted,
-      total_community_members: combinedPool.length
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-router6.get("/search", async (req, res, next) => {
-  try {
-    const q = (req.query.q || req.query.query || req.query.search || "").trim();
-    if (!q) {
-      return sendSuccess(res, []);
-    }
-    const searchPattern = `%${q}%`;
-    const realUsersRes = await query(`
-      SELECT 
-        u.id, 
-        u.username,
-        u.name, 
-        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
-        COALESCE(u.avatar_url, '') AS avatar_url, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
-        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
-        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
-        (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
-      FROM users u
-      WHERE u.name ILIKE $1 OR u.username ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1
-      LIMIT 15
-    `, [searchPattern]);
-    const formattedRealUsers = realUsersRes.rows.map((u) => {
-      const revsCount = parseInt(u.reviews_count, 10) || 0;
-      return {
-        id: u.id,
-        username: u.username || "",
-        name: u.name || "Community Member",
-        locality: u.locality,
-        avatar_url: u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || "user")}`,
-        bio: u.bio,
-        rating: revsCount > 0 ? parseFloat(u.rating) || 0 : 0,
-        trust_score: parseInt(u.trust_score, 10) || 90,
-        items_count: parseInt(u.items_count, 10) || 0,
-        requests_count: parseInt(u.requests_count, 10) || 0,
-        reviews_count: revsCount
-      };
-    });
-    return sendSuccess(res, formattedRealUsers);
-  } catch (error) {
-    next(error);
-  }
-});
-router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const id = (req.params.id || "").replace(/^@/, "");
-    const currentUserId = req.user?.id;
-    let userRes = await query(
-      `SELECT 
-        id, 
-        username,
-        name, 
-        locality, 
-        address_text,
-        pincode,
-        avatar_url, 
-        banner_url, 
-        bio, 
-        COALESCE(trust_score, 90)::int AS trust_score, 
-        COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
-        COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
-        COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
-        COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
-        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
-        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
-        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
-        COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
-        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
-        created_at
-       FROM users 
-       WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1)
-       LIMIT 1`,
-      [id]
-    );
-    if (userRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    const user = userRes.rows[0];
-    const realUserId = user.id;
-    const targetUserIds = [user.id, user.firebase_uid].filter(Boolean);
-    let isFollowing = false;
-    let isBlocked = false;
-    let isBlockedBy = false;
-    if (currentUserId && currentUserId !== realUserId) {
-      const [fRes, bRes, bbRes] = await Promise.all([
-        query(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, realUserId]),
-        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, realUserId]),
-        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [realUserId, currentUserId])
-      ]);
-      isFollowing = fRes.rows.length > 0;
-      isBlocked = bRes.rows.length > 0;
-      isBlockedBy = bbRes.rows.length > 0;
-    }
-    const countsRes = await query(`
-      SELECT 
-        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
-        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
-    `, [realUserId]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
-    const followersCount = countsRes.rows[0]?.followers_count || 0;
-    const followingCount = countsRes.rows[0]?.following_count || 0;
-    let userItems = [];
-    let userRequests = [];
-    if (!isBlocked && !isBlockedBy) {
-      const itemsRes = await query(
-        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
-         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
-         ORDER BY created_at DESC`,
-        [targetUserIds]
-      );
-      userItems = itemsRes.rows;
-      const requestsRes = await query(
-        `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-         FROM requests WHERE seeker_id = ANY($1::text[])
-         ORDER BY created_at DESC`,
-        [targetUserIds]
-      );
-      userRequests = requestsRes.rows;
-    }
-    const reviewsRes = await query(
-      `SELECT 
-        r.id, 
-        r.rating, 
-        r.comment, 
-        COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
-        r.created_at, 
-        COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
-        COALESCE(u.avatar_url, '') AS reviewer_avatar,
-        COALESCE(u.locality, '') AS reviewer_locality
-       FROM reviews r
-       LEFT JOIN users u ON (r.reviewer_id = u.id::text OR r.reviewer_id = u.firebase_uid)
-       WHERE r.reviewee_id = ANY($1::text[])
-       ORDER BY r.created_at DESC`,
-      [targetUserIds]
-    );
-    const reviewsList = reviewsRes.rows;
-    const statsRes = await query(
-      `SELECT 
-        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
-        (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
-        (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
-        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`,
-      [targetUserIds]
-    );
-    const stats = statsRes.rows[0];
-    const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
-    const ownerRevCount = parseInt(user.owner_reviews_count, 10) || 0;
-    const renterRevCount = parseInt(user.renter_reviews_count, 10) || 0;
-    const commLenderRevCount = parseInt(user.community_lender_reviews_count, 10) || 0;
-    const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || 0 : 0;
-    const ownerRating = ownerRevCount > 0 ? parseFloat(user.owner_rating) || 0 : 0;
-    const renterRating = renterRevCount > 0 ? parseFloat(user.renter_rating) || 0 : 0;
-    const communityLenderRating = commLenderRevCount > 0 ? parseFloat(user.community_lender_rating) || 0 : 0;
-    const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
-    return sendSuccess(res, {
-      id: user.id,
-      username: user.username || "",
-      name: user.name || "Community Member",
-      locality: user.locality || "",
-      address_text: isSelf ? user.address_text || "" : "",
-      pincode: isSelf ? user.pincode || "" : "",
-      avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
-      banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
-      bio: user.bio || "Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.",
-      trust_score: parseInt(user.trust_score, 10) || 90,
-      rating: trustRating,
-      trust_rating: trustRating,
-      owner_rating: ownerRating,
-      renter_rating: renterRating,
-      community_lender_rating: communityLenderRating,
-      owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
-      renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
-      community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
-      created_at: user.created_at,
-      notify_nearby_requests_5km: user.notify_nearby_requests_5km,
-      saved_locations: isSelf ? user.saved_locations || [] : [],
-      is_following: isFollowing,
-      is_blocked: isBlocked,
-      is_blocked_by: isBlockedBy,
-      followers_count: followersCount,
-      following_count: followingCount,
-      items: userItems,
-      requests: userRequests,
-      reviews: reviewsList,
-      stats: {
-        listings_count: parseInt(stats?.listings_count, 10) || userItems.length,
-        requests_count: parseInt(stats?.requests_count, 10) || userRequests.length,
-        completed_lent: parseInt(stats?.completed_lent, 10) || 0,
-        completed_borrowed: parseInt(stats?.completed_borrowed, 10) || 0,
-        reviews_count: revCount
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-router6.put("/profile", authMiddleware, async (req, res, next) => {
-  try {
-    const validated = updateProfileSchema.parse(req.body);
-    const userId = req.user.id;
-    const fields = [];
-    const values = [];
-    if (validated.name !== void 0) {
-      values.push(validated.name);
-      fields.push(`name = $${values.length}`);
-    }
-    if (validated.username !== void 0) {
-      const cleanUsername = validated.username.trim().toLowerCase();
-      if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
-        return sendError(res, "BAD_REQUEST", "Username must be 3-30 characters with letters, numbers, or underscores only", 400);
-      }
-      if (RESERVED_USERNAMES.has(cleanUsername)) {
-        return sendError(res, "BAD_REQUEST", "This username is reserved. Please pick another one.", 400);
-      }
-      const existingUser = await query(
-        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id::text != $2 AND (firebase_uid IS NULL OR firebase_uid != $2) LIMIT 1`,
-        [cleanUsername, userId]
-      );
-      if (existingUser.rows.length > 0) {
-        return sendError(res, "CONFLICT", "Username is already taken by another user. Please choose another one.", 409);
-      }
-      values.push(cleanUsername);
-      fields.push(`username = $${values.length}`);
-    }
-    if (validated.phone !== void 0) {
-      values.push(validated.phone);
-      fields.push(`phone = $${values.length}`);
-    }
-    if (validated.locality !== void 0) {
-      values.push(validated.locality);
-      fields.push(`locality = $${values.length}`);
-    }
-    if (validated.avatar_url !== void 0) {
-      values.push(validated.avatar_url);
-      fields.push(`avatar_url = $${values.length}`);
-    }
-    if (validated.banner_url !== void 0) {
-      values.push(validated.banner_url);
-      fields.push(`banner_url = $${values.length}`);
-    }
-    if (validated.bio !== void 0) {
-      values.push(validated.bio);
-      fields.push(`bio = $${values.length}`);
-    }
-    if (validated.address_text !== void 0) {
-      values.push(validated.address_text);
-      fields.push(`address_text = $${values.length}`);
-    }
-    let cleanPincode = void 0;
-    if (validated.pincode !== void 0) {
-      cleanPincode = validated.pincode?.trim() || null;
-      values.push(cleanPincode);
-      fields.push(`pincode = $${values.length}`);
-      if (cleanPincode && validated.locality) {
-        await query(
-          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-          [cleanPincode, validated.locality]
-        ).catch(() => {
-        });
-      }
-    }
-    if (validated.latitude !== void 0) {
-      values.push(validated.latitude);
-      fields.push(`latitude = $${values.length}`);
-    }
-    if (validated.longitude !== void 0) {
-      values.push(validated.longitude);
-      fields.push(`longitude = $${values.length}`);
-    }
-    if (validated.notify_nearby_requests_5km !== void 0) {
-      values.push(validated.notify_nearby_requests_5km);
-      fields.push(`notify_nearby_requests_5km = $${values.length}`);
-    }
-    if (validated.saved_locations !== void 0) {
-      values.push(JSON.stringify(validated.saved_locations));
-      fields.push(`saved_locations = $${values.length}::jsonb`);
-    }
-    if (fields.length === 0) {
-      return sendError(res, "BAD_REQUEST", "No fields to update", 400);
-    }
-    values.push(userId);
-    const updateSql = `
-      UPDATE users 
-      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-    `;
-    const result = await query(updateSql, values);
-    const updatedUser = result.rows[0];
-    return sendSuccess(res, updatedUser, "Profile updated successfully.");
-  } catch (error) {
-    next(error);
-  }
-});
-async function resolveUserId(idOrHandle) {
-  const clean = (idOrHandle || "").replace(/^@/, "").trim();
-  if (!clean) return null;
-  const res = await query(
-    `SELECT id FROM users WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1) LIMIT 1`,
-    [clean]
-  );
-  return res.rows[0]?.id || null;
-}
-router6.post("/:id/follow", authMiddleware, async (req, res, next) => {
-  try {
-    const followerId = req.user.id;
-    const followingId = await resolveUserId(req.params.id);
-    if (!followingId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    if (followerId === followingId) {
-      return sendError(res, "BAD_REQUEST", "You cannot follow yourself", 400);
-    }
-    const blockCheck = await query(
-      `SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`,
-      [followerId, followingId]
-    );
-    if (blockCheck.rows.length > 0) {
-      return sendError(res, "FORBIDDEN", "Cannot follow a blocked user", 403);
-    }
-    const insertRes = await query(
-      `INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *`,
-      [followerId, followingId]
-    );
-    if (insertRes.rows.length > 0) {
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body)
-         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
-        [followingId, followerId, `${req.user.name || "A neighbor"} started following your gear listings.`]
-      ).catch(() => {
-      });
-    }
-    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
-    return sendSuccess(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, "Followed neighbor");
-  } catch (error) {
-    next(error);
-  }
-});
-router6.get("/:id/followers", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const targetUserId = await resolveUserId(req.params.id);
-    if (!targetUserId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    const currentViewerId = req.user?.id;
-    const result = await query(
-      `SELECT 
-        u.id, u.name, u.username, u.avatar_url, 
-        COALESCE(u.locality, '') AS locality, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
-        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
-        uf.created_at AS followed_at,
-        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
-       FROM user_follows uf
-       JOIN users u ON (uf.follower_id = u.id OR uf.follower_id = u.firebase_uid)
-       WHERE uf.following_id = $1
-       ORDER BY uf.created_at DESC
-       LIMIT 50`,
-      [targetUserId, currentViewerId || ""]
-    );
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router6.get("/:id/following", optionalAuthMiddleware, async (req, res, next) => {
-  try {
-    const targetUserId = await resolveUserId(req.params.id);
-    if (!targetUserId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    const currentViewerId = req.user?.id;
-    const result = await query(
-      `SELECT 
-        u.id, u.name, u.username, u.avatar_url, 
-        COALESCE(u.locality, '') AS locality, 
-        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
-        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
-        uf.created_at AS followed_at,
-        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
-       FROM user_follows uf
-       JOIN users u ON (uf.following_id = u.id OR uf.following_id = u.firebase_uid)
-       WHERE uf.follower_id = $1
-       ORDER BY uf.created_at DESC
-       LIMIT 50`,
-      [targetUserId, currentViewerId || ""]
-    );
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router6.post("/:id/unfollow", authMiddleware, async (req, res, next) => {
-  try {
-    const followerId = req.user.id;
-    const followingId = await resolveUserId(req.params.id);
-    if (!followingId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    await query(
-      `DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2`,
-      [followerId, followingId]
-    );
-    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
-    return sendSuccess(res, { is_following: false, followers_count: countRes.rows[0]?.count || 0 }, "Unfollowed neighbor");
-  } catch (error) {
-    next(error);
-  }
-});
-router6.post("/:id/block", authMiddleware, async (req, res, next) => {
-  try {
-    const blockerId = req.user.id;
-    const blockedId = await resolveUserId(req.params.id);
-    if (!blockedId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    if (blockerId === blockedId) {
-      return sendError(res, "BAD_REQUEST", "You cannot block yourself", 400);
-    }
-    await query(
-      `INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [blockerId, blockedId]
-    );
-    await query(
-      `DELETE FROM user_follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`,
-      [blockerId, blockedId]
-    );
-    return sendSuccess(res, { is_blocked: true }, "User blocked successfully. You will not see their listings, requests, or messages.");
-  } catch (error) {
-    next(error);
-  }
-});
-router6.post("/:id/unblock", authMiddleware, async (req, res, next) => {
-  try {
-    const blockerId = req.user.id;
-    const blockedId = await resolveUserId(req.params.id);
-    if (!blockedId) {
-      return sendError(res, "NOT_FOUND", "User not found", 404);
-    }
-    await query(
-      `DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
-      [blockerId, blockedId]
-    );
-    return sendSuccess(res, { is_blocked: false }, "User unblocked successfully");
-  } catch (error) {
-    next(error);
-  }
-});
-var users_routes_default = router6;
-
-// src/modules/messages/messages.routes.ts
-var import_express7 = __toESM(require_express2());
-var import_crypto2 = __toESM(require("crypto"));
-var router7 = (0, import_express7.Router)();
-var sendMessageSchema = external_exports.object({
-  booking_id: external_exports.string().optional().nullable(),
-  receiver_id: external_exports.string().min(1, "Receiver is required"),
-  content: external_exports.string().min(1, "Message cannot be empty"),
-  message_type: external_exports.string().optional(),
-  proposal_data: external_exports.any().optional()
-});
-var isUuid = (val) => {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-};
-function parseToUtcTimestamp2(dateStr, timeStr, tzOffsetMinutes = -330) {
-  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
-  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
-  const [hour, minute] = cleanTime.split(":").map(Number);
-  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-  return localUtcMs + tzOffsetMinutes * 6e4;
-}
-router7.get("/conversations", authMiddleware, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const myIds = await resolveUserIds(userId, req.user?.email);
-    await query(
-      `UPDATE messages
-       SET is_delivered = true,
-           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-       WHERE (is_delivered = false OR is_delivered IS NULL)
-         AND receiver_id = ANY($1::text[])`,
-      [myIds]
-    ).catch(() => {
-    });
-    const result = await query(
-      `WITH my_ids AS (
-        SELECT unnest($1::text[]) AS id_text
-      ),
-      interacted_partners AS (
-        -- 1. From direct and booking messages
-        SELECT 
-          CASE 
-            WHEN m.sender_id IN (SELECT id_text FROM my_ids) THEN m.receiver_id
-            ELSE m.sender_id
-          END AS partner_raw_id,
-          m.created_at AS interaction_at
-        FROM messages m
-        WHERE (m.sender_id IN (SELECT id_text FROM my_ids)
-           OR m.receiver_id IN (SELECT id_text FROM my_ids))
-          AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
-
-        UNION ALL
-
-        -- 2. From bookings
-        SELECT 
-          CASE 
-            WHEN b.borrower_id IN (SELECT id_text FROM my_ids) THEN COALESCE(i.owner_id, b.lender_id)
-            ELSE b.borrower_id
-          END AS partner_raw_id,
-          b.created_at AS interaction_at
-        FROM bookings b
-        JOIN items i ON b.item_id = i.id
-        WHERE b.borrower_id IN (SELECT id_text FROM my_ids)
-           OR b.lender_id IN (SELECT id_text FROM my_ids)
-           OR i.owner_id IN (SELECT id_text FROM my_ids)
-      ),
-      distinct_partners AS (
-        SELECT u.id AS partner_user_id, MAX(ip.interaction_at) AS latest_interaction
-        FROM interacted_partners ip
-        JOIN users u ON (ip.partner_raw_id = u.id::text OR ip.partner_raw_id = u.firebase_uid)
-        WHERE u.id::text NOT IN (SELECT id_text FROM my_ids)
-        GROUP BY u.id
-      )
-      SELECT
-        'dm_' || partner.id::text AS conversation_id,
-        latest_booking.id AS booking_id,
-        COALESCE(latest_booking.status::text, 'DIRECT_DM') AS booking_status,
-        latest_booking.start_date,
-        latest_booking.duration_days,
-        COALESCE(latest_booking.total_price, 0) AS total_price,
-        COALESCE(latest_booking.item_title, 'Direct Chat') AS item_title,
-        COALESCE(latest_booking.item_images, '[]'::jsonb) AS item_images,
-        COALESCE(latest_booking.item_locality, partner.locality) AS item_locality,
-        partner.id::text AS partner_id,
-        partner.name AS partner_name,
-        partner.username AS partner_username,
-        partner.avatar_url AS partner_avatar,
-        NULL AS partner_phone,
-        partner.locality AS partner_locality,
-        CASE 
-          WHEN latest_msg.message_type = 'PROPOSAL' THEN 'Rental Proposal: ' || COALESCE(latest_booking.item_title, 'Gear')
-          WHEN latest_msg.message_type = 'IMAGE' THEN 'Photo'
-          WHEN latest_msg.message_type = 'LOCATION' THEN 'Shared Location'
-          WHEN latest_msg.message_type = 'CONTACT' THEN 'Contact Card'
-          WHEN latest_msg.message_type = 'DOCUMENT' THEN 'Document Note'
-          ELSE COALESCE(latest_msg.content, 'Direct conversation')
-        END AS last_message,
-        COALESCE(latest_msg.created_at, dp.latest_interaction) AS last_message_at,
-        dp.latest_interaction AS created_at,
-        COALESCE(unread.unread_count, 0) AS unread_count
-      FROM distinct_partners dp
-      JOIN users partner ON dp.partner_user_id = partner.id
-      LEFT JOIN LATERAL (
-        SELECT 
-          m.content, 
-          m.message_type,
-          m.proposal_data,
-          m.created_at,
-          m.is_read,
-          m.is_delivered,
-          m.sender_id
-        FROM messages m
-        WHERE (
-          (m.sender_id IN (SELECT id_text FROM my_ids) AND (m.receiver_id = partner.id::text OR m.receiver_id = partner.firebase_uid))
-          OR (m.receiver_id IN (SELECT id_text FROM my_ids) AND (m.sender_id = partner.id::text OR m.sender_id = partner.firebase_uid))
-          OR (m.booking_id IN (
-            SELECT b_sub.id FROM bookings b_sub 
-            WHERE ((b_sub.borrower_id IN (SELECT id_text FROM my_ids) AND (b_sub.lender_id = partner.id::text OR b_sub.lender_id = partner.firebase_uid))
-                OR (b_sub.borrower_id IN (partner.id::text, partner.firebase_uid) AND b_sub.lender_id IN (SELECT id_text FROM my_ids)))
-          ))
-        )
-        AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
-        ORDER BY m.created_at DESC
-        LIMIT 1
-      ) latest_msg ON true
-      LEFT JOIN LATERAL (
-        SELECT 
-          b.id,
-          b.status,
-          b.start_date,
-          b.duration_days,
-          b.total_price,
-          i.title AS item_title,
-          i.image_urls AS item_images,
-          i.locality AS item_locality
-        FROM bookings b
-        JOIN items i ON b.item_id = i.id
-        WHERE (
-          (b.borrower_id IN (SELECT id_text FROM my_ids) AND (b.lender_id = partner.id::text OR b.lender_id = partner.firebase_uid OR i.owner_id = partner.id::text OR i.owner_id = partner.firebase_uid))
-          OR ((b.borrower_id = partner.id::text OR b.borrower_id = partner.firebase_uid) AND (b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids)))
-        )
-        ORDER BY b.created_at DESC
-        LIMIT 1
-      ) latest_booking ON true
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*)::integer AS unread_count
-        FROM messages m
-        WHERE (m.sender_id = partner.id::text OR m.sender_id = partner.firebase_uid)
-          AND m.receiver_id IN (SELECT id_text FROM my_ids)
-          AND (m.is_read = false OR m.is_read IS NULL)
-      ) unread ON true
-      WHERE NOT EXISTS (
-        SELECT 1 FROM user_blocks ub
-        WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = partner.id::text OR ub.blocked_id = partner.firebase_uid))
-           OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = partner.id::text OR ub.blocker_id = partner.firebase_uid))
-      )
-      ORDER BY COALESCE(latest_msg.created_at, dp.latest_interaction) DESC`,
-      [userId]
-    );
-    return sendSuccess(res, result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-router7.get("/unread-count", authMiddleware, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const result = await query(
-      `WITH me AS (
-        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
-      ),
-      my_ids AS (
-        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
-      )
-      SELECT COUNT(*)::int AS unread_count
-      FROM messages m
-      WHERE (m.is_read = false OR m.is_read IS NULL)
-        AND (m.message_type IS NULL OR m.message_type != 'SYSTEM')
-        AND m.sender_id NOT IN (SELECT id_text FROM my_ids)
-        AND (
-          m.receiver_id IN (SELECT id_text FROM my_ids)
-          OR (
-            m.booking_id IS NOT NULL AND EXISTS (
-              SELECT 1 FROM bookings b
-              WHERE b.id = m.booking_id
-                AND ((b.borrower_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.borrower_id)
-                  OR (b.lender_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.lender_id))
-            )
-          )
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM user_blocks ub
-          WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = m.sender_id))
-             OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = m.sender_id))
-        )`,
-      [userId]
-    );
-    return sendSuccess(res, { unread_count: result.rows[0]?.unread_count || 0 });
-  } catch (error) {
-    next(error);
-  }
-});
-router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user.id;
-    const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-    const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
-    let rawPartnerId = null;
-    let fallbackBooking = null;
-    if (conversationId.startsWith("dm_")) {
-      rawPartnerId = conversationId.replace(/^dm_/, "");
-    } else {
-      const userCheck = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [conversationId]);
-      if (userCheck.rows.length > 0) {
-        rawPartnerId = userCheck.rows[0].id;
-      } else if (isUuid(conversationId)) {
-        const bookingCheck = await query(
-          `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day, i.owner_id AS item_owner_id
-           FROM bookings b
-           JOIN items i ON b.item_id = i.id
-           WHERE b.id::text = $1`,
-          [conversationId]
-        );
-        if (bookingCheck.rows.length > 0) {
-          const b = bookingCheck.rows[0];
-          const isParticipant = myIds.includes(String(b.borrower_id)) || myIds.includes(String(b.lender_id)) || myIds.includes(String(b.item_owner_id)) || req.user.role === "ADMIN";
-          if (!isParticipant) {
-            return sendError(res, "FORBIDDEN", "Access denied: You are not an authorized participant in this booking.", 403);
-          }
-          fallbackBooking = b;
-          const isBorrower = myIds.includes(String(b.borrower_id));
-          rawPartnerId = isBorrower ? b.lender_id || b.item_owner_id : b.borrower_id;
-        }
-      }
-    }
-    if (!rawPartnerId) {
-      return sendError(res, "NOT_FOUND", "Conversation partner not found", 404);
-    }
-    const pRes = await query(
-      `SELECT id::text, name, username, avatar_url, locality, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
-      [rawPartnerId]
-    );
-    const partnerData = pRes.rows[0] || {
-      id: rawPartnerId,
-      name: "Community Member",
-      avatar_url: null,
-      locality: "Bengaluru"
-    };
-    const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean);
-    const blockCheck = await query(
-      `SELECT 1 FROM user_blocks 
-       WHERE (blocker_id = ANY($1::text[]) AND blocked_id = ANY($2::text[]))
-          OR (blocker_id = ANY($2::text[]) AND blocked_id = ANY($1::text[]))`,
-      [myIds, pIds]
-    );
-    if (blockCheck.rows.length > 0) {
-      return sendError(res, "FORBIDDEN", "Communication with this user is blocked.", 403);
-    }
-    await query(
-      `UPDATE messages
-       SET is_read = true,
-           read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
-           is_delivered = true,
-           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-       WHERE (is_read = false OR is_read IS NULL)
-         AND sender_id = ANY($2::text[])
-         AND (
-           receiver_id = ANY($1::text[])
-           OR booking_id IN (
-             SELECT b_sub.id FROM bookings b_sub 
-             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
-                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
-           )
-         )`,
-      [myIds, pIds]
-    ).catch(() => {
-    });
-    await query(
-      `UPDATE messages
-       SET message_type = 'SYSTEM'
-       WHERE (message_type IS NULL OR message_type = 'TEXT')
-         AND (
-           content LIKE 'Proposal accepted.%'
-           OR content LIKE 'Product received and handed over%'
-           OR content LIKE 'Product returned to owner%'
-           OR content LIKE 'Renter has sent the payment via%'
-         )`
-    ).catch(() => {
-    });
-    const messagesRes = await query(
-      `SELECT 
-        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
-        COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
-        COALESCE(m.is_read, false) AS is_read, m.read_at,
-        m.created_at,
-        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
-        b_linked.status AS linked_booking_status
-       FROM messages m
-       LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
-       LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
-       WHERE (
-         (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
-         OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
-         OR (m.booking_id IN (
-           SELECT b_sub.id FROM bookings b_sub 
-           WHERE ((b_sub.borrower_id = ANY($1::text[]) AND (b_sub.lender_id = ANY($2::text[]) OR b_sub.lender_id IS NULL))
-               OR (b_sub.borrower_id = ANY($2::text[]) AND (b_sub.lender_id = ANY($1::text[]) OR b_sub.lender_id IS NULL)))
-         ))
-       )
-       AND (m.deleted_by IS NULL OR NOT (m.deleted_by && $1::text[]))
-       ORDER BY m.created_at ASC`,
-      [myIds, pIds]
-    );
-    const latestBookingRes = await query(
-      `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day
-       FROM bookings b
-       JOIN items i ON b.item_id = i.id
-       WHERE (
-         (b.borrower_id = ANY($1::text[]) AND (b.lender_id = ANY($2::text[]) OR i.owner_id = ANY($2::text[])))
-         OR (b.borrower_id = ANY($2::text[]) AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[])))
-       )
-       ORDER BY b.created_at DESC
-       LIMIT 1`,
-      [myIds, pIds]
-    );
-    const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
-    if (activeBooking) {
-      delete activeBooking.pickup_code;
-      delete activeBooking.return_code;
-    }
-    const mappedMessages = messagesRes.rows.map((row) => {
-      let content = row.content;
-      if (content && typeof content === "string") {
-        content = content.replace(/\.?\s*Pickup Verification Code:\s*\d+\.?/gi, ".");
-      }
-      if (row.message_type === "PROPOSAL" && row.proposal_data) {
-        let pData = typeof row.proposal_data === "string" ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
-        const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : void 0);
-        if (bStatus === "ACCEPTED" || bStatus === "HANDED_OVER" || bStatus === "COMPLETED") {
-          pData.status = "ACCEPTED";
-        } else if (bStatus === "REJECTED") {
-          pData.status = "DECLINED";
-        } else if (bStatus === "CANCELLED") {
-          pData.status = "CANCELLED";
-        }
-        delete pData.pickup_code;
-        delete pData.return_code;
-        return {
-          ...row,
-          content,
-          proposal_data: pData
-        };
-      }
-      return {
-        ...row,
-        content
-      };
-    });
-    return sendSuccess(res, {
-      booking: activeBooking,
-      partner: partnerData,
-      messages: mappedMessages
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-router7.post("/:conversationId/read", authMiddleware, async (req, res, next) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user.id;
-    const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
-    let rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
-    const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-    const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
-    if (!rawPartnerId && isUuid(conversationId)) {
-      const bRes = await query(`SELECT borrower_id, lender_id FROM bookings WHERE id = $1`, [conversationId]);
-      if (bRes.rows.length > 0) {
-        const b = bRes.rows[0];
-        rawPartnerId = myIds.includes(b.borrower_id) ? b.lender_id : b.borrower_id;
-      }
-    }
-    if (rawPartnerId) {
-      const pRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
-      const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
-      await query(
-        `UPDATE messages
-         SET is_read = true,
-             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
-             is_delivered = true,
-             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
-         WHERE (is_read = false OR is_read IS NULL)
-           AND sender_id = ANY($2::text[])
-           AND (
-             receiver_id = ANY($1::text[])
-             OR booking_id IN (
-               SELECT b_sub.id FROM bookings b_sub 
-               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
-                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
-             )
-           )`,
-        [myIds, pIds]
-      );
-    }
-    return sendSuccess(res, { marked_read: true });
-  } catch (error) {
-    next(error);
-  }
-});
-router7.post("/", authMiddleware, async (req, res, next) => {
-  try {
-    const validated = sendMessageSchema.parse(req.body);
-    const senderId = req.user.id;
-    let targetBookingId = null;
-    let targetReceiverId = validated.receiver_id;
-    if (validated.booking_id && isUuid(validated.booking_id)) {
-      const bookingRes = await query(
-        `SELECT b.id, b.borrower_id, i.owner_id AS lender_id 
-         FROM bookings b 
-         JOIN items i ON b.item_id = i.id 
-         WHERE b.id = $1`,
-        [validated.booking_id]
-      );
-      if (bookingRes.rows.length > 0) {
-        const booking = bookingRes.rows[0];
-        if (booking.borrower_id === senderId || booking.lender_id === senderId) {
-          targetBookingId = booking.id;
-          targetReceiverId = targetReceiverId || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
-        }
-      }
-    }
-    if (!targetReceiverId) {
-      return sendError(res, "BAD_REQUEST", "Recipient is required", 400);
-    }
-    const blockCheck = await query(
-      `SELECT 1 FROM user_blocks 
-       WHERE (blocker_id = $1 AND blocked_id = $2)
-          OR (blocker_id = $2 AND blocked_id = $1)`,
-      [senderId, targetReceiverId]
-    );
-    if (blockCheck.rows.length > 0) {
-      return sendError(res, "FORBIDDEN", "Cannot send message. Communication between these users is blocked.", 403);
-    }
-    const result = await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
-       VALUES ($1, $2, $3, $4, $5, $6, false, false)
-       RETURNING *`,
-      [
-        targetBookingId,
-        senderId,
-        targetReceiverId,
-        validated.content,
-        validated.message_type || "TEXT",
-        validated.proposal_data ? JSON.stringify(validated.proposal_data) : null
-      ]
-    );
-    const inserted = result.rows[0];
-    const senderName = req.user.name || "A neighbor";
-    const previewText = validated.message_type === "IMAGE" ? "\u{1F4F7} Sent a photo" : validated.message_type === "LOCATION" ? "\u{1F4CD} Shared a location" : validated.message_type === "CONTACT" ? "\u{1F464} Sent a contact card" : validated.message_type === "DOCUMENT" ? "\u{1F4C4} Sent a note" : validated.content.length > 80 ? validated.content.slice(0, 77) + "..." : validated.content;
-    await createNotification({
-      userId: targetReceiverId,
-      senderId,
-      bookingId: targetBookingId || void 0,
-      referenceId: inserted.id,
-      referenceType: "MESSAGE",
-      type: "NEW_MESSAGE",
-      title: `Message from ${senderName}`,
-      body: previewText
-    }).catch((err) => console.warn("Failed to dispatch new message notification:", err));
-    return sendSuccess(res, {
-      ...inserted,
-      is_delivered: false,
-      is_read: false,
-      sender_name: req.user.name || "You",
-      sender_avatar: req.user?.avatar_url || null
-    }, "Message sent");
-  } catch (error) {
-    next(error);
-  }
-});
-router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, next) => {
-  try {
-    const { messageId } = req.params;
-    const currentUserId = req.user.id;
-    const msgRes = await query(
-      `SELECT * FROM messages WHERE id = $1`,
-      [messageId]
-    );
-    if (msgRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
-    }
-    const message2 = msgRes.rows[0];
-    const myIds = await resolveUserIds(currentUserId, req.user?.email);
-    if (!myIds.includes(String(message2.receiver_id))) {
-      return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this agreement", 403);
-    }
-    const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
-    if (proposal.status && proposal.status !== "PENDING") {
-      return sendError(
-        res,
-        "BAD_REQUEST",
-        `Cannot accept agreement with status "${proposal.status}". Only pending proposals can be accepted.`,
-        400
-      );
-    }
-    const existingBookingId = message2.booking_id || proposal.booking_id;
-    if (existingBookingId && isUuid(existingBookingId)) {
-      const bRes = await query(
-        `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.owner_id AS item_owner_id,
-                TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
-                TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
-         FROM bookings b
-         JOIN items i ON b.item_id = i.id
-         WHERE b.id = $1`,
-        [existingBookingId]
-      );
-      if (bRes.rows.length > 0) {
-        const existingBooking = bRes.rows[0];
-        if (existingBooking.status !== "PENDING") {
-          return sendError(res, "BAD_REQUEST", `Cannot accept request. Current status is ${existingBooking.status}.`, 400);
-        }
-        const sDate2 = existingBooking.start_date_str || existingBooking.start_date;
-        const eDate2 = existingBooking.end_date_str || existingBooking.end_date;
-        const endTimestamp = parseToUtcTimestamp2(
-          eDate2,
-          existingBooking.end_time || "18:00",
-          -330
-        );
-        if (endTimestamp < Date.now()) {
-          return sendError(
-            res,
-            "BAD_REQUEST",
-            "This booking request cannot be accepted because its scheduled rental time has already passed.",
-            400
-          );
-        }
-        const client2 = await pool.connect();
-        let updatedBooking;
-        let updatedProposal2;
-        let conflictingPendingList = [];
-        const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
-        try {
-          await client2.query("BEGIN");
-          await client2.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [existingBooking.item_id]);
-          const conflictRes = await client2.query(
-            `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                    TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-             FROM bookings
-             WHERE item_id = $1
-               AND id != $2
-               AND status IN ('ACCEPTED', 'HANDED_OVER')
-               AND (
-                 start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-               )
-             LIMIT 1`,
-            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
-          );
-          if (conflictRes.rows.length > 0) {
-            await client2.query("ROLLBACK");
-            const c = conflictRes.rows[0];
-            return sendError(
-              res,
-              "CONFLICT",
-              `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
-              409
-            );
-          }
-          const conflictingPendingRes = await client2.query(
-            `SELECT id, borrower_id 
-             FROM bookings
-             WHERE item_id = $1
-               AND id != $2
-               AND status = 'PENDING'
-               AND (
-                 start_date <= $4::date
-                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-               )`,
-            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
-          );
-          conflictingPendingList = conflictingPendingRes.rows;
-          for (const conflicting of conflictingPendingList) {
-            await client2.query(
-              `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-              [conflicting.id]
-            );
-            await client2.query(
-              `UPDATE messages 
-               SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
-               WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-              [conflicting.id]
-            ).catch(() => {
-            });
-          }
-          const pickupCode = existingBooking.pickup_code || import_crypto2.default.randomInt(1e5, 1e6).toString();
-          const updateRes = await client2.query(
-            `UPDATE bookings
-             SET status = 'ACCEPTED',
-                 pickup_code = $1,
-                 return_code = NULL,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2
-             RETURNING *`,
-            [pickupCode, existingBookingId]
-          );
-          updatedBooking = updateRes.rows[0];
-          updatedProposal2 = {
-            ...proposal,
-            status: "ACCEPTED",
-            accepted_at: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          await client2.query(
-            `UPDATE messages SET proposal_data = $1 WHERE id = $2`,
-            [JSON.stringify(updatedProposal2), messageId]
-          );
-          const totalPrice2 = updatedBooking.total_price || proposal.total_price || 0;
-          const priceDisplay = Number(totalPrice2) === 0 ? "Free" : `\u20B9${totalPrice2}`;
-          await client2.query(
-            `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-             VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-            [
-              existingBookingId,
-              currentUserId,
-              message2.sender_id,
-              `Request Accepted. Confirmed booking for "${itemTitle2}" (${priceDisplay}). Handover is now live in Bookings.`
-            ]
-          );
-          await client2.query("COMMIT");
-        } catch (txErr) {
-          await client2.query("ROLLBACK");
-          throw txErr;
-        } finally {
-          client2.release();
-        }
-        for (const conflicting of conflictingPendingList) {
-          createNotification({
-            userId: conflicting.borrower_id,
-            bookingId: conflicting.id,
-            referenceId: conflicting.id,
-            referenceType: "BOOKING",
-            type: "BOOKING_CANCELLED",
-            title: "Request Auto-Cancelled",
-            body: `Your rental request was cancelled because the owner accepted another booking for those dates.`
-          }).catch(() => {
-          });
-        }
-        createNotification({
-          userId: message2.sender_id,
-          senderId: currentUserId,
-          bookingId: existingBookingId,
-          referenceId: existingBookingId,
-          referenceType: "BOOKING",
-          type: "BOOKING_ACCEPTED",
-          title: "Rental Request Accepted",
-          body: `Your request for "${itemTitle2}" was accepted. Handover is now active in Bookings.`
-        }).catch(() => {
-        });
-        const safeProposal2 = { ...updatedProposal2 };
-        delete safeProposal2.pickup_code;
-        delete safeProposal2.return_code;
-        const safeBooking = { ...updatedBooking };
-        delete safeBooking.pickup_code;
-        delete safeBooking.return_code;
-        return sendSuccess(res, {
-          booking: safeBooking,
-          message_id: messageId,
-          proposal_data: safeProposal2
-        }, "Rental request accepted");
-      }
-    }
-    const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
-    const lenderId = isOffer ? message2.sender_id : currentUserId;
-    const borrowerId = isOffer ? currentUserId : message2.sender_id;
-    const [lenderUserRes, borrowerUserRes] = await Promise.all([
-      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
-      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId])
-    ]);
-    const lenderInfo = lenderUserRes.rows[0] || {};
-    const borrowerInfo = borrowerUserRes.rows[0] || {};
-    const canonicalLenderId = lenderInfo.id || lenderId;
-    const canonicalBorrowerId = borrowerInfo.id || borrowerId;
-    const startDate = proposal.start_date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
-    const pricePerDay = Number(proposal.price_per_day) || Number(proposal.total_price) / durationDays || 0;
-    const totalPrice = Number(proposal.total_price) || pricePerDay * durationDays;
-    const sDate = new Date(startDate);
-    const eDate = new Date(sDate);
-    eDate.setDate(sDate.getDate() + durationDays);
-    const endDateStr = proposal.end_date || eDate.toISOString().split("T")[0];
-    const client = await pool.connect();
-    let createdItem;
-    let createdBooking;
-    let updatedProposal;
-    const itemTitle = proposal.title || "Personal Agreement Item";
-    try {
-      await client.query("BEGIN");
-      if (proposal.request_id) {
-        const reqCheck = await client.query(
-          `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
-          [proposal.request_id]
-        );
-        if (reqCheck.rows.length === 0) {
-          await client.query("ROLLBACK");
-          return sendError(res, "NOT_FOUND", "Community request for this offer not found", 404);
-        }
-        if (reqCheck.rows[0].status !== "OPEN") {
-          await client.query("ROLLBACK");
-          return sendError(
-            res,
-            "CONFLICT",
-            "This community request has already been fulfilled by another neighbor or cancelled.",
-            409
-          );
-        }
-        await client.query(
-          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-          [proposal.request_id]
-        );
-      }
-      const itemRes = await client.query(
-        `INSERT INTO items (
-          owner_id, title, description, category, price_per_day, max_duration_days, 
-          image_urls, locality, address_text, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
-        RETURNING *`,
-        [
-          canonicalLenderId,
-          itemTitle,
-          proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
-          proposal.category || "Other",
-          pricePerDay,
-          Math.max(durationDays, 3),
-          proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-          proposal.locality || lenderInfo.locality || "Bangalore",
-          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
-        ]
-      );
-      createdItem = itemRes.rows[0];
-      const pickupCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
-      const bookingRes = await client.query(
-        `INSERT INTO bookings (
-          item_id, borrower_id, lender_id, start_date, duration_days, total_price,
-          status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
-          return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
-          pickup_code, return_code
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NULL)
-        RETURNING *`,
-        [
-          createdItem.id,
-          canonicalBorrowerId,
-          canonicalLenderId,
-          startDate,
-          durationDays,
-          totalPrice,
-          `Agreed personal deal in DM: ${proposal.notes || ""}`,
-          endDateStr,
-          proposal.start_time || "10:00:00",
-          proposal.end_time || "18:00",
-          proposal.delivery_option === "LENDER_DELIVERY" ? "OWNER_DELIVERY" : "LENDER_LOCATION",
-          proposal.delivery_location || lenderInfo.locality || "Handover location",
-          proposal.collection_option === "LENDER_COLLECT" ? "OWNER_COLLECT" : "LENDER_LOCATION",
-          proposal.return_location || lenderInfo.locality || "Return location",
-          !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
-          Number(proposal.delivery_fee) || 0,
-          !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
-          Number(proposal.collection_fee) || 0,
-          pickupCode
-        ]
-      );
-      createdBooking = bookingRes.rows[0];
-      updatedProposal = {
-        ...proposal,
-        status: "ACCEPTED",
-        booking_id: createdBooking.id,
-        item_id: createdItem.id,
-        accepted_at: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await client.query(
-        `UPDATE messages 
-         SET proposal_data = $1, booking_id = $2
-         WHERE id = $3`,
-        [JSON.stringify(updatedProposal), createdBooking.id, messageId]
-      );
-      const cleanStartDate = String(startDate).split("T")[0];
-      const cleanEndDate = String(endDateStr).split("T")[0];
-      const priceDisplay = Number(totalPrice) === 0 ? "Free" : `\u20B9${totalPrice}`;
-      await client.query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-        [
-          createdBooking.id,
-          currentUserId,
-          message2.sender_id,
-          `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`
-        ]
-      );
-      await client.query("COMMIT");
-    } catch (txErr) {
-      await client.query("ROLLBACK");
-      throw txErr;
-    } finally {
-      client.release();
-    }
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
-    ).catch(() => {
-    });
-    await query(
-      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
-    ).catch(() => {
-    });
-    const safeCreatedBooking = { ...createdBooking };
-    delete safeCreatedBooking.pickup_code;
-    delete safeCreatedBooking.return_code;
-    const safeProposal = { ...updatedProposal };
-    delete safeProposal.pickup_code;
-    delete safeProposal.return_code;
-    return sendSuccess(res, {
-      booking: safeCreatedBooking,
-      item: createdItem,
-      message_id: messageId,
-      proposal_data: safeProposal
-    }, "Agreement accepted and booking created");
-  } catch (error) {
-    next(error);
-  }
-});
-router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, next) => {
-  try {
-    const { messageId } = req.params;
-    const currentUserId = req.user.id;
-    const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [messageId]);
-    if (msgRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
-    }
-    const message2 = msgRes.rows[0];
-    const myIds = await resolveUserIds(currentUserId, req.user?.email);
-    if (!myIds.includes(String(message2.receiver_id)) && !myIds.includes(String(message2.sender_id))) {
-      return sendError(res, "FORBIDDEN", "Access denied", 403);
-    }
-    const isReceiver = myIds.includes(String(message2.receiver_id));
-    const isSender = myIds.includes(String(message2.sender_id));
-    if (!isReceiver && !isSender) {
-      return sendError(res, "FORBIDDEN", "Access denied: You are not part of this proposal", 403);
-    }
-    const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
-    const targetProposalStatus = isReceiver ? "DECLINED" : "CANCELLED";
-    const targetBookingStatus = isReceiver ? "REJECTED" : "CANCELLED";
-    const updatedProposal = { ...proposal, status: targetProposalStatus };
-    await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
-    const existingBookingId = message2.booking_id || proposal.booking_id;
-    if (existingBookingId && isUuid(existingBookingId)) {
-      await query(
-        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [targetBookingStatus, existingBookingId]
-      ).catch(() => {
-      });
-      const itemTitle = proposal.item_title || proposal.title || "Item";
-      const notificationRecipientId = isReceiver ? message2.sender_id : message2.receiver_id;
-      const statusActionText = isReceiver ? "was declined" : "was cancelled by the sender";
-      await query(
-        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-        [
-          existingBookingId,
-          currentUserId,
-          notificationRecipientId,
-          `Rental request for "${itemTitle}" ${statusActionText}.`
-        ]
-      ).catch(() => {
-      });
-      await query(
-        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, $2, $3, $4, 'Your request for "' || $5 || '" ' || $6 || '.', $7, 'BOOKING')`,
-        [
-          notificationRecipientId,
-          currentUserId,
-          isReceiver ? "BOOKING_REJECTED" : "BOOKING_CANCELLED",
-          isReceiver ? "Rental Request Declined" : "Rental Request Cancelled",
-          itemTitle,
-          statusActionText,
-          existingBookingId
-        ]
-      ).catch(() => {
-      });
-    }
-    return sendSuccess(res, { proposal_data: updatedProposal }, `Proposal ${targetProposalStatus.toLowerCase()}`);
-  } catch (error) {
-    next(error);
-  }
-});
-router7.delete("/conversations/:conversationId", authMiddleware, async (req, res, next) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user.id;
-    const myIds = await resolveUserIds(userId, req.user?.email);
-    const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
-    const rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
-    if (isDm && rawPartnerId) {
-      const pIds = await resolveUserIds(rawPartnerId);
-      await query(
-        `UPDATE messages
-         SET deleted_by = ARRAY(
-           SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
-         )
-         WHERE (sender_id = ANY($1::text[]) AND receiver_id = ANY($2::text[]))
-            OR (sender_id = ANY($2::text[]) AND receiver_id = ANY($1::text[]))`,
-        [myIds, pIds]
-      );
-      return sendSuccess(res, { conversation_id: conversationId }, "Chat deleted for you");
-    }
-    const bookingRes = await query(
-      `SELECT b.id, b.borrower_id, b.lender_id, i.owner_id AS item_owner_id
-       FROM bookings b
-       LEFT JOIN items i ON b.item_id = i.id
-       WHERE b.id = $1`,
-      [conversationId]
-    );
-    if (bookingRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Booking not found", 404);
-    }
-    const b = bookingRes.rows[0];
-    const isParticipant = myIds.includes(String(b.borrower_id)) || myIds.includes(String(b.lender_id)) || myIds.includes(String(b.item_owner_id)) || req.user.role === "ADMIN";
-    if (!isParticipant) {
-      return sendError(res, "FORBIDDEN", "Permission denied: You are not a participant in this booking chat.", 403);
-    }
-    await query(
-      `UPDATE messages
-       SET deleted_by = ARRAY(
-         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
-       )
-       WHERE booking_id::text = $2`,
-      [myIds, conversationId]
-    );
-    return sendSuccess(res, { conversation_id: conversationId }, "Chat cleared for you");
-  } catch (error) {
-    next(error);
-  }
-});
-router7.put("/:messageId", authMiddleware, async (req, res, next) => {
-  try {
-    const { messageId } = req.params;
-    const { content, proposal_data } = req.body;
-    const userId = req.user.id;
-    const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
-    if (checkRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Message not found", 404);
-    }
-    const msg = checkRes.rows[0];
-    const userRow = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
-    const validSenders = [userId, userRow.rows[0]?.id, userRow.rows[0]?.firebase_uid].filter(Boolean);
-    if (!validSenders.includes(msg.sender_id)) {
-      return sendError(res, "FORBIDDEN", "You can only edit your own messages", 403);
-    }
-    const newContent = content && content.trim() || msg.content;
-    const newProposalData = proposal_data !== void 0 ? typeof proposal_data === "string" ? proposal_data : JSON.stringify(proposal_data) : msg.proposal_data;
-    const result = await query(
-      `UPDATE messages SET content = $1, proposal_data = $2, is_edited = true WHERE id::text = $3 RETURNING *`,
-      [newContent, newProposalData, messageId]
-    );
-    return sendSuccess(res, result.rows[0], "Message updated");
-  } catch (error) {
-    next(error);
-  }
-});
-router7.delete("/:messageId", authMiddleware, async (req, res, next) => {
-  try {
-    const { messageId } = req.params;
-    const userId = req.user.id;
-    const myIds = await resolveUserIds(userId, req.user?.email);
-    const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
-    if (checkRes.rows.length === 0) {
-      return sendError(res, "NOT_FOUND", "Message not found", 404);
-    }
-    const msg = checkRes.rows[0];
-    const isSender = myIds.includes(String(msg.sender_id));
-    const isReceiver = myIds.includes(String(msg.receiver_id));
-    const isAdmin = req.user.role === "ADMIN";
-    if (!isSender && !isReceiver && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Permission denied: You cannot delete this message", 403);
-    }
-    await query(
-      `UPDATE messages
-       SET deleted_by = ARRAY(
-         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
-       )
-       WHERE id::text = $2`,
-      [myIds, messageId]
-    );
-    return sendSuccess(res, { id: messageId }, "Message deleted for you");
-  } catch (error) {
-    next(error);
-  }
-});
-var messages_routes_default = router7;
-
-// src/modules/upload/upload.routes.ts
-var import_express8 = __toESM(require_express2());
-
 // ../node_modules/@supabase/supabase-js/dist/index.mjs
 var dist_exports = {};
 __export(dist_exports, {
@@ -100302,12 +95743,4645 @@ function shouldShowDeprecationWarning() {
 }
 if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 20 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 22 or later. For more information, visit: https://github.com/orgs/supabase/discussions/45715");
 
+// src/utils/city.ts
+function extractCity(locality) {
+  if (!locality) return "Delhi";
+  const loc = locality.toLowerCase();
+  if (loc.includes("bangalore") || loc.includes("bengaluru") || loc.includes("koramangala") || loc.includes("kengeri") || loc.includes("indiranagar") || loc.includes("whitefield") || loc.includes("hsr")) {
+    return "Bangalore";
+  }
+  if (loc.includes("mumbai") || loc.includes("bandra") || loc.includes("powai") || loc.includes("andheri") || loc.includes("juhu") || loc.includes("colaba")) {
+    return "Mumbai";
+  }
+  return "Delhi";
+}
+
+// src/utils/user.ts
+var resolveUserIds = async (userId, emailHint) => {
+  if (!userId) return [];
+  try {
+    const ids = /* @__PURE__ */ new Set([userId]);
+    const emails = /* @__PURE__ */ new Set();
+    if (emailHint && emailHint.trim() && !emailHint.includes(".internal")) {
+      emails.add(emailHint.trim().toLowerCase());
+    }
+    const res = await query(
+      `SELECT id::text, firebase_uid, clerk_id, email 
+       FROM users 
+       WHERE id::text = $1 
+          OR firebase_uid = $1 
+          OR clerk_id = $1
+          OR (email IS NOT NULL AND LOWER(email) = LOWER($1))`,
+      [userId]
+    );
+    for (const row of res.rows) {
+      if (row.id) ids.add(String(row.id));
+      if (row.firebase_uid) ids.add(String(row.firebase_uid));
+      if (row.clerk_id) ids.add(String(row.clerk_id));
+      if (row.email && typeof row.email === "string" && row.email.trim() && !row.email.includes(".internal")) {
+        emails.add(row.email.trim().toLowerCase());
+      }
+    }
+    if (emails.size > 0) {
+      const emailRes = await query(
+        `SELECT id::text, firebase_uid, clerk_id FROM users WHERE LOWER(email) = ANY($1::text[])`,
+        [Array.from(emails)]
+      );
+      for (const row of emailRes.rows) {
+        if (row.id) ids.add(String(row.id));
+        if (row.firebase_uid) ids.add(String(row.firebase_uid));
+        if (row.clerk_id) ids.add(String(row.clerk_id));
+      }
+    }
+    return Array.from(ids);
+  } catch {
+    return [userId];
+  }
+};
+
+// src/modules/notifications/notifications.service.ts
+async function createNotification(params) {
+  try {
+    await query(
+      `INSERT INTO notifications 
+        (user_id, sender_id, type, title, body, booking_id, message_id, reference_id, reference_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        params.userId,
+        params.senderId || null,
+        params.type,
+        params.title,
+        params.body,
+        params.bookingId || null,
+        params.messageId || null,
+        params.referenceId || null,
+        params.referenceType || null
+      ]
+    );
+  } catch (error) {
+    console.error("Failed to create notification:", error);
+  }
+}
+async function checkAndGenerateReminders(userId) {
+  try {
+    const userIds = await resolveUserIds(userId);
+    const upcomingPickups = await query(
+      `SELECT 
+        b.id, 
+        b.borrower_id, 
+        b.lender_id, 
+        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
+        b.start_time, 
+        i.title AS item_title,
+        borrower.name AS borrower_name,
+        lender.name AS lender_name,
+        (b.start_date = CURRENT_DATE) AS is_today
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
+         AND b.status = 'ACCEPTED'
+         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+      [userIds]
+    );
+    for (const b of upcomingPickups.rows) {
+      const alreadyNotified = await query(
+        `SELECT id FROM notifications 
+         WHERE user_id = ANY($1::text[]) 
+           AND booking_id = $2 
+           AND type = 'REMINDER_PICKUP'
+           AND created_at >= CURRENT_DATE`,
+        [userIds, b.id]
+      );
+      if (alreadyNotified.rows.length === 0) {
+        const isBorrower = userIds.includes(String(b.borrower_id));
+        const dayLabel = b.is_today ? "today" : "tomorrow";
+        await createNotification({
+          userId,
+          senderId: isBorrower ? b.lender_id : b.borrower_id,
+          bookingId: b.id,
+          referenceId: b.id,
+          referenceType: "BOOKING",
+          type: "REMINDER_PICKUP",
+          title: `Pickup ${b.is_today ? "Today" : "Tomorrow"}`,
+          body: isBorrower ? `Pickup for "${b.item_title}" with ${b.lender_name} is scheduled ${dayLabel}.` : `Handover for "${b.item_title}" with ${b.borrower_name} is scheduled ${dayLabel}.`
+        });
+      }
+    }
+    const upcomingReturns = await query(
+      `SELECT 
+        b.id, 
+        b.borrower_id, 
+        b.lender_id, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        b.end_time, 
+        i.title AS item_title,
+        borrower.name AS borrower_name,
+        lender.name AS lender_name,
+        (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
+         AND b.status = 'HANDED_OVER'
+         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
+      [userIds]
+    );
+    for (const b of upcomingReturns.rows) {
+      const alreadyNotified = await query(
+        `SELECT id FROM notifications 
+         WHERE user_id = ANY($1::text[]) 
+           AND booking_id = $2 
+           AND type = 'REMINDER_RETURN'
+           AND created_at >= CURRENT_DATE`,
+        [userIds, b.id]
+      );
+      if (alreadyNotified.rows.length === 0) {
+        const isBorrower = userIds.includes(String(b.borrower_id));
+        const dayLabel = b.is_today ? "today" : "tomorrow";
+        await createNotification({
+          userId,
+          senderId: isBorrower ? b.lender_id : b.borrower_id,
+          bookingId: b.id,
+          referenceId: b.id,
+          referenceType: "BOOKING",
+          type: "REMINDER_RETURN",
+          title: `Return Due ${b.is_today ? "Today" : "Tomorrow"}`,
+          body: isBorrower ? `Return for "${b.item_title}" to ${b.lender_name} is due ${dayLabel}.` : `Scheduled return for "${b.item_title}" from ${b.borrower_name} is ${dayLabel}.`
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error generating notification reminders:", error);
+  }
+}
+
+// src/modules/items/items.routes.ts
+var router2 = (0, import_express2.Router)();
+var storageClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+var deleteStoragePhoto = async (url) => {
+  try {
+    if (!url || typeof url !== "string" || !url.includes("/storage/v1/object/public/item-photos/")) return;
+    const path2 = url.split("/storage/v1/object/public/item-photos/")[1];
+    if (path2) {
+      const decoded = decodeURIComponent(path2.split("?")[0]);
+      await storageClient.storage.from("item-photos").remove([decoded]);
+    }
+  } catch (e2) {
+    console.warn("Storage photo cleanup notice:", e2);
+  }
+};
+var createItemSchema = external_exports.object({
+  title: external_exports.string().min(3, "Title must be at least 3 characters"),
+  description: external_exports.string().min(10, "Description must be at least 10 characters"),
+  category: external_exports.string().min(2, "Category is required"),
+  price_per_day: external_exports.number().min(0, "Price per day cannot be negative"),
+  max_duration_days: external_exports.number().int().positive().default(3),
+  image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).min(1, "At least one photo is required"),
+  sticker_badge: external_exports.string().default("Available"),
+  locality: external_exports.string().optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
+  latitude: external_exports.number().optional(),
+  longitude: external_exports.number().optional(),
+  available_for_borrowing: external_exports.boolean().optional().default(false),
+  condition: external_exports.string().optional().default("Good"),
+  offers_delivery: external_exports.boolean().optional().default(false),
+  delivery_fee: external_exports.number().min(0).optional().default(0),
+  offers_pickup: external_exports.boolean().optional().default(false),
+  pickup_fee: external_exports.number().min(0).optional().default(0)
+});
+var updateItemSchema = external_exports.object({
+  title: external_exports.string().min(3).optional(),
+  description: external_exports.string().min(10).optional(),
+  category: external_exports.string().optional(),
+  condition: external_exports.string().optional(),
+  price_per_day: external_exports.number().min(0).optional(),
+  max_duration_days: external_exports.number().int().positive().optional(),
+  image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).optional(),
+  sticker_badge: external_exports.string().optional(),
+  locality: external_exports.string().optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
+  latitude: external_exports.number().optional(),
+  longitude: external_exports.number().optional(),
+  status: external_exports.enum(["AVAILABLE", "RENTED", "UNAVAILABLE"]).optional(),
+  available_for_borrowing: external_exports.boolean().optional(),
+  offers_delivery: external_exports.boolean().optional(),
+  delivery_fee: external_exports.number().min(0).optional(),
+  offers_pickup: external_exports.boolean().optional(),
+  pickup_fee: external_exports.number().min(0).optional()
+});
+router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const {
+      category,
+      search,
+      locality,
+      status = "AVAILABLE",
+      ownerId,
+      latitude,
+      longitude,
+      radar,
+      max_distance,
+      limit,
+      offset
+    } = req.query;
+    const params = [];
+    let distanceField = "NULL AS distance_meters";
+    let distanceFilter = "";
+    let userLat = latitude ? parseFloat(String(latitude)) : NaN;
+    let userLon = longitude ? parseFloat(String(longitude)) : NaN;
+    if ((isNaN(userLat) || isNaN(userLon)) && req.user?.id) {
+      const uRes = await query(
+        `SELECT latitude, longitude, locality FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+        [req.user.id]
+      );
+      if (uRes.rows.length > 0) {
+        if (uRes.rows[0].latitude && uRes.rows[0].longitude) {
+          userLat = parseFloat(uRes.rows[0].latitude);
+          userLon = parseFloat(uRes.rows[0].longitude);
+        } else if (uRes.rows[0].locality) {
+          const loc = uRes.rows[0].locality.toLowerCase();
+          if (loc.includes("beml")) {
+            userLat = 12.914;
+            userLon = 77.4993;
+          } else if (loc.includes("mylasandra")) {
+            userLat = 12.885;
+            userLon = 77.505;
+          }
+        }
+      }
+    }
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+      params.push(userLat);
+      const latIdx = params.length;
+      params.push(userLon);
+      const lonIdx = params.length;
+      distanceField = `
+        ROUND(
+          6371000 * acos(
+            LEAST(1.0, GREATEST(-1.0, 
+              cos(radians($${latIdx})) * cos(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              )) *
+              cos(radians(
+                CASE 
+                  WHEN i.longitude IS NOT NULL AND i.longitude != 0 THEN i.longitude
+                  WHEN u.longitude IS NOT NULL AND u.longitude != 0 THEN u.longitude
+                  WHEN i.locality ILIKE '%beml%' THEN 77.4993
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 77.5050
+                  WHEN i.locality ILIKE '%kengeri%' THEN 77.4838
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 77.5150
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 77.5838
+                  WHEN i.locality ILIKE '%koramangala%' THEN 77.6245
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 77.6408
+                  WHEN i.locality ILIKE '%hsr%' THEN 77.6446
+                  WHEN i.locality ILIKE '%whitefield%' THEN 77.7500
+                  WHEN i.locality ILIKE '%electronic city%' THEN 77.6602
+                  ELSE $${lonIdx}
+                END
+              ) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(
+                CASE 
+                  WHEN i.latitude IS NOT NULL AND i.latitude != 0 THEN i.latitude
+                  WHEN u.latitude IS NOT NULL AND u.latitude != 0 THEN u.latitude
+                  WHEN i.locality ILIKE '%beml%' THEN 12.9140
+                  WHEN i.locality ILIKE '%mylasandra%' THEN 12.8850
+                  WHEN i.locality ILIKE '%kengeri%' THEN 12.9177
+                  WHEN i.locality ILIKE '%rajarajeshwari%' OR i.locality ILIKE '%rr nagar%' THEN 12.9275
+                  WHEN i.locality ILIKE '%jayanagar%' THEN 12.9308
+                  WHEN i.locality ILIKE '%koramangala%' THEN 12.9352
+                  WHEN i.locality ILIKE '%indiranagar%' THEN 12.9784
+                  WHEN i.locality ILIKE '%hsr%' THEN 12.9121
+                  WHEN i.locality ILIKE '%whitefield%' THEN 12.9698
+                  WHEN i.locality ILIKE '%electronic city%' THEN 12.8452
+                  ELSE $${latIdx}
+                END
+              ))
+            ))
+          )
+        ) AS distance_meters
+      `;
+      if (radar === "true" || radar === "100m" || max_distance) {
+        const limitMeters = max_distance ? parseFloat(String(max_distance)) : 100;
+        params.push(limitMeters);
+        distanceFilter = ` AND (
+          6371000 * acos(
+            LEAST(1.0, GREATEST(-1.0, 
+              cos(radians($${latIdx})) * cos(radians(i.latitude)) *
+              cos(radians(i.longitude) - radians($${lonIdx})) +
+              sin(radians($${latIdx})) * sin(radians(i.latitude))
+            ))
+          )
+        ) <= $${params.length}`;
+      }
+    }
+    let sql = `
+      SELECT 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(i.locality, u.locality) AS locality, 
+        NULL AS address_text, 
+        NULL AS pincode,
+        NULL AS latitude, 
+        NULL AS longitude, 
+        i.status AS status, 
+        EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.item_id = i.id
+            AND b.status IN ('ACCEPTED', 'HANDED_OVER')
+            AND CURRENT_DATE BETWEEN b.start_date::date AND (COALESCE(b.end_date, b.start_date))::date
+        ) AS is_currently_booked,
+        i.available_for_borrowing,
+        i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
+        ${distanceField},
+        COALESCE(u.id, i.owner_id) AS owner_id, 
+        COALESCE(u.name, 'Community Member') AS owner_name, 
+        u.username AS owner_username,
+        u.avatar_url AS owner_avatar,
+        COALESCE(i.locality, u.locality) AS owner_locality, 
+        NULL AS owner_address_text,
+        NULL AS owner_pincode,
+        u.trust_score AS owner_trust_score,
+        u.rating AS owner_rating
+      FROM items i
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
+      WHERE 1=1 ${distanceFilter}
+        AND COALESCE(i.is_deleted, false) = false
+    `;
+    if (status === "AVAILABLE") {
+      sql += ` AND i.status = 'AVAILABLE'`;
+    } else if (status && status !== "ALL") {
+      params.push(status);
+      sql += ` AND i.status = $${params.length}`;
+    }
+    if (category && category !== "All") {
+      if (category === "Clothing & Fits" || category === "Clothing & Accessories") {
+        sql += ` AND (i.category = 'Clothing & Fits' OR i.category = 'Clothing & Accessories')`;
+      } else {
+        params.push(category);
+        sql += ` AND i.category = $${params.length}`;
+      }
+    }
+    if (ownerId) {
+      const resolvedOwnerIds = await resolveUserIds(String(ownerId));
+      params.push(resolvedOwnerIds);
+      sql += ` AND i.owner_id = ANY($${params.length}::text[])`;
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (i.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
+      }
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (i.title ILIKE $${params.length} OR i.description ILIKE $${params.length} OR i.category ILIKE $${params.length})`;
+    }
+    const currentViewerId = req.user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND i.owner_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
+    if (radar === "true" || radar === "100m") {
+      sql += ` ORDER BY distance_meters ASC, i.created_at DESC`;
+    } else {
+      sql += ` ORDER BY i.created_at DESC`;
+    }
+    const parsedLimit = limit ? Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50)) : 50;
+    params.push(parsedLimit);
+    sql += ` LIMIT $${params.length}`;
+    if (offset) {
+      const parsedOffset = Math.max(0, parseInt(String(offset), 10) || 0);
+      params.push(parsedOffset);
+      sql += ` OFFSET $${params.length}`;
+    }
+    const result = await query(sql, params);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
+        i.max_duration_days, i.image_urls, i.sticker_badge, 
+        COALESCE(i.locality, u.locality) AS locality, 
+        COALESCE(u.address_text, i.address_text) AS address_text, 
+        COALESCE(u.pincode, i.pincode) AS pincode,
+        COALESCE(u.latitude, i.latitude) AS latitude, 
+        COALESCE(u.longitude, i.longitude) AS longitude,
+        i.status AS status, 
+        i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
+        u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
+        u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
+        COALESCE(i.locality, u.locality) AS owner_locality,
+        COALESCE(u.address_text, i.address_text) AS owner_address_text,
+        COALESCE(u.pincode, i.pincode) AS owner_pincode,
+        u.email AS owner_email, u.phone AS owner_phone
+      FROM items i
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
+      WHERE i.id = $1 AND COALESCE(i.is_deleted, false) = false`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Item not found", 404);
+    }
+    const item = result.rows[0];
+    const currentViewerId = req.user?.id;
+    if (currentViewerId && item.owner_id && currentViewerId !== item.owner_id) {
+      const blockCheck = await query(
+        `SELECT 1 FROM user_blocks 
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)`,
+        [currentViewerId, item.owner_id]
+      );
+      if (blockCheck.rows.length > 0) {
+        return sendError(res, "FORBIDDEN", "This item is not available", 403);
+      }
+    }
+    let canViewAddress = false;
+    if (currentViewerId) {
+      const viewerIds = await resolveUserIds(currentViewerId);
+      if (viewerIds.includes(String(item.owner_id))) {
+        canViewAddress = true;
+      } else {
+        const acceptedBookingCheck = await query(
+          `SELECT 1 FROM bookings 
+           WHERE item_id = $1 
+             AND borrower_id = ANY($2::text[]) 
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+           LIMIT 1`,
+          [item.id, viewerIds]
+        );
+        canViewAddress = acceptedBookingCheck.rows.length > 0;
+      }
+    }
+    if (!canViewAddress) {
+      item.address_text = null;
+      item.owner_address_text = null;
+      item.pincode = null;
+      item.owner_pincode = null;
+      item.owner_email = null;
+      item.owner_phone = null;
+      item.latitude = null;
+      item.longitude = null;
+    }
+    const bookedRes = await query(
+      `SELECT 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        start_time,
+        end_time
+      FROM bookings
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+      ORDER BY start_date ASC`,
+      [id]
+    );
+    const itemCity = extractCity(item.locality);
+    const relatedResult = await query(
+      `SELECT id, title, category, price_per_day, image_urls, sticker_badge, locality, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee
+       FROM items
+       WHERE category = $1 AND id != $2 AND status != 'UNAVAILABLE' AND locality ILIKE $3
+       LIMIT 4`,
+      [item.category, item.id, `%${itemCity}%`]
+    );
+    return sendSuccess(res, {
+      ...item,
+      can_view_address: canViewAddress,
+      booked_dates: bookedRes.rows,
+      related_items: relatedResult.rows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router2.get("/:id/availability", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
+        start_time,
+        end_time
+      FROM bookings
+      WHERE item_id = $1 
+        AND status IN ('ACCEPTED', 'HANDED_OVER')
+        AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
+      ORDER BY start_date ASC`,
+      [id]
+    );
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router2.patch("/:id/borrowing", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { available_for_borrowing } = external_exports.object({ available_for_borrowing: external_exports.boolean() }).parse(req.body);
+    const check2 = await query("SELECT owner_id FROM items WHERE id = $1", [id]);
+    if (check2.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Item not found", 404);
+    }
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the item owner can change borrowing options", 403);
+    }
+    const result = await query(
+      `UPDATE items 
+       SET available_for_borrowing = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [available_for_borrowing, id]
+    );
+    return sendSuccess(
+      res,
+      result.rows[0],
+      available_for_borrowing ? "Item is now available for borrowing as well." : "Item is now set to rental only."
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+router2.post("/", authMiddleware, async (req, res, next) => {
+  try {
+    const validated = createItemSchema.parse(req.body);
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user.id,
+      req.user.name || "Rentu Member",
+      req.user.email || `${req.user.id}@firebase.rentu.internal`,
+      validated.locality || ""
+    ]).catch(() => {
+    });
+    const userRes = await query("SELECT locality, latitude, longitude FROM users WHERE id = $1", [req.user.id]);
+    const userLocality = userRes.rows[0]?.locality || "";
+    let finalLocality = validated.locality?.trim() || userLocality;
+    const cleanPincode = validated.pincode?.trim() || null;
+    let itemLat = validated.latitude ?? (userRes.rows[0]?.latitude ? parseFloat(userRes.rows[0].latitude) : null);
+    let itemLon = validated.longitude ?? (userRes.rows[0]?.longitude ? parseFloat(userRes.rows[0].longitude) : null);
+    if ((itemLat === null || isNaN(itemLat)) && finalLocality) {
+      const lower2 = finalLocality.toLowerCase();
+      if (lower2.includes("beml")) {
+        itemLat = 12.914;
+        itemLon = 77.4993;
+      } else if (lower2.includes("mylasandra")) {
+        itemLat = 12.885;
+        itemLon = 77.505;
+      } else if (lower2.includes("kengeri")) {
+        itemLat = 12.9177;
+        itemLon = 77.4838;
+      } else if (lower2.includes("rajarajeshwari") || lower2.includes("rr nagar")) {
+        itemLat = 12.9275;
+        itemLon = 77.515;
+      } else if (lower2.includes("jayanagar")) {
+        itemLat = 12.9308;
+        itemLon = 77.5838;
+      } else if (lower2.includes("koramangala")) {
+        itemLat = 12.9352;
+        itemLon = 77.6245;
+      } else if (lower2.includes("indiranagar")) {
+        itemLat = 12.9784;
+        itemLon = 77.6408;
+      } else if (lower2.includes("hsr")) {
+        itemLat = 12.9121;
+        itemLon = 77.6446;
+      }
+    }
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
+    }
+    const result = await query(
+      `INSERT INTO items 
+        (owner_id, title, description, category, condition, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
+       VALUES 
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, 'AVAILABLE', $15, $16, $17, $18, $19)
+       RETURNING *`,
+      [
+        req.user.id,
+        validated.title,
+        validated.description,
+        validated.category,
+        validated.condition || "Good",
+        validated.price_per_day,
+        validated.max_duration_days,
+        JSON.stringify(validated.image_urls),
+        validated.sticker_badge,
+        finalLocality,
+        validated.address_text || finalLocality,
+        cleanPincode,
+        itemLat ?? null,
+        itemLon ?? null,
+        validated.available_for_borrowing ?? false,
+        validated.offers_delivery ?? false,
+        validated.delivery_fee ?? 0,
+        validated.offers_pickup ?? false,
+        validated.pickup_fee ?? 0
+      ]
+    );
+    const createdItem = result.rows[0];
+    if (Array.isArray(validated.image_urls) && validated.image_urls.length > 0) {
+      for (let i2 = 0; i2 < validated.image_urls.length; i2++) {
+        await query(
+          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
+          [createdItem.id, validated.image_urls[i2], i2]
+        ).catch(() => {
+        });
+      }
+    }
+    return sendSuccess(res, createdItem, "Gear listed successfully. It is now live on the feed.", 201);
+  } catch (error) {
+    next(error);
+  }
+});
+router2.put("/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const validated = updateItemSchema.parse(req.body);
+    const check2 = await query("SELECT owner_id, image_urls FROM items WHERE id = $1", [id]);
+    if (check2.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Item not found", 404);
+    }
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "You do not have permission to edit this listing", 403);
+    }
+    const fields = [];
+    const values = [];
+    if (validated.title !== void 0) {
+      values.push(validated.title);
+      fields.push(`title = $${values.length}`);
+    }
+    if (validated.description !== void 0) {
+      values.push(validated.description);
+      fields.push(`description = $${values.length}`);
+    }
+    if (validated.category !== void 0) {
+      const cat = validated.category === "Clothing & Accessories" ? "Clothing & Fits" : validated.category;
+      values.push(cat);
+      fields.push(`category = $${values.length}`);
+    }
+    if (validated.condition !== void 0) {
+      values.push(validated.condition);
+      fields.push(`condition = $${values.length}`);
+    }
+    if (validated.price_per_day !== void 0) {
+      values.push(validated.price_per_day);
+      fields.push(`price_per_day = $${values.length}`);
+    }
+    if (validated.max_duration_days !== void 0) {
+      values.push(validated.max_duration_days);
+      fields.push(`max_duration_days = $${values.length}`);
+    }
+    if (validated.image_urls !== void 0) {
+      values.push(JSON.stringify(validated.image_urls));
+      fields.push(`image_urls = $${values.length}::jsonb`);
+    }
+    if (validated.sticker_badge !== void 0) {
+      values.push(validated.sticker_badge);
+      fields.push(`sticker_badge = $${values.length}`);
+    }
+    if (validated.locality !== void 0) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.address_text !== void 0) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== void 0) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.latitude !== void 0) {
+      values.push(validated.latitude);
+      fields.push(`latitude = $${values.length}`);
+    }
+    if (validated.longitude !== void 0) {
+      values.push(validated.longitude);
+      fields.push(`longitude = $${values.length}`);
+    }
+    if (validated.status !== void 0) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+    }
+    if (validated.available_for_borrowing !== void 0) {
+      values.push(validated.available_for_borrowing);
+      fields.push(`available_for_borrowing = $${values.length}`);
+    }
+    if (validated.offers_delivery !== void 0) {
+      values.push(validated.offers_delivery);
+      fields.push(`offers_delivery = $${values.length}`);
+    }
+    if (validated.delivery_fee !== void 0) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
+    }
+    if (validated.offers_pickup !== void 0) {
+      values.push(validated.offers_pickup);
+      fields.push(`offers_pickup = $${values.length}`);
+    }
+    if (validated.pickup_fee !== void 0) {
+      values.push(validated.pickup_fee);
+      fields.push(`pickup_fee = $${values.length}`);
+    }
+    if (fields.length === 0) {
+      return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
+    }
+    values.push(id);
+    const updateSql = `
+      UPDATE items 
+      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    const result = await query(updateSql, values);
+    if (validated.image_urls !== void 0) {
+      const oldRawImages = check2.rows[0].image_urls;
+      const oldImages = Array.isArray(oldRawImages) ? oldRawImages : [];
+      const newImagesSet = new Set(validated.image_urls);
+      for (const oldImg of oldImages) {
+        if (!newImagesSet.has(oldImg)) {
+          await deleteStoragePhoto(oldImg);
+        }
+      }
+      await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => {
+      });
+      for (let i2 = 0; i2 < validated.image_urls.length; i2++) {
+        await query(
+          `INSERT INTO item_images (item_id, image_url, display_order) VALUES ($1, $2, $3)`,
+          [id, validated.image_urls[i2], i2]
+        ).catch(() => {
+        });
+      }
+    }
+    if (validated.status === "UNAVAILABLE") {
+      await createNotification({
+        userId: req.user.id,
+        type: "ITEM_UNAVAILABLE",
+        title: "Listing Marked Unavailable",
+        body: `"${result.rows[0]?.title || "Item"}" is now marked unavailable and paused from rental listings.`,
+        referenceId: id,
+        referenceType: "ITEM"
+      });
+    } else if (validated.status === "AVAILABLE") {
+      await createNotification({
+        userId: req.user.id,
+        type: "ITEM_AVAILABLE",
+        title: "Listing Marked Available",
+        body: `"${result.rows[0]?.title || "Item"}" is active and available for rent on the marketplace.`,
+        referenceId: id,
+        referenceType: "ITEM"
+      });
+    }
+    return sendSuccess(res, result.rows[0], "Listing updated successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+router2.delete("/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const check2 = await query("SELECT owner_id, image_urls FROM items WHERE id = $1", [id]);
+    if (check2.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Item not found", 404);
+    }
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check2.rows[0].owner_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    }
+    const activeBookings = await query(
+      `SELECT id FROM bookings 
+       WHERE item_id = $1 
+         AND status IN ('ACCEPTED', 'HANDED_OVER') 
+       LIMIT 1`,
+      [id]
+    );
+    if (activeBookings.rows.length > 0) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "Cannot delete listing: this item currently has an active rental booking in progress. Please complete the booking first.",
+        400
+      );
+    }
+    const anyBookings = await query(
+      `SELECT id FROM bookings WHERE item_id = $1 LIMIT 1`,
+      [id]
+    );
+    if (anyBookings.rows.length > 0) {
+      await query(
+        `UPDATE items 
+         SET status = 'UNAVAILABLE', is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $1`,
+        [id]
+      );
+    } else {
+      await query("DELETE FROM item_images WHERE item_id = $1", [id]).catch(() => {
+      });
+      await query("DELETE FROM items WHERE id = $1", [id]);
+    }
+    const rawImages = check2.rows[0].image_urls;
+    const images = Array.isArray(rawImages) ? rawImages : [];
+    for (const img of images) {
+      await deleteStoragePhoto(img);
+    }
+    return sendSuccess(res, { id }, "Listing deleted successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+var items_routes_default = router2;
+
+// src/modules/requests/requests.routes.ts
+var import_express3 = __toESM(require_express2());
+var router3 = (0, import_express3.Router)();
+var createRequestSchema = external_exports.object({
+  item_name: external_exports.string().min(3, "Item name must be at least 3 characters"),
+  description: external_exports.string().min(5, "Description is required"),
+  category: external_exports.string().default("Other"),
+  start_date: external_exports.string().min(1, "Needed date is required"),
+  start_time: external_exports.string().optional(),
+  end_date: external_exports.string().optional(),
+  end_time: external_exports.string().optional(),
+  duration_days: external_exports.number().int().positive().default(1),
+  offered_amount: external_exports.number().min(0, "Offered budget cannot be negative"),
+  locality: external_exports.string().optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
+  latitude: external_exports.number().optional(),
+  longitude: external_exports.number().optional(),
+  image_url: external_exports.string().nullable().optional(),
+  pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  pickup_locality: external_exports.string().optional(),
+  return_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  return_locality: external_exports.string().optional(),
+  will_pickup: external_exports.boolean().optional().default(true),
+  will_drop_back: external_exports.boolean().optional().default(true),
+  delivery_fee: external_exports.number().min(0).optional().default(0)
+});
+var updateRequestSchema = external_exports.object({
+  item_name: external_exports.string().min(3).optional(),
+  description: external_exports.string().min(5).optional(),
+  category: external_exports.string().optional(),
+  start_date: external_exports.string().optional(),
+  start_time: external_exports.string().optional(),
+  end_date: external_exports.string().optional(),
+  end_time: external_exports.string().optional(),
+  duration_days: external_exports.number().int().positive().optional(),
+  offered_amount: external_exports.number().min(0).optional(),
+  locality: external_exports.string().optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
+  status: external_exports.enum(["OPEN", "FULFILLED", "CANCELLED"]).optional(),
+  image_url: external_exports.string().nullable().optional(),
+  pickup_type: external_exports.string().optional(),
+  pickup_locality: external_exports.string().optional(),
+  return_type: external_exports.string().optional(),
+  return_locality: external_exports.string().optional(),
+  will_pickup: external_exports.boolean().optional(),
+  will_drop_back: external_exports.boolean().optional(),
+  delivery_fee: external_exports.number().min(0).optional()
+});
+var lastRequestsExpirationRun = 0;
+async function autoCancelExpiredRequests() {
+  const now = Date.now();
+  if (now - lastRequestsExpirationRun < 60 * 1e3) return;
+  lastRequestsExpirationRun = now;
+  try {
+    await query(`
+      UPDATE requests
+      SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+      WHERE status = 'OPEN'
+        AND (
+          start_date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+          OR (
+            start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+            AND (COALESCE(NULLIF(TRIM(start_time), ''), '10:00') || ':00')::time < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
+          )
+        )
+    `);
+  } catch (err) {
+    console.warn("autoCancelExpiredRequests error:", err);
+  }
+}
+router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    await autoCancelExpiredRequests();
+    const { category, locality, status = "OPEN", seekerId } = req.query;
+    let sql = `
+      SELECT 
+        r.id, r.item_name, r.description, r.category, 
+        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
+        r.offered_amount, r.locality, 
+        NULL AS address_text, NULL AS pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
+        r.status, r.created_at, r.image_url,
+        COALESCE(u.id, r.seeker_id) AS seeker_id, 
+        COALESCE(u.name, 'Community Member') AS seeker_name, 
+        u.username AS seeker_username,
+        u.avatar_url AS seeker_avatar,
+        COALESCE(u.locality, r.locality) AS seeker_locality, 
+        u.trust_score AS seeker_trust_score,
+        NULL AS seeker_phone, 
+        NULL AS seeker_email
+      FROM requests r
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
+      WHERE 1=1
+    `;
+    const params = [];
+    if (status && status !== "ALL") {
+      params.push(status);
+      sql += ` AND r.status = $${params.length}`;
+    }
+    if (category && category !== "All") {
+      params.push(category);
+      sql += ` AND r.category = $${params.length}`;
+    }
+    if (seekerId) {
+      const resolvedSeekerIds = await resolveUserIds(String(seekerId));
+      params.push(resolvedSeekerIds);
+      sql += ` AND r.seeker_id = ANY($${params.length}::text[])`;
+    } else if (locality) {
+      const city = extractCity(String(locality));
+      if (city) {
+        params.push(`%${city}%`);
+        sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
+      }
+    }
+    const currentViewerId = req.user?.id;
+    if (currentViewerId) {
+      params.push(currentViewerId);
+      sql += ` AND r.seeker_id NOT IN (
+        SELECT blocked_id FROM user_blocks WHERE blocker_id = $${params.length}
+        UNION
+        SELECT blocker_id FROM user_blocks WHERE blocked_id = $${params.length}
+      )`;
+    }
+    sql += ` ORDER BY r.created_at DESC`;
+    const result = await query(sql, params);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router3.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    await autoCancelExpiredRequests();
+    const { id } = req.params;
+    const result = await query(
+      `SELECT 
+        r.id, r.item_name, r.description, r.category, 
+        r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
+        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
+        r.will_pickup, r.will_drop_back, r.delivery_fee,
+        r.status, r.created_at, r.image_url,
+        u.id AS seeker_id, u.name AS seeker_name, u.username AS seeker_username, u.avatar_url AS seeker_avatar,
+        u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
+        u.phone AS seeker_phone, u.email AS seeker_email
+      FROM requests r
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
+      WHERE r.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
+    }
+    const requestItem = result.rows[0];
+    const currentViewerId = req.user?.id;
+    let canViewPrivate = false;
+    if (currentViewerId) {
+      const viewerIds = await resolveUserIds(currentViewerId);
+      canViewPrivate = viewerIds.includes(String(requestItem.seeker_id)) || req.user?.role === "ADMIN";
+    }
+    if (!canViewPrivate) {
+      requestItem.address_text = null;
+      requestItem.pincode = null;
+      requestItem.seeker_phone = null;
+      requestItem.seeker_email = null;
+      requestItem.latitude = null;
+      requestItem.longitude = null;
+    }
+    return sendSuccess(res, requestItem);
+  } catch (error) {
+    next(error);
+  }
+});
+router3.post("/", authMiddleware, async (req, res, next) => {
+  try {
+    const validated = createRequestSchema.parse(req.body);
+    await query(`
+      INSERT INTO users (id, name, email, role, locality)
+      VALUES ($1, $2, $3, 'USER', $4)
+      ON CONFLICT (id) DO NOTHING;
+    `, [
+      req.user.id,
+      req.user.name || "Rentu Member",
+      req.user.email || `${req.user.id}@firebase.rentu.internal`,
+      validated.locality || ""
+    ]).catch(() => {
+    });
+    let finalLocality = validated.locality?.trim() || "";
+    const cleanPincode = validated.pincode?.trim() || null;
+    if (cleanPincode && finalLocality) {
+      await query(
+        `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+        [cleanPincode, finalLocality]
+      ).catch(() => {
+      });
+    }
+    const result = await query(
+      `INSERT INTO requests
+        (seeker_id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, address_text, pincode, latitude, longitude, image_url, pickup_type, pickup_locality, return_type, return_locality, will_pickup, will_drop_back, delivery_fee, status)
+       VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 'OPEN')
+       RETURNING *`,
+      [
+        req.user.id,
+        validated.item_name,
+        validated.description,
+        validated.category,
+        validated.start_date,
+        validated.start_time || "10:00",
+        validated.end_date || null,
+        validated.end_time || "18:00",
+        validated.duration_days,
+        validated.offered_amount,
+        finalLocality,
+        validated.address_text || finalLocality,
+        cleanPincode,
+        validated.latitude ?? null,
+        validated.longitude ?? null,
+        validated.image_url ?? null,
+        validated.pickup_type || "LENDER_LOCATION",
+        validated.pickup_locality || null,
+        validated.return_type || "LENDER_LOCATION",
+        validated.return_locality || null,
+        validated.will_pickup ?? true,
+        validated.will_drop_back ?? true,
+        validated.delivery_fee ?? 0
+      ]
+    );
+    const createdRequest = result.rows[0];
+    const seekerId = req.user.id;
+    const seekerName = req.user.name || "A neighbor";
+    try {
+      const followersRes = await query(
+        `SELECT uf.follower_id FROM user_follows uf
+         WHERE uf.following_id = $1
+         AND uf.follower_id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+      const notifiedUserIds = /* @__PURE__ */ new Set();
+      notifiedUserIds.add(seekerId);
+      for (const f3 of followersRes.rows) {
+        notifiedUserIds.add(f3.follower_id);
+        await query(
+          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+           VALUES ($1, $2, 'REQUEST_FOLLOWER_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+          [
+            f3.follower_id,
+            seekerId,
+            `New Request from ${seekerName}`,
+            `${seekerName} just posted a gear request: "${validated.item_name}" (Budget: \u20B9${validated.offered_amount})`,
+            createdRequest.id
+          ]
+        ).catch(() => {
+        });
+      }
+      const nearbyUsersRes = await query(
+        `SELECT id, locality, latitude, longitude FROM users
+         WHERE id != $1
+         AND COALESCE(notify_nearby_requests_5km, TRUE) = TRUE
+         AND id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $1
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $1
+         )`,
+        [seekerId]
+      );
+      const seekerLat = validated.latitude;
+      const seekerLon = validated.longitude;
+      for (const u of nearbyUsersRes.rows) {
+        if (notifiedUserIds.has(u.id)) continue;
+        let isWithin5Km = false;
+        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+          const R = 6371;
+          const dLat = (u.latitude - seekerLat) * Math.PI / 180;
+          const dLon = (u.longitude - seekerLon) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(seekerLat * Math.PI / 180) * Math.cos(u.latitude * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distKm = R * c;
+          if (distKm <= 5) {
+            isWithin5Km = true;
+          }
+        } else if (finalLocality && u.locality) {
+          const sCity = extractCity(finalLocality)?.toLowerCase();
+          const uCity = extractCity(u.locality)?.toLowerCase();
+          if (sCity && uCity && sCity === uCity) {
+            isWithin5Km = true;
+          }
+        }
+        if (isWithin5Km) {
+          notifiedUserIds.add(u.id);
+          await query(
+            `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+             VALUES ($1, $2, 'NEARBY_REQUEST_ANNOUNCEMENT', $3, $4, $5, 'REQUEST')`,
+            [
+              u.id,
+              seekerId,
+              `Nearby Gear Request`,
+              `${seekerName} nearby requested: "${validated.item_name}" (${finalLocality || "nearby"})`,
+              createdRequest.id
+            ]
+          ).catch(() => {
+          });
+        }
+      }
+    } catch (announcementErr) {
+      console.warn("Failed to dispatch request announcements:", announcementErr);
+    }
+    return sendSuccess(res, createdRequest, "Wish dropped to community feed. Nearby owners will see your request.", 201);
+  } catch (error) {
+    next(error);
+  }
+});
+router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const lenderId = req.user.id;
+    const lenderName = req.user.name || "A Neighbor";
+    const reqResult = await query(
+      `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
+       FROM requests r
+       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
+       WHERE r.id = $1`,
+      [id]
+    );
+    if (reqResult.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Request not found", 404);
+    }
+    const request = reqResult.rows[0];
+    const myIds = await resolveUserIds(lenderId);
+    if (myIds.includes(String(request.seeker_id))) {
+      return sendError(res, "BAD_REQUEST", "You cannot lend gear to your own request", 400);
+    }
+    if (request.status !== "OPEN") {
+      return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
+    }
+    const existingOffer = await query(
+      `SELECT id FROM bookings 
+       WHERE request_id = $1 
+         AND lender_id = ANY($2::text[]) 
+         AND status = 'PENDING'
+       LIMIT 1`,
+      [request.id, myIds]
+    );
+    if (existingOffer.rows.length > 0) {
+      return sendError(res, "BAD_REQUEST", "You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [lenderId, request.seeker_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot send lend offer. Communication between these users is blocked.", 403);
+    }
+    const durationDays = Math.max(1, Number(request.duration_days) || 1);
+    const offeredAmount = Number(request.offered_amount) || 0;
+    const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
+    const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
+    const totalDealPrice = offeredAmount + deliveryFee + returnFee;
+    const pricePerDay = Math.round(offeredAmount / durationDays);
+    const fullDestinationAddress = request.address_text || request.locality || "Handover location";
+    const proposalPayload = {
+      type: "REQUEST",
+      is_lend_offer: true,
+      request_id: request.id,
+      lender_id: lenderId,
+      borrower_id: request.seeker_id,
+      title: request.item_name,
+      description: request.description,
+      category: request.category || "Other",
+      price_per_day: pricePerDay,
+      total_price: totalDealPrice,
+      duration_days: durationDays,
+      start_date: request.start_date,
+      end_date: request.end_date,
+      start_time: request.start_time || "10:00:00",
+      end_time: request.end_time || "18:00:00",
+      delivery_option: !request.will_pickup ? "LENDER_DELIVERY" : "SELF",
+      delivery_fee: deliveryFee,
+      collection_option: !request.will_drop_back ? "LENDER_COLLECT" : "SELF",
+      collection_fee: returnFee,
+      delivery_location: fullDestinationAddress,
+      return_location: fullDestinationAddress,
+      notes: request.description,
+      image_url: request.image_url || null,
+      status: "PENDING"
+    };
+    const summaryText = `I Can Lend This: ${lenderName} offered to fulfill your request for "${request.item_name}" (\u20B9${totalDealPrice} for ${durationDays} days)`;
+    const msgResult = await query(
+      `INSERT INTO messages (sender_id, receiver_id, content, message_type, proposal_data)
+       VALUES ($1, $2, $3, 'PROPOSAL', $4)
+       RETURNING *`,
+      [lenderId, request.seeker_id, summaryText, JSON.stringify(proposalPayload)]
+    );
+    const createdMessage = msgResult.rows[0];
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'REQUEST_LEND_OFFER', $3, $4, $5, 'PROPOSAL')`,
+      [
+        request.seeker_id,
+        lenderId,
+        `${lenderName} is ready to lend gear`,
+        `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
+        request.id
+      ]
+    ).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
+    return sendSuccess(res, {
+      message: createdMessage,
+      proposal: proposalPayload,
+      partner: {
+        id: request.seeker_id,
+        name: request.seeker_name,
+        avatar: request.seeker_avatar
+      }
+    }, "Lend offer sent to seeker! When they accept, the booking will automatically start in Ongoing Bookings.");
+  } catch (error) {
+    next(error);
+  }
+});
+router3.put("/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const validated = updateRequestSchema.parse(req.body);
+    const check2 = await query("SELECT seeker_id, status FROM requests WHERE id = $1", [id]);
+    if (check2.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
+    }
+    const userIds = await resolveUserIds(req.user.id);
+    const isSeeker = userIds.includes(String(check2.rows[0].seeker_id)) || req.user.role === "ADMIN";
+    if (!isSeeker) {
+      return sendError(res, "FORBIDDEN", "Permission denied: Only the wish creator can edit or update the status of this request.", 403);
+    }
+    const fields = [];
+    const values = [];
+    if (validated.item_name !== void 0) {
+      values.push(validated.item_name);
+      fields.push(`item_name = $${values.length}`);
+    }
+    if (validated.description !== void 0) {
+      values.push(validated.description);
+      fields.push(`description = $${values.length}`);
+    }
+    if (validated.category !== void 0) {
+      values.push(validated.category);
+      fields.push(`category = $${values.length}`);
+    }
+    if (validated.start_date !== void 0) {
+      values.push(validated.start_date);
+      fields.push(`start_date = $${values.length}`);
+    }
+    if (validated.start_time !== void 0) {
+      values.push(validated.start_time);
+      fields.push(`start_time = $${values.length}`);
+    }
+    if (validated.end_date !== void 0) {
+      values.push(validated.end_date);
+      fields.push(`end_date = $${values.length}`);
+    }
+    if (validated.end_time !== void 0) {
+      values.push(validated.end_time);
+      fields.push(`end_time = $${values.length}`);
+    }
+    if (validated.duration_days !== void 0) {
+      values.push(validated.duration_days);
+      fields.push(`duration_days = $${values.length}`);
+    }
+    if (validated.offered_amount !== void 0) {
+      values.push(validated.offered_amount);
+      fields.push(`offered_amount = $${values.length}`);
+    }
+    if (validated.locality !== void 0) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.status !== void 0) {
+      values.push(validated.status);
+      fields.push(`status = $${values.length}`);
+    }
+    if (validated.image_url !== void 0) {
+      values.push(validated.image_url);
+      fields.push(`image_url = $${values.length}`);
+    }
+    if (validated.pickup_type !== void 0) {
+      values.push(validated.pickup_type);
+      fields.push(`pickup_type = $${values.length}`);
+    }
+    if (validated.pickup_locality !== void 0) {
+      values.push(validated.pickup_locality);
+      fields.push(`pickup_locality = $${values.length}`);
+    }
+    if (validated.return_type !== void 0) {
+      values.push(validated.return_type);
+      fields.push(`return_type = $${values.length}`);
+    }
+    if (validated.return_locality !== void 0) {
+      values.push(validated.return_locality);
+      fields.push(`return_locality = $${values.length}`);
+    }
+    if (validated.address_text !== void 0) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== void 0) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.will_pickup !== void 0) {
+      values.push(validated.will_pickup);
+      fields.push(`will_pickup = $${values.length}`);
+    }
+    if (validated.will_drop_back !== void 0) {
+      values.push(validated.will_drop_back);
+      fields.push(`will_drop_back = $${values.length}`);
+    }
+    if (validated.delivery_fee !== void 0) {
+      values.push(validated.delivery_fee);
+      fields.push(`delivery_fee = $${values.length}`);
+    }
+    if (fields.length === 0) {
+      return sendError(res, "BAD_REQUEST", "No fields provided for update", 400);
+    }
+    values.push(id);
+    const updateSql = `
+      UPDATE requests
+      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    const result = await query(updateSql, values);
+    return sendSuccess(res, result.rows[0], "Wish request updated successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+router3.delete("/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const check2 = await query("SELECT seeker_id FROM requests WHERE id = $1", [id]);
+    if (check2.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Wish request not found", 404);
+    }
+    const userIds = await resolveUserIds(req.user.id);
+    if (!userIds.includes(String(check2.rows[0].seeker_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    }
+    await query("DELETE FROM requests WHERE id = $1", [id]);
+    return sendSuccess(res, { id }, "Wish request deleted");
+  } catch (error) {
+    next(error);
+  }
+});
+var requests_routes_default = router3;
+
+// src/modules/bookings/bookings.routes.ts
+var import_express4 = __toESM(require_express2());
+var import_crypto = __toESM(require("crypto"));
+var router4 = (0, import_express4.Router)();
+var failedCodeAttempts = /* @__PURE__ */ new Map();
+function checkCodeLockout(key) {
+  const record = failedCodeAttempts.get(key);
+  if (!record) return { locked: false };
+  const now = Date.now();
+  if (record.lockedUntil > now) {
+    return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1e3) };
+  }
+  if (record.lockedUntil <= now && record.attempts >= 5) {
+    failedCodeAttempts.delete(key);
+  }
+  return { locked: false };
+}
+function recordFailedCodeAttempt(key) {
+  const now = Date.now();
+  const record = failedCodeAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
+  record.attempts += 1;
+  if (record.attempts >= 5) {
+    record.lockedUntil = now + 15 * 60 * 1e3;
+  }
+  failedCodeAttempts.set(key, record);
+  return record.attempts;
+}
+function resetCodeAttempts(key) {
+  failedCodeAttempts.delete(key);
+}
+var createBookingSchema = external_exports.object({
+  item_id: external_exports.string().uuid("Invalid item ID"),
+  start_date: external_exports.string().min(1, "Start date is required"),
+  start_time: external_exports.string().optional(),
+  end_date: external_exports.string().optional(),
+  end_time: external_exports.string().optional(),
+  duration_days: external_exports.number().int().positive("Duration must be at least 1 day"),
+  total_price: external_exports.number().min(0).optional(),
+  pickup_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  pickup_locality: external_exports.string().optional(),
+  return_type: external_exports.string().optional().default("LENDER_LOCATION"),
+  return_locality: external_exports.string().optional(),
+  requires_delivery: external_exports.boolean().optional().default(false),
+  delivery_fee: external_exports.number().min(0).optional().default(0),
+  requires_pickup: external_exports.boolean().optional().default(false),
+  pickup_fee: external_exports.number().min(0).optional().default(0),
+  message: external_exports.string().optional(),
+  timezone_offset_minutes: external_exports.number().optional()
+});
+var updateStatusSchema = external_exports.object({
+  status: external_exports.enum(["ACCEPTED", "REJECTED", "CANCELLED"]),
+  timezone_offset_minutes: external_exports.number().optional()
+});
+function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
+  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
+  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
+  const [hour, minute] = cleanTime.split(":").map(Number);
+  if (typeof tzOffsetMinutes === "number") {
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    return localUtcMs + tzOffsetMinutes * 6e4;
+  }
+  const d = /* @__PURE__ */ new Date(`${dateStr.slice(0, 10)}T${cleanTime}:00`);
+  return d.getTime();
+}
+var lastBookingsExpirationRun = 0;
+async function checkAndAutoCancelExpiredBookings() {
+  const now = Date.now();
+  if (now - lastBookingsExpirationRun < 60 * 1e3) return;
+  lastBookingsExpirationRun = now;
+  try {
+    const expiredRes = await query(`
+      SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
+             TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
+             b.start_time, i.title AS item_title,
+             lender.name AS lender_name, borrower.name AS borrower_name
+      FROM bookings b
+      LEFT JOIN items i ON b.item_id = i.id
+      LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      WHERE (b.status = 'ACCEPTED' AND b.handed_over_at IS NULL)
+         OR (b.status = 'PENDING')
+    `);
+    const now2 = Date.now();
+    for (const row of expiredRes.rows) {
+      const sDate = row.start_date_str;
+      if (!sDate) continue;
+      const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
+      const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
+      if (row.status === "PENDING" && now2 > startTimestamp) {
+        await query(
+          `UPDATE bookings 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'PENDING'`,
+          [row.id]
+        );
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+        await query(
+          `UPDATE messages 
+           SET proposal_data = jsonb_set(
+             COALESCE(proposal_data, '{}'::jsonb),
+             '{status}',
+             '"CANCELLED"'::jsonb
+           )
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+          [row.id]
+        ).catch(() => {
+        });
+        await query(
+          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled start time arrived without being accepted.', 'SYSTEM')`,
+          [row.id, row.lender_id, row.borrower_id]
+        ).catch(() => {
+        });
+        await createNotification({
+          userId: row.borrower_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Request Auto-Cancelled",
+          body: `Your rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed without being accepted.`
+        }).catch(() => {
+        });
+        await createNotification({
+          userId: row.lender_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Request Expired & Cancelled",
+          body: `Rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed.`
+        }).catch(() => {
+        });
+        continue;
+      }
+      const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
+      if (row.status === "ACCEPTED" && now2 > oneHourAfterStart) {
+        await query(
+          `UPDATE bookings 
+           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $1 AND status = 'ACCEPTED' AND handed_over_at IS NULL`,
+          [row.id]
+        );
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+        await query(
+          `UPDATE messages 
+           SET proposal_data = jsonb_set(
+             COALESCE(proposal_data, '{}'::jsonb),
+             '{status}',
+             '"CANCELLED"'::jsonb
+           )
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+          [row.id]
+        ).catch(() => {
+        });
+        await query(
+          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the pickup handover code was not verified within 1 hour of the scheduled start time.', 'SYSTEM')`,
+          [row.id, row.lender_id, row.borrower_id]
+        ).catch(() => {
+        });
+        await createNotification({
+          userId: row.borrower_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Rental Auto-Cancelled",
+          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`
+        }).catch(() => {
+        });
+        await createNotification({
+          userId: row.lender_id,
+          bookingId: row.id,
+          referenceId: row.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Rental Auto-Cancelled",
+          body: `Rental for "${row.item_title}" was automatically cancelled because the pickup code was not verified within 1 hour of the pickup start time.`
+        }).catch(() => {
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("checkAndAutoCancelExpiredBookings notice:", err);
+  }
+}
+var verifyCodeSchema = external_exports.object({
+  code: external_exports.string().min(4, "Verification code is required")
+});
+var submitReviewSchema = external_exports.object({
+  rating: external_exports.number().int().min(1, "Rating must be between 1 and 5 stars").max(5, "Rating must be between 1 and 5 stars"),
+  comment: external_exports.string().max(1e3, "Comment cannot exceed 1000 characters").optional().default(""),
+  review_type: external_exports.enum(["OWNER_RENTAL", "RENTER", "COMMUNITY_LENDER"]).optional()
+});
+router4.post("/", authMiddleware, async (req, res, next) => {
+  try {
+    const validated = createBookingSchema.parse(req.body);
+    const borrowerId = req.user.id;
+    const itemRes = await query(
+      `SELECT id, owner_id, price_per_day, title, status, available_for_borrowing, 
+              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category
+       FROM items WHERE id = $1`,
+      [validated.item_id]
+    );
+    if (itemRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Item not found", 404);
+    }
+    const item = itemRes.rows[0];
+    if (item.status && item.status !== "AVAILABLE") {
+      return sendError(res, "BAD_REQUEST", "This item is currently unavailable for rent or borrowing.", 400);
+    }
+    if (item.owner_id === borrowerId) {
+      return sendError(res, "BAD_REQUEST", "You cannot borrow your own gear.", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [borrowerId, item.owner_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot rent from this user due to a block.", 403);
+    }
+    let finalEndDate = validated.end_date;
+    if (!finalEndDate) {
+      const sDate = new Date(validated.start_date);
+      if (!isNaN(sDate.getTime())) {
+        sDate.setDate(sDate.getDate() + Math.max(0, validated.duration_days - 1));
+        finalEndDate = sDate.toISOString().split("T")[0];
+      } else {
+        finalEndDate = validated.start_date;
+      }
+    }
+    const tzOffset = typeof validated.timezone_offset_minutes === "number" ? validated.timezone_offset_minutes : -330;
+    const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
+    const currentTimestampWithGrace = Date.now() - 2 * 60 * 1e3;
+    if (startTimestamp < currentTimestampWithGrace) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Cannot book in the past. The selected start time (${validated.start_date} ${validated.start_time || ""}) has already passed. Please select an upcoming date and time.`,
+        400
+      );
+    }
+    const endTimestamp = parseToUtcTimestamp(finalEndDate, validated.end_time || "18:00", tzOffset);
+    if (endTimestamp <= startTimestamp) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "Rental return time must be strictly after the pickup start time.",
+        400
+      );
+    }
+    const overlapRes = await query(
+      `SELECT 
+        id, 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+        TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+       FROM bookings 
+       WHERE item_id = $1 
+         AND status IN ('ACCEPTED', 'HANDED_OVER')
+         AND (
+           start_date <= $3::date 
+           AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $2::date
+         )
+       LIMIT 1`,
+      [item.id, validated.start_date, finalEndDate]
+    );
+    if (overlapRes.rows.length > 0) {
+      const conflict = overlapRes.rows[0];
+      return sendError(
+        res,
+        "CONFLICT",
+        `This product is unavailable from ${conflict.start_date} to ${conflict.end_date} because it is already rented. Please pick different dates on the calendar.`,
+        409
+      );
+    }
+    const itemRate = Number(item.price_per_day || 0);
+    const isFreeBorrow = itemRate <= 0 || item.available_for_borrowing;
+    if (validated.total_price === 0 && itemRate > 0 && !item.available_for_borrowing) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "The owner has not made this item available for free borrowing. It is only available for paid rent.",
+        400
+      );
+    }
+    const borrowerRes = await query("SELECT id, address_text, locality, saved_locations FROM users WHERE id = $1", [borrowerId]);
+    const borrower = borrowerRes.rows[0];
+    const hasAddressText = borrower?.address_text && borrower.address_text.trim() && borrower.address_text.trim() !== "Bengaluru, India";
+    const hasSavedLocations = Array.isArray(borrower?.saved_locations) && borrower.saved_locations.some((loc) => loc && (loc.building_flat_house?.trim() || loc.street_road_landmark?.trim()));
+    if (!hasAddressText && !hasSavedLocations) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "Address required: Please set your address in your profile before requesting to rent or order items.",
+        400
+      );
+    }
+    const sDateObj = new Date(validated.start_date);
+    const eDateObj = new Date(finalEndDate);
+    const dayDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1e3 * 60 * 60 * 24)));
+    const durationDays = validated.duration_days ? Math.max(1, validated.duration_days) : dayDiff;
+    const baseCost = isFreeBorrow || itemRate <= 0 ? 0 : itemRate * durationDays;
+    let deliveryFee = 0;
+    if (validated.requires_delivery) {
+      if (!item.offers_delivery) {
+        return sendError(res, "BAD_REQUEST", "The owner does not offer delivery for this item.", 400);
+      }
+      deliveryFee = Number(item.delivery_fee || 0);
+    }
+    let pickupFee = 0;
+    if (validated.requires_pickup) {
+      if (!item.offers_pickup) {
+        return sendError(res, "BAD_REQUEST", "The owner does not offer collection/pickup for this item.", 400);
+      }
+      pickupFee = Number(item.pickup_fee || 0);
+    }
+    const calculatedTotalPrice = baseCost + deliveryFee + pickupFee;
+    const pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+    const proposalData = {
+      type: "RENTAL_REQUEST",
+      item_id: item.id,
+      item_title: item.title,
+      title: item.title,
+      item_images: item.image_urls || [],
+      image_url: Array.isArray(item.image_urls) && item.image_urls.length > 0 ? item.image_urls[0] : item.image_url || "",
+      category: item.category,
+      price_per_day: itemRate,
+      total_price: calculatedTotalPrice,
+      duration_days: durationDays,
+      start_date: validated.start_date,
+      start_time: validated.start_time || "10:00",
+      end_date: finalEndDate,
+      end_time: validated.end_time || "18:00",
+      pickup_type: validated.pickup_type || "LENDER_LOCATION",
+      pickup_locality: validated.pickup_locality || item.locality || "",
+      return_type: validated.return_type || "LENDER_LOCATION",
+      return_locality: validated.return_locality || item.locality || "",
+      requires_delivery: validated.requires_delivery ?? false,
+      delivery_fee: deliveryFee,
+      requires_pickup: validated.requires_pickup ?? false,
+      pickup_fee: pickupFee,
+      status: "PENDING",
+      notes: validated.message || `Hey! I'd love to rent your ${item.title} for ${durationDays} days.`
+    };
+    const client = await pool.connect();
+    let booking;
+    try {
+      await client.query("BEGIN");
+      const bookingRes = await client.query(
+        `INSERT INTO bookings
+          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
+         RETURNING *`,
+        [
+          item.id,
+          borrowerId,
+          item.owner_id,
+          validated.start_date,
+          validated.start_time || "10:00",
+          finalEndDate,
+          validated.end_time || "18:00",
+          durationDays,
+          calculatedTotalPrice,
+          validated.pickup_type || "LENDER_LOCATION",
+          validated.pickup_locality || null,
+          validated.return_type || "LENDER_LOCATION",
+          validated.return_locality || null,
+          validated.requires_delivery ?? false,
+          deliveryFee,
+          validated.requires_pickup ?? false,
+          pickupFee,
+          validated.message || `Hey! Would love to rent your ${item.title}.`,
+          pickupCode
+        ]
+      );
+      booking = bookingRes.rows[0];
+      const fullProposalData = {
+        ...proposalData,
+        booking_id: booking.id
+      };
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+         VALUES ($1, $2, $3, $4, 'PROPOSAL', $5, false, false)`,
+        [
+          booking.id,
+          borrowerId,
+          item.owner_id,
+          validated.message || `Rental request for ${item.title} (${durationDays} days)`,
+          JSON.stringify(fullProposalData)
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    const borrowerUserRes = await query("SELECT name FROM users WHERE id = $1", [borrowerId]);
+    const borrowerName = borrowerUserRes.rows[0]?.name || "A community member";
+    await createNotification({
+      userId: item.owner_id,
+      senderId: borrowerId,
+      bookingId: booking.id,
+      referenceId: booking.id,
+      referenceType: "BOOKING",
+      type: "BOOKING_PROPOSAL",
+      title: "Rental Request",
+      body: `${borrowerName} requested to rent "${item.title}".`
+    }).catch((err) => console.warn("Failed to dispatch booking proposal notification:", err));
+    return sendSuccess(res, booking, "Proposal sent to lender! You will be notified when they accept.", 201);
+  } catch (error) {
+    next(error);
+  }
+});
+router4.get("/", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { role } = req.query;
+    await checkAndAutoCancelExpiredBookings();
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    let sql = `
+      SELECT 
+        b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+        TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date, 
+        b.start_time, 
+        TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date, 
+        b.end_time, 
+        b.duration_days,
+        b.pickup_type, b.pickup_locality, b.return_type, b.return_locality,
+        b.requires_delivery, b.delivery_fee, b.requires_pickup, b.pickup_fee,
+        COALESCE(b.total_price, b.duration_days * COALESCE(i.price_per_day, 0)) AS total_price, 
+        b.status, b.message, 
+        CASE WHEN b.borrower_id = ANY($1::text[]) THEN b.pickup_code ELSE NULL END AS pickup_code, 
+        CASE WHEN b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]) THEN b.return_code ELSE NULL END AS return_code, 
+        b.handed_over_at, b.returned_at, b.completed_at, b.created_at,
+        b.payment_status, b.payment_method,
+        COALESCE(i.title, 'Rented Gear') AS item_title, 
+        COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
+        COALESCE(i.category, 'Other') AS item_category,
+        COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
+        COALESCE(i.price_per_day, 0) AS item_rate,
+        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
+        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
+        lender.address_text AS lender_address,
+        borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
+        borrower.phone AS borrower_phone, borrower.email AS borrower_email,
+        lender.name AS lender_name, lender.avatar_url AS lender_avatar,
+        lender.phone AS lender_phone, lender.email AS lender_email,
+        rev.id AS user_review_id,
+        rev.rating AS user_rating,
+        rev.comment AS user_comment,
+        rev.created_at AS user_reviewed_at
+      FROM bookings b
+      LEFT JOIN items i ON b.item_id = i.id
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      LEFT JOIN users lender ON (
+        b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+        i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+      )
+      LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
+      WHERE (
+        b.borrower_id = ANY($1::text[]) 
+        OR b.lender_id = ANY($1::text[]) 
+        OR i.owner_id = ANY($1::text[])
+      )
+    `;
+    const params = [myIds];
+    if (role === "borrower") {
+      sql += ` AND b.borrower_id = ANY($1::text[])`;
+    } else if (role === "lender") {
+      sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
+    }
+    sql += ` ORDER BY b.created_at DESC`;
+    const result = await query(sql, params);
+    const currentMs = Date.now();
+    for (const b of result.rows) {
+      if (b.status === "ACCEPTED" && b.pickup_code) {
+        const sDate = b.start_date;
+        const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
+        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+        if (currentMs < startMs - 5 * 60 * 1e3) {
+          b.pickup_code = null;
+        }
+      }
+    }
+    const proposalsRes = await query(
+      `SELECT 
+        m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
+        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
+      FROM messages m
+      LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
+      LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
+      WHERE m.message_type = 'PROPOSAL'
+        AND (
+          m.sender_id = ANY($1::text[]) 
+          OR m.receiver_id = ANY($1::text[])
+          OR (m.booking_id IS NOT NULL AND m.booking_id IN (
+            SELECT b_sub.id FROM bookings b_sub 
+            WHERE b_sub.borrower_id = ANY($1::text[]) 
+               OR b_sub.lender_id = ANY($1::text[])
+          ))
+        )
+        AND (
+          (m.proposal_data->>'status') IS NULL 
+          OR (m.proposal_data->>'status') = 'PENDING'
+        )
+      ORDER BY m.created_at DESC`,
+      [myIds]
+    );
+    const existingBookingIds = /* @__PURE__ */ new Set();
+    for (const b of result.rows) {
+      if (b.id) existingBookingIds.add(String(b.id));
+    }
+    const proposalBookings = [];
+    for (const pRow of proposalsRes.rows) {
+      try {
+        const pData = typeof pRow.proposal_data === "string" ? JSON.parse(pRow.proposal_data) : pRow.proposal_data || {};
+        if (pRow.booking_id && existingBookingIds.has(String(pRow.booking_id))) {
+          continue;
+        }
+        if (pData.booking_id && existingBookingIds.has(String(pData.booking_id))) {
+          continue;
+        }
+        const isOffer = pData.type === "LISTING" || pData.is_lend_offer === true;
+        const lenderId = pData.lender_id || (isOffer ? pRow.sender_user_id : pRow.receiver_user_id) || (isOffer ? pRow.sender_id : pRow.receiver_id);
+        const borrowerId = pData.borrower_id || (isOffer ? pRow.receiver_user_id : pRow.sender_user_id) || (isOffer ? pRow.receiver_id : pRow.sender_id);
+        if (role === "borrower" && !myIds.includes(String(borrowerId))) continue;
+        if (role === "lender" && !myIds.includes(String(lenderId))) continue;
+        const durationDays = Math.max(1, Number(pData.duration_days) || 1);
+        const totalPrice = Number(pData.total_price) || 0;
+        const pricePerDay = Number(pData.price_per_day) || (durationDays > 0 ? Math.round(totalPrice / durationDays) : 0);
+        const startDateStr = pData.start_date ? String(pData.start_date).slice(0, 10) : new Date(pRow.created_at).toISOString().slice(0, 10);
+        let endDateStr = pData.end_date ? String(pData.end_date).slice(0, 10) : "";
+        if (!endDateStr) {
+          const s2 = new Date(startDateStr);
+          if (!isNaN(s2.getTime())) {
+            s2.setDate(s2.getDate() + Math.max(0, durationDays - 1));
+            endDateStr = s2.toISOString().slice(0, 10);
+          } else {
+            endDateStr = startDateStr;
+          }
+        }
+        const isDelivery = pData.delivery_option === "LENDER_DELIVERY" || !!(pData.delivery_fee && Number(pData.delivery_fee) > 0) || !!pData.requires_delivery;
+        const isPickup = pData.collection_option === "LENDER_COLLECT" || !!(pData.collection_fee && Number(pData.collection_fee) > 0) || !!pData.requires_pickup;
+        const borrowerName = isOffer ? pRow.receiver_name || "Borrower" : pRow.sender_name || "Borrower";
+        const borrowerAvatar = isOffer ? pRow.receiver_avatar : pRow.sender_avatar;
+        const borrowerPhone = isOffer ? pRow.receiver_phone : pRow.sender_phone;
+        const borrowerEmail = isOffer ? pRow.receiver_email : pRow.sender_email;
+        const lenderName = isOffer ? pRow.sender_name || "Lender" : pRow.receiver_name || "Lender";
+        const lenderAvatar = isOffer ? pRow.sender_avatar : pRow.receiver_avatar;
+        const lenderPhone = isOffer ? pRow.sender_phone : pRow.receiver_phone;
+        const lenderEmail = isOffer ? pRow.sender_email : pRow.receiver_email;
+        const locality = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_locality : pRow.receiver_locality) || "Local Hub";
+        const address = pData.delivery_location || pData.pickup_locality || (isOffer ? pRow.sender_address : pRow.receiver_address) || locality;
+        const itemTitle = pData.item_title || pData.title || "Gear Rental Proposal";
+        const itemImages = Array.isArray(pData.item_images) && pData.item_images.length > 0 ? pData.item_images : pData.image_url ? [pData.image_url] : [];
+        const bookingId = pRow.booking_id || pData.booking_id || `proposal_${pRow.id}`;
+        proposalBookings.push({
+          id: bookingId,
+          item_id: pData.request_id || pData.item_id || pRow.id,
+          borrower_id: borrowerId,
+          lender_id: lenderId,
+          start_date: startDateStr,
+          start_time: pData.start_time || "10:00",
+          end_date: endDateStr,
+          end_time: pData.end_time || "18:00",
+          duration_days: durationDays,
+          pickup_type: isDelivery ? "OWNER_DELIVERY" : "LENDER_LOCATION",
+          pickup_locality: locality,
+          return_type: isPickup ? "OWNER_COLLECT" : "LENDER_LOCATION",
+          return_locality: locality,
+          requires_delivery: isDelivery,
+          delivery_fee: Number(pData.delivery_fee) || 0,
+          requires_pickup: isPickup,
+          pickup_fee: Number(pData.collection_fee) || 0,
+          total_price: totalPrice,
+          status: "PENDING",
+          message: pData.notes || pRow.content || "",
+          pickup_code: null,
+          return_code: null,
+          handed_over_at: null,
+          returned_at: null,
+          completed_at: null,
+          created_at: pRow.created_at,
+          payment_status: "PENDING",
+          payment_method: null,
+          item_title: itemTitle,
+          item_images: itemImages,
+          item_category: pData.category || "Other",
+          item_locality: locality,
+          item_rate: pricePerDay,
+          pickup_address: address,
+          return_address: address,
+          lender_address: isOffer ? pRow.sender_address : pRow.receiver_address,
+          borrower_name: borrowerName,
+          borrower_avatar: borrowerAvatar,
+          borrower_phone: borrowerPhone,
+          borrower_email: borrowerEmail,
+          lender_name: lenderName,
+          lender_avatar: lenderAvatar,
+          lender_phone: lenderPhone,
+          lender_email: lenderEmail,
+          user_review_id: null,
+          user_rating: null,
+          user_comment: null,
+          user_reviewed_at: null,
+          is_proposal: true,
+          proposal_message_id: pRow.id,
+          proposer_id: pRow.sender_id,
+          recipient_id: pRow.receiver_id
+        });
+      } catch (e2) {
+        console.warn("Error parsing proposal message for bookings list:", e2);
+      }
+    }
+    const combined = [...proposalBookings, ...result.rows].sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA;
+    });
+    return sendSuccess(res, combined);
+  } catch (error) {
+    next(error);
+  }
+});
+router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = updateStatusSchema.parse(req.body);
+    const userId = req.user.id;
+    if (id.startsWith("proposal_")) {
+      const msgId = id.replace(/^proposal_/, "");
+      const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [msgId]);
+      if (msgRes.rows.length === 0) {
+        return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
+      }
+      const message2 = msgRes.rows[0];
+      const myIds2 = await resolveUserIds(userId);
+      const isSender = myIds2.includes(String(message2.sender_id));
+      const isReceiver = myIds2.includes(String(message2.receiver_id));
+      const isAdmin2 = req.user.role === "ADMIN";
+      if (!isSender && !isReceiver && !isAdmin2) {
+        return sendError(res, "FORBIDDEN", "Permission denied: You are not a participant in this agreement.", 403);
+      }
+      if (status === "ACCEPTED" && !isReceiver && !isAdmin2) {
+        return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this proposal.", 403);
+      }
+      const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
+      const targetStatus = status === "CANCELLED" ? "CANCELLED" : status === "ACCEPTED" ? "ACCEPTED" : "DECLINED";
+      const updatedProposal = { ...proposal, status: targetStatus };
+      await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), msgId]);
+      return sendSuccess(res, { id, status: targetStatus }, `Proposal ${targetStatus.toLowerCase()}`);
+    }
+    const bookingRes = await query(
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (status === "ACCEPTED") {
+      if (booking.status !== "PENDING") {
+        return sendError(res, "BAD_REQUEST", `Cannot accept booking. Current status is ${booking.status}.`, 400);
+      }
+    } else if (status === "REJECTED") {
+      if (booking.status !== "PENDING") {
+        return sendError(res, "BAD_REQUEST", `Cannot reject booking. Current status is ${booking.status}.`, 400);
+      }
+    } else if (status === "CANCELLED") {
+      if (booking.status !== "PENDING" && booking.status !== "ACCEPTED") {
+        return sendError(
+          res,
+          "BAD_REQUEST",
+          `Cannot cancel booking with current status "${booking.status}". Cancellation is only allowed before handover.`,
+          400
+        );
+      }
+    } else {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Direct status updates to "${status}" are not allowed. Handover and completion require verified security codes and payment.`,
+        400
+      );
+    }
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
+    const isAdmin = req.user.role === "ADMIN";
+    if (!isLender && !isBorrower && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    }
+    if (status === "ACCEPTED" || status === "REJECTED") {
+      if (!isLender && !isAdmin) {
+        return sendError(res, "FORBIDDEN", "Only the gear owner can accept or reject proposals", 403);
+      }
+    }
+    if (status === "CANCELLED") {
+      if (booking.status === "HANDED_OVER" || booking.status === "COMPLETED") {
+        return sendError(
+          res,
+          "BAD_REQUEST",
+          "Cancellation is not allowed after pickup handover verification. The rental is actively in use from Stage 3 onwards.",
+          400
+        );
+      }
+    }
+    const sDate = booking.start_date_str || booking.start_date;
+    const eDate = booking.end_date_str || booking.end_date;
+    let pickupCode = booking.pickup_code;
+    let updateRes;
+    let conflictingPendingList = [];
+    if (status === "ACCEPTED") {
+      const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+      const endTimestamp = parseToUtcTimestamp(
+        eDate,
+        booking.end_time || "18:00",
+        tzOffset
+      );
+      if (endTimestamp < Date.now()) {
+        return sendError(
+          res,
+          "BAD_REQUEST",
+          "This booking request cannot be accepted because its scheduled rental time has already passed. Please ask the renter to send a request for upcoming dates.",
+          400
+        );
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [booking.item_id]);
+        const conflictRes = await client.query(
+          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )
+           LIMIT 1`,
+          [booking.item_id, id, sDate, eDate]
+        );
+        if (conflictRes.rows.length > 0) {
+          await client.query("ROLLBACK");
+          const c = conflictRes.rows[0];
+          return sendError(
+            res,
+            "CONFLICT",
+            `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+            409
+          );
+        }
+        const conflictingPendingRes = await client.query(
+          `SELECT id, borrower_id 
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status = 'PENDING'
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )`,
+          [booking.item_id, id, sDate, eDate]
+        );
+        conflictingPendingList = conflictingPendingRes.rows;
+        for (const conflicting of conflictingPendingList) {
+          await client.query(
+            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [conflicting.id]
+          );
+          await client.query(
+            `UPDATE messages 
+             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+            [conflicting.id]
+          ).catch(() => {
+          });
+        }
+        if (!pickupCode) {
+          pickupCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+        }
+        updateRes = await client.query(
+          `UPDATE bookings 
+           SET status = 'ACCEPTED', 
+               pickup_code = COALESCE(pickup_code, $1),
+               return_code = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2
+           RETURNING *`,
+          [pickupCode, id]
+        );
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
+      }
+      for (const conflicting of conflictingPendingList) {
+        createNotification({
+          userId: conflicting.borrower_id,
+          bookingId: conflicting.id,
+          referenceId: conflicting.id,
+          referenceType: "BOOKING",
+          type: "BOOKING_CANCELLED",
+          title: "Request Auto-Cancelled",
+          body: `Your rental request for "${booking.item_title}" was cancelled because the owner accepted another booking for those dates.`
+        }).catch(() => {
+        });
+      }
+    } else {
+      updateRes = await query(
+        `UPDATE bookings 
+         SET status = $1, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [status, id]
+      );
+    }
+    if (status === "ACCEPTED") {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"ACCEPTED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
+      await query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Proposal accepted. Meet at the designated place for pickup. Verify handoff with the 6-digit code.', 'SYSTEM')`,
+        [id, booking.lender_id, booking.borrower_id]
+      );
+      await createNotification({
+        userId: booking.borrower_id,
+        senderId: booking.lender_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_ACCEPTED",
+        title: "Rental Accepted",
+        body: `${booking.lender_name} accepted your request for "${booking.item_title}".`
+      });
+    } else if (status === "REJECTED") {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"DECLINED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
+      await createNotification({
+        userId: booking.borrower_id,
+        senderId: booking.lender_id,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_REJECTED",
+        title: "Rental Request Declined",
+        body: `${booking.lender_name} declined your request for "${booking.item_title}".`
+      });
+    } else if (status === "CANCELLED") {
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(
+        `UPDATE messages 
+         SET proposal_data = jsonb_set(
+           COALESCE(proposal_data, '{}'::jsonb),
+           '{status}',
+           '"CANCELLED"'::jsonb
+         )
+         WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+        [id]
+      ).catch((err) => console.warn("Failed to sync message proposal_data status:", err));
+      const otherPartyId = isBorrower ? booking.lender_id : booking.borrower_id;
+      const actorName = isBorrower ? booking.borrower_name || "Borrower" : booking.lender_name || "Owner";
+      await createNotification({
+        userId: otherPartyId,
+        senderId: userId,
+        bookingId: id,
+        referenceId: id,
+        referenceType: "BOOKING",
+        type: "BOOKING_CANCELLED",
+        title: "Rental Cancelled",
+        body: `${actorName} cancelled the rental for "${booking.item_title}".`
+      });
+    }
+    const safeBooking = { ...updateRes.rows[0] };
+    if (safeBooking.borrower_id !== userId) {
+      delete safeBooking.pickup_code;
+    } else if (safeBooking.status === "ACCEPTED" && safeBooking.pickup_code) {
+      const sDate2 = safeBooking.start_date_str || safeBooking.start_date;
+      const sTime = safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== "00:00" ? safeBooking.start_time.slice(0, 5) : "10:00";
+      const startMs = parseToUtcTimestamp(String(sDate2), sTime, -330);
+      if (Date.now() < startMs - 5 * 60 * 1e3) {
+        delete safeBooking.pickup_code;
+      }
+    }
+    if (safeBooking.lender_id !== userId) {
+      delete safeBooking.return_code;
+    }
+    return sendSuccess(res, safeBooking, `Proposal updated to ${status}`);
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { code } = verifyCodeSchema.parse(req.body);
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
+    const isAdmin = req.user.role === "ADMIN";
+    if (!isLender && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Only the gear owner/lender can enter and verify the renter\u2019s handover code to confirm pickup.", 403);
+    }
+    if (booking.status !== "ACCEPTED") {
+      return sendError(res, "BAD_REQUEST", `Cannot verify handover for booking with status ${booking.status}`, 400);
+    }
+    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const startTimestamp = parseToUtcTimestamp(
+      booking.start_date_str || booking.start_date,
+      booking.start_time || "10:00",
+      tzOffset
+    );
+    const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
+    if (Date.now() > oneHourAfterStart) {
+      await query(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "The 1-hour pickup handover window has expired. This rental request has been automatically cancelled.",
+        400
+      );
+    }
+    if (Date.now() < startTimestamp - 2 * 60 * 1e3) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Pickup handover code is not active yet. It will unlock at the scheduled pickup time (${booking.start_date_str || booking.start_date} at ${booking.start_time || "10:00"}).`,
+        400
+      );
+    }
+    const lockoutKey = `pickup_${id}_${userId}`;
+    const lockoutStatus = checkCodeLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
+    }
+    if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
+      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const remaining = Math.max(0, 5 - attempts);
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Incorrect 6-digit handover code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : "Too many failed attempts. Locked for 15 minutes."}`,
+        400
+      );
+    }
+    resetCodeAttempts(lockoutKey);
+    const returnCode = import_crypto.default.randomInt(1e5, 1e6).toString();
+    const client = await pool.connect();
+    let updateRes;
+    try {
+      await client.query("BEGIN");
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = 'HANDED_OVER', 
+             handed_over_at = CURRENT_TIMESTAMP, 
+             return_code = $1, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [returnCode, id]
+      );
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
+        [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    const sDate = booking.start_date_str || booking.start_date;
+    const eDate = booking.end_date_str || booking.end_date;
+    await createNotification({
+      userId: booking.borrower_id,
+      senderId: booking.lender_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_RECEIVED",
+      title: "Handover Completed",
+      body: `${booking.lender_name || "Owner"} handed over "${booking.item_title}" to you.`
+    });
+    await createNotification({
+      userId: booking.lender_id,
+      senderId: booking.borrower_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_HANDED_OVER",
+      title: "Handover Completed",
+      body: `${booking.borrower_name || "Borrower"} received "${booking.item_title}".`
+    });
+    const updatedRow = { ...updateRes.rows[0] };
+    if (!isLender && !isAdmin) {
+      updatedRow.return_code = null;
+    }
+    return sendSuccess(res, updatedRow, "Product accepted & handed over successfully! Rental is now in use.");
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { code } = verifyCodeSchema.parse(req.body);
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, 
+              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+              TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+              COALESCE(i.title, 'Rented Gear') AS item_title, 
+              COALESCE(b.lender_id, i.owner_id) AS lender_id, 
+              i.owner_id AS item_owner_id,
+              lender.name AS lender_name, borrower.name AS borrower_name
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       LEFT JOIN users lender ON (
+         b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
+         i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+       )
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    const myIds = await resolveUserIds(userId);
+    const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
+    const isBorrower = myIds.includes(String(booking.borrower_id));
+    const isAdmin = req.user.role === "ADMIN";
+    if (!isBorrower && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Only the renter can enter and verify the owner\u2019s return code to complete the return.", 403);
+    }
+    if (booking.status !== "HANDED_OVER") {
+      return sendError(res, "BAD_REQUEST", `Cannot verify return for booking with status ${booking.status}`, 400);
+    }
+    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const returnTimestamp = parseToUtcTimestamp(
+      booking.end_date_str || booking.start_date_str,
+      booking.end_time || "18:00",
+      tzOffset
+    );
+    if (Date.now() < returnTimestamp - 2 * 60 * 1e3) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Return handover code is not active yet. It will unlock at the scheduled return time (${booking.end_date_str || booking.start_date_str} at ${booking.end_time || "18:00"}).`,
+        400
+      );
+    }
+    const lockoutKey = `return_${id}_${userId}`;
+    const lockoutStatus = checkCodeLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Return code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
+    }
+    if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
+      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const remaining = Math.max(0, 5 - attempts);
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Incorrect 6-digit return code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : "Too many failed attempts. Locked for 15 minutes."}`,
+        400
+      );
+    }
+    resetCodeAttempts(lockoutKey);
+    const isFree = Number(booking.total_price) === 0;
+    const client = await pool.connect();
+    let updateRes;
+    try {
+      await client.query("BEGIN");
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
+             returned_at = CURRENT_TIMESTAMP,
+             completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+             payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [id, isFree]
+      );
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+        [
+          id,
+          userId,
+          isBorrower ? booking.lender_id : booking.borrower_id,
+          isFree ? "Product returned to owner. The rental process is completed. Please leave reviews for each other." : "Product returned to owner. Final payment confirmation is now active."
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    const safeResult = { ...updateRes.rows[0] };
+    delete safeResult.pickup_code;
+    delete safeResult.return_code;
+    return sendSuccess(
+      res,
+      safeResult,
+      isFree ? "Product returned successfully! Whole process completed." : "Product return verified! Please proceed to payment settlement."
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { payment_method = "UPI" } = req.body;
+    const userId = req.user.id;
+    const bookingRes = await query(`SELECT * FROM bookings WHERE id = $1`, [id]);
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (!booking.returned_at && booking.status !== "HANDED_OVER" && booking.status !== "COMPLETED") {
+      return sendError(res, "BAD_REQUEST", "Payment can only be submitted once the product has been handed over or returned.", 400);
+    }
+    const myIds = await resolveUserIds(userId);
+    if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the renter can submit payment", 403);
+    }
+    const updateRes = await query(
+      `UPDATE bookings 
+       SET payment_status = 'SUBMITTED',
+           payment_method = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [payment_method, id]
+    );
+    await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+       VALUES ($1, $2, $3, 'Renter has sent the payment via ' || $4 || '. Owner, please verify and confirm receipt.', 'SYSTEM')`,
+      [id, userId, booking.lender_id, payment_method]
+    );
+    return sendSuccess(res, updateRes.rows[0], "Payment marked as sent! Waiting for owner verification.");
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, COALESCE(b.lender_id, i.owner_id) AS lender_id, b.item_id, i.title AS item_title
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    if (!booking.returned_at) {
+      return sendError(res, "BAD_REQUEST", "Item must be verified as returned via 6-digit return code before final payment and completion can be confirmed.", 400);
+    }
+    if (Number(booking.total_price || 0) > 0 && booking.payment_status !== "SUBMITTED") {
+      return sendError(res, "BAD_REQUEST", "Renter must mark payment as sent before the owner can verify and confirm payment.", 400);
+    }
+    const myIds = await resolveUserIds(userId);
+    if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only the owner can confirm receiving payment", 403);
+    }
+    const client = await pool.connect();
+    let updateRes;
+    try {
+      await client.query("BEGIN");
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = 'COMPLETED',
+             completed_at = CURRENT_TIMESTAMP,
+             payment_status = 'CONFIRMED',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [id]
+      );
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
+        [id, userId, booking.borrower_id]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    await createNotification({
+      userId: booking.borrower_id,
+      senderId: booking.lender_id,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_COMPLETED",
+      title: "Rental Completed",
+      body: `${booking.lender_name || "Owner"} confirmed the return of "${booking.item_title}".`
+    });
+    return sendSuccess(res, updateRes.rows[0], "Product returned successfully! You can now leave a review.");
+  } catch (error) {
+    next(error);
+  }
+});
+router4.post("/:id/review", authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rating, comment, review_type } = submitReviewSchema.parse(req.body);
+    const userId = req.user.id;
+    const bookingRes = await query(
+      `SELECT b.*, i.title AS item_title, COALESCE(b.lender_id, i.owner_id) AS lender_id, i.price_per_day
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [id]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const booking = bookingRes.rows[0];
+    const [currentUserRes, borrowerRes, lenderRes] = await Promise.all([
+      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [userId]),
+      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [booking.borrower_id]),
+      query("SELECT id, firebase_uid, name FROM users WHERE id = $1 OR firebase_uid = $1", [booking.lender_id])
+    ]);
+    const currentUser = currentUserRes.rows[0];
+    const borrowerUser = borrowerRes.rows[0];
+    const lenderUser = lenderRes.rows[0];
+    const currentId = currentUser?.id || userId;
+    const currentFbUid = currentUser?.firebase_uid;
+    const isLender = Boolean(
+      lenderUser && (lenderUser.id === currentId || currentFbUid && lenderUser.firebase_uid === currentFbUid) || booking.lender_id === userId || currentFbUid && booking.lender_id === currentFbUid
+    );
+    const isBorrower = Boolean(
+      borrowerUser && (borrowerUser.id === currentId || currentFbUid && borrowerUser.firebase_uid === currentFbUid) || booking.borrower_id === userId || currentFbUid && booking.borrower_id === currentFbUid
+    );
+    if (!isLender && !isBorrower) {
+      return sendError(res, "FORBIDDEN", "Only verified participants of this rental can leave reviews", 403);
+    }
+    const targetUser = isBorrower ? lenderUser : borrowerUser;
+    const revieweeId = targetUser?.id || (isBorrower ? booking.lender_id : booking.borrower_id);
+    const reviewerId = currentId;
+    if (!revieweeId || revieweeId === reviewerId) {
+      return sendError(res, "BAD_REQUEST", "Self-reviews are strictly forbidden", 400);
+    }
+    if (booking.status !== "COMPLETED") {
+      return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after the product is returned and completed", 400);
+    }
+    if (Number(booking.total_price) > 0 && booking.payment_status !== "CONFIRMED") {
+      return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after rental payment has been confirmed by the owner", 400);
+    }
+    const completedAt = new Date(booking.completed_at || booking.updated_at);
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1e3;
+    if (Date.now() - completedAt.getTime() > threeDaysMs) {
+      return sendError(res, "BAD_REQUEST", "Review period has expired. Reviews are available for at most 3 days after completion.", 400);
+    }
+    let resolvedReviewType;
+    if (isBorrower) {
+      const isFree = Number(booking.total_price || 0) <= 0 || Number(booking.price_per_day || 0) <= 0;
+      resolvedReviewType = isFree ? "COMMUNITY_LENDER" : "OWNER_RENTAL";
+    } else {
+      resolvedReviewType = "RENTER";
+    }
+    const client = await pool.connect();
+    let reviewResult;
+    try {
+      await client.query("BEGIN");
+      reviewResult = await client.query(
+        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (booking_id, reviewer_id)
+         DO UPDATE SET 
+           rating = EXCLUDED.rating, 
+           comment = EXCLUDED.comment, 
+           review_type = EXCLUDED.review_type, 
+           created_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [id, reviewerId, revieweeId, rating, comment || "", resolvedReviewType]
+      );
+      await client.query(`
+        WITH stats AS (
+          SELECT 
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 0.00), 2) AS owner_rating,
+            COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 0.00), 2) AS renter_rating,
+            COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 0.00), 2) AS community_lender_rating,
+            COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+            ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
+            COUNT(*)::int AS total_reviews
+          FROM reviews
+          WHERE reviewee_id IN (
+            SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+            UNION
+            SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+          )
+        )
+        UPDATE users
+        SET 
+          owner_rating = stats.owner_rating,
+          owner_reviews_count = stats.owner_count,
+          renter_rating = stats.renter_rating,
+          renter_reviews_count = stats.renter_count,
+          community_lender_rating = stats.community_lender_rating,
+          community_lender_reviews_count = stats.community_lender_count,
+          trust_rating = stats.trust_rating,
+          rating = stats.trust_rating,
+          trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
+        FROM stats
+        WHERE users.id = $1 OR users.firebase_uid = $1
+      `, [revieweeId]);
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    const reviewerRes = await query("SELECT name FROM users WHERE id = $1", [reviewerId]);
+    const reviewerName = reviewerRes.rows[0]?.name || req.user?.name || "Your rental partner";
+    await createNotification({
+      userId: revieweeId,
+      senderId: reviewerId,
+      bookingId: id,
+      referenceId: id,
+      referenceType: "BOOKING",
+      type: "BOOKING_REVIEW",
+      title: "New Review & Rating Received",
+      body: `${reviewerName} left a ${rating}-star review for "${booking.item_title || "rental gear"}".`
+    }).catch(() => {
+    });
+    return sendSuccess(res, reviewResult.rows[0], "Thank you! Your review and feedback has been recorded.");
+  } catch (error) {
+    next(error);
+  }
+});
+var bookings_routes_default = router4;
+
+// src/modules/analytics/analytics.routes.ts
+var import_express5 = __toESM(require_express2());
+var router5 = (0, import_express5.Router)();
+router5.get("/overview", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const pulseSql = `
+      SELECT 
+        (SELECT COUNT(*) FROM users)::int AS total_users,
+        (SELECT COUNT(DISTINCT owner_id) FROM items)::int AS active_lenders,
+        (SELECT COUNT(DISTINCT borrower_id) FROM bookings)::int AS active_borrowers,
+        (SELECT COUNT(*) FROM items WHERE status = 'AVAILABLE')::int AS available_gear,
+        (SELECT COUNT(*) FROM items WHERE status = 'RENTED')::int AS currently_rented_gear,
+        (SELECT COUNT(*) FROM bookings)::int AS total_bookings,
+        (SELECT COUNT(*) FROM bookings WHERE status = 'COMPLETED')::int AS completed_bookings,
+        (SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE status IN ('ACCEPTED', 'COMPLETED'))::numeric AS total_community_volume,
+        (SELECT COUNT(*) FROM requests WHERE status = 'OPEN')::int AS open_wishes,
+        (SELECT COUNT(*) FROM requests WHERE status = 'FULFILLED')::int AS fulfilled_wishes
+    `;
+    const pulseRes = await query(pulseSql);
+    const pulse = pulseRes.rows[0];
+    const categoryRes = await query(`
+      SELECT 
+        category, 
+        COUNT(*)::int AS count, 
+        ROUND(AVG(price_per_day), 0)::numeric AS avg_rate
+      FROM items
+      GROUP BY category
+      ORDER BY count DESC
+    `);
+    const topLendersRes = await query(`
+      SELECT 
+        u.id, u.name, u.avatar_url, u.locality, u.trust_score,
+        COUNT(i.id)::int AS gear_count
+      FROM users u
+      JOIN items i ON u.id = i.owner_id
+      GROUP BY u.id
+      ORDER BY gear_count DESC
+      LIMIT 5
+    `);
+    const localityRes = await query(`
+      SELECT 
+        COALESCE(NULLIF(TRIM(locality), ''), 'Nearby') AS locality,
+        COUNT(*)::int AS user_count
+      FROM users
+      GROUP BY 1
+      ORDER BY user_count DESC
+      LIMIT 5
+    `);
+    return sendSuccess(res, {
+      pulse,
+      categories: categoryRes.rows,
+      topLenders: topLendersRes.rows,
+      localities: localityRes.rows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router5.get("/categories", async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT 
+        category, 
+        COUNT(*)::int AS item_count, 
+        ROUND(AVG(price_per_day), 0)::numeric AS avg_rate,
+        (SELECT COUNT(*) FROM requests r WHERE r.category = i.category)::int AS demand_count
+      FROM items i
+      GROUP BY category
+      ORDER BY item_count DESC
+    `);
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+var analytics_routes_default = router5;
+
+// src/modules/users/users.routes.ts
+var import_express6 = __toESM(require_express2());
+var router6 = (0, import_express6.Router)();
+var RESERVED_USERNAMES = /* @__PURE__ */ new Set([
+  "admin",
+  "api",
+  "messages",
+  "chat",
+  "explore",
+  "marketplace",
+  "requests",
+  "bookings",
+  "community",
+  "hustle",
+  "profile",
+  "settings",
+  "help",
+  "login",
+  "signup",
+  "auth",
+  "terms",
+  "privacy",
+  "about",
+  "contact",
+  "user",
+  "u",
+  "root",
+  "bot",
+  "support",
+  "null",
+  "undefined",
+  "item",
+  "items",
+  "request",
+  "booking",
+  "notifications"
+]);
+var updateProfileSchema = external_exports.object({
+  name: external_exports.string().min(2).optional(),
+  username: external_exports.string().min(3).max(30).optional(),
+  phone: external_exports.string().optional(),
+  locality: external_exports.string().min(2).optional(),
+  avatar_url: external_exports.string().url().or(external_exports.literal("")).optional(),
+  banner_url: external_exports.string().url().or(external_exports.literal("")).optional(),
+  bio: external_exports.string().max(300).optional(),
+  address_text: external_exports.string().optional(),
+  pincode: external_exports.string().optional(),
+  latitude: external_exports.number().optional(),
+  longitude: external_exports.number().optional(),
+  notify_nearby_requests_5km: external_exports.boolean().optional(),
+  saved_locations: external_exports.array(external_exports.any()).optional()
+});
+router6.get("/check-username/:username", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const rawUsername = (req.params.username || "").trim().toLowerCase();
+    const currentUserId = req.user?.id;
+    if (!rawUsername || rawUsername.length < 3) {
+      return sendSuccess(res, { available: false, message: "Username must be at least 3 characters" });
+    }
+    if (rawUsername.length > 30) {
+      return sendSuccess(res, { available: false, message: "Username cannot exceed 30 characters" });
+    }
+    if (!/^[a-z0-9_]+$/.test(rawUsername)) {
+      return sendSuccess(res, { available: false, message: "Only lowercase letters, numbers, and underscores allowed" });
+    }
+    if (RESERVED_USERNAMES.has(rawUsername)) {
+      return sendSuccess(res, { available: false, message: "This username is reserved" });
+    }
+    const result = await query(
+      `SELECT id FROM users WHERE LOWER(username) = LOWER($1) ${currentUserId ? "AND id != $2" : ""} LIMIT 1`,
+      currentUserId ? [rawUsername, currentUserId] : [rawUsername]
+    );
+    if (result.rows.length > 0) {
+      return sendSuccess(res, { available: false, message: "Username is already taken" });
+    }
+    return sendSuccess(res, { available: true, message: "Username is available" });
+  } catch (error) {
+    next(error);
+  }
+});
+router6.get("/leaderboard", async (req, res, next) => {
+  try {
+    const realUsersRes = await query(`
+      SELECT 
+        u.id, 
+        u.username,
+        u.name, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
+        COALESCE(u.avatar_url, '') AS avatar_url, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
+        COALESCE(u.trust_rating, u.rating, 0.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(u.owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(u.renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(u.community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(u.owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(u.renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
+        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
+        (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
+      FROM users u
+      ORDER BY u.created_at ASC
+    `);
+    const formattedRealUsers = realUsersRes.rows.map((u) => {
+      const name = u.name || "Community Member";
+      const username = u.username || "";
+      const avatar = u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
+      const reviews_count = parseInt(u.reviews_count, 10) || 0;
+      const owner_reviews_count = parseInt(u.owner_reviews_count, 10) || 0;
+      const renter_reviews_count = parseInt(u.renter_reviews_count, 10) || 0;
+      const community_lender_reviews_count = parseInt(u.community_lender_reviews_count, 10) || 0;
+      const trust_rating = reviews_count > 0 ? parseFloat(u.trust_rating) || parseFloat(u.rating) || 0 : 0;
+      const owner_rating = owner_reviews_count > 0 ? parseFloat(u.owner_rating) || 0 : 0;
+      const renter_rating = renter_reviews_count > 0 ? parseFloat(u.renter_rating) || 0 : 0;
+      const community_lender_rating = community_lender_reviews_count > 0 ? parseFloat(u.community_lender_rating) || 0 : 0;
+      const rating = trust_rating;
+      const trust_score = parseInt(u.trust_score, 10) || 90;
+      const items_count = parseInt(u.items_count, 10) || 0;
+      const free_items_count = parseInt(u.free_items_count, 10) || 0;
+      const lent_count = parseInt(u.lent_count, 10) || 0;
+      const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
+      const requests_count = parseInt(u.requests_count, 10) || 0;
+      const highlight_review = reviews_count > 0 ? u.latest_review || "" : "";
+      return {
+        id: u.id,
+        username,
+        name,
+        locality: u.locality,
+        avatar_url: avatar,
+        bio: u.bio,
+        rating,
+        trust_rating,
+        owner_rating,
+        renter_rating,
+        community_lender_rating,
+        owner_reviews_count,
+        renter_reviews_count,
+        community_lender_reviews_count,
+        trust_score,
+        reviews_count,
+        highlight_review,
+        items_count,
+        free_items_count,
+        lent_count,
+        borrowed_count,
+        requests_count
+      };
+    });
+    const combinedPool = [...formattedRealUsers];
+    const topRatedSorted = combinedPool.filter((m2) => m2.reviews_count > 0).sort((a, b) => {
+      const bTr = b.trust_rating ?? b.rating ?? 0;
+      const aTr = a.trust_rating ?? a.rating ?? 0;
+      if (bTr !== aTr) return bTr - aTr;
+      if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
+      return b.reviews_count - a.reviews_count;
+    }).slice(0, 10).map((member, index) => ({
+      ...member,
+      rank: index + 1,
+      category_type: "top_rated",
+      metric_label: "Overall Trust Rating",
+      metric_value: `${(member.trust_rating || member.rating || 0).toFixed(2)} Rating (${member.reviews_count} Reviews)`,
+      badges: index === 0 ? ["#1 Overall Trust", "Verified Reputation", "Top Community Record"] : index < 3 ? ["Top Trust Neighbor", "Verified Trust", "High Feedback"] : ["Top Rated", "Verified Neighbor"]
+    }));
+    const topLendersSorted = combinedPool.filter((m2) => m2.owner_reviews_count > 0).sort((a, b) => {
+      const bOr = b.owner_rating ?? 0;
+      const aOr = a.owner_rating ?? 0;
+      if (bOr !== aOr) return bOr - aOr;
+      const scoreB = b.lent_count * 3 + b.items_count * 2;
+      const scoreA = a.lent_count * 3 + a.items_count * 2;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return b.owner_reviews_count - a.owner_reviews_count;
+    }).slice(0, 10).map((member, index) => ({
+      ...member,
+      rank: index + 1,
+      category_type: "top_lenders",
+      metric_label: "Gear Owner Rating",
+      metric_value: `${(member.owner_rating || 0).toFixed(2)} Rating (${member.owner_reviews_count} Owner Reviews)`,
+      badges: index === 0 ? ["#1 Gear Owner", "Top-Tier Equipment", "Prompt Handover"] : index < 3 ? ["Super Gear Owner", "Verified Gear Care", "Active Gear Closet"] : ["Top Gear Owner", "Gear Sharer"]
+    }));
+    const topBorrowersSorted = combinedPool.filter((m2) => m2.renter_reviews_count > 0).sort((a, b) => {
+      const bRr = b.renter_rating ?? 0;
+      const aRr = a.renter_rating ?? 0;
+      if (bRr !== aRr) return bRr - aRr;
+      const scoreB = b.borrowed_count * 3 + b.requests_count * 2;
+      const scoreA = a.borrowed_count * 3 + a.requests_count * 2;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return b.renter_reviews_count - a.renter_reviews_count;
+    }).slice(0, 10).map((member, index) => ({
+      ...member,
+      rank: index + 1,
+      category_type: "top_borrowers",
+      metric_label: "Renter Rating",
+      metric_value: `${(member.renter_rating || 0).toFixed(2)} Rating (${member.renter_reviews_count} Renter Reviews)`,
+      badges: index === 0 ? ["#1 Trusted Renter", "100% Punctual", "Reliable Borrower"] : index < 3 ? ["5-Star Renter", "On-Time Return", "Trusted Neighbor"] : ["Verified Renter", "Verified Peer"]
+    }));
+    const topSharersSorted = combinedPool.filter((m2) => m2.community_lender_reviews_count > 0).sort((a, b) => {
+      const bClr = b.community_lender_rating ?? 0;
+      const aClr = a.community_lender_rating ?? 0;
+      if (bClr !== aClr) return bClr - aClr;
+      const scoreB = b.free_items_count * 3 + b.requests_count;
+      const scoreA = a.free_items_count * 3 + a.requests_count;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return b.community_lender_reviews_count - a.community_lender_reviews_count;
+    }).slice(0, 10).map((member, index) => ({
+      ...member,
+      rank: index + 1,
+      category_type: "top_sharers",
+      metric_label: "Free Lender Rating",
+      metric_value: `${(member.community_lender_rating || 0).toFixed(2)} Rating (${member.community_lender_reviews_count} Free Share Reviews)`,
+      badges: index === 0 ? ["#1 Community Lender", "Gift Economy Contributor", "Generous Contributor"] : index < 3 ? ["Free Gear Lender", "Community Champion", "Neighbor Favorite"] : ["Community Lender", "Generous Neighbor"]
+    }));
+    return sendSuccess(res, {
+      top_rated: topRatedSorted,
+      top_lenders: topLendersSorted,
+      top_borrowers: topBorrowersSorted,
+      top_sharers: topSharersSorted,
+      total_community_members: combinedPool.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router6.get("/search", async (req, res, next) => {
+  try {
+    const q = (req.query.q || req.query.query || req.query.search || "").trim();
+    if (!q) {
+      return sendSuccess(res, []);
+    }
+    const searchPattern = `%${q}%`;
+    const realUsersRes = await query(`
+      SELECT 
+        u.id, 
+        u.username,
+        u.name, 
+        COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
+        COALESCE(u.avatar_url, '') AS avatar_url, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
+        (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
+      FROM users u
+      WHERE u.name ILIKE $1 OR u.username ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1
+      LIMIT 15
+    `, [searchPattern]);
+    const formattedRealUsers = realUsersRes.rows.map((u) => {
+      const revsCount = parseInt(u.reviews_count, 10) || 0;
+      return {
+        id: u.id,
+        username: u.username || "",
+        name: u.name || "Community Member",
+        locality: u.locality,
+        avatar_url: u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || "user")}`,
+        bio: u.bio,
+        rating: revsCount > 0 ? parseFloat(u.rating) || 0 : 0,
+        trust_score: parseInt(u.trust_score, 10) || 90,
+        items_count: parseInt(u.items_count, 10) || 0,
+        requests_count: parseInt(u.requests_count, 10) || 0,
+        reviews_count: revsCount
+      };
+    });
+    return sendSuccess(res, formattedRealUsers);
+  } catch (error) {
+    next(error);
+  }
+});
+router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const id = (req.params.id || "").replace(/^@/, "");
+    const currentUserId = req.user?.id;
+    let userRes = await query(
+      `SELECT 
+        id, 
+        username,
+        name, 
+        locality, 
+        address_text,
+        pincode,
+        avatar_url, 
+        banner_url, 
+        bio, 
+        COALESCE(trust_score, 90)::int AS trust_score, 
+        COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
+        COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
+        COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
+        COALESCE(community_lender_rating, 0.00)::numeric(3, 2) AS community_lender_rating,
+        COALESCE(owner_reviews_count, 0)::int AS owner_reviews_count,
+        COALESCE(renter_reviews_count, 0)::int AS renter_reviews_count,
+        COALESCE(community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
+        COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
+        COALESCE(notify_nearby_requests_5km, TRUE) AS notify_nearby_requests_5km,
+        COALESCE(saved_locations, '[]'::jsonb) AS saved_locations,
+        created_at
+       FROM users 
+       WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1)
+       LIMIT 1`,
+      [id]
+    );
+    if (userRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    const user = userRes.rows[0];
+    const realUserId = user.id;
+    const targetUserIds = [user.id, user.firebase_uid].filter(Boolean);
+    let isFollowing = false;
+    let isBlocked = false;
+    let isBlockedBy = false;
+    if (currentUserId && currentUserId !== realUserId) {
+      const [fRes, bRes, bbRes] = await Promise.all([
+        query(`SELECT 1 FROM user_follows WHERE follower_id = $1 AND following_id = $2`, [currentUserId, realUserId]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [currentUserId, realUserId]),
+        query(`SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`, [realUserId, currentUserId])
+      ]);
+      isFollowing = fRes.rows.length > 0;
+      isBlocked = bRes.rows.length > 0;
+      isBlockedBy = bbRes.rows.length > 0;
+    }
+    const countsRes = await query(`
+      SELECT 
+        (SELECT COUNT(*)::int FROM user_follows WHERE following_id = $1) AS followers_count,
+        (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = $1) AS following_count
+    `, [realUserId]).catch(() => ({ rows: [{ followers_count: 0, following_count: 0 }] }));
+    const followersCount = countsRes.rows[0]?.followers_count || 0;
+    const followingCount = countsRes.rows[0]?.following_count || 0;
+    let userItems = [];
+    let userRequests = [];
+    if (!isBlocked && !isBlockedBy) {
+      const itemsRes = await query(
+        `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
+         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
+         ORDER BY created_at DESC`,
+        [targetUserIds]
+      );
+      userItems = itemsRes.rows;
+      const requestsRes = await query(
+        `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
+         FROM requests WHERE seeker_id = ANY($1::text[])
+         ORDER BY created_at DESC`,
+        [targetUserIds]
+      );
+      userRequests = requestsRes.rows;
+    }
+    const reviewsRes = await query(
+      `SELECT 
+        r.id, 
+        r.rating, 
+        r.comment, 
+        COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
+        r.created_at, 
+        COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
+        COALESCE(u.avatar_url, '') AS reviewer_avatar,
+        COALESCE(u.locality, '') AS reviewer_locality
+       FROM reviews r
+       LEFT JOIN users u ON (r.reviewer_id = u.id::text OR r.reviewer_id = u.firebase_uid)
+       WHERE r.reviewee_id = ANY($1::text[])
+       ORDER BY r.created_at DESC`,
+      [targetUserIds]
+    );
+    const reviewsList = reviewsRes.rows;
+    const statsRes = await query(
+      `SELECT 
+        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
+        (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
+        (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
+        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`,
+      [targetUserIds]
+    );
+    const stats = statsRes.rows[0];
+    const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
+    const ownerRevCount = parseInt(user.owner_reviews_count, 10) || 0;
+    const renterRevCount = parseInt(user.renter_reviews_count, 10) || 0;
+    const commLenderRevCount = parseInt(user.community_lender_reviews_count, 10) || 0;
+    const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || 0 : 0;
+    const ownerRating = ownerRevCount > 0 ? parseFloat(user.owner_rating) || 0 : 0;
+    const renterRating = renterRevCount > 0 ? parseFloat(user.renter_rating) || 0 : 0;
+    const communityLenderRating = commLenderRevCount > 0 ? parseFloat(user.community_lender_rating) || 0 : 0;
+    const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
+    return sendSuccess(res, {
+      id: user.id,
+      username: user.username || "",
+      name: user.name || "Community Member",
+      locality: user.locality || "",
+      address_text: isSelf ? user.address_text || "" : "",
+      pincode: isSelf ? user.pincode || "" : "",
+      avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,
+      banner_url: user.banner_url || "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=1600&q=80",
+      bio: user.bio || "Neighbor & Gear Sharer. Passionate about circular economy and community access over ownership.",
+      trust_score: parseInt(user.trust_score, 10) || 90,
+      rating: trustRating,
+      trust_rating: trustRating,
+      owner_rating: ownerRating,
+      renter_rating: renterRating,
+      community_lender_rating: communityLenderRating,
+      owner_reviews_count: parseInt(user.owner_reviews_count, 10) || 0,
+      renter_reviews_count: parseInt(user.renter_reviews_count, 10) || 0,
+      community_lender_reviews_count: parseInt(user.community_lender_reviews_count, 10) || 0,
+      created_at: user.created_at,
+      notify_nearby_requests_5km: user.notify_nearby_requests_5km,
+      saved_locations: isSelf ? user.saved_locations || [] : [],
+      is_following: isFollowing,
+      is_blocked: isBlocked,
+      is_blocked_by: isBlockedBy,
+      followers_count: followersCount,
+      following_count: followingCount,
+      items: userItems,
+      requests: userRequests,
+      reviews: reviewsList,
+      stats: {
+        listings_count: parseInt(stats?.listings_count, 10) || userItems.length,
+        requests_count: parseInt(stats?.requests_count, 10) || userRequests.length,
+        completed_lent: parseInt(stats?.completed_lent, 10) || 0,
+        completed_borrowed: parseInt(stats?.completed_borrowed, 10) || 0,
+        reviews_count: revCount
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router6.put("/profile", authMiddleware, async (req, res, next) => {
+  try {
+    const validated = updateProfileSchema.parse(req.body);
+    const userId = req.user.id;
+    const fields = [];
+    const values = [];
+    if (validated.name !== void 0) {
+      values.push(validated.name);
+      fields.push(`name = $${values.length}`);
+    }
+    if (validated.username !== void 0) {
+      const cleanUsername = validated.username.trim().toLowerCase();
+      if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
+        return sendError(res, "BAD_REQUEST", "Username must be 3-30 characters with letters, numbers, or underscores only", 400);
+      }
+      if (RESERVED_USERNAMES.has(cleanUsername)) {
+        return sendError(res, "BAD_REQUEST", "This username is reserved. Please pick another one.", 400);
+      }
+      const existingUser = await query(
+        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id::text != $2 AND (firebase_uid IS NULL OR firebase_uid != $2) LIMIT 1`,
+        [cleanUsername, userId]
+      );
+      if (existingUser.rows.length > 0) {
+        return sendError(res, "CONFLICT", "Username is already taken by another user. Please choose another one.", 409);
+      }
+      values.push(cleanUsername);
+      fields.push(`username = $${values.length}`);
+    }
+    if (validated.phone !== void 0) {
+      values.push(validated.phone);
+      fields.push(`phone = $${values.length}`);
+    }
+    if (validated.locality !== void 0) {
+      values.push(validated.locality);
+      fields.push(`locality = $${values.length}`);
+    }
+    if (validated.avatar_url !== void 0) {
+      values.push(validated.avatar_url);
+      fields.push(`avatar_url = $${values.length}`);
+    }
+    if (validated.banner_url !== void 0) {
+      values.push(validated.banner_url);
+      fields.push(`banner_url = $${values.length}`);
+    }
+    if (validated.bio !== void 0) {
+      values.push(validated.bio);
+      fields.push(`bio = $${values.length}`);
+    }
+    if (validated.address_text !== void 0) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    let cleanPincode = void 0;
+    if (validated.pincode !== void 0) {
+      cleanPincode = validated.pincode?.trim() || null;
+      values.push(cleanPincode);
+      fields.push(`pincode = $${values.length}`);
+      if (cleanPincode && validated.locality) {
+        await query(
+          `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
+          [cleanPincode, validated.locality]
+        ).catch(() => {
+        });
+      }
+    }
+    if (validated.latitude !== void 0) {
+      values.push(validated.latitude);
+      fields.push(`latitude = $${values.length}`);
+    }
+    if (validated.longitude !== void 0) {
+      values.push(validated.longitude);
+      fields.push(`longitude = $${values.length}`);
+    }
+    if (validated.notify_nearby_requests_5km !== void 0) {
+      values.push(validated.notify_nearby_requests_5km);
+      fields.push(`notify_nearby_requests_5km = $${values.length}`);
+    }
+    if (validated.saved_locations !== void 0) {
+      values.push(JSON.stringify(validated.saved_locations));
+      fields.push(`saved_locations = $${values.length}::jsonb`);
+    }
+    if (fields.length === 0) {
+      return sendError(res, "BAD_REQUEST", "No fields to update", 400);
+    }
+    values.push(userId);
+    const updateSql = `
+      UPDATE users 
+      SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${values.length}
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+    `;
+    const result = await query(updateSql, values);
+    const updatedUser = result.rows[0];
+    return sendSuccess(res, updatedUser, "Profile updated successfully.");
+  } catch (error) {
+    next(error);
+  }
+});
+async function resolveUserId(idOrHandle) {
+  const clean = (idOrHandle || "").replace(/^@/, "").trim();
+  if (!clean) return null;
+  const res = await query(
+    `SELECT id FROM users WHERE id = $1 OR firebase_uid = $1 OR LOWER(username) = LOWER($1) LIMIT 1`,
+    [clean]
+  );
+  return res.rows[0]?.id || null;
+}
+router6.post("/:id/follow", authMiddleware, async (req, res, next) => {
+  try {
+    const followerId = req.user.id;
+    const followingId = await resolveUserId(req.params.id);
+    if (!followingId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    if (followerId === followingId) {
+      return sendError(res, "BAD_REQUEST", "You cannot follow yourself", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`,
+      [followerId, followingId]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot follow a blocked user", 403);
+    }
+    const insertRes = await query(
+      `INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *`,
+      [followerId, followingId]
+    );
+    if (insertRes.rows.length > 0) {
+      await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body)
+         VALUES ($1, $2, 'NEW_FOLLOWER', 'New Follower', $3)`,
+        [followingId, followerId, `${req.user.name || "A neighbor"} started following your gear listings.`]
+      ).catch(() => {
+      });
+    }
+    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+    return sendSuccess(res, { is_following: true, followers_count: countRes.rows[0]?.count || 0 }, "Followed neighbor");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.get("/:id/followers", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const targetUserId = await resolveUserId(req.params.id);
+    if (!targetUserId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    const currentViewerId = req.user?.id;
+    const result = await query(
+      `SELECT 
+        u.id, u.name, u.username, u.avatar_url, 
+        COALESCE(u.locality, '') AS locality, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        uf.created_at AS followed_at,
+        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
+       FROM user_follows uf
+       JOIN users u ON (uf.follower_id = u.id OR uf.follower_id = u.firebase_uid)
+       WHERE uf.following_id = $1
+       ORDER BY uf.created_at DESC
+       LIMIT 50`,
+      [targetUserId, currentViewerId || ""]
+    );
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router6.get("/:id/following", optionalAuthMiddleware, async (req, res, next) => {
+  try {
+    const targetUserId = await resolveUserId(req.params.id);
+    if (!targetUserId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    const currentViewerId = req.user?.id;
+    const result = await query(
+      `SELECT 
+        u.id, u.name, u.username, u.avatar_url, 
+        COALESCE(u.locality, '') AS locality, 
+        COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
+        COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
+        COALESCE(u.trust_score, 90)::int AS trust_score,
+        uf.created_at AS followed_at,
+        EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
+       FROM user_follows uf
+       JOIN users u ON (uf.following_id = u.id OR uf.following_id = u.firebase_uid)
+       WHERE uf.follower_id = $1
+       ORDER BY uf.created_at DESC
+       LIMIT 50`,
+      [targetUserId, currentViewerId || ""]
+    );
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/unfollow", authMiddleware, async (req, res, next) => {
+  try {
+    const followerId = req.user.id;
+    const followingId = await resolveUserId(req.params.id);
+    if (!followingId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    await query(
+      `DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2`,
+      [followerId, followingId]
+    );
+    const countRes = await query(`SELECT COUNT(*)::int AS count FROM user_follows WHERE following_id = $1`, [followingId]);
+    return sendSuccess(res, { is_following: false, followers_count: countRes.rows[0]?.count || 0 }, "Unfollowed neighbor");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/block", authMiddleware, async (req, res, next) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = await resolveUserId(req.params.id);
+    if (!blockedId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    if (blockerId === blockedId) {
+      return sendError(res, "BAD_REQUEST", "You cannot block yourself", 400);
+    }
+    await query(
+      `INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [blockerId, blockedId]
+    );
+    await query(
+      `DELETE FROM user_follows WHERE (follower_id = $1 AND following_id = $2) OR (follower_id = $2 AND following_id = $1)`,
+      [blockerId, blockedId]
+    );
+    return sendSuccess(res, { is_blocked: true }, "User blocked successfully. You will not see their listings, requests, or messages.");
+  } catch (error) {
+    next(error);
+  }
+});
+router6.post("/:id/unblock", authMiddleware, async (req, res, next) => {
+  try {
+    const blockerId = req.user.id;
+    const blockedId = await resolveUserId(req.params.id);
+    if (!blockedId) {
+      return sendError(res, "NOT_FOUND", "User not found", 404);
+    }
+    await query(
+      `DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+      [blockerId, blockedId]
+    );
+    return sendSuccess(res, { is_blocked: false }, "User unblocked successfully");
+  } catch (error) {
+    next(error);
+  }
+});
+var users_routes_default = router6;
+
+// src/modules/messages/messages.routes.ts
+var import_express7 = __toESM(require_express2());
+var import_crypto2 = __toESM(require("crypto"));
+var router7 = (0, import_express7.Router)();
+var sendMessageSchema = external_exports.object({
+  booking_id: external_exports.string().optional().nullable(),
+  receiver_id: external_exports.string().min(1, "Receiver is required"),
+  content: external_exports.string().min(1, "Message cannot be empty"),
+  message_type: external_exports.string().optional(),
+  proposal_data: external_exports.any().optional()
+});
+var isUuid = (val) => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+function parseToUtcTimestamp2(dateStr, timeStr, tzOffsetMinutes = -330) {
+  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
+  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
+  const [hour, minute] = cleanTime.split(":").map(Number);
+  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+  return localUtcMs + tzOffsetMinutes * 6e4;
+}
+router7.get("/conversations", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    await query(
+      `UPDATE messages
+       SET is_delivered = true,
+           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+       WHERE (is_delivered = false OR is_delivered IS NULL)
+         AND receiver_id = ANY($1::text[])`,
+      [myIds]
+    ).catch(() => {
+    });
+    const result = await query(
+      `WITH my_ids AS (
+        SELECT unnest($1::text[]) AS id_text
+      ),
+      interacted_partners AS (
+        -- 1. From direct and booking messages
+        SELECT 
+          CASE 
+            WHEN m.sender_id IN (SELECT id_text FROM my_ids) THEN m.receiver_id
+            ELSE m.sender_id
+          END AS partner_raw_id,
+          m.created_at AS interaction_at
+        FROM messages m
+        WHERE (m.sender_id IN (SELECT id_text FROM my_ids)
+           OR m.receiver_id IN (SELECT id_text FROM my_ids))
+          AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
+
+        UNION ALL
+
+        -- 2. From bookings
+        SELECT 
+          CASE 
+            WHEN b.borrower_id IN (SELECT id_text FROM my_ids) THEN COALESCE(i.owner_id, b.lender_id)
+            ELSE b.borrower_id
+          END AS partner_raw_id,
+          b.created_at AS interaction_at
+        FROM bookings b
+        JOIN items i ON b.item_id = i.id
+        WHERE b.borrower_id IN (SELECT id_text FROM my_ids)
+           OR b.lender_id IN (SELECT id_text FROM my_ids)
+           OR i.owner_id IN (SELECT id_text FROM my_ids)
+      ),
+      distinct_partners AS (
+        SELECT u.id AS partner_user_id, MAX(ip.interaction_at) AS latest_interaction
+        FROM interacted_partners ip
+        JOIN users u ON (ip.partner_raw_id = u.id::text OR ip.partner_raw_id = u.firebase_uid)
+        WHERE u.id::text NOT IN (SELECT id_text FROM my_ids)
+        GROUP BY u.id
+      )
+      SELECT
+        'dm_' || partner.id::text AS conversation_id,
+        latest_booking.id AS booking_id,
+        COALESCE(latest_booking.status::text, 'DIRECT_DM') AS booking_status,
+        latest_booking.start_date,
+        latest_booking.duration_days,
+        COALESCE(latest_booking.total_price, 0) AS total_price,
+        COALESCE(latest_booking.item_title, 'Direct Chat') AS item_title,
+        COALESCE(latest_booking.item_images, '[]'::jsonb) AS item_images,
+        COALESCE(latest_booking.item_locality, partner.locality) AS item_locality,
+        partner.id::text AS partner_id,
+        partner.name AS partner_name,
+        partner.username AS partner_username,
+        partner.avatar_url AS partner_avatar,
+        NULL AS partner_phone,
+        partner.locality AS partner_locality,
+        CASE 
+          WHEN latest_msg.message_type = 'PROPOSAL' THEN 'Rental Proposal: ' || COALESCE(latest_booking.item_title, 'Gear')
+          WHEN latest_msg.message_type = 'IMAGE' THEN 'Photo'
+          WHEN latest_msg.message_type = 'LOCATION' THEN 'Shared Location'
+          WHEN latest_msg.message_type = 'CONTACT' THEN 'Contact Card'
+          WHEN latest_msg.message_type = 'DOCUMENT' THEN 'Document Note'
+          ELSE COALESCE(latest_msg.content, 'Direct conversation')
+        END AS last_message,
+        COALESCE(latest_msg.created_at, dp.latest_interaction) AS last_message_at,
+        dp.latest_interaction AS created_at,
+        COALESCE(unread.unread_count, 0) AS unread_count
+      FROM distinct_partners dp
+      JOIN users partner ON dp.partner_user_id = partner.id
+      LEFT JOIN LATERAL (
+        SELECT 
+          m.content, 
+          m.message_type,
+          m.proposal_data,
+          m.created_at,
+          m.is_read,
+          m.is_delivered,
+          m.sender_id
+        FROM messages m
+        WHERE (
+          (m.sender_id IN (SELECT id_text FROM my_ids) AND (m.receiver_id = partner.id::text OR m.receiver_id = partner.firebase_uid))
+          OR (m.receiver_id IN (SELECT id_text FROM my_ids) AND (m.sender_id = partner.id::text OR m.sender_id = partner.firebase_uid))
+          OR (m.booking_id IN (
+            SELECT b_sub.id FROM bookings b_sub 
+            WHERE ((b_sub.borrower_id IN (SELECT id_text FROM my_ids) AND (b_sub.lender_id = partner.id::text OR b_sub.lender_id = partner.firebase_uid))
+                OR (b_sub.borrower_id IN (partner.id::text, partner.firebase_uid) AND b_sub.lender_id IN (SELECT id_text FROM my_ids)))
+          ))
+        )
+        AND (m.deleted_by IS NULL OR NOT (m.deleted_by && (SELECT ARRAY_AGG(id_text) FROM my_ids)))
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) latest_msg ON true
+      LEFT JOIN LATERAL (
+        SELECT 
+          b.id,
+          b.status,
+          b.start_date,
+          b.duration_days,
+          b.total_price,
+          i.title AS item_title,
+          i.image_urls AS item_images,
+          i.locality AS item_locality
+        FROM bookings b
+        JOIN items i ON b.item_id = i.id
+        WHERE (
+          (b.borrower_id IN (SELECT id_text FROM my_ids) AND (b.lender_id = partner.id::text OR b.lender_id = partner.firebase_uid OR i.owner_id = partner.id::text OR i.owner_id = partner.firebase_uid))
+          OR ((b.borrower_id = partner.id::text OR b.borrower_id = partner.firebase_uid) AND (b.lender_id IN (SELECT id_text FROM my_ids) OR i.owner_id IN (SELECT id_text FROM my_ids)))
+        )
+        ORDER BY b.created_at DESC
+        LIMIT 1
+      ) latest_booking ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::integer AS unread_count
+        FROM messages m
+        WHERE (m.sender_id = partner.id::text OR m.sender_id = partner.firebase_uid)
+          AND m.receiver_id IN (SELECT id_text FROM my_ids)
+          AND (m.is_read = false OR m.is_read IS NULL)
+      ) unread ON true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM user_blocks ub
+        WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = partner.id::text OR ub.blocked_id = partner.firebase_uid))
+           OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = partner.id::text OR ub.blocker_id = partner.firebase_uid))
+      )
+      ORDER BY COALESCE(latest_msg.created_at, dp.latest_interaction) DESC`,
+      [userId]
+    );
+    return sendSuccess(res, result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+router7.get("/unread-count", authMiddleware, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const result = await query(
+      `WITH me AS (
+        SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
+      ),
+      my_ids AS (
+        SELECT id_text FROM me UNION SELECT firebase_uid FROM me WHERE firebase_uid IS NOT NULL
+      )
+      SELECT COUNT(*)::int AS unread_count
+      FROM messages m
+      WHERE (m.is_read = false OR m.is_read IS NULL)
+        AND (m.message_type IS NULL OR m.message_type != 'SYSTEM')
+        AND m.sender_id NOT IN (SELECT id_text FROM my_ids)
+        AND (
+          m.receiver_id IN (SELECT id_text FROM my_ids)
+          OR (
+            m.booking_id IS NOT NULL AND EXISTS (
+              SELECT 1 FROM bookings b
+              WHERE b.id = m.booking_id
+                AND ((b.borrower_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.borrower_id)
+                  OR (b.lender_id IN (SELECT id_text FROM my_ids) AND m.sender_id != b.lender_id))
+            )
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks ub
+          WHERE (ub.blocker_id IN (SELECT id_text FROM my_ids) AND (ub.blocked_id = m.sender_id))
+             OR (ub.blocked_id IN (SELECT id_text FROM my_ids) AND (ub.blocker_id = m.sender_id))
+        )`,
+      [userId]
+    );
+    return sendSuccess(res, { unread_count: result.rows[0]?.unread_count || 0 });
+  } catch (error) {
+    next(error);
+  }
+});
+router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+    const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+    let rawPartnerId = null;
+    let fallbackBooking = null;
+    if (conversationId.startsWith("dm_")) {
+      rawPartnerId = conversationId.replace(/^dm_/, "");
+    } else {
+      const userCheck = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [conversationId]);
+      if (userCheck.rows.length > 0) {
+        rawPartnerId = userCheck.rows[0].id;
+      } else if (isUuid(conversationId)) {
+        const bookingCheck = await query(
+          `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day, i.owner_id AS item_owner_id
+           FROM bookings b
+           JOIN items i ON b.item_id = i.id
+           WHERE b.id::text = $1`,
+          [conversationId]
+        );
+        if (bookingCheck.rows.length > 0) {
+          const b = bookingCheck.rows[0];
+          const isParticipant = myIds.includes(String(b.borrower_id)) || myIds.includes(String(b.lender_id)) || myIds.includes(String(b.item_owner_id)) || req.user.role === "ADMIN";
+          if (!isParticipant) {
+            return sendError(res, "FORBIDDEN", "Access denied: You are not an authorized participant in this booking.", 403);
+          }
+          fallbackBooking = b;
+          const isBorrower = myIds.includes(String(b.borrower_id));
+          rawPartnerId = isBorrower ? b.lender_id || b.item_owner_id : b.borrower_id;
+        }
+      }
+    }
+    if (!rawPartnerId) {
+      return sendError(res, "NOT_FOUND", "Conversation partner not found", 404);
+    }
+    const pRes = await query(
+      `SELECT id::text, name, username, avatar_url, locality, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+      [rawPartnerId]
+    );
+    const partnerData = pRes.rows[0] || {
+      id: rawPartnerId,
+      name: "Community Member",
+      avatar_url: null,
+      locality: "Bengaluru"
+    };
+    const pIds = [rawPartnerId, partnerData.id, partnerData.firebase_uid].filter(Boolean);
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = ANY($1::text[]) AND blocked_id = ANY($2::text[]))
+          OR (blocker_id = ANY($2::text[]) AND blocked_id = ANY($1::text[]))`,
+      [myIds, pIds]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Communication with this user is blocked.", 403);
+    }
+    await query(
+      `UPDATE messages
+       SET is_read = true,
+           read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+           is_delivered = true,
+           delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+       WHERE (is_read = false OR is_read IS NULL)
+         AND sender_id = ANY($2::text[])
+         AND (
+           receiver_id = ANY($1::text[])
+           OR booking_id IN (
+             SELECT b_sub.id FROM bookings b_sub 
+             WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                 OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+           )
+         )`,
+      [myIds, pIds]
+    ).catch(() => {
+    });
+    await query(
+      `UPDATE messages
+       SET message_type = 'SYSTEM'
+       WHERE (message_type IS NULL OR message_type = 'TEXT')
+         AND (
+           content LIKE 'Proposal accepted.%'
+           OR content LIKE 'Product received and handed over%'
+           OR content LIKE 'Product returned to owner%'
+           OR content LIKE 'Renter has sent the payment via%'
+         )`
+    ).catch(() => {
+    });
+    const messagesRes = await query(
+      `SELECT 
+        m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
+        COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
+        COALESCE(m.is_read, false) AS is_read, m.read_at,
+        m.created_at,
+        COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
+        b_linked.status AS linked_booking_status
+       FROM messages m
+       LEFT JOIN users u ON (m.sender_id = u.id::text OR m.sender_id = u.firebase_uid)
+       LEFT JOIN bookings b_linked ON (m.booking_id = b_linked.id)
+       WHERE (
+         (m.sender_id = ANY($1::text[]) AND m.receiver_id = ANY($2::text[]))
+         OR (m.sender_id = ANY($2::text[]) AND m.receiver_id = ANY($1::text[]))
+         OR (m.booking_id IN (
+           SELECT b_sub.id FROM bookings b_sub 
+           WHERE ((b_sub.borrower_id = ANY($1::text[]) AND (b_sub.lender_id = ANY($2::text[]) OR b_sub.lender_id IS NULL))
+               OR (b_sub.borrower_id = ANY($2::text[]) AND (b_sub.lender_id = ANY($1::text[]) OR b_sub.lender_id IS NULL)))
+         ))
+       )
+       AND (m.deleted_by IS NULL OR NOT (m.deleted_by && $1::text[]))
+       ORDER BY m.created_at ASC`,
+      [myIds, pIds]
+    );
+    const latestBookingRes = await query(
+      `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.price_per_day
+       FROM bookings b
+       JOIN items i ON b.item_id = i.id
+       WHERE (
+         (b.borrower_id = ANY($1::text[]) AND (b.lender_id = ANY($2::text[]) OR i.owner_id = ANY($2::text[])))
+         OR (b.borrower_id = ANY($2::text[]) AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[])))
+       )
+       ORDER BY b.created_at DESC
+       LIMIT 1`,
+      [myIds, pIds]
+    );
+    const activeBooking = latestBookingRes.rows[0] || fallbackBooking || null;
+    if (activeBooking) {
+      delete activeBooking.pickup_code;
+      delete activeBooking.return_code;
+    }
+    const mappedMessages = messagesRes.rows.map((row) => {
+      let content = row.content;
+      if (content && typeof content === "string") {
+        content = content.replace(/\.?\s*Pickup Verification Code:\s*\d+\.?/gi, ".");
+      }
+      if (row.message_type === "PROPOSAL" && row.proposal_data) {
+        let pData = typeof row.proposal_data === "string" ? JSON.parse(row.proposal_data) : { ...row.proposal_data };
+        const bStatus = row.linked_booking_status || (activeBooking?.id && (row.booking_id === activeBooking.id || pData.booking_id === activeBooking.id) ? activeBooking.status : void 0);
+        if (bStatus === "ACCEPTED" || bStatus === "HANDED_OVER" || bStatus === "COMPLETED") {
+          pData.status = "ACCEPTED";
+        } else if (bStatus === "REJECTED") {
+          pData.status = "DECLINED";
+        } else if (bStatus === "CANCELLED") {
+          pData.status = "CANCELLED";
+        }
+        delete pData.pickup_code;
+        delete pData.return_code;
+        return {
+          ...row,
+          content,
+          proposal_data: pData
+        };
+      }
+      return {
+        ...row,
+        content
+      };
+    });
+    return sendSuccess(res, {
+      booking: activeBooking,
+      partner: partnerData,
+      messages: mappedMessages
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router7.post("/:conversationId/read", authMiddleware, async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
+    let rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
+    const meRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+    const myIds = [userId, meRes.rows[0]?.id, meRes.rows[0]?.firebase_uid].filter(Boolean);
+    if (!rawPartnerId && isUuid(conversationId)) {
+      const bRes = await query(`SELECT borrower_id, lender_id FROM bookings WHERE id = $1`, [conversationId]);
+      if (bRes.rows.length > 0) {
+        const b = bRes.rows[0];
+        rawPartnerId = myIds.includes(b.borrower_id) ? b.lender_id : b.borrower_id;
+      }
+    }
+    if (rawPartnerId) {
+      const pRes = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+      const pIds = [rawPartnerId, pRes.rows[0]?.id, pRes.rows[0]?.firebase_uid].filter(Boolean);
+      await query(
+        `UPDATE messages
+         SET is_read = true,
+             read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+             is_delivered = true,
+             delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+         WHERE (is_read = false OR is_read IS NULL)
+           AND sender_id = ANY($2::text[])
+           AND (
+             receiver_id = ANY($1::text[])
+             OR booking_id IN (
+               SELECT b_sub.id FROM bookings b_sub 
+               WHERE ((b_sub.borrower_id = ANY($1::text[]) AND b_sub.lender_id = ANY($2::text[]))
+                   OR (b_sub.borrower_id = ANY($2::text[]) AND b_sub.lender_id = ANY($1::text[])))
+             )
+           )`,
+        [myIds, pIds]
+      );
+    }
+    return sendSuccess(res, { marked_read: true });
+  } catch (error) {
+    next(error);
+  }
+});
+router7.post("/", authMiddleware, async (req, res, next) => {
+  try {
+    const validated = sendMessageSchema.parse(req.body);
+    const senderId = req.user.id;
+    let targetBookingId = null;
+    let targetReceiverId = validated.receiver_id;
+    if (validated.booking_id && isUuid(validated.booking_id)) {
+      const bookingRes = await query(
+        `SELECT b.id, b.borrower_id, i.owner_id AS lender_id 
+         FROM bookings b 
+         JOIN items i ON b.item_id = i.id 
+         WHERE b.id = $1`,
+        [validated.booking_id]
+      );
+      if (bookingRes.rows.length > 0) {
+        const booking = bookingRes.rows[0];
+        if (booking.borrower_id === senderId || booking.lender_id === senderId) {
+          targetBookingId = booking.id;
+          targetReceiverId = targetReceiverId || (booking.borrower_id === senderId ? booking.lender_id : booking.borrower_id);
+        }
+      }
+    }
+    if (!targetReceiverId) {
+      return sendError(res, "BAD_REQUEST", "Recipient is required", 400);
+    }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [senderId, targetReceiverId]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot send message. Communication between these users is blocked.", 403);
+    }
+    const result = await query(
+      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+       VALUES ($1, $2, $3, $4, $5, $6, false, false)
+       RETURNING *`,
+      [
+        targetBookingId,
+        senderId,
+        targetReceiverId,
+        validated.content,
+        validated.message_type || "TEXT",
+        validated.proposal_data ? JSON.stringify(validated.proposal_data) : null
+      ]
+    );
+    const inserted = result.rows[0];
+    const senderName = req.user.name || "A neighbor";
+    const previewText = validated.message_type === "IMAGE" ? "\u{1F4F7} Sent a photo" : validated.message_type === "LOCATION" ? "\u{1F4CD} Shared a location" : validated.message_type === "CONTACT" ? "\u{1F464} Sent a contact card" : validated.message_type === "DOCUMENT" ? "\u{1F4C4} Sent a note" : validated.content.length > 80 ? validated.content.slice(0, 77) + "..." : validated.content;
+    await createNotification({
+      userId: targetReceiverId,
+      senderId,
+      bookingId: targetBookingId || void 0,
+      referenceId: inserted.id,
+      referenceType: "MESSAGE",
+      type: "NEW_MESSAGE",
+      title: `Message from ${senderName}`,
+      body: previewText
+    }).catch((err) => console.warn("Failed to dispatch new message notification:", err));
+    return sendSuccess(res, {
+      ...inserted,
+      is_delivered: false,
+      is_read: false,
+      sender_name: req.user.name || "You",
+      sender_avatar: req.user?.avatar_url || null
+    }, "Message sent");
+  } catch (error) {
+    next(error);
+  }
+});
+router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const currentUserId = req.user.id;
+    const msgRes = await query(
+      `SELECT * FROM messages WHERE id = $1`,
+      [messageId]
+    );
+    if (msgRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
+    }
+    const message2 = msgRes.rows[0];
+    const myIds = await resolveUserIds(currentUserId, req.user?.email);
+    if (!myIds.includes(String(message2.receiver_id))) {
+      return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this agreement", 403);
+    }
+    const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
+    if (proposal.status && proposal.status !== "PENDING") {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Cannot accept agreement with status "${proposal.status}". Only pending proposals can be accepted.`,
+        400
+      );
+    }
+    const existingBookingId = message2.booking_id || proposal.booking_id;
+    if (existingBookingId && isUuid(existingBookingId)) {
+      const bRes = await query(
+        `SELECT b.*, i.title AS item_title, i.image_urls AS item_images, i.owner_id AS item_owner_id,
+                TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str,
+                TO_CHAR(COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str
+         FROM bookings b
+         JOIN items i ON b.item_id = i.id
+         WHERE b.id = $1`,
+        [existingBookingId]
+      );
+      if (bRes.rows.length > 0) {
+        const existingBooking = bRes.rows[0];
+        if (existingBooking.status !== "PENDING") {
+          return sendError(res, "BAD_REQUEST", `Cannot accept request. Current status is ${existingBooking.status}.`, 400);
+        }
+        const sDate2 = existingBooking.start_date_str || existingBooking.start_date;
+        const eDate2 = existingBooking.end_date_str || existingBooking.end_date;
+        const endTimestamp = parseToUtcTimestamp2(
+          eDate2,
+          existingBooking.end_time || "18:00",
+          -330
+        );
+        if (endTimestamp < Date.now()) {
+          return sendError(
+            res,
+            "BAD_REQUEST",
+            "This booking request cannot be accepted because its scheduled rental time has already passed.",
+            400
+          );
+        }
+        const client2 = await pool.connect();
+        let updatedBooking;
+        let updatedProposal2;
+        let conflictingPendingList = [];
+        const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
+        try {
+          await client2.query("BEGIN");
+          await client2.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [existingBooking.item_id]);
+          const conflictRes = await client2.query(
+            `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                    TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+             FROM bookings
+             WHERE item_id = $1
+               AND id != $2
+               AND status IN ('ACCEPTED', 'HANDED_OVER')
+               AND (
+                 start_date <= $4::date
+                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+               )
+             LIMIT 1`,
+            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
+          );
+          if (conflictRes.rows.length > 0) {
+            await client2.query("ROLLBACK");
+            const c = conflictRes.rows[0];
+            return sendError(
+              res,
+              "CONFLICT",
+              `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+              409
+            );
+          }
+          const conflictingPendingRes = await client2.query(
+            `SELECT id, borrower_id 
+             FROM bookings
+             WHERE item_id = $1
+               AND id != $2
+               AND status = 'PENDING'
+               AND (
+                 start_date <= $4::date
+                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+               )`,
+            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
+          );
+          conflictingPendingList = conflictingPendingRes.rows;
+          for (const conflicting of conflictingPendingList) {
+            await client2.query(
+              `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [conflicting.id]
+            );
+            await client2.query(
+              `UPDATE messages 
+               SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+               WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+              [conflicting.id]
+            ).catch(() => {
+            });
+          }
+          const pickupCode = existingBooking.pickup_code || import_crypto2.default.randomInt(1e5, 1e6).toString();
+          const updateRes = await client2.query(
+            `UPDATE bookings
+             SET status = 'ACCEPTED',
+                 pickup_code = $1,
+                 return_code = NULL,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`,
+            [pickupCode, existingBookingId]
+          );
+          updatedBooking = updateRes.rows[0];
+          updatedProposal2 = {
+            ...proposal,
+            status: "ACCEPTED",
+            accepted_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          await client2.query(
+            `UPDATE messages SET proposal_data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedProposal2), messageId]
+          );
+          const totalPrice2 = updatedBooking.total_price || proposal.total_price || 0;
+          const priceDisplay = Number(totalPrice2) === 0 ? "Free" : `\u20B9${totalPrice2}`;
+          await client2.query(
+            `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+             VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+            [
+              existingBookingId,
+              currentUserId,
+              message2.sender_id,
+              `Request Accepted. Confirmed booking for "${itemTitle2}" (${priceDisplay}). Handover is now live in Bookings.`
+            ]
+          );
+          await client2.query("COMMIT");
+        } catch (txErr) {
+          await client2.query("ROLLBACK");
+          throw txErr;
+        } finally {
+          client2.release();
+        }
+        for (const conflicting of conflictingPendingList) {
+          createNotification({
+            userId: conflicting.borrower_id,
+            bookingId: conflicting.id,
+            referenceId: conflicting.id,
+            referenceType: "BOOKING",
+            type: "BOOKING_CANCELLED",
+            title: "Request Auto-Cancelled",
+            body: `Your rental request was cancelled because the owner accepted another booking for those dates.`
+          }).catch(() => {
+          });
+        }
+        createNotification({
+          userId: message2.sender_id,
+          senderId: currentUserId,
+          bookingId: existingBookingId,
+          referenceId: existingBookingId,
+          referenceType: "BOOKING",
+          type: "BOOKING_ACCEPTED",
+          title: "Rental Request Accepted",
+          body: `Your request for "${itemTitle2}" was accepted. Handover is now active in Bookings.`
+        }).catch(() => {
+        });
+        const safeProposal2 = { ...updatedProposal2 };
+        delete safeProposal2.pickup_code;
+        delete safeProposal2.return_code;
+        const safeBooking = { ...updatedBooking };
+        delete safeBooking.pickup_code;
+        delete safeBooking.return_code;
+        return sendSuccess(res, {
+          booking: safeBooking,
+          message_id: messageId,
+          proposal_data: safeProposal2
+        }, "Rental request accepted");
+      }
+    }
+    const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
+    const lenderId = isOffer ? message2.sender_id : currentUserId;
+    const borrowerId = isOffer ? currentUserId : message2.sender_id;
+    const [lenderUserRes, borrowerUserRes] = await Promise.all([
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId])
+    ]);
+    const lenderInfo = lenderUserRes.rows[0] || {};
+    const borrowerInfo = borrowerUserRes.rows[0] || {};
+    const canonicalLenderId = lenderInfo.id || lenderId;
+    const canonicalBorrowerId = borrowerInfo.id || borrowerId;
+    const startDate = proposal.start_date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
+    const pricePerDay = Number(proposal.price_per_day) || Number(proposal.total_price) / durationDays || 0;
+    const totalPrice = Number(proposal.total_price) || pricePerDay * durationDays;
+    const sDate = new Date(startDate);
+    const eDate = new Date(sDate);
+    eDate.setDate(sDate.getDate() + durationDays);
+    const endDateStr = proposal.end_date || eDate.toISOString().split("T")[0];
+    const client = await pool.connect();
+    let createdItem;
+    let createdBooking;
+    let updatedProposal;
+    const itemTitle = proposal.title || "Personal Agreement Item";
+    try {
+      await client.query("BEGIN");
+      if (proposal.request_id) {
+        const reqCheck = await client.query(
+          `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
+          [proposal.request_id]
+        );
+        if (reqCheck.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return sendError(res, "NOT_FOUND", "Community request for this offer not found", 404);
+        }
+        if (reqCheck.rows[0].status !== "OPEN") {
+          await client.query("ROLLBACK");
+          return sendError(
+            res,
+            "CONFLICT",
+            "This community request has already been fulfilled by another neighbor or cancelled.",
+            409
+          );
+        }
+        await client.query(
+          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [proposal.request_id]
+        );
+      }
+      const itemRes = await client.query(
+        `INSERT INTO items (
+          owner_id, title, description, category, price_per_day, max_duration_days, 
+          image_urls, locality, address_text, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
+        RETURNING *`,
+        [
+          canonicalLenderId,
+          itemTitle,
+          proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
+          proposal.category || "Other",
+          pricePerDay,
+          Math.max(durationDays, 3),
+          proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
+          proposal.locality || lenderInfo.locality || "Bangalore",
+          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
+        ]
+      );
+      createdItem = itemRes.rows[0];
+      const pickupCode = import_crypto2.default.randomInt(1e5, 1e6).toString();
+      const bookingRes = await client.query(
+        `INSERT INTO bookings (
+          item_id, borrower_id, lender_id, start_date, duration_days, total_price,
+          status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
+          return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
+          pickup_code, return_code
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NULL)
+        RETURNING *`,
+        [
+          createdItem.id,
+          canonicalBorrowerId,
+          canonicalLenderId,
+          startDate,
+          durationDays,
+          totalPrice,
+          `Agreed personal deal in DM: ${proposal.notes || ""}`,
+          endDateStr,
+          proposal.start_time || "10:00:00",
+          proposal.end_time || "18:00",
+          proposal.delivery_option === "LENDER_DELIVERY" ? "OWNER_DELIVERY" : "LENDER_LOCATION",
+          proposal.delivery_location || lenderInfo.locality || "Handover location",
+          proposal.collection_option === "LENDER_COLLECT" ? "OWNER_COLLECT" : "LENDER_LOCATION",
+          proposal.return_location || lenderInfo.locality || "Return location",
+          !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
+          Number(proposal.delivery_fee) || 0,
+          !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
+          Number(proposal.collection_fee) || 0,
+          pickupCode
+        ]
+      );
+      createdBooking = bookingRes.rows[0];
+      updatedProposal = {
+        ...proposal,
+        status: "ACCEPTED",
+        booking_id: createdBooking.id,
+        item_id: createdItem.id,
+        accepted_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await client.query(
+        `UPDATE messages 
+         SET proposal_data = $1, booking_id = $2
+         WHERE id = $3`,
+        [JSON.stringify(updatedProposal), createdBooking.id, messageId]
+      );
+      const cleanStartDate = String(startDate).split("T")[0];
+      const cleanEndDate = String(endDateStr).split("T")[0];
+      const priceDisplay = Number(totalPrice) === 0 ? "Free" : `\u20B9${totalPrice}`;
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+        [
+          createdBooking.id,
+          currentUserId,
+          message2.sender_id,
+          `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
+    ).catch(() => {
+    });
+    await query(
+      `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
+      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
+    ).catch(() => {
+    });
+    const safeCreatedBooking = { ...createdBooking };
+    delete safeCreatedBooking.pickup_code;
+    delete safeCreatedBooking.return_code;
+    const safeProposal = { ...updatedProposal };
+    delete safeProposal.pickup_code;
+    delete safeProposal.return_code;
+    return sendSuccess(res, {
+      booking: safeCreatedBooking,
+      item: createdItem,
+      message_id: messageId,
+      proposal_data: safeProposal
+    }, "Agreement accepted and booking created");
+  } catch (error) {
+    next(error);
+  }
+});
+router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const currentUserId = req.user.id;
+    const msgRes = await query(`SELECT * FROM messages WHERE id = $1`, [messageId]);
+    if (msgRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
+    }
+    const message2 = msgRes.rows[0];
+    const myIds = await resolveUserIds(currentUserId, req.user?.email);
+    if (!myIds.includes(String(message2.receiver_id)) && !myIds.includes(String(message2.sender_id))) {
+      return sendError(res, "FORBIDDEN", "Access denied", 403);
+    }
+    const isReceiver = myIds.includes(String(message2.receiver_id));
+    const isSender = myIds.includes(String(message2.sender_id));
+    if (!isReceiver && !isSender) {
+      return sendError(res, "FORBIDDEN", "Access denied: You are not part of this proposal", 403);
+    }
+    const proposal = typeof message2.proposal_data === "string" ? JSON.parse(message2.proposal_data) : message2.proposal_data || {};
+    const targetProposalStatus = isReceiver ? "DECLINED" : "CANCELLED";
+    const targetBookingStatus = isReceiver ? "REJECTED" : "CANCELLED";
+    const updatedProposal = { ...proposal, status: targetProposalStatus };
+    await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
+    const existingBookingId = message2.booking_id || proposal.booking_id;
+    if (existingBookingId && isUuid(existingBookingId)) {
+      await query(
+        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [targetBookingStatus, existingBookingId]
+      ).catch(() => {
+      });
+      const itemTitle = proposal.item_title || proposal.title || "Item";
+      const notificationRecipientId = isReceiver ? message2.sender_id : message2.receiver_id;
+      const statusActionText = isReceiver ? "was declined" : "was cancelled by the sender";
+      await query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+        [
+          existingBookingId,
+          currentUserId,
+          notificationRecipientId,
+          `Rental request for "${itemTitle}" ${statusActionText}.`
+        ]
+      ).catch(() => {
+      });
+      await query(
+        `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
+         VALUES ($1, $2, $3, $4, 'Your request for "' || $5 || '" ' || $6 || '.', $7, 'BOOKING')`,
+        [
+          notificationRecipientId,
+          currentUserId,
+          isReceiver ? "BOOKING_REJECTED" : "BOOKING_CANCELLED",
+          isReceiver ? "Rental Request Declined" : "Rental Request Cancelled",
+          itemTitle,
+          statusActionText,
+          existingBookingId
+        ]
+      ).catch(() => {
+      });
+    }
+    return sendSuccess(res, { proposal_data: updatedProposal }, `Proposal ${targetProposalStatus.toLowerCase()}`);
+  } catch (error) {
+    next(error);
+  }
+});
+router7.delete("/conversations/:conversationId", authMiddleware, async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
+    const rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
+    if (isDm && rawPartnerId) {
+      const pIds = await resolveUserIds(rawPartnerId);
+      await query(
+        `UPDATE messages
+         SET deleted_by = ARRAY(
+           SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+         )
+         WHERE (sender_id = ANY($1::text[]) AND receiver_id = ANY($2::text[]))
+            OR (sender_id = ANY($2::text[]) AND receiver_id = ANY($1::text[]))`,
+        [myIds, pIds]
+      );
+      return sendSuccess(res, { conversation_id: conversationId }, "Chat deleted for you");
+    }
+    const bookingRes = await query(
+      `SELECT b.id, b.borrower_id, b.lender_id, i.owner_id AS item_owner_id
+       FROM bookings b
+       LEFT JOIN items i ON b.item_id = i.id
+       WHERE b.id = $1`,
+      [conversationId]
+    );
+    if (bookingRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Booking not found", 404);
+    }
+    const b = bookingRes.rows[0];
+    const isParticipant = myIds.includes(String(b.borrower_id)) || myIds.includes(String(b.lender_id)) || myIds.includes(String(b.item_owner_id)) || req.user.role === "ADMIN";
+    if (!isParticipant) {
+      return sendError(res, "FORBIDDEN", "Permission denied: You are not a participant in this booking chat.", 403);
+    }
+    await query(
+      `UPDATE messages
+       SET deleted_by = ARRAY(
+         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+       )
+       WHERE booking_id::text = $2`,
+      [myIds, conversationId]
+    );
+    return sendSuccess(res, { conversation_id: conversationId }, "Chat cleared for you");
+  } catch (error) {
+    next(error);
+  }
+});
+router7.put("/:messageId", authMiddleware, async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const { content, proposal_data } = req.body;
+    const userId = req.user.id;
+    const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
+    if (checkRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Message not found", 404);
+    }
+    const msg = checkRes.rows[0];
+    const userRow = await query(`SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
+    const validSenders = [userId, userRow.rows[0]?.id, userRow.rows[0]?.firebase_uid].filter(Boolean);
+    if (!validSenders.includes(msg.sender_id)) {
+      return sendError(res, "FORBIDDEN", "You can only edit your own messages", 403);
+    }
+    const newContent = content && content.trim() || msg.content;
+    const newProposalData = proposal_data !== void 0 ? typeof proposal_data === "string" ? proposal_data : JSON.stringify(proposal_data) : msg.proposal_data;
+    const result = await query(
+      `UPDATE messages SET content = $1, proposal_data = $2, is_edited = true WHERE id::text = $3 RETURNING *`,
+      [newContent, newProposalData, messageId]
+    );
+    return sendSuccess(res, result.rows[0], "Message updated");
+  } catch (error) {
+    next(error);
+  }
+});
+router7.delete("/:messageId", authMiddleware, async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.id;
+    const myIds = await resolveUserIds(userId, req.user?.email);
+    const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
+    if (checkRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "Message not found", 404);
+    }
+    const msg = checkRes.rows[0];
+    const isSender = myIds.includes(String(msg.sender_id));
+    const isReceiver = myIds.includes(String(msg.receiver_id));
+    const isAdmin = req.user.role === "ADMIN";
+    if (!isSender && !isReceiver && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Permission denied: You cannot delete this message", 403);
+    }
+    await query(
+      `UPDATE messages
+       SET deleted_by = ARRAY(
+         SELECT DISTINCT unnest(COALESCE(deleted_by, '{}'::text[]) || $1::text[])
+       )
+       WHERE id::text = $2`,
+      [myIds, messageId]
+    );
+    return sendSuccess(res, { id: messageId }, "Message deleted for you");
+  } catch (error) {
+    next(error);
+  }
+});
+var messages_routes_default = router7;
+
 // src/modules/upload/upload.routes.ts
+var import_express8 = __toESM(require_express2());
 var router8 = (0, import_express8.Router)();
 var BUCKET_NAME = "item-photos";
 var ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 var MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-var supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
+var supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
 router8.post("/", authMiddleware, async (req, res) => {
   try {
     const { data: base64Data, filename, contentType = "image/jpeg", folder = "items" } = req.body;
@@ -102360,6 +102434,7 @@ var runMigrations = async () => {
       ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS condition VARCHAR(50) DEFAULT 'Good';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
 
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);

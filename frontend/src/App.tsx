@@ -360,12 +360,14 @@ export const App: React.FC = () => {
         setItems(itemsRes.value);
       } else if (itemsRes.status === 'rejected') {
         console.error('Failed to load items:', itemsRes.reason);
+        setItems([]);
       }
 
       if (requestsRes.status === 'fulfilled' && Array.isArray(requestsRes.value)) {
         setRequests(requestsRes.value);
       } else if (requestsRes.status === 'rejected') {
         console.error('Failed to load requests:', requestsRes.reason);
+        setRequests([]);
       }
     } catch (err) {
       console.error('Failed to load feed data:', err);

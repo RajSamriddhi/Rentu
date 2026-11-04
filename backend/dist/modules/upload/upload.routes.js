@@ -9,7 +9,7 @@ const router = (0, express_1.Router)();
 const BUCKET_NAME = 'item-photos';
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB max image upload limit
-const supabase = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL, env_1.ENV.SUPABASE_ANON_KEY);
+const supabase = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL, env_1.ENV.SUPABASE_SERVICE_ROLE_KEY || env_1.ENV.SUPABASE_ANON_KEY);
 router.post('/', auth_1.authMiddleware, async (req, res) => {
     try {
         const { data: base64Data, filename, contentType = 'image/jpeg', folder = 'items' } = req.body;

@@ -9,7 +9,7 @@ const BUCKET_NAME = 'item-photos';
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB max image upload limit
 
-const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY);
+const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
 
 router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {

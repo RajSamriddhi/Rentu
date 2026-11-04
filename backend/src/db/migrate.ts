@@ -119,6 +119,7 @@ export const runMigrations = async () => {
       ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS condition VARCHAR(50) DEFAULT 'Good';
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
 
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);

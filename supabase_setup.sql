@@ -226,6 +226,11 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('item-photos', 'item-photos', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
+-- Drop any legacy/conflicting policies to ensure clean state
+DROP POLICY IF EXISTS "Allow public uploads to item-photos" ON storage.objects;
+DROP POLICY IF EXISTS "Allow Public Uploads" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public uploads" ON storage.objects;
+
 DO $$ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_policies 

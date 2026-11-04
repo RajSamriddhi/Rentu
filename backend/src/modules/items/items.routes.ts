@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { createClient } from '@supabase/supabase-js';
 import { query } from '../../config/db';
+import { ENV } from '../../config/env';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { extractCity } from '../../utils/city';
@@ -8,6 +10,20 @@ import { createNotification } from '../notifications/notifications.service';
 import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
+const storageClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+
+const deleteStoragePhoto = async (url: string) => {
+  try {
+    if (!url || typeof url !== 'string' || !url.includes('/storage/v1/object/public/item-photos/')) return;
+    const path = url.split('/storage/v1/object/public/item-photos/')[1];
+    if (path) {
+      const decoded = decodeURIComponent(path.split('?')[0]);
+      await storageClient.storage.from('item-photos').remove([decoded]);
+    }
+  } catch (e) {
+    console.warn('Storage photo cleanup notice:', e);
+  }
+};
 
 const createItemSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
@@ -206,18 +222,23 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       FROM items i
       LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
+        AND COALESCE(i.is_deleted, false) = false
     `;
 
     if (status === 'AVAILABLE') {
-      sql += ` AND i.status != 'UNAVAILABLE'`;
+      sql += ` AND i.status = 'AVAILABLE'`;
     } else if (status && status !== 'ALL') {
       params.push(status);
       sql += ` AND i.status = $${params.length}`;
     }
 
     if (category && category !== 'All') {
-      params.push(category);
-      sql += ` AND i.category = $${params.length}`;
+      if (category === 'Clothing & Fits' || category === 'Clothing & Accessories') {
+        sql += ` AND (i.category = 'Clothing & Fits' OR i.category = 'Clothing & Accessories')`;
+      } else {
+        params.push(category);
+        sql += ` AND i.category = $${params.length}`;
+      }
     }
 
     if (ownerId) {
@@ -254,11 +275,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       sql += ` ORDER BY i.created_at DESC`;
     }
 
-    if (limit) {
-      const parsedLimit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
-      params.push(parsedLimit);
-      sql += ` LIMIT $${params.length}`;
-    }
+    const parsedLimit = limit ? Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50)) : 50;
+    params.push(parsedLimit);
+    sql += ` LIMIT $${params.length}`;
 
     if (offset) {
       const parsedOffset = Math.max(0, parseInt(String(offset), 10) || 0);
@@ -298,7 +317,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
       LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
-      WHERE i.id = $1`,
+      WHERE i.id = $1 AND COALESCE(i.is_deleted, false) = false`,
       [id]
     );
 
@@ -547,7 +566,7 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     const validated = updateItemSchema.parse(req.body);
 
     // Verify ownership
-    const check = await query('SELECT owner_id FROM items WHERE id = $1', [id]);
+    const check = await query('SELECT owner_id, image_urls FROM items WHERE id = $1', [id]);
     if (check.rows.length === 0) {
       return sendError(res, 'NOT_FOUND', 'Item not found', 404);
     }
@@ -569,7 +588,8 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       fields.push(`description = $${values.length}`);
     }
     if (validated.category !== undefined) {
-      values.push(validated.category);
+      const cat = validated.category === 'Clothing & Accessories' ? 'Clothing & Fits' : validated.category;
+      values.push(cat);
       fields.push(`category = $${values.length}`);
     }
     if (validated.condition !== undefined) {
@@ -595,6 +615,22 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.locality !== undefined) {
       values.push(validated.locality);
       fields.push(`locality = $${values.length}`);
+    }
+    if (validated.address_text !== undefined) {
+      values.push(validated.address_text);
+      fields.push(`address_text = $${values.length}`);
+    }
+    if (validated.pincode !== undefined) {
+      values.push(validated.pincode);
+      fields.push(`pincode = $${values.length}`);
+    }
+    if (validated.latitude !== undefined) {
+      values.push(validated.latitude);
+      fields.push(`latitude = $${values.length}`);
+    }
+    if (validated.longitude !== undefined) {
+      values.push(validated.longitude);
+      fields.push(`longitude = $${values.length}`);
     }
     if (validated.status !== undefined) {
       values.push(validated.status);
@@ -635,8 +671,17 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
 
     const result = await query(updateSql, values);
 
-    // 1NF: Keep item_images table in sync when images are updated
-    if (Array.isArray(validated.image_urls)) {
+    // If images were updated, clean up old storage photos that were removed
+    if (validated.image_urls !== undefined) {
+      const oldRawImages = check.rows[0].image_urls;
+      const oldImages: string[] = Array.isArray(oldRawImages) ? oldRawImages : [];
+      const newImagesSet = new Set(validated.image_urls);
+      for (const oldImg of oldImages) {
+        if (!newImagesSet.has(oldImg)) {
+          await deleteStoragePhoto(oldImg);
+        }
+      }
+
       await query(`DELETE FROM item_images WHERE item_id = $1`, [id]).catch(() => {});
       for (let i = 0; i < validated.image_urls.length; i++) {
         await query(
@@ -673,12 +718,12 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
   }
 });
 
-// Delete Item
+// Delete Item (handles foreign key safety, active rental checks, soft-delete, and storage cleanup)
 router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { id } = req.params;
 
-    const check = await query('SELECT owner_id FROM items WHERE id = $1', [id]);
+    const check = await query('SELECT owner_id, image_urls FROM items WHERE id = $1', [id]);
     if (check.rows.length === 0) {
       return sendError(res, 'NOT_FOUND', 'Item not found', 404);
     }
@@ -688,7 +733,50 @@ router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Res
       return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
     }
 
-    await query('DELETE FROM items WHERE id = $1', [id]);
+    // 1. Check for active/ongoing bookings that would leave users stranded
+    const activeBookings = await query(
+      `SELECT id FROM bookings 
+       WHERE item_id = $1 
+         AND status IN ('ACCEPTED', 'HANDED_OVER') 
+       LIMIT 1`,
+      [id]
+    );
+    if (activeBookings.rows.length > 0) {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'Cannot delete listing: this item currently has an active rental booking in progress. Please complete the booking first.',
+        400
+      );
+    }
+
+    // 2. Check if historical bookings exist to maintain relational integrity
+    const anyBookings = await query(
+      `SELECT id FROM bookings WHERE item_id = $1 LIMIT 1`,
+      [id]
+    );
+
+    if (anyBookings.rows.length > 0) {
+      // Soft-delete: retain row for booking history reference while removing from all feeds and searches
+      await query(
+        `UPDATE items 
+         SET status = 'UNAVAILABLE', is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $1`,
+        [id]
+      );
+    } else {
+      // Hard delete if never booked
+      await query('DELETE FROM item_images WHERE item_id = $1', [id]).catch(() => {});
+      await query('DELETE FROM items WHERE id = $1', [id]);
+    }
+
+    // 3. Remove photo files from public storage
+    const rawImages = check.rows[0].image_urls;
+    const images: string[] = Array.isArray(rawImages) ? rawImages : [];
+    for (const img of images) {
+      await deleteStoragePhoto(img);
+    }
+
     return sendSuccess(res, { id }, 'Listing deleted successfully');
   } catch (error) {
     next(error);

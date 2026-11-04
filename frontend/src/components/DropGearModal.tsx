@@ -45,6 +45,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
   const [offersPickup, setOffersPickup] = useState(false);
@@ -118,6 +119,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
     try {
       const publicUrl = await uploadItemPhoto(file, 'gear');
       setImageUrl(publicUrl);
+      setImageUrls((prev) => [...prev, publicUrl]);
     } catch (err: any) {
       console.error('Upload failed:', err);
       setErrorMsg(err.message || 'Failed to upload photo. Please try again.');
@@ -183,6 +185,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         const file = new File([blob], `gear-${Date.now()}.jpg`, { type: 'image/jpeg' });
         const publicUrl = await uploadItemPhoto(file, 'gear');
         setImageUrl(publicUrl);
+        setImageUrls((prev) => [...prev, publicUrl]);
       } catch (err: any) {
         console.error('Upload error:', err);
         setErrorMsg(err.message || 'Failed to upload captured photo. Please try again.');
@@ -245,7 +248,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         condition,
         price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay || 0),
         max_duration_days: Number(maxDurationDays),
-        image_urls: [imageUrl],
+        image_urls: imageUrls.length > 0 ? imageUrls : [imageUrl],
         sticker_badge: 'Available',
         locality: finalLocality,
         address_text: itemAddress || finalLocality,
