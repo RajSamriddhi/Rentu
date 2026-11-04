@@ -238,10 +238,10 @@ DO $$ BEGIN
 
     IF NOT EXISTS (
         SELECT 1 FROM pg_policies 
-        WHERE tablename = 'objects' AND policyname = 'Allow public uploads to item-photos'
+        WHERE tablename = 'objects' AND policyname = 'Allow authenticated uploads to item-photos'
     ) THEN
-        CREATE POLICY "Allow public uploads to item-photos" 
-        ON storage.objects FOR INSERT TO public 
+        CREATE POLICY "Allow authenticated uploads to item-photos" 
+        ON storage.objects FOR INSERT TO authenticated 
         WITH CHECK (bucket_id = 'item-photos');
     END IF;
 END $$;

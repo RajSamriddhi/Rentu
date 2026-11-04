@@ -89,7 +89,7 @@ router.get('/conversations', auth_1.authMiddleware, async (req, res, next) => {
         partner.name AS partner_name,
         partner.username AS partner_username,
         partner.avatar_url AS partner_avatar,
-        partner.phone AS partner_phone,
+        NULL AS partner_phone,
         partner.locality AS partner_locality,
         CASE 
           WHEN latest_msg.message_type = 'PROPOSAL' THEN 'Rental Proposal: ' || COALESCE(latest_booking.item_title, 'Gear')
@@ -239,7 +239,7 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Conversation partner not found', 404);
         }
         // Fetch partner user data
-        const pRes = await (0, db_1.query)(`SELECT id::text, name, username, avatar_url, locality, phone, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
+        const pRes = await (0, db_1.query)(`SELECT id::text, name, username, avatar_url, locality, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`, [rawPartnerId]);
         const partnerData = pRes.rows[0] || {
             id: rawPartnerId,
             name: 'Community Member',

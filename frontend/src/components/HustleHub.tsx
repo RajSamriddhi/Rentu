@@ -1059,7 +1059,11 @@ export const HustleHub: React.FC = () => {
                                 </span>
                               </td>
                               <td className="p-3.5 font-bold text-ink">
-                                ₹{Number(item.price_per_day)}/day
+                                {item.available_for_borrowing || Number(item.price_per_day) <= 0 ? (
+                                  <span className="text-emerald-500 font-bold">Free to borrow</span>
+                                ) : (
+                                  `₹${Number(item.price_per_day)}/day`
+                                )}
                               </td>
                               <td className="p-3.5">
                                 <span className="font-bold text-ink block truncate">{item.owner_name || 'Lender'}</span>

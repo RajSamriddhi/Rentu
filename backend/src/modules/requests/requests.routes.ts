@@ -210,6 +210,8 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       requestItem.pincode = null;
       requestItem.seeker_phone = null;
       requestItem.seeker_email = null;
+      requestItem.latitude = null;
+      requestItem.longitude = null;
     }
 
     return sendSuccess(res, requestItem);

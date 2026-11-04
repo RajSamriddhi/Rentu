@@ -163,8 +163,8 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.locality, i.locality) AS locality, 
         NULL AS address_text, 
         NULL AS pincode,
-        COALESCE(u.latitude, i.latitude) AS latitude, 
-        COALESCE(u.longitude, i.longitude) AS longitude, 
+        NULL AS latitude, 
+        NULL AS longitude, 
         CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
         i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
@@ -290,6 +290,8 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             item.owner_pincode = null;
             item.owner_email = null;
             item.owner_phone = null;
+            item.latitude = null;
+            item.longitude = null;
         }
         // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
         const bookedRes = await (0, db_1.query)(`SELECT 

@@ -98,7 +98,7 @@ router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, r
         partner.name AS partner_name,
         partner.username AS partner_username,
         partner.avatar_url AS partner_avatar,
-        partner.phone AS partner_phone,
+        NULL AS partner_phone,
         partner.locality AS partner_locality,
         CASE 
           WHEN latest_msg.message_type = 'PROPOSAL' THEN 'Rental Proposal: ' || COALESCE(latest_booking.item_title, 'Gear')
@@ -262,7 +262,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
 
     // Fetch partner user data
     const pRes = await query(
-      `SELECT id::text, name, username, avatar_url, locality, phone, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+      `SELECT id::text, name, username, avatar_url, locality, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
       [rawPartnerId]
     );
     const partnerData = pRes.rows[0] || {

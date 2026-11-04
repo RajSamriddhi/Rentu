@@ -165,7 +165,7 @@ export function formatDistanceString(totalMeters: number): string {
   }
 
   const km = roundedMeters / 1000;
-  const formattedKm = Number(km.toFixed(1));
+  const formattedKm = Number(km.toFixed(2));
   return `${formattedKm} km away`;
 }
 

@@ -1,10 +1,34 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { ENV } from '../config/env';
 import { query } from '../config/db';
 import { sendError } from './response';
 
-// Robust JWT & Firebase token verification without heavy GCP SDK dependencies
+// Initialize Firebase Admin securely for cryptographic token verification
+try {
+  const existingApps = getApps();
+  if (!existingApps.length) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        initializeApp({
+          credential: cert(sa),
+          projectId: ENV.FIREBASE_PROJECT_ID,
+        });
+      } catch {
+        initializeApp({ projectId: ENV.FIREBASE_PROJECT_ID });
+      }
+    } else {
+      initializeApp({ projectId: ENV.FIREBASE_PROJECT_ID });
+    }
+  }
+} catch (e) {
+  console.warn('Firebase Admin init notice:', e);
+}
+
+// Robust JWT & Firebase token verification
 export interface AuthUser {
   id: string;
   email: string;
@@ -18,7 +42,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
-  // 1. Try local Rentu⁺ JWT first
+  // 1. Try local Rentu⁺ JWT first (verified with HMAC signature)
   try {
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as AuthUser;
     if (decoded && decoded.id) {
@@ -45,72 +69,34 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
     // Not a local token, try Firebase
   }
 
-  // 2. Try Firebase token (fast non-blocking decode with optional admin verification)
+  // 2. Cryptographically verify Firebase ID token (checks signature, expiration, issuer, audience)
   try {
-    let firebaseUid: string | null = null;
-    let email: string = '';
-    let name: string = 'User';
+    const decodedToken = await getAuth().verifyIdToken(token);
+    if (decodedToken && decodedToken.uid) {
+      const firebaseUid = decodedToken.uid;
+      const email = decodedToken.email || `${firebaseUid}@firebase.rentu.internal`;
+      const name = decodedToken.name || (decodedToken.email ? decodedToken.email.split('@')[0] : 'User');
 
-    const decodedRaw: any = jwt.decode(token);
-    if (decodedRaw && (decodedRaw.aud === ENV.FIREBASE_PROJECT_ID || decodedRaw.iss?.includes('securetoken.google.com') || decodedRaw.sub)) {
-      firebaseUid = decodedRaw.user_id || decodedRaw.sub;
-      email = decodedRaw.email || `${firebaseUid}@firebase.rentu.internal`;
-      name = decodedRaw.name || 'User';
-    }
-
-      if (firebaseUid) {
-        // Look up user by firebase_uid or id or email
-        let userRes = await query(
-          'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR email = $3',
-          [firebaseUid, firebaseUid, email]
-        );
-
-        if (userRes.rows.length === 0) {
-          await query(`
-            INSERT INTO users (id, firebase_uid, name, email, role)
-            VALUES ($1, $2, $3, $4, 'USER')
-            ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
-          `, [
-            firebaseUid,
-            firebaseUid,
-            name,
-            email
-          ]).catch(() => {});
-
-          userRes = await query(
-            'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1',
-            [firebaseUid]
-          );
-        }
-
-        if (userRes.rows.length > 0) {
-          const u = userRes.rows[0];
-          return { id: u.id, email: u.email, role: u.role, name: u.name };
-        }
-      }
-    } catch {
-      // Token is not a valid Firebase token
-    }
-
-  // 3. Support client Firebase fallback session tokens: "fb_<uid>"
-  if (token.startsWith('fb_')) {
-    const rawUid = token.replace(/^fb_/, '');
-    try {
       let userRes = await query(
-        'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2',
-        [rawUid, rawUid]
+        'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR (email = $3 AND email IS NOT NULL)',
+        [firebaseUid, firebaseUid, email]
       );
 
       if (userRes.rows.length === 0) {
         await query(`
           INSERT INTO users (id, firebase_uid, name, email, role)
-          VALUES ($1, $1, $2, $3, 'USER')
+          VALUES ($1, $2, $3, $4, 'USER')
           ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
-        `, [rawUid, 'Rentu Member', `${rawUid}@firebase.rentu.internal`]).catch(() => {});
+        `, [
+          firebaseUid,
+          firebaseUid,
+          name,
+          email
+        ]).catch(() => {});
 
         userRes = await query(
           'SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1',
-          [rawUid]
+          [firebaseUid]
         );
       }
 
@@ -118,9 +104,9 @@ async function resolveUserFromToken(token: string): Promise<AuthUser | null> {
         const u = userRes.rows[0];
         return { id: u.id, email: u.email, role: u.role, name: u.name };
       }
-    } catch (err) {
-      console.warn('Failed to resolve fb_ fallback token:', err);
     }
+  } catch {
+    // Cryptographic signature/expiration verification failed
   }
 
   return null;

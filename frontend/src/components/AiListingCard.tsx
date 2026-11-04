@@ -59,10 +59,16 @@ export const AiListingCard: React.FC<AiListingCardProps> = ({ item, onSelectItem
           </h5>
 
           <div className="flex items-center gap-2 text-[11px] text-ink-secondary mt-0.5">
-            <span className="font-extrabold text-ink">
-              ₹{dailyPrice}<span className="text-[10px] font-normal text-ink-secondary">/day</span>
-            </span>
-            {estTotal && (
+            {dailyPrice <= 0 || item.available_for_borrowing ? (
+              <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                Free to borrow
+              </span>
+            ) : (
+              <span className="font-extrabold text-ink">
+                ₹{dailyPrice}<span className="text-[10px] font-normal text-ink-secondary">/day</span>
+              </span>
+            )}
+            {estTotal && dailyPrice > 0 && !item.available_for_borrowing && (
               <>
                 <span>•</span>
                 <span className="text-brand font-bold">₹{estTotal} total</span>

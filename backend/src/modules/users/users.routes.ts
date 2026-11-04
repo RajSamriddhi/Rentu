@@ -73,7 +73,6 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
         u.id, 
         u.username,
         u.name, 
-        u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
@@ -99,7 +98,6 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
 
     // Format real users with fallbacks
     const formattedRealUsers = realUsersRes.rows.map((u: any) => {
-      const email = u.email || '';
       const name = u.name || 'Community Member';
       const username = u.username || '';
       const avatar = u.avatar_url && u.avatar_url.trim() !== ''

@@ -26,18 +26,19 @@ const isPlaceholderKey = rawGeminiKey.includes('your_key_here') ||
     rawGeminiKey.includes('your_gemini_api_key_here') ||
     rawGeminiKey === '';
 const isProd = (process.env.NODE_ENV || 'production') === 'production';
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/rentu';
-if (isProd && !process.env.DATABASE_URL) {
-    console.warn('WARNING: DATABASE_URL environment variable is missing in production.');
-}
-if (isProd && !process.env.JWT_SECRET) {
-    console.warn('WARNING: JWT_SECRET environment variable is missing in production.');
+if (isProd) {
+    if (!process.env.DATABASE_URL) {
+        throw new Error('CRITICAL CONFIGURATION ERROR: DATABASE_URL environment variable must be set in production.');
+    }
+    if (!process.env.JWT_SECRET) {
+        throw new Error('CRITICAL CONFIGURATION ERROR: JWT_SECRET environment variable must be set in production.');
+    }
 }
 exports.ENV = {
     PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
-    DATABASE_URL: process.env.DATABASE_URL || databaseUrl,
-    JWT_SECRET: process.env.JWT_SECRET || (isProd ? 'rentu-prod-secure-token-vault-key-2026' : 'super-secret-borrowflex-key-dev'),
-    NODE_ENV: process.env.NODE_ENV || 'production',
+    DATABASE_URL: process.env.DATABASE_URL || '',
+    JWT_SECRET: process.env.JWT_SECRET || 'dev-local-only-jwt-secret-do-not-use-in-production',
+    NODE_ENV: process.env.NODE_ENV || (process.env.VERCEL ? 'production' : 'development'),
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || 'rentu-732b7',
     SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
