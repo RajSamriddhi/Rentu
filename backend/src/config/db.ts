@@ -3,9 +3,23 @@ import { ENV } from './env';
 
 const isRemote = ENV.DATABASE_URL.includes('supabase.co') || ENV.DATABASE_URL.includes('pooler') || ENV.NODE_ENV === 'production';
 
+const getSslConfig = () => {
+  if (!isRemote) return undefined;
+  if (process.env.DATABASE_SSL_CA) {
+    return {
+      ca: process.env.DATABASE_SSL_CA,
+      rejectUnauthorized: true,
+    };
+  }
+  if (process.env.DB_SSL_STRICT === 'true') {
+    return { rejectUnauthorized: true };
+  }
+  return { rejectUnauthorized: false };
+};
+
 export const pool = new Pool({
   connectionString: ENV.DATABASE_URL,
-  ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+  ssl: getSslConfig(),
   max: 15,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

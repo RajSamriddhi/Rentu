@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { pool, query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
@@ -249,8 +250,15 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
         );
         if (bookingCheck.rows.length > 0) {
           const b = bookingCheck.rows[0];
+          const isParticipant = myIds.includes(String(b.borrower_id)) ||
+                                myIds.includes(String(b.lender_id)) ||
+                                myIds.includes(String(b.item_owner_id)) ||
+                                req.user!.role === 'ADMIN';
+          if (!isParticipant) {
+            return sendError(res, 'FORBIDDEN', 'Access denied: You are not an authorized participant in this booking.', 403);
+          }
           fallbackBooking = b;
-          const isBorrower = myIds.includes(b.borrower_id);
+          const isBorrower = myIds.includes(String(b.borrower_id));
           rawPartnerId = isBorrower ? (b.lender_id || b.item_owner_id) : b.borrower_id;
         }
       }
@@ -690,7 +698,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           }
 
           // Generate pickup handover verification code (return_code is strictly generated later upon verified handover)
-          const pickupCode = existingBooking.pickup_code || Math.floor(100000 + Math.random() * 900000).toString();
+          const pickupCode = existingBooking.pickup_code || crypto.randomInt(100000, 1000000).toString();
 
           const updateRes = await client.query(
             `UPDATE bookings
@@ -864,7 +872,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       createdItem = itemRes.rows[0];
 
       // 3. Generate handover security code (6 digits) for pickup (return_code is strictly NULL at acceptance)
-      const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const pickupCode = crypto.randomInt(100000, 1000000).toString();
 
       // 4. Create the booking with status 'ACCEPTED'
       const bookingRes = await client.query(

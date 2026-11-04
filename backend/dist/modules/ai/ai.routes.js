@@ -11,6 +11,15 @@ const router = (0, express_1.Router)();
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_REQUESTS_PER_WINDOW = 30;
+// Periodic cleanup of stale IP records to avoid memory growth
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, record] of rateLimitMap.entries()) {
+        if (now > record.resetTime + RATE_LIMIT_WINDOW_MS) {
+            rateLimitMap.delete(ip);
+        }
+    }
+}, 5 * 60 * 1000).unref();
 function rateLimiter(req, res, next) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();

@@ -445,40 +445,8 @@ export const runMigrations = async () => {
       }
     }
 
-    // Align Bangalore/Bengaluru items and users away from Delhi default (28.5355)
-    await client.query(`
-      UPDATE items 
-      SET latitude = 12.9255, longitude = 77.5355 
-      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
-        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
-
-      UPDATE users 
-      SET latitude = 12.9240, longitude = 77.5340 
-      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%' OR locality ILIKE '%beml%' OR locality ILIKE '%mylasandra%')
-        AND (latitude > 20 OR latitude IS NULL OR latitude = 0);
-
-      -- Clear assumed 'Bengaluru' / 'Bangalore' locality from users who never entered an address
-      UPDATE users 
-      SET locality = NULL, latitude = NULL, longitude = NULL 
-      WHERE (locality ILIKE '%bengaluru%' OR locality ILIKE '%bangalore%')
-        AND (address_text IS NULL OR TRIM(address_text) = '' OR address_text ILIKE '%bengaluru%')
-        AND (saved_locations IS NULL OR saved_locations = '[]'::jsonb);
-
-      -- Reset any products marked RENTED back to AVAILABLE so marketplace shows all items available for rent
-      UPDATE items SET status = 'AVAILABLE' WHERE status = 'RENTED';
-
-      -- Sanitize any old chat messages so verification codes are not leaked in chat text or proposal_data
-      UPDATE messages
-      SET content = REGEXP_REPLACE(content, '\.?\s*Pickup Verification Code:\s*\d+\.?', '.', 'gi')
-      WHERE content ILIKE '%Pickup Verification Code%';
-
-      UPDATE messages
-      SET proposal_data = proposal_data - 'pickup_code' - 'return_code'
-      WHERE proposal_data IS NOT NULL AND (proposal_data ? 'pickup_code' OR proposal_data ? 'return_code');
-    `);
-
     await client.query('COMMIT');
-    console.log('Database migrations completed successfully!');
+    console.log('Database schema migrations completed successfully!');
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Migration failed:', error);

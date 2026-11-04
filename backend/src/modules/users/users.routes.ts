@@ -598,21 +598,6 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
 
-    // Synchronize owner's active gear listings with updated location
-    if (validated.locality !== undefined || validated.address_text !== undefined || validated.latitude !== undefined || validated.longitude !== undefined || cleanPincode !== undefined) {
-      await query(
-        `UPDATE items 
-         SET locality = COALESCE($1, locality),
-             address_text = COALESCE($2, address_text),
-             pincode = COALESCE($3, pincode),
-             latitude = COALESCE($4, latitude),
-             longitude = COALESCE($5, longitude),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE owner_id = $6`,
-        [validated.locality ?? null, validated.address_text ?? null, cleanPincode ?? null, validated.latitude ?? null, validated.longitude ?? null, userId]
-      ).catch((err) => console.error('Failed to sync items location:', err));
-    }
-
     return sendSuccess(res, updatedUser, 'Profile updated successfully.');
   } catch (error) {
     next(error);

@@ -278,7 +278,10 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             }
             else {
                 const acceptedBookingCheck = await (0, db_1.query)(`SELECT 1 FROM bookings 
-           WHERE item_id = $1 AND borrower_id = ANY($2::text[]) AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           WHERE item_id = $1 
+             AND borrower_id = ANY($2::text[]) 
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= CURRENT_DATE
            LIMIT 1`, [item.id, viewerIds]);
                 canViewAddress = acceptedBookingCheck.rows.length > 0;
             }

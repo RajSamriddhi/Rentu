@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { getAuth } from 'firebase-admin/auth';
 import { query } from '../../config/db';
 import { ENV } from '../../config/env';
 import { sendError, sendSuccess } from '../../middleware/response';
@@ -200,30 +201,51 @@ const ensureUserColumns = async () => {
   }
 };
 
-// Sync Firebase / SSO user with Rentu⁺ database
+// Sync Firebase / SSO user with Rentu⁺ database (Strict cryptographic verification)
 const handleSyncUser = async (req: Request, res: Response, next: any) => {
   try {
     const validated = firebaseSyncSchema.parse(req.body);
-    const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
-    const email = validated.email.toLowerCase();
-    const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
+
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : ((req.body as any).idToken || (req.body as any).token);
+
+    if (!bearerToken) {
+      return sendError(res, 'UNAUTHORIZED', 'Verified Firebase ID token is required for authentication sync', 401);
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await getAuth().verifyIdToken(bearerToken);
+    } catch (err: any) {
+      return sendError(res, 'UNAUTHORIZED', 'Invalid or expired Firebase ID token: ' + (err?.message || 'Verification failed'), 401);
+    }
+
+    // Rely strictly on verified identity claims from Google
+    const uid = decodedToken.uid;
+    const email = (decodedToken.email || validated.email).toLowerCase();
+    const isEmailVerified = Boolean(decodedToken.email_verified);
+    const name = decodedToken.name || validated.name || email.split('@')[0];
+    const avatar = decodedToken.picture || validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
     const locality = validated.locality || '';
 
-    // 1. Look for existing user by firebase_uid, clerk_id or email
+    // 1. Look for existing user by firebase_uid or verified email
+    const emailQueryParam = isEmailVerified ? email : null;
     let existing;
     try {
       existing = await query(
         `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-         FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
-        [uid, uid, email]
+         FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`,
+        [uid, emailQueryParam]
       );
     } catch (err: any) {
       if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
         await ensureUserColumns();
         existing = await query(
           `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
-           FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`,
-          [uid, uid, email]
+           FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`,
+          [uid, emailQueryParam]
         );
       } else {
         throw err;

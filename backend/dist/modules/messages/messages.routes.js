@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const crypto_1 = __importDefault(require("crypto"));
 const zod_1 = require("zod");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
@@ -229,8 +233,15 @@ router.get('/:conversationId', auth_1.authMiddleware, async (req, res, next) => 
            WHERE b.id::text = $1`, [conversationId]);
                 if (bookingCheck.rows.length > 0) {
                     const b = bookingCheck.rows[0];
+                    const isParticipant = myIds.includes(String(b.borrower_id)) ||
+                        myIds.includes(String(b.lender_id)) ||
+                        myIds.includes(String(b.item_owner_id)) ||
+                        req.user.role === 'ADMIN';
+                    if (!isParticipant) {
+                        return (0, response_1.sendError)(res, 'FORBIDDEN', 'Access denied: You are not an authorized participant in this booking.', 403);
+                    }
                     fallbackBooking = b;
-                    const isBorrower = myIds.includes(b.borrower_id);
+                    const isBorrower = myIds.includes(String(b.borrower_id));
                     rawPartnerId = isBorrower ? (b.lender_id || b.item_owner_id) : b.borrower_id;
                 }
             }
@@ -563,7 +574,7 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
                WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [conflicting.id]).catch(() => { });
                     }
                     // Generate pickup handover verification code (return_code is strictly generated later upon verified handover)
-                    const pickupCode = existingBooking.pickup_code || Math.floor(100000 + Math.random() * 900000).toString();
+                    const pickupCode = existingBooking.pickup_code || crypto_1.default.randomInt(100000, 1000000).toString();
                     const updateRes = await client.query(`UPDATE bookings
              SET status = 'ACCEPTED',
                  pickup_code = $1,
@@ -695,7 +706,7 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
             ]);
             createdItem = itemRes.rows[0];
             // 3. Generate handover security code (6 digits) for pickup (return_code is strictly NULL at acceptance)
-            const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+            const pickupCode = crypto_1.default.randomInt(100000, 1000000).toString();
             // 4. Create the booking with status 'ACCEPTED'
             const bookingRes = await client.query(`INSERT INTO bookings (
           item_id, borrower_id, lender_id, start_date, duration_days, total_price,

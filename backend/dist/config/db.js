@@ -4,9 +4,23 @@ exports.query = exports.pool = void 0;
 const pg_1 = require("pg");
 const env_1 = require("./env");
 const isRemote = env_1.ENV.DATABASE_URL.includes('supabase.co') || env_1.ENV.DATABASE_URL.includes('pooler') || env_1.ENV.NODE_ENV === 'production';
+const getSslConfig = () => {
+    if (!isRemote)
+        return undefined;
+    if (process.env.DATABASE_SSL_CA) {
+        return {
+            ca: process.env.DATABASE_SSL_CA,
+            rejectUnauthorized: true,
+        };
+    }
+    if (process.env.DB_SSL_STRICT === 'true') {
+        return { rejectUnauthorized: true };
+    }
+    return { rejectUnauthorized: false };
+};
 exports.pool = new pg_1.Pool({
     connectionString: env_1.ENV.DATABASE_URL,
-    ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+    ssl: getSslConfig(),
     max: 15,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,

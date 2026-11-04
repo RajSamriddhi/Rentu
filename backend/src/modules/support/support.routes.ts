@@ -27,8 +27,11 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
   try {
     const validated = createTicketSchema.parse(req.body);
     const userId = req.user?.id || null;
-    const userName = req.user?.name || 'Community Member';
-    const userEmail = validated.user_email || req.user?.email || 'unregistered@rentu.in';
+    const userName = req.user?.name || (userId ? 'Community Member' : 'Guest Visitor');
+    
+    // Treat unauthenticated contact info as unverified, and prevent priority elevation
+    const userEmail = req.user?.email || (validated.user_email ? `[Unverified] ${validated.user_email}` : 'unregistered@rentu.in');
+    const assignedPriority = userId ? (validated.priority || 'NORMAL') : 'NORMAL';
 
     const insertRes = await query(
       `INSERT INTO support_tickets (user_id, user_name, user_email, type, category, subject, description, priority, status)
@@ -42,7 +45,7 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
         validated.category,
         validated.subject,
         validated.description,
-        validated.priority,
+        assignedPriority,
       ]
     );
 

@@ -80,25 +80,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setUser(localUser);
 
-    // Immediately establish local session and token so user is authenticated for API calls
+    // Establish session using verified Firebase ID token
     const idToken = await fbUser.getIdToken().catch(() => null);
-    const initialToken = idToken || `fb_${fbUser.uid}`;
-    localStorage.setItem('borrowflex_token', initialToken);
-    setToken(initialToken);
+    if (idToken) {
+      localStorage.setItem('borrowflex_token', idToken);
+      setToken(idToken);
+    }
 
     try {
-      const res = await api.firebaseSync({
-        firebaseUid: fbUser.uid,
-        email,
-        name,
-        avatarUrl,
-        phone,
-      });
+      if (idToken) {
+        const res = await api.firebaseSync({
+          firebaseUid: fbUser.uid,
+          email,
+          name,
+          avatarUrl,
+          phone,
+          idToken,
+        });
 
-      if (res && res.token && res.user) {
-        localStorage.setItem('borrowflex_token', res.token);
-        setToken(res.token);
-        setUser(res.user);
+        if (res && res.token && res.user) {
+          localStorage.setItem('borrowflex_token', res.token);
+          setToken(res.token);
+          setUser(res.user);
+        }
       }
     } catch (err) {
       console.warn('Backend sync failed, continuing with Firebase verified profile:', err);

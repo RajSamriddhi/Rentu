@@ -36,6 +36,8 @@ const ensureMigrations = async () => {
 };
 const createApp = () => {
     const app = (0, express_1.default)();
+    // Trust first reverse proxy hop (Vercel, Cloudflare, ALB) for accurate client IP identification
+    app.set('trust proxy', 1);
     // 1. OWASP HTTP Security Headers
     app.use(security_1.securityHeaders);
     // 2. Strict CORS Whitelist Protection
@@ -57,16 +59,10 @@ const createApp = () => {
     app.use(express_1.default.urlencoded({ extended: true, limit: '2mb' }));
     // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
     app.use(security_1.generalApiRateLimiter);
-    // Auto-run migrations in serverless environment on cold start
-    app.use(async (req, res, next) => {
-        try {
-            await ensureMigrations();
-        }
-        catch (e) {
-            console.warn('Migration check warning:', e?.message || e);
-        }
-        next();
-    });
+    // Run schema migration verification once asynchronously on worker startup
+    if (!migrationsPromise) {
+        ensureMigrations().catch(() => { });
+    }
     // Health Check (Matches both /api/health and /health) - Sanitized so no internal endpoints leak
     app.get(['/api/health', '/health'], async (req, res) => {
         let dbStatus = 'disconnected';

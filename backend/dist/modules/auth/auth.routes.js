@@ -7,10 +7,11 @@ const express_1 = require("express");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const zod_1 = require("zod");
+const auth_1 = require("firebase-admin/auth");
 const db_1 = require("../../config/db");
 const env_1 = require("../../config/env");
 const response_1 = require("../../middleware/response");
-const auth_1 = require("../../middleware/auth");
+const auth_2 = require("../../middleware/auth");
 const router = (0, express_1.Router)();
 const registerSchema = zod_1.z.object({
     email: zod_1.z.string().email('Invalid email address format'),
@@ -173,25 +174,43 @@ const ensureUserColumns = async () => {
         console.warn('ensureUserColumns notice:', err?.message || err);
     }
 };
-// Sync Firebase / SSO user with Rentu⁺ database
+// Sync Firebase / SSO user with Rentu⁺ database (Strict cryptographic verification)
 const handleSyncUser = async (req, res, next) => {
     try {
         const validated = firebaseSyncSchema.parse(req.body);
-        const uid = validated.firebaseUid || validated.clerkId || `fb_${Date.now()}`;
-        const email = validated.email.toLowerCase();
-        const avatar = validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(validated.name)}`;
+        const authHeader = req.headers.authorization;
+        const bearerToken = authHeader?.startsWith('Bearer ')
+            ? authHeader.split(' ')[1]
+            : (req.body.idToken || req.body.token);
+        if (!bearerToken) {
+            return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Verified Firebase ID token is required for authentication sync', 401);
+        }
+        let decodedToken;
+        try {
+            decodedToken = await (0, auth_1.getAuth)().verifyIdToken(bearerToken);
+        }
+        catch (err) {
+            return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Invalid or expired Firebase ID token: ' + (err?.message || 'Verification failed'), 401);
+        }
+        // Rely strictly on verified identity claims from Google
+        const uid = decodedToken.uid;
+        const email = (decodedToken.email || validated.email).toLowerCase();
+        const isEmailVerified = Boolean(decodedToken.email_verified);
+        const name = decodedToken.name || validated.name || email.split('@')[0];
+        const avatar = decodedToken.picture || validated.avatarUrl || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(name)}`;
         const locality = validated.locality || '';
-        // 1. Look for existing user by firebase_uid, clerk_id or email
+        // 1. Look for existing user by firebase_uid or verified email
+        const emailQueryParam = isEmailVerified ? email : null;
         let existing;
         try {
             existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
-         FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
+         FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`, [uid, emailQueryParam]);
         }
         catch (err) {
             if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
                 await ensureUserColumns();
                 existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
-           FROM users WHERE firebase_uid = $1 OR clerk_id = $2 OR email = $3`, [uid, uid, email]);
+           FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`, [uid, emailQueryParam]);
             }
             else {
                 throw err;
@@ -282,7 +301,7 @@ const handleSyncUser = async (req, res, next) => {
 router.post('/firebase-sync', handleSyncUser);
 router.post('/clerk-sync', handleSyncUser);
 // Get Current Profile
-router.get('/me', auth_1.authMiddleware, async (req, res, next) => {
+router.get('/me', auth_2.authMiddleware, async (req, res, next) => {
     try {
         let result;
         try {

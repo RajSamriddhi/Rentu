@@ -66,34 +66,30 @@ function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes:
   return localUtcMs + (tzOffsetMinutes * 60000);
 }
 
+let lastRequestsExpirationRun = 0;
+
 /**
  * Automatically checks and cancels any OPEN gear requests where the acceptance / needed start time has already passed.
+ * Uses a single fast indexed SQL bulk update throttled to at most once per 60 seconds.
  */
 async function autoCancelExpiredRequests(): Promise<void> {
+  const now = Date.now();
+  if (now - lastRequestsExpirationRun < 60 * 1000) return;
+  lastRequestsExpirationRun = now;
+
   try {
-    const expiredRes = await query(`
-      SELECT r.id, 
-             TO_CHAR(r.start_date, 'YYYY-MM-DD') AS start_date_str,
-             r.start_time
-      FROM requests r
-      WHERE r.status = 'OPEN'
+    await query(`
+      UPDATE requests
+      SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+      WHERE status = 'OPEN'
+        AND (
+          start_date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+          OR (
+            start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+            AND (COALESCE(NULLIF(TRIM(start_time), ''), '10:00') || ':00')::time < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
+          )
+        )
     `);
-
-    const now = Date.now();
-    for (const row of expiredRes.rows) {
-      const sDate = row.start_date_str;
-      if (!sDate) continue;
-      const startMs = parseToUtcTimestamp(sDate, row.start_time, -330);
-
-      if (now > startMs) {
-        await query(
-          `UPDATE requests 
-           SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
-           WHERE id = $1 AND status = 'OPEN'`,
-          [row.id]
-        );
-      }
-    }
   } catch (err) {
     console.warn('autoCancelExpiredRequests error:', err);
   }
@@ -509,16 +505,8 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     const userIds = await resolveUserIds(req.user!.id);
     const isSeeker = userIds.includes(String(check.rows[0].seeker_id)) || req.user!.role === 'ADMIN';
 
-    // If another neighbor is claiming/fulfilling it
     if (!isSeeker) {
-      if (validated.status === 'FULFILLED') {
-        const result = await query(
-          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
-          [id]
-        );
-        return sendSuccess(res, result.rows[0], 'Wish marked as fulfilled.');
-      }
-      return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
+      return sendError(res, 'FORBIDDEN', 'Permission denied: Only the wish creator can edit or update the status of this request.', 403);
     }
 
     const fields: string[] = [];

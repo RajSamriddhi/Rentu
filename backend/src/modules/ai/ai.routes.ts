@@ -18,6 +18,16 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_REQUESTS_PER_WINDOW = 30;
 
+// Periodic cleanup of stale IP records to avoid memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime + RATE_LIMIT_WINDOW_MS) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
 function rateLimiter(req: Request, res: Response, next: NextFunction) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();

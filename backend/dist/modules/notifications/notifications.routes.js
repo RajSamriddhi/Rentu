@@ -139,4 +139,21 @@ router.put('/read-all', auth_1.authMiddleware, async (req, res, next) => {
         next(error);
     }
 });
+// POST /notifications/push-subscribe - Register or update Web Push subscription
+router.post('/push-subscribe', auth_1.authMiddleware, async (req, res, next) => {
+    try {
+        const { endpoint, keys } = req.body;
+        if (!endpoint || !keys?.p256dh || !keys?.auth) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Valid push subscription endpoint and cryptographic keys are required', 400);
+        }
+        const userId = req.user.id;
+        await (0, db_1.query)(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`, [userId, endpoint, keys.p256dh, keys.auth]);
+        return (0, response_1.sendSuccess)(res, { subscribed: true }, 'Push notification subscription registered');
+    }
+    catch (error) {
+        next(error);
+    }
+});
 exports.default = router;

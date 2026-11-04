@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { pool, query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
@@ -7,6 +8,37 @@ import { createNotification } from '../notifications/notifications.service';
 import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
+
+// Rate limiting & lockout tracker for 6-digit verification codes (prevents brute-force)
+const failedCodeAttempts = new Map<string, { attempts: number; lockedUntil: number }>();
+
+function checkCodeLockout(key: string): { locked: boolean; waitSeconds?: number } {
+  const record = failedCodeAttempts.get(key);
+  if (!record) return { locked: false };
+  const now = Date.now();
+  if (record.lockedUntil > now) {
+    return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1000) };
+  }
+  if (record.lockedUntil <= now && record.attempts >= 5) {
+    failedCodeAttempts.delete(key);
+  }
+  return { locked: false };
+}
+
+function recordFailedCodeAttempt(key: string): number {
+  const now = Date.now();
+  const record = failedCodeAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
+  record.attempts += 1;
+  if (record.attempts >= 5) {
+    record.lockedUntil = now + (15 * 60 * 1000); // 15-minute lockout after 5 consecutive failures
+  }
+  failedCodeAttempts.set(key, record);
+  return record.attempts;
+}
+
+function resetCodeAttempts(key: string): void {
+  failedCodeAttempts.delete(key);
+}
 
 const createBookingSchema = z.object({
   item_id: z.string().uuid('Invalid item ID'),
@@ -29,7 +61,7 @@ const createBookingSchema = z.object({
 });
 
 const updateStatusSchema = z.object({
-  status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'HANDED_OVER', 'COMPLETED', 'CANCELLED']),
+  status: z.enum(['ACCEPTED', 'REJECTED', 'CANCELLED']),
   timezone_offset_minutes: z.number().optional(),
 });
 
@@ -47,11 +79,18 @@ function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes?
   return d.getTime();
 }
 
+let lastBookingsExpirationRun = 0;
+
 /**
  * Automatically checks and cancels any ACCEPTED booking whose 1-hour pickup handover
  * window has expired without pickup verification code entry.
+ * Throttled to run at most once per 60 seconds to avoid N+1 query load during browsing.
  */
 async function checkAndAutoCancelExpiredBookings(): Promise<void> {
+  const now = Date.now();
+  if (now - lastBookingsExpirationRun < 60 * 1000) return;
+  lastBookingsExpirationRun = now;
+
   try {
     const expiredRes = await query(`
       SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
@@ -352,8 +391,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const calculatedTotalPrice = baseCost + deliveryFee + pickupFee;
 
-    // Pre-generate 6-digit pickup handover verification code
-    const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Pre-generate cryptographically secure 6-digit pickup handover verification code
+    const pickupCode = crypto.randomInt(100000, 1000000).toString();
 
     // Seed structured PROPOSAL message into the unified conversation with full item and rental terms
     const proposalData = {
@@ -796,6 +835,13 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
           400
         );
       }
+    } else {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `Direct status updates to "${status}" are not allowed. Handover and completion require verified security codes and payment.`,
+        400
+      );
     }
 
     // Check authority: 
@@ -919,7 +965,7 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
         }
 
         if (!pickupCode) {
-          pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+          pickupCode = crypto.randomInt(100000, 1000000).toString();
         }
 
         updateRes = await client.query(
@@ -1157,33 +1203,61 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
       );
     }
 
-    if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
-      return sendError(res, 'BAD_REQUEST', 'Incorrect 6-digit handover code. Please check the code with the other party.', 400);
+    // Rate limiting & Lockout check
+    const lockoutKey = `pickup_${id}_${userId}`;
+    const lockoutStatus = checkCodeLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return sendError(res, 'TOO_MANY_REQUESTS', `Too many failed attempts. Code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
     }
 
-    // Generate Return Code for the next stage (Receiving back the product)
-    const returnCode = Math.floor(100000 + Math.random() * 900000).toString();
+    if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
+      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const remaining = Math.max(0, 5 - attempts);
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `Incorrect 6-digit handover code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : 'Too many failed attempts. Locked for 15 minutes.'}`,
+        400
+      );
+    }
+    resetCodeAttempts(lockoutKey);
 
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET status = 'HANDED_OVER', 
-           handed_over_at = CURRENT_TIMESTAMP, 
-           return_code = $1, 
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [returnCode, id]
-    );
+    // Generate Return Code for the next stage (Receiving back the product) cryptographically
+    const returnCode = crypto.randomInt(100000, 1000000).toString();
 
-    // Keep item status as AVAILABLE since item is rented only for agreed dates
-    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+    const client = await pool.connect();
+    let updateRes: any;
+    try {
+      await client.query('BEGIN');
 
-    // Send chat system message
-    await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-       VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
-      [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
-    );
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = 'HANDED_OVER', 
+             handed_over_at = CURRENT_TIMESTAMP, 
+             return_code = $1, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [returnCode, id]
+      );
+
+      // Keep item status as AVAILABLE since item is rented only for agreed dates
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+
+      // Send chat system message
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
+        [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     const sDate = booking.start_date_str || booking.start_date;
     const eDate = booking.end_date_str || booking.end_date;
@@ -1289,44 +1363,76 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
       );
     }
 
-    if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
-      return sendError(res, 'BAD_REQUEST', 'Incorrect 6-digit return code. Please check the code with the other party.', 400);
+    // Rate limiting & Lockout check
+    const lockoutKey = `return_${id}_${userId}`;
+    const lockoutStatus = checkCodeLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return sendError(res, 'TOO_MANY_REQUESTS', `Too many failed attempts. Return code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
     }
+
+    if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
+      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const remaining = Math.max(0, 5 - attempts);
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        `Incorrect 6-digit return code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : 'Too many failed attempts. Locked for 15 minutes.'}`,
+        400
+      );
+    }
+    resetCodeAttempts(lockoutKey);
 
     const isFree = Number(booking.total_price) === 0;
 
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
-           returned_at = CURRENT_TIMESTAMP,
-           completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
-           payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING *`,
-      [id, isFree]
-    );
+    const client = await pool.connect();
+    let updateRes: any;
+    try {
+      await client.query('BEGIN');
 
-    // Release item back to AVAILABLE
-    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
+             returned_at = CURRENT_TIMESTAMP,
+             completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+             payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [id, isFree]
+      );
 
-    // Send chat system message
-    await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-       VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-      [
-        id, 
-        userId, 
-        isBorrower ? booking.lender_id : booking.borrower_id,
-        isFree 
-          ? 'Product returned to owner. The rental process is completed. Please leave reviews for each other.'
-          : 'Product returned to owner. Final payment confirmation is now active.'
-      ]
-    );
+      // Release item back to AVAILABLE
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+
+      // Send chat system message
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+        [
+          id, 
+          userId, 
+          isBorrower ? booking.lender_id : booking.borrower_id,
+          isFree 
+            ? 'Product returned to owner. The rental process is completed. Please leave reviews for each other.'
+            : 'Product returned to owner. Final payment confirmation is now active.'
+        ]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    const safeResult = { ...updateRes.rows[0] };
+    delete safeResult.pickup_code;
+    delete safeResult.return_code;
 
     return sendSuccess(
       res, 
-      updateRes.rows[0], 
+      safeResult, 
       isFree 
         ? 'Product returned successfully! Whole process completed.' 
         : 'Product return verified! Please proceed to payment settlement.'
@@ -1395,33 +1501,49 @@ router.post('/:id/confirm-payment', authMiddleware, async (req: AuthenticatedReq
       return sendError(res, 'NOT_FOUND', 'Booking not found', 404);
     }
     const booking = bookingRes.rows[0];
-    if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
-      return sendError(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
+    if (!booking.returned_at) {
+      return sendError(res, 'BAD_REQUEST', 'Item must be verified as returned via 6-digit return code before final payment and completion can be confirmed.', 400);
+    }
+    if (Number(booking.total_price || 0) > 0 && booking.payment_status !== 'SUBMITTED') {
+      return sendError(res, 'BAD_REQUEST', 'Renter must mark payment as sent before the owner can verify and confirm payment.', 400);
     }
     const myIds = await resolveUserIds(userId);
     if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user!.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', 'Only the owner can confirm receiving payment', 403);
     }
 
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET status = 'COMPLETED',
-           completed_at = CURRENT_TIMESTAMP,
-           payment_status = 'CONFIRMED',
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING *`,
-      [id]
-    );
+    const client = await pool.connect();
+    let updateRes: any;
+    try {
+      await client.query('BEGIN');
 
-    // Release item back to AVAILABLE
-    await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      updateRes = await client.query(
+        `UPDATE bookings 
+         SET status = 'COMPLETED',
+             completed_at = CURRENT_TIMESTAMP,
+             payment_status = 'CONFIRMED',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [id]
+      );
 
-    await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-       VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
-      [id, userId, booking.borrower_id]
-    );
+      // Release item back to AVAILABLE
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
+        [id, userId, booking.borrower_id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // Notify Borrower: Rental Completed
     await createNotification({
@@ -1526,54 +1648,65 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       resolvedReviewType = 'RENTER';
     }
 
-    const reviewResult = await query(
-      `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (booking_id, reviewer_id)
-       DO UPDATE SET 
-         rating = EXCLUDED.rating, 
-         comment = EXCLUDED.comment, 
-         review_type = EXCLUDED.review_type, 
-         created_at = CURRENT_TIMESTAMP
-       RETURNING *`,
-      [id, reviewerId, revieweeId, rating, comment || '', resolvedReviewType]
-    );
+    const client = await pool.connect();
+    let reviewResult: any;
+    try {
+      await client.query('BEGIN');
 
-    // Recalculate review ratings and verified counts for reviewee
-    await query(`
-      WITH stats AS (
-        SELECT 
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 0.00), 2) AS owner_rating,
-          COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 0.00), 2) AS renter_rating,
-          COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
-          ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 0.00), 2) AS community_lender_rating,
-          COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
-          ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
-          COUNT(*)::int AS total_reviews
-        FROM reviews
-        WHERE reviewee_id IN (
-          SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
-          UNION
-          SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+      reviewResult = await client.query(
+        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (booking_id, reviewer_id)
+         DO UPDATE SET 
+           rating = EXCLUDED.rating, 
+           comment = EXCLUDED.comment, 
+           review_type = EXCLUDED.review_type, 
+           created_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [id, reviewerId, revieweeId, rating, comment || '', resolvedReviewType]
+      );
+
+      // Recalculate review ratings and verified counts for reviewee
+      await client.query(`
+        WITH stats AS (
+          SELECT 
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'OWNER_RENTAL' THEN rating END), 0.00), 2) AS owner_rating,
+            COUNT(CASE WHEN review_type = 'OWNER_RENTAL' THEN 1 END)::int AS owner_count,
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'RENTER' THEN rating END), 0.00), 2) AS renter_rating,
+            COUNT(CASE WHEN review_type = 'RENTER' THEN 1 END)::int AS renter_count,
+            ROUND(COALESCE(AVG(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN rating END), 0.00), 2) AS community_lender_rating,
+            COUNT(CASE WHEN review_type = 'COMMUNITY_LENDER' THEN 1 END)::int AS community_lender_count,
+            ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
+            COUNT(*)::int AS total_reviews
+          FROM reviews
+          WHERE reviewee_id IN (
+            SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+            UNION
+            SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+          )
         )
-      )
-      UPDATE users
-      SET 
-        owner_rating = stats.owner_rating,
-        owner_reviews_count = stats.owner_count,
-        renter_rating = stats.renter_rating,
-        renter_reviews_count = stats.renter_count,
-        community_lender_rating = stats.community_lender_rating,
-        community_lender_reviews_count = stats.community_lender_count,
-        trust_rating = stats.trust_rating,
-        rating = stats.trust_rating,
-        trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
-      FROM stats
-      WHERE users.id = $1 OR users.firebase_uid = $1
-    `, [revieweeId]).catch((err) => {
-      console.error('Failed to update ratings for reviewee:', err);
-    });
+        UPDATE users
+        SET 
+          owner_rating = stats.owner_rating,
+          owner_reviews_count = stats.owner_count,
+          renter_rating = stats.renter_rating,
+          renter_reviews_count = stats.renter_count,
+          community_lender_rating = stats.community_lender_rating,
+          community_lender_reviews_count = stats.community_lender_count,
+          trust_rating = stats.trust_rating,
+          rating = stats.trust_rating,
+          trust_score = CASE WHEN stats.total_reviews = 0 THEN 90 ELSE LEAST(100, GREATEST(80, 92 + stats.total_reviews)) END
+        FROM stats
+        WHERE users.id = $1 OR users.firebase_uid = $1
+      `, [revieweeId]);
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // Notify reviewee about new feedback
     const reviewerRes = await query('SELECT name FROM users WHERE id = $1', [reviewerId]);

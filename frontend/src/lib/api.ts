@@ -41,7 +41,7 @@ export const getApiBase = (): string => {
   }
   return import.meta.env.VITE_API_URL 
     ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
-    : 'https://www.rentu.site/api';
+    : '/api';
 };
 
 const API_BASE = getApiBase();
@@ -162,10 +162,15 @@ export const api = {
     avatarUrl?: string;
     locality?: string;
     phone?: string;
+    idToken?: string;
   }): Promise<{ user: User; token: string }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (data.idToken) {
+      headers['Authorization'] = `Bearer ${data.idToken}`;
+    }
     const res = await fetch(`${API_BASE}/auth/firebase-sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data),
     });
     return handleResponse(res);
