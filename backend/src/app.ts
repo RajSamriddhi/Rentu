@@ -68,8 +68,8 @@ export const createApp = () => {
   // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
   app.use(generalApiRateLimiter);
 
-  // Run schema migration verification once asynchronously on worker startup
-  if (!migrationsPromise) {
+  // Run schema migration verification once asynchronously on worker startup (skip in serverless cold starts)
+  if (!process.env.VERCEL && !migrationsPromise) {
     ensureMigrations().catch(() => { });
   }
 

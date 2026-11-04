@@ -59,8 +59,8 @@ const createApp = () => {
     app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
     // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
     app.use(security_1.generalApiRateLimiter);
-    // Run schema migration verification once asynchronously on worker startup
-    if (!migrationsPromise) {
+    // Run schema migration verification once asynchronously on worker startup (skip in serverless cold starts)
+    if (!process.env.VERCEL && !migrationsPromise) {
         ensureMigrations().catch(() => { });
     }
     // Health Check (Matches both /api/health and /health) - Sanitized so no internal endpoints leak
