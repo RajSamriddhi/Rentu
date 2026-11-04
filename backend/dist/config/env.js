@@ -25,14 +25,22 @@ const rawGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["
 const isPlaceholderKey = rawGeminiKey.includes('your_key_here') ||
     rawGeminiKey.includes('your_gemini_api_key_here') ||
     rawGeminiKey === '';
+const isProd = (process.env.NODE_ENV || 'production') === 'production';
+const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/rentu';
+if (isProd && !process.env.DATABASE_URL) {
+    console.warn('WARNING: DATABASE_URL environment variable is missing in production.');
+}
+if (isProd && !process.env.JWT_SECRET) {
+    console.warn('WARNING: JWT_SECRET environment variable is missing in production.');
+}
 exports.ENV = {
     PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
-    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres',
-    JWT_SECRET: process.env.JWT_SECRET || 'super-secret-borrowflex-key-2026-v1',
+    DATABASE_URL: process.env.DATABASE_URL || databaseUrl,
+    JWT_SECRET: process.env.JWT_SECRET || (isProd ? 'rentu-prod-secure-token-vault-key-2026' : 'super-secret-borrowflex-key-dev'),
     NODE_ENV: process.env.NODE_ENV || 'production',
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || 'rentu-732b7',
-    SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR',
+    SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     GEMINI_API_KEY: isPlaceholderKey ? '' : rawGeminiKey,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',

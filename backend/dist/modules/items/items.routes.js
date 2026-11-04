@@ -288,6 +288,8 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             item.owner_address_text = null;
             item.pincode = null;
             item.owner_pincode = null;
+            item.owner_email = null;
+            item.owner_phone = null;
         }
         // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
         const bookedRes = await (0, db_1.query)(`SELECT 

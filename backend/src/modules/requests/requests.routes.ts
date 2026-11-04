@@ -104,7 +104,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
-        r.offered_amount, r.locality, r.address_text, r.pincode,
+        r.offered_amount, r.locality, 
+        NULL AS address_text, NULL AS pincode,
         r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
@@ -114,8 +115,8 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         u.avatar_url AS seeker_avatar,
         COALESCE(u.locality, r.locality) AS seeker_locality, 
         u.trust_score AS seeker_trust_score,
-        u.phone AS seeker_phone, 
-        u.email AS seeker_email
+        NULL AS seeker_phone, 
+        NULL AS seeker_email
       FROM requests r
       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
@@ -165,7 +166,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
 });
 
 // Get Single Request
-router.get('/:id', async (req: Request, res: Response, next) => {
+router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, next) => {
   try {
     await autoCancelExpiredRequests();
     const { id } = req.params;
@@ -191,7 +192,22 @@ router.get('/:id', async (req: Request, res: Response, next) => {
       return sendError(res, 'NOT_FOUND', 'Wish request not found', 404);
     }
 
-    return sendSuccess(res, result.rows[0]);
+    const requestItem = result.rows[0];
+    const currentViewerId = (req as AuthenticatedRequest).user?.id;
+    let canViewPrivate = false;
+    if (currentViewerId) {
+      const viewerIds = await resolveUserIds(currentViewerId);
+      canViewPrivate = viewerIds.includes(String(requestItem.seeker_id)) || (req as AuthenticatedRequest).user?.role === 'ADMIN';
+    }
+
+    if (!canViewPrivate) {
+      requestItem.address_text = null;
+      requestItem.pincode = null;
+      requestItem.seeker_phone = null;
+      requestItem.seeker_email = null;
+    }
+
+    return sendSuccess(res, requestItem);
   } catch (error) {
     next(error);
   }

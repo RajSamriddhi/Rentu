@@ -67,7 +67,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
           </h4>
 
           <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
-            {Number(item.price_per_day) <= 0 ? (
+            {item.available_for_borrowing || Number(item.price_per_day) <= 0 ? (
               <div className="flex items-baseline gap-1">
                 <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-display">
                   Free
@@ -83,7 +83,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               </div>
             )}
 
-            {item.available_for_borrowing && (
+            {item.available_for_borrowing && Number(item.price_per_day) > 0 && (
               <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
                 Free Borrowing
               </span>

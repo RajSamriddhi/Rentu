@@ -4,6 +4,7 @@ import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { resolveUserIds } from '../../utils/user';
+import { createNotification } from '../notifications/notifications.service';
 
 const router = Router();
 
@@ -18,6 +19,14 @@ const sendMessageSchema = z.object({
 const isUuid = (val: string): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 };
+
+function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes: number = -330): number {
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
+  const cleanTime = (timeStr && timeStr.trim() && timeStr.slice(0, 5) !== '00:00') ? timeStr.slice(0, 5) : '10:00';
+  const [hour, minute] = cleanTime.split(':').map(Number);
+  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+  return localUtcMs + (tzOffsetMinutes * 60000);
+}
 
 // 1. Get User's Active Conversations (Unified per Person)
 router.get('/conversations', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
@@ -561,18 +570,103 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
 
       if (bRes.rows.length > 0) {
         const existingBooking = bRes.rows[0];
+
+        // State machine check: can only accept PENDING bookings
+        if (existingBooking.status !== 'PENDING') {
+          return sendError(res, 'BAD_REQUEST', `Cannot accept request. Current status is ${existingBooking.status}.`, 400);
+        }
+
+        // PAST TIME CHECK ON ACCEPTANCE:
+        const sDate = existingBooking.start_date_str || existingBooking.start_date;
+        const eDate = existingBooking.end_date_str || existingBooking.end_date;
+        const endTimestamp = parseToUtcTimestamp(
+          eDate,
+          existingBooking.end_time || '18:00',
+          -330
+        );
+
+        if (endTimestamp < Date.now()) {
+          return sendError(
+            res,
+            'BAD_REQUEST',
+            'This booking request cannot be accepted because its scheduled rental time has already passed.',
+            400
+          );
+        }
+
+        // CALENDAR OVERLAP CHECK:
+        const conflictRes = await query(
+          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )
+           LIMIT 1`,
+          [existingBooking.item_id, existingBookingId, sDate, eDate]
+        );
+
+        if (conflictRes.rows.length > 0) {
+          const c = conflictRes.rows[0];
+          return sendError(
+            res,
+            'CONFLICT',
+            `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+            409
+          );
+        }
+
+        // Auto-cancel any conflicting pending requests for this item during the same dates
+        const conflictingPendingRes = await query(
+          `SELECT id, borrower_id 
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status = 'PENDING'
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )`,
+          [existingBooking.item_id, existingBookingId, sDate, eDate]
+        );
+
+        for (const conflicting of conflictingPendingRes.rows) {
+          await query(
+            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [conflicting.id]
+          );
+          await query(
+            `UPDATE messages 
+             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+            [conflicting.id]
+          ).catch(() => {});
+          await createNotification({
+            userId: conflicting.borrower_id,
+            bookingId: conflicting.id,
+            referenceId: conflicting.id,
+            referenceType: 'BOOKING',
+            type: 'BOOKING_CANCELLED',
+            title: 'Request Auto-Cancelled',
+            body: `Your rental request was cancelled because the owner accepted another booking for those dates.`,
+          }).catch(() => {});
+        }
+
+        // Generate pickup handover verification code (return_code is strictly generated later upon verified handover)
         const pickupCode = existingBooking.pickup_code || Math.floor(100000 + Math.random() * 900000).toString();
-        const returnCode = existingBooking.return_code || Math.floor(100000 + Math.random() * 900000).toString();
 
         const updateRes = await query(
           `UPDATE bookings
            SET status = 'ACCEPTED',
                pickup_code = $1,
-               return_code = $2,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $3
+           WHERE id = $2
            RETURNING *`,
-          [pickupCode, returnCode, existingBookingId]
+          [pickupCode, existingBookingId]
         );
         const updatedBooking = updateRes.rows[0];
 
@@ -676,9 +770,8 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     eDate.setDate(sDate.getDate() + durationDays);
     const endDateStr = proposal.end_date || eDate.toISOString().split('T')[0];
 
-    // 2. Generate handover security codes (6 digits)
+    // 2. Generate handover security code (6 digits) for pickup
     const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const returnCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 3. Create the booking with status 'ACCEPTED'
     const bookingRes = await query(
@@ -687,7 +780,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
         return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
         pickup_code, return_code
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NULL)
       RETURNING *`,
       [
         createdItem.id,
@@ -709,7 +802,6 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
         Number(proposal.collection_fee) || 0,
         pickupCode,
-        returnCode,
       ]
     );
     const createdBooking = bookingRes.rows[0];
@@ -802,40 +894,61 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       return sendError(res, 'FORBIDDEN', 'Access denied', 403);
     }
 
+    const isReceiver = myIds.includes(String(message.receiver_id));
+    const isSender = myIds.includes(String(message.sender_id));
+
+    if (!isReceiver && !isSender) {
+      return sendError(res, 'FORBIDDEN', 'Access denied: You are not part of this proposal', 403);
+    }
+
     const proposal = typeof message.proposal_data === 'string'
       ? JSON.parse(message.proposal_data)
       : (message.proposal_data || {});
 
-    const updatedProposal = { ...proposal, status: 'DECLINED' };
+    const targetProposalStatus = isReceiver ? 'DECLINED' : 'CANCELLED';
+    const targetBookingStatus = isReceiver ? 'REJECTED' : 'CANCELLED';
+
+    const updatedProposal = { ...proposal, status: targetProposalStatus };
     await query(`UPDATE messages SET proposal_data = $1 WHERE id = $2`, [JSON.stringify(updatedProposal), messageId]);
 
     const existingBookingId = message.booking_id || proposal.booking_id;
     if (existingBookingId && isUuid(existingBookingId)) {
       await query(
-        `UPDATE bookings SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        [existingBookingId]
+        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [targetBookingStatus, existingBookingId]
       ).catch(() => {});
 
       const itemTitle = proposal.item_title || proposal.title || 'Item';
+      const notificationRecipientId = isReceiver ? message.sender_id : message.receiver_id;
+      const statusActionText = isReceiver ? 'was declined' : 'was cancelled by the sender';
+
       await query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, $4, 'SYSTEM')`,
         [
           existingBookingId,
           currentUserId,
-          message.sender_id,
-          `Rental request for "${itemTitle}" was declined.`,
+          notificationRecipientId,
+          `Rental request for "${itemTitle}" ${statusActionText}.`,
         ]
       ).catch(() => {});
 
       await query(
         `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-         VALUES ($1, $2, 'BOOKING_REJECTED', 'Rental Request Declined', 'Your request for "' || $3 || '" was declined.', $4, 'BOOKING')`,
-        [message.sender_id, currentUserId, itemTitle, existingBookingId]
+         VALUES ($1, $2, $3, $4, 'Your request for "' || $5 || '" ' || $6 || '.', $7, 'BOOKING')`,
+        [
+          notificationRecipientId,
+          currentUserId,
+          isReceiver ? 'BOOKING_REJECTED' : 'BOOKING_CANCELLED',
+          isReceiver ? 'Rental Request Declined' : 'Rental Request Cancelled',
+          itemTitle,
+          statusActionText,
+          existingBookingId,
+        ]
       ).catch(() => {});
     }
 
-    return sendSuccess(res, { proposal_data: updatedProposal }, 'Proposal declined');
+    return sendSuccess(res, { proposal_data: updatedProposal }, `Proposal ${targetProposalStatus.toLowerCase()}`);
   } catch (error) {
     next(error);
   }

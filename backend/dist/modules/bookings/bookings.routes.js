@@ -157,11 +157,17 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         const validated = createBookingSchema.parse(req.body);
         const borrowerId = req.user.id;
         // Fetch Item & Owner
-        const itemRes = await (0, db_1.query)('SELECT id, owner_id, price_per_day, title, status, available_for_borrowing FROM items WHERE id = $1', [validated.item_id]);
+        const itemRes = await (0, db_1.query)(`SELECT id, owner_id, price_per_day, title, status, available_for_borrowing, 
+              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category
+       FROM items WHERE id = $1`, [validated.item_id]);
         if (itemRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
         }
         const item = itemRes.rows[0];
+        // Status check: do not permit booking an item that is not AVAILABLE
+        if (item.status && item.status !== 'AVAILABLE') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This item is currently unavailable for rent or borrowing.', 400);
+        }
         if (item.owner_id === borrowerId) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot borrow your own gear.', 400);
         }
@@ -218,7 +224,9 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             return (0, response_1.sendError)(res, 'CONFLICT', `This product is unavailable from ${conflict.start_date} to ${conflict.end_date} because it is already rented. Please pick different dates on the calendar.`, 409);
         }
         // Check borrowing permission if requested total_price is 0
-        if (validated.total_price === 0 && Number(item.price_per_day) > 0 && !item.available_for_borrowing) {
+        const itemRate = Number(item.price_per_day || 0);
+        const isFreeBorrow = itemRate <= 0 || item.available_for_borrowing;
+        if (validated.total_price === 0 && itemRate > 0 && !item.available_for_borrowing) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The owner has not made this item available for free borrowing. It is only available for paid rent.', 400);
         }
         // ADDRESS CHECK:
@@ -230,50 +238,42 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         if (!hasAddressText && !hasSavedLocations) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Address required: Please set your address in your profile before requesting to rent or order items.', 400);
         }
-        const totalPrice = validated.total_price !== undefined
-            ? Number(validated.total_price)
-            : Number(item.price_per_day) * validated.duration_days;
+        // SERVER-SIDE CALCULATION OF DURATION AND TOTAL PRICE:
+        // Do not blindly trust client-supplied totals or fees
+        const sDateObj = new Date(validated.start_date);
+        const eDateObj = new Date(finalEndDate);
+        const dayDiff = Math.max(1, Math.round((eDateObj.getTime() - sDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+        const durationDays = validated.duration_days ? Math.max(1, validated.duration_days) : dayDiff;
+        const baseCost = isFreeBorrow || itemRate <= 0 ? 0 : itemRate * durationDays;
+        let deliveryFee = 0;
+        if (validated.requires_delivery) {
+            if (!item.offers_delivery) {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The owner does not offer delivery for this item.', 400);
+            }
+            deliveryFee = Number(item.delivery_fee || 0);
+        }
+        let pickupFee = 0;
+        if (validated.requires_pickup) {
+            if (!item.offers_pickup) {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The owner does not offer collection/pickup for this item.', 400);
+            }
+            pickupFee = Number(item.pickup_fee || 0);
+        }
+        const calculatedTotalPrice = baseCost + deliveryFee + pickupFee;
         // Pre-generate 6-digit pickup handover verification code
         const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
-        const bookingRes = await (0, db_1.query)(`INSERT INTO bookings
-        (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
-       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
-       RETURNING *`, [
-            item.id,
-            borrowerId,
-            item.owner_id,
-            validated.start_date,
-            validated.start_time || '10:00',
-            finalEndDate,
-            validated.end_time || '18:00',
-            validated.duration_days,
-            totalPrice,
-            validated.pickup_type || 'LENDER_LOCATION',
-            validated.pickup_locality || null,
-            validated.return_type || 'LENDER_LOCATION',
-            validated.return_locality || null,
-            validated.requires_delivery ?? false,
-            validated.delivery_fee ?? 0,
-            validated.requires_pickup ?? false,
-            validated.pickup_fee ?? 0,
-            validated.message || `Hey! Would love to rent your ${item.title}.`,
-            pickupCode,
-        ]);
-        const booking = bookingRes.rows[0];
         // Seed structured PROPOSAL message into the unified conversation with full item and rental terms
         const proposalData = {
             type: 'RENTAL_REQUEST',
-            booking_id: booking.id,
             item_id: item.id,
             item_title: item.title,
             title: item.title,
             item_images: item.image_urls || [],
             image_url: (Array.isArray(item.image_urls) && item.image_urls.length > 0) ? item.image_urls[0] : (item.image_url || ''),
             category: item.category,
-            price_per_day: Number(item.price_per_day),
-            total_price: totalPrice,
-            duration_days: validated.duration_days,
+            price_per_day: itemRate,
+            total_price: calculatedTotalPrice,
+            duration_days: durationDays,
             start_date: validated.start_date,
             start_time: validated.start_time || '10:00',
             end_date: finalEndDate,
@@ -283,20 +283,64 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             return_type: validated.return_type || 'LENDER_LOCATION',
             return_locality: validated.return_locality || item.locality || '',
             requires_delivery: validated.requires_delivery ?? false,
-            delivery_fee: validated.delivery_fee ?? 0,
+            delivery_fee: deliveryFee,
             requires_pickup: validated.requires_pickup ?? false,
-            pickup_fee: validated.pickup_fee ?? 0,
+            pickup_fee: pickupFee,
             status: 'PENDING',
-            notes: validated.message || `Hey! I'd love to rent your ${item.title} for ${validated.duration_days} days.`,
+            notes: validated.message || `Hey! I'd love to rent your ${item.title} for ${durationDays} days.`,
         };
-        await (0, db_1.query)(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
-       VALUES ($1, $2, $3, $4, 'PROPOSAL', $5, false, false)`, [
-            booking.id,
-            borrowerId,
-            item.owner_id,
-            validated.message || `Rental request for ${item.title} (${validated.duration_days} days)`,
-            JSON.stringify(proposalData),
-        ]);
+        // Execute booking creation and proposal message in an atomic database transaction
+        const client = await db_1.pool.connect();
+        let booking;
+        try {
+            await client.query('BEGIN');
+            const bookingRes = await client.query(`INSERT INTO bookings
+          (item_id, borrower_id, lender_id, start_date, start_time, end_date, end_time, duration_days, total_price, pickup_type, pickup_locality, return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee, status, message, pickup_code)
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'PENDING', $18, $19)
+         RETURNING *`, [
+                item.id,
+                borrowerId,
+                item.owner_id,
+                validated.start_date,
+                validated.start_time || '10:00',
+                finalEndDate,
+                validated.end_time || '18:00',
+                durationDays,
+                calculatedTotalPrice,
+                validated.pickup_type || 'LENDER_LOCATION',
+                validated.pickup_locality || null,
+                validated.return_type || 'LENDER_LOCATION',
+                validated.return_locality || null,
+                validated.requires_delivery ?? false,
+                deliveryFee,
+                validated.requires_pickup ?? false,
+                pickupFee,
+                validated.message || `Hey! Would love to rent your ${item.title}.`,
+                pickupCode,
+            ]);
+            booking = bookingRes.rows[0];
+            const fullProposalData = {
+                ...proposalData,
+                booking_id: booking.id,
+            };
+            await client.query(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type, proposal_data, is_delivered, is_read)
+         VALUES ($1, $2, $3, $4, 'PROPOSAL', $5, false, false)`, [
+                booking.id,
+                borrowerId,
+                item.owner_id,
+                validated.message || `Rental request for ${item.title} (${durationDays} days)`,
+                JSON.stringify(fullProposalData),
+            ]);
+            await client.query('COMMIT');
+        }
+        catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        }
+        finally {
+            client.release();
+        }
         // Query borrower name for notifications
         const borrowerUserRes = await (0, db_1.query)('SELECT name FROM users WHERE id = $1', [borrowerId]);
         const borrowerName = borrowerUserRes.rows[0]?.name || 'A community member';
@@ -310,7 +354,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             type: 'BOOKING_PROPOSAL',
             title: 'Rental Request',
             body: `${borrowerName} requested to rent "${item.title}".`,
-        });
+        }).catch((err) => console.warn('Failed to dispatch booking proposal notification:', err));
         return (0, response_1.sendSuccess)(res, booking, 'Proposal sent to lender! You will be notified when they accept.', 201);
     }
     catch (error) {
@@ -569,6 +613,16 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                 return (0, response_1.sendError)(res, 'NOT_FOUND', 'Proposal message not found', 404);
             }
             const message = msgRes.rows[0];
+            const myIds = await resolveUserIds(userId);
+            const isSender = myIds.includes(String(message.sender_id));
+            const isReceiver = myIds.includes(String(message.receiver_id));
+            const isAdmin = req.user.role === 'ADMIN';
+            if (!isSender && !isReceiver && !isAdmin) {
+                return (0, response_1.sendError)(res, 'FORBIDDEN', 'Permission denied: You are not a participant in this agreement.', 403);
+            }
+            if (status === 'ACCEPTED' && !isReceiver && !isAdmin) {
+                return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the intended recipient can accept this proposal.', 403);
+            }
             const proposal = typeof message.proposal_data === 'string'
                 ? JSON.parse(message.proposal_data)
                 : (message.proposal_data || {});
@@ -596,6 +650,22 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
+        // State machine check: ensure valid status transition
+        if (status === 'ACCEPTED') {
+            if (booking.status !== 'PENDING') {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', `Cannot accept booking. Current status is ${booking.status}.`, 400);
+            }
+        }
+        else if (status === 'REJECTED') {
+            if (booking.status !== 'PENDING') {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', `Cannot reject booking. Current status is ${booking.status}.`, 400);
+            }
+        }
+        else if (status === 'CANCELLED') {
+            if (booking.status !== 'PENDING' && booking.status !== 'ACCEPTED') {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', `Cannot cancel booking with current status "${booking.status}". Cancellation is only allowed before handover.`, 400);
+            }
+        }
         // Check authority: 
         // - Lender can ACCEPT or REJECT proposals.
         // - Both Renter (borrower) and Lender (owner) can CANCEL anytime before pickup handover verification (Stages 1 & 2).
@@ -617,15 +687,57 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                 return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Cancellation is not allowed after pickup handover verification. The rental is actively in use from Stage 3 onwards.', 400);
             }
         }
-        // PAST TIME CHECK ON ACCEPTANCE:
-        // Reject accepting a booking if its rental period has already completely passed
+        const sDate = booking.start_date_str || booking.start_date;
+        const eDate = booking.end_date_str || booking.end_date;
+        // PAST TIME & CALENDAR OVERLAP CHECK ON ACCEPTANCE:
         if (status === 'ACCEPTED') {
             const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
                 ? req.body.timezone_offset_minutes
                 : -330;
-            const endTimestamp = parseToUtcTimestamp(booking.end_date_str || booking.start_date_str, booking.end_time || '18:00', tzOffset);
+            const endTimestamp = parseToUtcTimestamp(eDate, booking.end_time || '18:00', tzOffset);
             if (endTimestamp < Date.now()) {
                 return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This booking request cannot be accepted because its scheduled rental time has already passed. Please ask the renter to send a request for upcoming dates.', 400);
+            }
+            // Overlap check against bookings already ACCEPTED or HANDED_OVER
+            const conflictRes = await (0, db_1.query)(`SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+         FROM bookings
+         WHERE item_id = $1
+           AND id != $2
+           AND status IN ('ACCEPTED', 'HANDED_OVER')
+           AND (
+             start_date <= $4::date
+             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+           )
+         LIMIT 1`, [booking.item_id, id, sDate, eDate]);
+            if (conflictRes.rows.length > 0) {
+                const c = conflictRes.rows[0];
+                return (0, response_1.sendError)(res, 'CONFLICT', `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`, 409);
+            }
+            // Auto-cancel any conflicting pending requests for this item during the same dates
+            const conflictingPendingRes = await (0, db_1.query)(`SELECT id, borrower_id 
+         FROM bookings
+         WHERE item_id = $1
+           AND id != $2
+           AND status = 'PENDING'
+           AND (
+             start_date <= $4::date
+             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+           )`, [booking.item_id, id, sDate, eDate]);
+            for (const conflicting of conflictingPendingRes.rows) {
+                await (0, db_1.query)(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [conflicting.id]);
+                await (0, db_1.query)(`UPDATE messages 
+           SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`, [conflicting.id]).catch(() => { });
+                await (0, notifications_service_1.createNotification)({
+                    userId: conflicting.borrower_id,
+                    bookingId: conflicting.id,
+                    referenceId: conflicting.id,
+                    referenceType: 'BOOKING',
+                    type: 'BOOKING_CANCELLED',
+                    title: 'Request Auto-Cancelled',
+                    body: `Your rental request for "${booking.item_title}" was cancelled because the owner accepted another booking for those dates.`,
+                }).catch(() => { });
             }
         }
         // Generate pickup code if accepting and not already set
@@ -640,8 +752,6 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING *`, [status, pickupCode, id]);
-        const sDate = booking.start_date_str || booking.start_date;
-        const eDate = booking.end_date_str || booking.end_date;
         // Sync item status & trigger lifecycle notifications
         if (status === 'ACCEPTED') {
             // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
@@ -829,7 +939,11 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
             title: 'Handover Completed',
             body: `${booking.borrower_name || 'Borrower'} received "${booking.item_title}".`,
         });
-        return (0, response_1.sendSuccess)(res, updateRes.rows[0], 'Product accepted & handed over successfully! Rental is now in use.');
+        const updatedRow = { ...updateRes.rows[0] };
+        if (!isLender && !isAdmin) {
+            updatedRow.return_code = null;
+        }
+        return (0, response_1.sendSuccess)(res, updatedRow, 'Product accepted & handed over successfully! Rental is now in use.');
     }
     catch (error) {
         next(error);
@@ -923,6 +1037,9 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
+        if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
+        }
         const myIds = await resolveUserIds(userId);
         if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the renter can submit payment', 403);
@@ -954,6 +1071,9 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
+        if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
+        }
         const myIds = await resolveUserIds(userId);
         if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the owner can confirm receiving payment', 403);

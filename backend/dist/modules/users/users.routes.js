@@ -116,7 +116,6 @@ router.get('/leaderboard', async (req, res, next) => {
                 id: u.id,
                 username,
                 name,
-                email,
                 locality: u.locality,
                 avatar_url: avatar,
                 bio: u.bio,
@@ -270,7 +269,6 @@ router.get('/search', async (req, res, next) => {
         u.id, 
         u.username,
         u.name, 
-        u.email,
         COALESCE(NULLIF(TRIM(u.locality), ''), '') AS locality, 
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
@@ -280,7 +278,7 @@ router.get('/search', async (req, res, next) => {
         (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
       FROM users u
-      WHERE u.name ILIKE $1 OR u.username ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1 OR u.email ILIKE $1
+      WHERE u.name ILIKE $1 OR u.username ILIKE $1 OR u.locality ILIKE $1 OR u.bio ILIKE $1
       LIMIT 15
     `, [searchPattern]);
         const formattedRealUsers = realUsersRes.rows.map((u) => {
@@ -289,7 +287,6 @@ router.get('/search', async (req, res, next) => {
                 id: u.id,
                 username: u.username || '',
                 name: u.name || 'Community Member',
-                email: u.email,
                 locality: u.locality,
                 avatar_url: u.avatar_url && u.avatar_url.trim() !== ''
                     ? u.avatar_url

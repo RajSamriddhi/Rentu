@@ -22,15 +22,17 @@ export const getApiBase = (): string => {
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
     const envApi = import.meta.env.VITE_API_URL;
 
-    if (isLocalhost && envApi) {
+    // If an explicit API URL is configured in environment, prioritize it
+    if (envApi) {
       return `${envApi.replace(/\/$/, '')}/api`;
     }
 
-    // On Vercel preview branch deployments (*.vercel.app), Vercel's Edge Deployment Protection
-    // gates /api/* routes behind an SSO redirect. We seamlessly route preview API calls to the
-    // live production API at https://www.rentu.site/api, which fully permits preview CORS requests.
     if (hostname.endsWith('.vercel.app')) {
-      return 'https://www.rentu.site/api';
+      const previewApi = (import.meta.env as any).VITE_PREVIEW_API_URL;
+      if (previewApi) {
+        return `${previewApi.replace(/\/$/, '')}/api`;
+      }
+      return '/api';
     }
 
     // In production on rentu.site or www.rentu.site, use relative path '/api'

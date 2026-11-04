@@ -57,7 +57,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const { user, isAuthenticated } = useAuth();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const isFreeOnly = Boolean(item && Number(item.price_per_day) <= 0);
+  const isFreeOnly = Boolean(
+    item && (
+      item.available_for_borrowing ||
+      Number(item.price_per_day) <= 0 ||
+      item.price_per_day === 0 ||
+      item.price_per_day === '0' ||
+      item.price_per_day === '0.00' ||
+      !item.price_per_day
+    )
+  );
   const isAvailableForBorrowing = Boolean(item?.available_for_borrowing || isFreeOnly);
   const [rentType, setRentType] = useState<'Rent' | 'Borrow'>(isFreeOnly ? 'Borrow' : 'Rent');
   const [isLiked, setIsLiked] = useState(false);
