@@ -17,15 +17,15 @@ exports.RESERVED_USERNAMES = new Set([
 const updateProfileSchema = zod_1.z.object({
     name: zod_1.z.string().min(2).optional(),
     username: zod_1.z.string().min(3).max(30).optional(),
-    phone: zod_1.z.string().optional(),
-    locality: zod_1.z.string().min(2).optional(),
-    avatar_url: zod_1.z.string().url().or(zod_1.z.literal('')).optional(),
-    banner_url: zod_1.z.string().url().or(zod_1.z.literal('')).optional(),
-    bio: zod_1.z.string().max(300).optional(),
-    address_text: zod_1.z.string().optional(),
-    pincode: zod_1.z.string().optional(),
-    latitude: zod_1.z.number().min(-90).max(90).optional(),
-    longitude: zod_1.z.number().min(-180).max(180).optional(),
+    phone: zod_1.z.string().nullable().optional(),
+    locality: zod_1.z.string().nullable().optional(),
+    avatar_url: zod_1.z.string().url().or(zod_1.z.literal('')).nullable().optional(),
+    banner_url: zod_1.z.string().url().or(zod_1.z.literal('')).nullable().optional(),
+    bio: zod_1.z.string().max(300).nullable().optional(),
+    address_text: zod_1.z.string().nullable().optional(),
+    pincode: zod_1.z.string().nullable().optional(),
+    latitude: zod_1.z.number().min(-90).max(90).nullable().optional(),
+    longitude: zod_1.z.number().min(-180).max(180).nullable().optional(),
     notify_nearby_requests_5km: zod_1.z.boolean().optional(),
     saved_locations: zod_1.z.array(zod_1.z.any()).optional(),
 });
@@ -564,27 +564,33 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
             fields.push(`username = $${values.length}`);
         }
         if (validated.phone !== undefined) {
-            values.push(validated.phone);
+            const cleanVal = validated.phone ? validated.phone.trim() : null;
+            values.push(cleanVal);
             fields.push(`phone = $${values.length}`);
         }
         if (validated.locality !== undefined) {
-            values.push(validated.locality);
+            const cleanVal = validated.locality ? validated.locality.trim() : null;
+            values.push(cleanVal);
             fields.push(`locality = $${values.length}`);
         }
         if (validated.avatar_url !== undefined) {
-            values.push(validated.avatar_url);
+            const cleanVal = validated.avatar_url ? validated.avatar_url.trim() : null;
+            values.push(cleanVal);
             fields.push(`avatar_url = $${values.length}`);
         }
         if (validated.banner_url !== undefined) {
-            values.push(validated.banner_url);
+            const cleanVal = validated.banner_url ? validated.banner_url.trim() : null;
+            values.push(cleanVal);
             fields.push(`banner_url = $${values.length}`);
         }
         if (validated.bio !== undefined) {
-            values.push(validated.bio);
+            const cleanVal = validated.bio ? validated.bio.trim() : null;
+            values.push(cleanVal);
             fields.push(`bio = $${values.length}`);
         }
         if (validated.address_text !== undefined) {
-            values.push(validated.address_text);
+            const cleanVal = validated.address_text ? validated.address_text.trim() : null;
+            values.push(cleanVal);
             fields.push(`address_text = $${values.length}`);
         }
         let cleanPincode = undefined;
@@ -593,16 +599,21 @@ router.put('/profile', auth_1.authMiddleware, async (req, res, next) => {
             values.push(cleanPincode);
             fields.push(`pincode = $${values.length}`);
             // 3NF: Upsert into postal_codes table before referencing it in users
-            if (cleanPincode && validated.locality) {
-                await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, validated.locality]).catch(() => { });
+            if (cleanPincode) {
+                let effectiveLocality = validated.locality?.trim();
+                if (!effectiveLocality) {
+                    const userLocRes = await (0, db_1.query)(`SELECT locality FROM users WHERE id = $1`, [userId]);
+                    effectiveLocality = userLocRes.rows[0]?.locality?.trim() || 'Neighborhood';
+                }
+                await (0, db_1.query)(`INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`, [cleanPincode, effectiveLocality]).catch(() => { });
             }
         }
         if (validated.latitude !== undefined) {
-            values.push(validated.latitude);
+            values.push(validated.latitude ?? null);
             fields.push(`latitude = $${values.length}`);
         }
         if (validated.longitude !== undefined) {
-            values.push(validated.longitude);
+            values.push(validated.longitude ?? null);
             fields.push(`longitude = $${values.length}`);
         }
         if (validated.notify_nearby_requests_5km !== undefined) {

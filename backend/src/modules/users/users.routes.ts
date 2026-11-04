@@ -17,15 +17,15 @@ export const RESERVED_USERNAMES = new Set([
 const updateProfileSchema = z.object({
   name: z.string().min(2).optional(),
   username: z.string().min(3).max(30).optional(),
-  phone: z.string().optional(),
-  locality: z.string().min(2).optional(),
-  avatar_url: z.string().url().or(z.literal('')).optional(),
-  banner_url: z.string().url().or(z.literal('')).optional(),
-  bio: z.string().max(300).optional(),
-  address_text: z.string().optional(),
-  pincode: z.string().optional(),
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
+  phone: z.string().nullable().optional(),
+  locality: z.string().nullable().optional(),
+  avatar_url: z.string().url().or(z.literal('')).nullable().optional(),
+  banner_url: z.string().url().or(z.literal('')).nullable().optional(),
+  bio: z.string().max(300).nullable().optional(),
+  address_text: z.string().nullable().optional(),
+  pincode: z.string().nullable().optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
   notify_nearby_requests_5km: z.boolean().optional(),
   saved_locations: z.array(z.any()).optional(),
 });
@@ -600,27 +600,33 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       fields.push(`username = $${values.length}`);
     }
     if (validated.phone !== undefined) {
-      values.push(validated.phone);
+      const cleanVal = validated.phone ? validated.phone.trim() : null;
+      values.push(cleanVal);
       fields.push(`phone = $${values.length}`);
     }
     if (validated.locality !== undefined) {
-      values.push(validated.locality);
+      const cleanVal = validated.locality ? validated.locality.trim() : null;
+      values.push(cleanVal);
       fields.push(`locality = $${values.length}`);
     }
     if (validated.avatar_url !== undefined) {
-      values.push(validated.avatar_url);
+      const cleanVal = validated.avatar_url ? validated.avatar_url.trim() : null;
+      values.push(cleanVal);
       fields.push(`avatar_url = $${values.length}`);
     }
     if (validated.banner_url !== undefined) {
-      values.push(validated.banner_url);
+      const cleanVal = validated.banner_url ? validated.banner_url.trim() : null;
+      values.push(cleanVal);
       fields.push(`banner_url = $${values.length}`);
     }
     if (validated.bio !== undefined) {
-      values.push(validated.bio);
+      const cleanVal = validated.bio ? validated.bio.trim() : null;
+      values.push(cleanVal);
       fields.push(`bio = $${values.length}`);
     }
     if (validated.address_text !== undefined) {
-      values.push(validated.address_text);
+      const cleanVal = validated.address_text ? validated.address_text.trim() : null;
+      values.push(cleanVal);
       fields.push(`address_text = $${values.length}`);
     }
     let cleanPincode: string | null | undefined = undefined;
@@ -630,19 +636,24 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       fields.push(`pincode = $${values.length}`);
 
       // 3NF: Upsert into postal_codes table before referencing it in users
-      if (cleanPincode && validated.locality) {
+      if (cleanPincode) {
+        let effectiveLocality = validated.locality?.trim();
+        if (!effectiveLocality) {
+          const userLocRes = await query(`SELECT locality FROM users WHERE id = $1`, [userId]);
+          effectiveLocality = userLocRes.rows[0]?.locality?.trim() || 'Neighborhood';
+        }
         await query(
           `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-          [cleanPincode, validated.locality]
+          [cleanPincode, effectiveLocality]
         ).catch(() => {});
       }
     }
     if (validated.latitude !== undefined) {
-      values.push(validated.latitude);
+      values.push(validated.latitude ?? null);
       fields.push(`latitude = $${values.length}`);
     }
     if (validated.longitude !== undefined) {
-      values.push(validated.longitude);
+      values.push(validated.longitude ?? null);
       fields.push(`longitude = $${values.length}`);
     }
     if (validated.notify_nearby_requests_5km !== undefined) {

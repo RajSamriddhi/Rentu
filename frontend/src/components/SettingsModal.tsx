@@ -37,11 +37,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [radarError, setRadarError] = useState('');
 
   // Sync state if user changes
   React.useEffect(() => {
     if (user) {
       setNotifyNearby5km(user.notify_nearby_requests_5km ?? true);
+      setRadarError('');
     }
   }, [user, isOpen]);
 
@@ -52,6 +54,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setNotifyNearby5km(nextVal);
     setIsSaving(true);
     setSaveSuccess(false);
+    setRadarError('');
 
     try {
       await api.updateProfile({
@@ -60,10 +63,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await refreshUser();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update radar setting:', err);
       // Revert if error
       setNotifyNearby5km(!nextVal);
+      setRadarError(err.message || 'Failed to update nearby alert setting. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -121,8 +125,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-brand/10 text-brand">RADAR</span>
                 </div>
                 <p className="text-[11px] text-ink-secondary leading-relaxed">
-                  Get an instant notification whenever someone within 5 km posts a gear wish. Turn off anytime.
+                  Get notified when someone within 5 km posts a gear wish. Turn off anytime.
                 </p>
+                {radarError && (
+                  <p className="text-[11px] font-semibold text-rose-500 mt-1">
+                    {radarError}
+                  </p>
+                )}
               </div>
 
               <button

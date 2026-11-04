@@ -158,13 +158,13 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Save location error:', err);
-      // Even if remote network fails, store locally so user can proceed
+      // Cache locally as fallback but inform user of remote save failure
       localStorage.setItem('rentu_user_location', JSON.stringify({
         locality,
         address_text: addressText || locality,
         city,
       }));
-      onClose();
+      setErrorMsg(err.message || 'Failed to save location to your profile. Please check your connection and try again.');
     } finally {
       setIsSaving(false);
     }

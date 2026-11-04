@@ -97035,12 +97035,17 @@ router3.post("/", authMiddleware, async (req, res, next) => {
          )`,
         [seekerId]
       );
-      const seekerLat = validated.latitude;
-      const seekerLon = validated.longitude;
+      let seekerLat = validated.latitude;
+      let seekerLon = validated.longitude;
+      if (seekerLat == null || seekerLon == null) {
+        const sLocRes = await query(`SELECT latitude, longitude FROM users WHERE id = $1`, [seekerId]);
+        seekerLat = sLocRes.rows[0]?.latitude;
+        seekerLon = sLocRes.rows[0]?.longitude;
+      }
       for (const u of nearbyUsersRes.rows) {
         if (notifiedUserIds.has(u.id)) continue;
         let isWithin5Km = false;
-        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+        if (seekerLat != null && seekerLon != null && u.latitude != null && u.longitude != null) {
           const R = 6371;
           const dLat = (u.latitude - seekerLat) * Math.PI / 180;
           const dLon = (u.longitude - seekerLon) * Math.PI / 180;
@@ -97048,12 +97053,6 @@ router3.post("/", authMiddleware, async (req, res, next) => {
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distKm = R * c;
           if (distKm <= 5) {
-            isWithin5Km = true;
-          }
-        } else if (finalLocality && u.locality) {
-          const sLoc = finalLocality.trim().toLowerCase();
-          const uLoc = u.locality.trim().toLowerCase();
-          if (sLoc && uLoc && sLoc === uLoc) {
             isWithin5Km = true;
           }
         }
@@ -99091,15 +99090,15 @@ var RESERVED_USERNAMES = /* @__PURE__ */ new Set([
 var updateProfileSchema = external_exports.object({
   name: external_exports.string().min(2).optional(),
   username: external_exports.string().min(3).max(30).optional(),
-  phone: external_exports.string().optional(),
-  locality: external_exports.string().min(2).optional(),
-  avatar_url: external_exports.string().url().or(external_exports.literal("")).optional(),
-  banner_url: external_exports.string().url().or(external_exports.literal("")).optional(),
-  bio: external_exports.string().max(300).optional(),
-  address_text: external_exports.string().optional(),
-  pincode: external_exports.string().optional(),
-  latitude: external_exports.number().min(-90).max(90).optional(),
-  longitude: external_exports.number().min(-180).max(180).optional(),
+  phone: external_exports.string().nullable().optional(),
+  locality: external_exports.string().nullable().optional(),
+  avatar_url: external_exports.string().url().or(external_exports.literal("")).nullable().optional(),
+  banner_url: external_exports.string().url().or(external_exports.literal("")).nullable().optional(),
+  bio: external_exports.string().max(300).nullable().optional(),
+  address_text: external_exports.string().nullable().optional(),
+  pincode: external_exports.string().nullable().optional(),
+  latitude: external_exports.number().min(-90).max(90).nullable().optional(),
+  longitude: external_exports.number().min(-180).max(180).nullable().optional(),
   notify_nearby_requests_5km: external_exports.boolean().optional(),
   saved_locations: external_exports.array(external_exports.any()).optional()
 });
@@ -99574,27 +99573,33 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       fields.push(`username = $${values.length}`);
     }
     if (validated.phone !== void 0) {
-      values.push(validated.phone);
+      const cleanVal = validated.phone ? validated.phone.trim() : null;
+      values.push(cleanVal);
       fields.push(`phone = $${values.length}`);
     }
     if (validated.locality !== void 0) {
-      values.push(validated.locality);
+      const cleanVal = validated.locality ? validated.locality.trim() : null;
+      values.push(cleanVal);
       fields.push(`locality = $${values.length}`);
     }
     if (validated.avatar_url !== void 0) {
-      values.push(validated.avatar_url);
+      const cleanVal = validated.avatar_url ? validated.avatar_url.trim() : null;
+      values.push(cleanVal);
       fields.push(`avatar_url = $${values.length}`);
     }
     if (validated.banner_url !== void 0) {
-      values.push(validated.banner_url);
+      const cleanVal = validated.banner_url ? validated.banner_url.trim() : null;
+      values.push(cleanVal);
       fields.push(`banner_url = $${values.length}`);
     }
     if (validated.bio !== void 0) {
-      values.push(validated.bio);
+      const cleanVal = validated.bio ? validated.bio.trim() : null;
+      values.push(cleanVal);
       fields.push(`bio = $${values.length}`);
     }
     if (validated.address_text !== void 0) {
-      values.push(validated.address_text);
+      const cleanVal = validated.address_text ? validated.address_text.trim() : null;
+      values.push(cleanVal);
       fields.push(`address_text = $${values.length}`);
     }
     let cleanPincode = void 0;
@@ -99602,20 +99607,25 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       cleanPincode = validated.pincode?.trim() || null;
       values.push(cleanPincode);
       fields.push(`pincode = $${values.length}`);
-      if (cleanPincode && validated.locality) {
+      if (cleanPincode) {
+        let effectiveLocality = validated.locality?.trim();
+        if (!effectiveLocality) {
+          const userLocRes = await query(`SELECT locality FROM users WHERE id = $1`, [userId]);
+          effectiveLocality = userLocRes.rows[0]?.locality?.trim() || "Neighborhood";
+        }
         await query(
           `INSERT INTO postal_codes (pincode, locality) VALUES ($1, $2) ON CONFLICT (pincode) DO NOTHING`,
-          [cleanPincode, validated.locality]
+          [cleanPincode, effectiveLocality]
         ).catch(() => {
         });
       }
     }
     if (validated.latitude !== void 0) {
-      values.push(validated.latitude);
+      values.push(validated.latitude ?? null);
       fields.push(`latitude = $${values.length}`);
     }
     if (validated.longitude !== void 0) {
-      values.push(validated.longitude);
+      values.push(validated.longitude ?? null);
       fields.push(`longitude = $${values.length}`);
     }
     if (validated.notify_nearby_requests_5km !== void 0) {

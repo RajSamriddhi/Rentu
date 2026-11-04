@@ -117,6 +117,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return json.data as T;
 }
 
+export type UpdateProfileData = {
+  [K in keyof User]?: User[K] | null;
+};
+
 export const api = {
   // Auth
   async login(email: string, password: string): Promise<{ user: User; token: string }> {
@@ -608,7 +612,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async updateProfile(data: Partial<User>): Promise<User> {
+  async updateProfile(data: UpdateProfileData): Promise<User> {
     const res = await fetch(`${API_BASE}/users/profile`, {
       method: 'PUT',
       headers: getHeaders(),

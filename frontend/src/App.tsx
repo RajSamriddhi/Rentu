@@ -750,6 +750,7 @@ export const App: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onOpenSetLocation={() => setIsSetLocationOpen(true)}
       />
 
       {/* Floating In-App Toast Notification */}

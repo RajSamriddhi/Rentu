@@ -47,11 +47,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const profile = await api.getMe();
       setUser(profile);
-    } catch (err) {
-      console.warn('Failed to fetch user profile, clearing local session:', err);
-      localStorage.removeItem('borrowflex_token');
-      setToken(null);
-      setUser(null);
+    } catch (err: any) {
+      console.warn('Failed to fetch user profile:', err);
+      const isAuthError = 
+        err?.code === 'UNAUTHORIZED' || 
+        err?.code === 'HTTP_401' || 
+        err?.status === 401 ||
+        err?.message?.toLowerCase().includes('sign in') ||
+        err?.message?.toLowerCase().includes('unauthorized');
+      if (isAuthError) {
+        console.warn('Clearing invalid or expired local session.');
+        localStorage.removeItem('borrowflex_token');
+        setToken(null);
+        setUser(null);
+      }
     } finally {
       setIsLoading(false);
     }

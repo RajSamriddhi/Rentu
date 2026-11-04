@@ -351,14 +351,19 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
         [seekerId]
       );
 
-      const seekerLat = validated.latitude;
-      const seekerLon = validated.longitude;
+      let seekerLat = validated.latitude;
+      let seekerLon = validated.longitude;
+      if (seekerLat == null || seekerLon == null) {
+        const sLocRes = await query(`SELECT latitude, longitude FROM users WHERE id = $1`, [seekerId]);
+        seekerLat = sLocRes.rows[0]?.latitude;
+        seekerLon = sLocRes.rows[0]?.longitude;
+      }
 
       for (const u of nearbyUsersRes.rows) {
         if (notifiedUserIds.has(u.id)) continue;
 
         let isWithin5Km = false;
-        if (seekerLat && seekerLon && u.latitude && u.longitude) {
+        if (seekerLat != null && seekerLon != null && u.latitude != null && u.longitude != null) {
           const R = 6371; // Earth radius in km
           const dLat = (u.latitude - seekerLat) * Math.PI / 180;
           const dLon = (u.longitude - seekerLon) * Math.PI / 180;
@@ -369,13 +374,6 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distKm = R * c;
           if (distKm <= 5) {
-            isWithin5Km = true;
-          }
-        } else if (finalLocality && u.locality) {
-          const sLoc = finalLocality.trim().toLowerCase();
-          const uLoc = u.locality.trim().toLowerCase();
-          // Only alert when the exact same neighborhood/locality matches; do not alert across an entire city
-          if (sLoc && uLoc && sLoc === uLoc) {
             isWithin5Km = true;
           }
         }

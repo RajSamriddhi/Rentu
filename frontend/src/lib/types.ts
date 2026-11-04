@@ -5,7 +5,7 @@ export interface User {
   email: string;
   name: string;
   phone?: string;
-  locality: string;
+  locality?: string;
   address_text?: string;
   pincode?: string;
   latitude?: number;

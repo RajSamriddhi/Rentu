@@ -103,6 +103,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+  const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -156,18 +157,28 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     }
 
     setIsCheckingUsername(true);
+    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const res = await api.checkUsername(clean);
-        setUsernameStatus(res);
+        if (!cancelled) {
+          setUsernameStatus(res);
+        }
       } catch (err: any) {
-        setUsernameStatus({ available: false, message: err.message || 'Error checking username' });
+        if (!cancelled) {
+          setUsernameStatus({ available: false, message: err.message || 'Error checking username' });
+        }
       } finally {
-        setIsCheckingUsername(false);
+        if (!cancelled) {
+          setIsCheckingUsername(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [username, user?.username]);
 
   if (!isOpen) return null;
@@ -186,17 +197,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         setAvatarUrl(publicUrl);
         setAvatarUploadStatus('Profile picture uploaded successfully.');
       } else {
-        const previewUrl = URL.createObjectURL(file);
-        setAvatarUrl(previewUrl);
-        setAvatarUploadStatus('Local photo preview active.');
+        setErrorMsg('Photo storage service is unavailable. Please check your connection.');
+        setAvatarUploadStatus('Storage service unavailable.');
       }
     } catch (err: any) {
       console.error('Avatar upload failed:', err);
-      const previewUrl = URL.createObjectURL(file);
-      setAvatarUrl(previewUrl);
-      setAvatarUploadStatus(`Notice: ${err.message || 'Using local preview'}`);
+      setErrorMsg(err.message || 'Failed to upload profile picture. Please try again.');
+      setAvatarUploadStatus('Upload failed. Please try again.');
     } finally {
       setIsUploadingAvatar(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -214,17 +224,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         setBannerUrl(publicUrl);
         setBannerUploadStatus('Background banner uploaded successfully.');
       } else {
-        const previewUrl = URL.createObjectURL(file);
-        setBannerUrl(previewUrl);
-        setBannerUploadStatus('Local banner preview active.');
+        setErrorMsg('Photo storage service is unavailable. Please check your connection.');
+        setBannerUploadStatus('Storage service unavailable.');
       }
     } catch (err: any) {
       console.error('Banner upload failed:', err);
-      const previewUrl = URL.createObjectURL(file);
-      setBannerUrl(previewUrl);
-      setBannerUploadStatus(`Notice: ${err.message || 'Using local preview'}`);
+      setErrorMsg(err.message || 'Failed to upload background banner. Please try again.');
+      setBannerUploadStatus('Upload failed. Please try again.');
     } finally {
       setIsUploadingBanner(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -264,9 +273,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
-    const trimmedBuilding = buildingHouseNo.trim();
-    if (!trimmedBuilding) {
-      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+    if (avatarUrl && avatarUrl.startsWith('blob:')) {
+      setErrorMsg('Profile photo must be uploaded to storage before saving.');
+      return;
+    }
+    if (bannerUrl && bannerUrl.startsWith('blob:')) {
+      setErrorMsg('Banner photo must be uploaded to storage before saving.');
       return;
     }
 
@@ -280,20 +292,21 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
     setIsSaving(true);
     try {
+      const trimmedBuilding = buildingHouseNo.trim();
       const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
 
       await api.updateProfile({
         name: name.trim(),
         username: cleanUsername || undefined,
         bio: bio.trim(),
-        phone: phone.trim() || undefined,
-        locality: locality.trim() || undefined,
-        address_text: fullAddress,
-        pincode: pincode.trim() || undefined,
-        latitude,
-        longitude,
-        avatar_url: avatarUrl || undefined,
-        banner_url: bannerUrl || undefined,
+        phone: phone.trim() ? phone.trim() : null,
+        locality: locality.trim() ? locality.trim() : null,
+        address_text: fullAddress ? fullAddress : null,
+        pincode: pincode.trim() ? pincode.trim() : null,
+        latitude: latitude !== undefined ? latitude : null,
+        longitude: longitude !== undefined ? longitude : null,
+        avatar_url: avatarUrl ? avatarUrl : null,
+        banner_url: bannerUrl ? bannerUrl : null,
       });
 
       await refreshUser();
@@ -546,9 +559,15 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
             {/* Bio */}
             <div>
-              <label className="block text-xs font-bold text-ink mb-1">Bio / Tagline</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-ink">Bio / Tagline</label>
+                <span className={`text-[10px] ${bio.length > 300 ? 'text-rose-500 font-bold' : 'text-ink-secondary'}`}>
+                  {bio.length}/300
+                </span>
+              </div>
               <textarea
                 value={bio}
+                maxLength={300}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder="Tell others what you do, what gear you love, or what you like borrowing..."
                 rows={2}
@@ -621,11 +640,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 {/* Building / House / Flat No. */}
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
-                    Building / Flat / House No. <span className="text-brand font-black">*</span>
+                    Building / Flat / House No.
                   </label>
                   <input
                     type="text"
-                    required
                     value={buildingHouseNo}
                     onChange={(e) => setBuildingHouseNo(e.target.value)}
                     placeholder="e.g. Flat 402, Building 3B / House #12"
@@ -734,16 +752,30 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
                         <button
                           type="button"
+                          disabled={deletingLocationId === loc.id}
                           onClick={async () => {
                             if (window.confirm(`Remove saved location "${loc.label}"?`)) {
-                              await api.deleteSavedLocation(loc.id, user);
-                              await refreshUser();
+                              setDeletingLocationId(loc.id);
+                              setErrorMsg('');
+                              try {
+                                await api.deleteSavedLocation(loc.id, user);
+                                await refreshUser();
+                              } catch (err: any) {
+                                console.error('Failed to remove saved location:', err);
+                                setErrorMsg(err.message || 'Failed to remove saved location. Please try again.');
+                              } finally {
+                                setDeletingLocationId(null);
+                              }
                             }
                           }}
-                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                           title="Remove location"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {deletingLocationId === loc.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </button>
                       </div>
                     ))}
