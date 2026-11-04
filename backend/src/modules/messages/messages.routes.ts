@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
 
@@ -532,7 +533,8 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     }
 
     const message = msgRes.rows[0];
-    if (message.receiver_id !== currentUserId) {
+    const myIds = await resolveUserIds(currentUserId);
+    if (!myIds.includes(String(message.receiver_id))) {
       return sendError(res, 'FORBIDDEN', 'Only the intended recipient can accept this agreement', 403);
     }
 
@@ -631,9 +633,15 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     const lenderId = isOffer ? message.sender_id : currentUserId;
     const borrowerId = isOffer ? currentUserId : message.sender_id;
 
-    // Fetch lender details for locality
-    const lenderUserRes = await query(`SELECT locality, address_text FROM users WHERE id = $1`, [lenderId]);
+    // Fetch canonical user records for lender and borrower
+    const [lenderUserRes, borrowerUserRes] = await Promise.all([
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId]),
+    ]);
     const lenderInfo = lenderUserRes.rows[0] || {};
+    const borrowerInfo = borrowerUserRes.rows[0] || {};
+    const canonicalLenderId = lenderInfo.id || lenderId;
+    const canonicalBorrowerId = borrowerInfo.id || borrowerId;
 
     const startDate = proposal.start_date || new Date().toISOString().split('T')[0];
     const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
@@ -649,7 +657,7 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`,
       [
-        lenderId,
+        canonicalLenderId,
         itemTitle,
         proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
         proposal.category || 'Other',
@@ -683,8 +691,8 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       RETURNING *`,
       [
         createdItem.id,
-        borrowerId,
-        lenderId,
+        canonicalBorrowerId,
+        canonicalLenderId,
         startDate,
         durationDays,
         totalPrice,
@@ -749,13 +757,13 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
        VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [message.sender_id, currentUserId, itemTitle, createdBooking.id]
+      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
     ).catch(() => {});
 
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
        VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [currentUserId, message.sender_id, itemTitle, createdBooking.id]
+      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
     ).catch(() => {});
 
     const safeCreatedBooking = { ...createdBooking };
@@ -789,7 +797,8 @@ router.post('/proposal/:messageId/decline', authMiddleware, async (req: Authenti
       return sendError(res, 'NOT_FOUND', 'Proposal message not found', 404);
     }
     const message = msgRes.rows[0];
-    if (message.receiver_id !== currentUserId && message.sender_id !== currentUserId) {
+    const myIds = await resolveUserIds(currentUserId);
+    if (!myIds.includes(String(message.receiver_id)) && !myIds.includes(String(message.sender_id))) {
       return sendError(res, 'FORBIDDEN', 'Access denied', 403);
     }
 

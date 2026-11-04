@@ -52878,6 +52878,27 @@ function extractCity(locality) {
   return "Delhi";
 }
 
+// src/utils/user.ts
+var resolveUserIds = async (userId) => {
+  if (!userId) return [];
+  try {
+    const res = await query(
+      `SELECT id::text, firebase_uid FROM users WHERE id::text = $1 OR firebase_uid = $1`,
+      [userId]
+    );
+    const ids = [userId];
+    if (res.rows[0]?.id && !ids.includes(String(res.rows[0].id))) {
+      ids.push(String(res.rows[0].id));
+    }
+    if (res.rows[0]?.firebase_uid && !ids.includes(String(res.rows[0].firebase_uid))) {
+      ids.push(String(res.rows[0].firebase_uid));
+    }
+    return ids;
+  } catch {
+    return [userId];
+  }
+};
+
 // src/modules/notifications/notifications.service.ts
 async function createNotification(params) {
   try {
@@ -52903,6 +52924,7 @@ async function createNotification(params) {
 }
 async function checkAndGenerateReminders(userId) {
   try {
+    const userIds = await resolveUserIds(userId);
     const upcomingPickups = await query(
       `SELECT 
         b.id, 
@@ -52916,24 +52938,24 @@ async function checkAndGenerateReminders(userId) {
         (b.start_date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users borrower ON b.borrower_id = borrower.id
-       JOIN users lender ON i.owner_id = lender.id
-       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'ACCEPTED'
          AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userId]
+      [userIds]
     );
     for (const b of upcomingPickups.rows) {
       const alreadyNotified = await query(
         `SELECT id FROM notifications 
-         WHERE user_id = $1 
+         WHERE user_id = ANY($1::text[]) 
            AND booking_id = $2 
            AND type = 'REMINDER_PICKUP'
            AND created_at >= CURRENT_DATE`,
-        [userId, b.id]
+        [userIds, b.id]
       );
       if (alreadyNotified.rows.length === 0) {
-        const isBorrower = b.borrower_id === userId;
+        const isBorrower = userIds.includes(String(b.borrower_id));
         const dayLabel = b.is_today ? "today" : "tomorrow";
         await createNotification({
           userId,
@@ -52960,24 +52982,24 @@ async function checkAndGenerateReminders(userId) {
         (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users borrower ON b.borrower_id = borrower.id
-       JOIN users lender ON i.owner_id = lender.id
-       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'HANDED_OVER'
          AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`,
-      [userId]
+      [userIds]
     );
     for (const b of upcomingReturns.rows) {
       const alreadyNotified = await query(
         `SELECT id FROM notifications 
-         WHERE user_id = $1 
+         WHERE user_id = ANY($1::text[]) 
            AND booking_id = $2 
            AND type = 'REMINDER_RETURN'
            AND created_at >= CURRENT_DATE`,
-        [userId, b.id]
+        [userIds, b.id]
       );
       if (alreadyNotified.rows.length === 0) {
-        const isBorrower = b.borrower_id === userId;
+        const isBorrower = userIds.includes(String(b.borrower_id));
         const dayLabel = b.is_today ? "today" : "tomorrow";
         await createNotification({
           userId,
@@ -53177,7 +53199,7 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
-      LEFT JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
     `;
     if (status === "AVAILABLE") {
@@ -53245,7 +53267,7 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
-      JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE i.id = $1`,
       [id]
     );
@@ -53267,14 +53289,15 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     }
     let canViewAddress = false;
     if (currentViewerId) {
-      if (currentViewerId === item.owner_id) {
+      const viewerIds = await resolveUserIds(currentViewerId);
+      if (viewerIds.includes(String(item.owner_id))) {
         canViewAddress = true;
       } else {
         const acceptedBookingCheck = await query(
           `SELECT 1 FROM bookings 
-           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           WHERE item_id = $1 AND borrower_id = ANY($2::text[]) AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
            LIMIT 1`,
-          [item.id, currentViewerId]
+          [item.id, viewerIds]
         );
         canViewAddress = acceptedBookingCheck.rows.length > 0;
       }
@@ -53351,7 +53374,8 @@ router2.patch("/:id/borrowing", authMiddleware, async (req, res, next) => {
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Item not found", 404);
     }
-    if (check.rows[0].owner_id !== req.user.id && req.user.role !== "ADMIN") {
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "Only the item owner can change borrowing options", 403);
     }
     const result = await query(
@@ -53475,7 +53499,8 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Item not found", 404);
     }
-    if (check.rows[0].owner_id !== req.user.id && req.user.role !== "ADMIN") {
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "You do not have permission to edit this listing", 403);
     }
     const fields = [];
@@ -53589,7 +53614,8 @@ router2.delete("/:id", authMiddleware, async (req, res, next) => {
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Item not found", 404);
     }
-    if (check.rows[0].owner_id !== req.user.id && req.user.role !== "ADMIN") {
+    const ownerIds = await resolveUserIds(req.user.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "Permission denied", 403);
     }
     await query("DELETE FROM items WHERE id = $1", [id]);
@@ -53701,7 +53727,7 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         u.phone AS seeker_phone, 
         u.email AS seeker_email
       FROM requests r
-      LEFT JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
     `;
     const params = [];
@@ -53755,7 +53781,7 @@ router3.get("/:id", async (req, res, next) => {
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r
-      JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE r.id = $1`,
       [id]
     );
@@ -53918,7 +53944,7 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     const reqResult = await query(
       `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
        FROM requests r
-       JOIN users u ON r.seeker_id = u.id
+       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
        WHERE r.id = $1`,
       [id]
     );
@@ -53926,7 +53952,8 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Request not found", 404);
     }
     const request = reqResult.rows[0];
-    if (request.seeker_id === lenderId) {
+    const myIds = await resolveUserIds(lenderId);
+    if (myIds.includes(String(request.seeker_id))) {
       return sendError(res, "BAD_REQUEST", "You cannot lend gear to your own request", 400);
     }
     if (request.status !== "OPEN") {
@@ -54005,7 +54032,8 @@ router3.put("/:id", authMiddleware, async (req, res, next) => {
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Wish request not found", 404);
     }
-    const isSeeker = check.rows[0].seeker_id === req.user.id || req.user.role === "ADMIN";
+    const userIds = await resolveUserIds(req.user.id);
+    const isSeeker = userIds.includes(String(check.rows[0].seeker_id)) || req.user.role === "ADMIN";
     if (!isSeeker) {
       if (validated.status === "FULFILLED") {
         const result2 = await query(
@@ -54125,7 +54153,8 @@ router3.delete("/:id", authMiddleware, async (req, res, next) => {
     if (check.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Wish request not found", 404);
     }
-    if (check.rows[0].seeker_id !== req.user.id && req.user.role !== "ADMIN") {
+    const userIds = await resolveUserIds(req.user.id);
+    if (!userIds.includes(String(check.rows[0].seeker_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "Permission denied", 403);
     }
     await query("DELETE FROM requests WHERE id = $1", [id]);
@@ -54481,7 +54510,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
-var resolveUserIds = async (userId) => {
+var resolveUserIds2 = async (userId) => {
   try {
     const meRes = await query(
       `SELECT id::text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text`,
@@ -54504,7 +54533,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     const userId = req.user.id;
     const { role } = req.query;
     await checkAndAutoCancelExpiredBookings();
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds2(userId);
     let sql = `
       WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -54758,7 +54787,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds2(userId);
     const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user.role === "ADMIN";
@@ -54931,7 +54960,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds2(userId);
     const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user.role === "ADMIN";
@@ -55040,7 +55069,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds2(userId);
     const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user.role === "ADMIN";
@@ -55109,7 +55138,8 @@ router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    if (booking.borrower_id !== userId && req.user.role !== "ADMIN") {
+    const myIds = await resolveUserIds2(userId);
+    if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "Only the renter can submit payment", 403);
     }
     const updateRes = await query(
@@ -55136,7 +55166,7 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     const bookingRes = await query(
-      `SELECT b.*, i.owner_id AS lender_id, b.item_id, i.title AS item_title
+      `SELECT b.*, COALESCE(b.lender_id, i.owner_id) AS lender_id, b.item_id, i.title AS item_title
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`,
@@ -55146,7 +55176,8 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    if (booking.lender_id !== userId && req.user.role !== "ADMIN") {
+    const myIds = await resolveUserIds2(userId);
+    if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== "ADMIN") {
       return sendError(res, "FORBIDDEN", "Only the owner can confirm receiving payment", 403);
     }
     const updateRes = await query(
@@ -55269,7 +55300,11 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
           ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
           COUNT(*)::int AS total_reviews
         FROM reviews
-        WHERE reviewee_id = $1
+        WHERE reviewee_id IN (
+          SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+          UNION
+          SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+        )
       )
       UPDATE users
       SET 
@@ -55484,13 +55519,13 @@ router6.get("/leaderboard", async (req, res, next) => {
         COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 90)::int AS trust_score,
-        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE lender_id = u.id AND status = 'COMPLETED') AS lent_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE borrower_id = u.id AND status = 'COMPLETED') AS borrowed_count,
-        (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
-        (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count,
-        (SELECT comment FROM reviews WHERE reviewee_id = u.id AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
+        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
+        (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
       FROM users u
       ORDER BY u.created_at ASC
     `);
@@ -55699,6 +55734,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     }
     const user = userRes.rows[0];
     const realUserId = user.id;
+    const targetUserIds = [user.id, user.firebase_uid].filter(Boolean);
     let isFollowing = false;
     let isBlocked = false;
     let isBlockedBy = false;
@@ -55724,16 +55760,16 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
         `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
-         FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
+         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
-        [realUserId]
+        [targetUserIds]
       );
       userItems = itemsRes.rows;
       const requestsRes = await query(
         `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-         FROM requests WHERE seeker_id = $1
+         FROM requests WHERE seeker_id = ANY($1::text[])
          ORDER BY created_at DESC`,
-        [realUserId]
+        [targetUserIds]
       );
       userRequests = requestsRes.rows;
     }
@@ -55748,20 +55784,20 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
         COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
-       LEFT JOIN users u ON r.reviewer_id = u.id
-       WHERE r.reviewee_id = $1
+       LEFT JOIN users u ON (r.reviewer_id = u.id::text OR r.reviewer_id = u.firebase_uid)
+       WHERE r.reviewee_id = ANY($1::text[])
        ORDER BY r.created_at DESC`,
-      [realUserId]
+      [targetUserIds]
     );
     const reviewsList = reviewsRes.rows;
     const statsRes = await query(
       `SELECT 
-        (SELECT COUNT(*) FROM items WHERE owner_id = $1) AS listings_count,
-        (SELECT COUNT(*) FROM bookings WHERE lender_id = $1 AND status = 'COMPLETED') AS completed_lent,
-        (SELECT COUNT(*) FROM bookings WHERE borrower_id = $1 AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count,
-        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = $1) AS reviews_count`,
-      [realUserId]
+        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
+        (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
+        (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
+        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`,
+      [targetUserIds]
     );
     const stats = statsRes.rows[0];
     const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);
@@ -55834,7 +55870,7 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
         return sendError(res, "BAD_REQUEST", "This username is reserved. Please pick another one.", 400);
       }
       const existingUser = await query(
-        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2 LIMIT 1`,
+        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id::text != $2 AND (firebase_uid IS NULL OR firebase_uid != $2) LIMIT 1`,
         [cleanUsername, userId]
       );
       if (existingUser.rows.length > 0) {
@@ -56497,7 +56533,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
     }
     const message = msgRes.rows[0];
-    if (message.receiver_id !== currentUserId) {
+    const myIds = await resolveUserIds(currentUserId);
+    if (!myIds.includes(String(message.receiver_id))) {
       return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this agreement", 403);
     }
     const proposal = typeof message.proposal_data === "string" ? JSON.parse(message.proposal_data) : message.proposal_data || {};
@@ -56574,8 +56611,14 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
     const lenderId = isOffer ? message.sender_id : currentUserId;
     const borrowerId = isOffer ? currentUserId : message.sender_id;
-    const lenderUserRes = await query(`SELECT locality, address_text FROM users WHERE id = $1`, [lenderId]);
+    const [lenderUserRes, borrowerUserRes] = await Promise.all([
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
+      query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId])
+    ]);
     const lenderInfo = lenderUserRes.rows[0] || {};
+    const borrowerInfo = borrowerUserRes.rows[0] || {};
+    const canonicalLenderId = lenderInfo.id || lenderId;
+    const canonicalBorrowerId = borrowerInfo.id || borrowerId;
     const startDate = proposal.start_date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
     const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
     const pricePerDay = Number(proposal.price_per_day) || Number(proposal.total_price) / durationDays || 0;
@@ -56588,7 +56631,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`,
       [
-        lenderId,
+        canonicalLenderId,
         itemTitle,
         proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
         proposal.category || "Other",
@@ -56616,8 +56659,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       RETURNING *`,
       [
         createdItem.id,
-        borrowerId,
-        lenderId,
+        canonicalBorrowerId,
+        canonicalLenderId,
         startDate,
         durationDays,
         totalPrice,
@@ -56674,13 +56717,13 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
        VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [message.sender_id, currentUserId, itemTitle, createdBooking.id]
+      [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]
     ).catch(() => {
     });
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
        VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`,
-      [currentUserId, message.sender_id, itemTitle, createdBooking.id]
+      [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]
     ).catch(() => {
     });
     const safeCreatedBooking = { ...createdBooking };
@@ -56708,7 +56751,8 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
       return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
     }
     const message = msgRes.rows[0];
-    if (message.receiver_id !== currentUserId && message.sender_id !== currentUserId) {
+    const myIds = await resolveUserIds(currentUserId);
+    if (!myIds.includes(String(message.receiver_id)) && !myIds.includes(String(message.sender_id))) {
       return sendError(res, "FORBIDDEN", "Access denied", 403);
     }
     const proposal = typeof message.proposal_data === "string" ? JSON.parse(message.proposal_data) : message.proposal_data || {};
@@ -66329,6 +66373,7 @@ var router10 = (0, import_express10.Router)();
 router10.get("/", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const myIds = await resolveUserIds(userId);
     await checkAndGenerateReminders(userId).catch((err) => {
       console.warn("Notification reminder check error:", err);
     });
@@ -66385,22 +66430,22 @@ router10.get("/", authMiddleware, async (req, res, next) => {
        LEFT JOIN bookings b ON (n.booking_id = b.id OR (n.reference_type = 'BOOKING' AND n.reference_id::text = b.id::text))
        LEFT JOIN items i ON b.item_id = i.id
        LEFT JOIN items i_ref ON (n.reference_type = 'ITEM' AND n.reference_id::text = i_ref.id::text)
-       WHERE n.user_id = $1
+       WHERE n.user_id = ANY($1::text[])
          AND n.created_at >= NOW() - INTERVAL '30 days'
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
        LIMIT 150`,
-      [userId]
+      [myIds]
     );
     const unreadCountRes = await query(
       `SELECT COUNT(*)::int AS unread FROM notifications 
-       WHERE user_id = $1 
+       WHERE user_id = ANY($1::text[])
          AND created_at >= NOW() - INTERVAL '30 days'
          AND read_at IS NULL
          AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`,
-      [userId]
+      [myIds]
     );
     const unreadMessagesRes = await query(
       `WITH me AS (
@@ -66445,9 +66490,10 @@ router10.put("/:id/read", authMiddleware, async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const myIds = await resolveUserIds(userId);
     await query(
-      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2`,
-      [id, userId]
+      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = ANY($2::text[])`,
+      [id, myIds]
     );
     return sendSuccess(res, { success: true }, "Notification marked as read");
   } catch (error) {
@@ -66457,9 +66503,10 @@ router10.put("/:id/read", authMiddleware, async (req, res, next) => {
 router10.put("/read-all", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const myIds = await resolveUserIds(userId);
     await query(
-      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL`,
-      [userId]
+      `UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ANY($1::text[]) AND read_at IS NULL`,
+      [myIds]
     );
     return sendSuccess(res, { success: true }, "All notifications marked as read");
   } catch (error) {
@@ -66527,9 +66574,10 @@ router11.post("/", optionalAuthMiddleware, async (req, res, next) => {
 router11.get("/my", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const myIds = await resolveUserIds(userId);
     const result = await query(
-      `SELECT * FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC`,
-      [userId]
+      `SELECT * FROM support_tickets WHERE user_id = ANY($1::text[]) ORDER BY created_at DESC`,
+      [myIds]
     );
     return sendSuccess(res, result.rows);
   } catch (error) {
@@ -66543,7 +66591,7 @@ router11.get("/admin", adminMiddleware, async (req, res, next) => {
     let sql = `
       SELECT st.*, u.avatar_url AS user_avatar, u.phone AS user_phone, u.locality AS user_locality
       FROM support_tickets st
-      LEFT JOIN users u ON st.user_id = u.id
+      LEFT JOIN users u ON (st.user_id = u.id::text OR st.user_id = u.firebase_uid)
       WHERE 1=1
     `;
     if (status && status !== "ALL") {
@@ -66740,7 +66788,7 @@ router12.get("/requests", async (req, res, next) => {
         u.email AS seeker_email,
         u.avatar_url AS seeker_avatar
       FROM requests r
-      LEFT JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id::text OR r.seeker_id = u.firebase_uid)
       ORDER BY r.created_at DESC
     `);
     return sendSuccess(res, result.rows);
@@ -66773,8 +66821,8 @@ router12.get("/bookings", async (req, res, next) => {
         lender.avatar_url AS lender_avatar
       FROM bookings b
       JOIN items i ON b.item_id = i.id
-      LEFT JOIN users borrower ON b.borrower_id = borrower.id
-      LEFT JOIN users lender ON b.lender_id = lender.id
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      LEFT JOIN users lender ON (b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
       ORDER BY b.created_at DESC
     `);
     return sendSuccess(res, result.rows);

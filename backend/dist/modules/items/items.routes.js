@@ -7,6 +7,7 @@ const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const city_1 = require("../../utils/city");
 const notifications_service_1 = require("../notifications/notifications.service");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 const createItemSchema = zod_1.z.object({
     title: zod_1.z.string().min(3, 'Title must be at least 3 characters'),
@@ -178,7 +179,7 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
-      LEFT JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
     `;
         if (status === 'AVAILABLE') {
@@ -251,7 +252,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
-      JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE i.id = $1`, [id]);
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
@@ -270,13 +271,14 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         // Privacy protection: Only show exact address to the item owner or renters who have an accepted/active booking
         let canViewAddress = false;
         if (currentViewerId) {
-            if (currentViewerId === item.owner_id) {
+            const viewerIds = await (0, user_1.resolveUserIds)(currentViewerId);
+            if (viewerIds.includes(String(item.owner_id))) {
                 canViewAddress = true;
             }
             else {
                 const acceptedBookingCheck = await (0, db_1.query)(`SELECT 1 FROM bookings 
-           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
-           LIMIT 1`, [item.id, currentViewerId]);
+           WHERE item_id = $1 AND borrower_id = ANY($2::text[]) AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           LIMIT 1`, [item.id, viewerIds]);
                 canViewAddress = acceptedBookingCheck.rows.length > 0;
             }
         }
@@ -349,7 +351,8 @@ router.patch('/:id/borrowing', auth_1.authMiddleware, async (req, res, next) => 
         if (check.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
         }
-        if (check.rows[0].owner_id !== req.user.id && req.user.role !== 'ADMIN') {
+        const ownerIds = await (0, user_1.resolveUserIds)(req.user.id);
+        if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the item owner can change borrowing options', 403);
         }
         const result = await (0, db_1.query)(`UPDATE items 
@@ -472,7 +475,8 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (check.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
         }
-        if (check.rows[0].owner_id !== req.user.id && req.user.role !== 'ADMIN') {
+        const ownerIds = await (0, user_1.resolveUserIds)(req.user.id);
+        if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'You do not have permission to edit this listing', 403);
         }
         const fields = [];
@@ -586,7 +590,8 @@ router.delete('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (check.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
         }
-        if (check.rows[0].owner_id !== req.user.id && req.user.role !== 'ADMIN') {
+        const ownerIds = await (0, user_1.resolveUserIds)(req.user.id);
+        if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Permission denied', 403);
         }
         await (0, db_1.query)('DELETE FROM items WHERE id = $1', [id]);

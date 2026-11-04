@@ -86,13 +86,13 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
         COALESCE(u.community_lender_reviews_count, 0)::int AS community_lender_reviews_count,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
         COALESCE(u.trust_score, 90)::int AS trust_score,
-        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
-        (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE lender_id = u.id AND status = 'COMPLETED') AS lent_count,
-        (SELECT COUNT(*)::int FROM bookings WHERE borrower_id = u.id AND status = 'COMPLETED') AS borrowed_count,
-        (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
-        (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count,
-        (SELECT comment FROM reviews WHERE reviewee_id = u.id AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND status != 'UNAVAILABLE') AS items_count,
+        (SELECT COUNT(*)::int FROM items WHERE (owner_id = u.id OR (u.firebase_uid IS NOT NULL AND owner_id = u.firebase_uid)) AND (price_per_day <= 0 OR price_per_day IS NULL)) AS free_items_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (lender_id = u.id OR (u.firebase_uid IS NOT NULL AND lender_id = u.firebase_uid)) AND status = 'COMPLETED') AS lent_count,
+        (SELECT COUNT(*)::int FROM bookings WHERE (borrower_id = u.id OR (u.firebase_uid IS NOT NULL AND borrower_id = u.firebase_uid)) AND status = 'COMPLETED') AS borrowed_count,
+        (SELECT COUNT(*)::int FROM requests WHERE (seeker_id = u.id OR (u.firebase_uid IS NOT NULL AND seeker_id = u.firebase_uid))) AS requests_count,
+        (SELECT COUNT(*)::int FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid))) AS reviews_count,
+        (SELECT comment FROM reviews WHERE (reviewee_id = u.id OR (u.firebase_uid IS NOT NULL AND reviewee_id = u.firebase_uid)) AND comment IS NOT NULL AND comment != '' ORDER BY created_at DESC LIMIT 1) AS latest_review
       FROM users u
       ORDER BY u.created_at ASC
     `);
@@ -365,6 +365,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
 
     const user = userRes.rows[0];
     const realUserId = user.id;
+    const targetUserIds = [user.id, user.firebase_uid].filter(Boolean) as string[];
 
     // 2. Check relationship if viewer is authenticated
     let isFollowing = false;
@@ -398,17 +399,17 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
         `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
-         FROM items WHERE owner_id = $1 AND status != 'UNAVAILABLE'
+         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`,
-        [realUserId]
+        [targetUserIds]
       );
       userItems = itemsRes.rows;
 
       const requestsRes = await query(
         `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-         FROM requests WHERE seeker_id = $1
+         FROM requests WHERE seeker_id = ANY($1::text[])
          ORDER BY created_at DESC`,
-        [realUserId]
+        [targetUserIds]
       );
       userRequests = requestsRes.rows;
     }
@@ -425,10 +426,10 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
         COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
-       LEFT JOIN users u ON r.reviewer_id = u.id
-       WHERE r.reviewee_id = $1
+       LEFT JOIN users u ON (r.reviewer_id = u.id::text OR r.reviewer_id = u.firebase_uid)
+       WHERE r.reviewee_id = ANY($1::text[])
        ORDER BY r.created_at DESC`,
-      [realUserId]
+      [targetUserIds]
     );
 
     const reviewsList = reviewsRes.rows;
@@ -436,12 +437,12 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     // User's activity stats
     const statsRes = await query(
       `SELECT 
-        (SELECT COUNT(*) FROM items WHERE owner_id = $1) AS listings_count,
-        (SELECT COUNT(*) FROM bookings WHERE lender_id = $1 AND status = 'COMPLETED') AS completed_lent,
-        (SELECT COUNT(*) FROM bookings WHERE borrower_id = $1 AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = $1) AS requests_count,
-        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = $1) AS reviews_count`,
-      [realUserId]
+        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
+        (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
+        (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
+        (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`,
+      [targetUserIds]
     );
 
     const stats = statsRes.rows[0];
@@ -523,7 +524,7 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
         return sendError(res, 'BAD_REQUEST', 'This username is reserved. Please pick another one.', 400);
       }
       const existingUser = await query(
-        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2 LIMIT 1`,
+        `SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id::text != $2 AND (firebase_uid IS NULL OR firebase_uid != $2) LIMIT 1`,
         [cleanUsername, userId]
       );
       if (existingUser.rows.length > 0) {

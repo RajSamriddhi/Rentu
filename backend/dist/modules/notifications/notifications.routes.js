@@ -5,11 +5,13 @@ const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const notifications_service_1 = require("./notifications.service");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 // GET /notifications - Get current user notifications
 router.get('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
+        const myIds = await (0, user_1.resolveUserIds)(userId);
         // Automatically check and generate active reminders for upcoming pickups and returns
         await (0, notifications_service_1.checkAndGenerateReminders)(userId).catch(err => {
             console.warn('Notification reminder check error:', err);
@@ -62,18 +64,18 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
        LEFT JOIN bookings b ON (n.booking_id = b.id OR (n.reference_type = 'BOOKING' AND n.reference_id::text = b.id::text))
        LEFT JOIN items i ON b.item_id = i.id
        LEFT JOIN items i_ref ON (n.reference_type = 'ITEM' AND n.reference_id::text = i_ref.id::text)
-       WHERE n.user_id = $1
+       WHERE n.user_id = ANY($1::text[])
          AND n.created_at >= NOW() - INTERVAL '30 days'
          AND n.type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
          AND (n.body NOT LIKE 'You accepted%' AND n.body NOT LIKE 'You declined%')
        ORDER BY n.created_at DESC
-       LIMIT 150`, [userId]);
+       LIMIT 150`, [myIds]);
         const unreadCountRes = await (0, db_1.query)(`SELECT COUNT(*)::int AS unread FROM notifications 
-       WHERE user_id = $1 
+       WHERE user_id = ANY($1::text[])
          AND created_at >= NOW() - INTERVAL '30 days'
          AND read_at IS NULL
          AND type NOT IN ('ITEM_UNAVAILABLE', 'ITEM_AVAILABLE', 'BOOKING_PENDING')
-         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`, [userId]);
+         AND (body NOT LIKE 'You accepted%' AND body NOT LIKE 'You declined%')`, [myIds]);
         // Calculate unread direct messages count
         const unreadMessagesRes = await (0, db_1.query)(`WITH me AS (
         SELECT id::text AS id_text, firebase_uid FROM users WHERE id::text = $1::text OR firebase_uid = $1::text LIMIT 1
@@ -117,7 +119,8 @@ router.put('/:id/read', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const { id } = req.params;
         const userId = req.user.id;
-        await (0, db_1.query)(`UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2`, [id, userId]);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
+        await (0, db_1.query)(`UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = ANY($2::text[])`, [id, myIds]);
         return (0, response_1.sendSuccess)(res, { success: true }, 'Notification marked as read');
     }
     catch (error) {
@@ -128,7 +131,8 @@ router.put('/:id/read', auth_1.authMiddleware, async (req, res, next) => {
 router.put('/read-all', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
-        await (0, db_1.query)(`UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL`, [userId]);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
+        await (0, db_1.query)(`UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ANY($1::text[]) AND read_at IS NULL`, [myIds]);
         return (0, response_1.sendSuccess)(res, { success: true }, 'All notifications marked as read');
     }
     catch (error) {

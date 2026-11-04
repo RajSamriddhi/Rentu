@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createNotification = createNotification;
 exports.checkAndGenerateReminders = checkAndGenerateReminders;
 const db_1 = require("../../config/db");
+const user_1 = require("../../utils/user");
 /**
  * Creates an in-app notification row in the PostgreSQL database.
  */
@@ -32,6 +33,7 @@ async function createNotification(params) {
  */
 async function checkAndGenerateReminders(userId) {
     try {
+        const userIds = await (0, user_1.resolveUserIds)(userId);
         // 1. Pickup Reminders for ACCEPTED bookings (scheduled for today or tomorrow)
         const upcomingPickups = await (0, db_1.query)(`SELECT 
         b.id, 
@@ -45,19 +47,19 @@ async function checkAndGenerateReminders(userId) {
         (b.start_date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users borrower ON b.borrower_id = borrower.id
-       JOIN users lender ON i.owner_id = lender.id
-       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'ACCEPTED'
-         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`, [userId]);
+         AND b.start_date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`, [userIds]);
         for (const b of upcomingPickups.rows) {
             const alreadyNotified = await (0, db_1.query)(`SELECT id FROM notifications 
-         WHERE user_id = $1 
+         WHERE user_id = ANY($1::text[]) 
            AND booking_id = $2 
            AND type = 'REMINDER_PICKUP'
-           AND created_at >= CURRENT_DATE`, [userId, b.id]);
+           AND created_at >= CURRENT_DATE`, [userIds, b.id]);
             if (alreadyNotified.rows.length === 0) {
-                const isBorrower = b.borrower_id === userId;
+                const isBorrower = userIds.includes(String(b.borrower_id));
                 const dayLabel = b.is_today ? 'today' : 'tomorrow';
                 await createNotification({
                     userId,
@@ -86,19 +88,19 @@ async function checkAndGenerateReminders(userId) {
         (COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date = CURRENT_DATE) AS is_today
        FROM bookings b
        JOIN items i ON b.item_id = i.id
-       JOIN users borrower ON b.borrower_id = borrower.id
-       JOIN users lender ON i.owner_id = lender.id
-       WHERE (b.borrower_id = $1 OR b.lender_id = $1)
+       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+       LEFT JOIN users lender ON (i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid OR b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid)
+       WHERE (b.borrower_id = ANY($1::text[]) OR b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))
          AND b.status = 'HANDED_OVER'
-         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`, [userId]);
+         AND COALESCE(b.end_date, (b.start_date + (b.duration_days || ' days')::interval)::date)::date IN (CURRENT_DATE, CURRENT_DATE + INTERVAL '1 day')`, [userIds]);
         for (const b of upcomingReturns.rows) {
             const alreadyNotified = await (0, db_1.query)(`SELECT id FROM notifications 
-         WHERE user_id = $1 
+         WHERE user_id = ANY($1::text[]) 
            AND booking_id = $2 
            AND type = 'REMINDER_RETURN'
-           AND created_at >= CURRENT_DATE`, [userId, b.id]);
+           AND created_at >= CURRENT_DATE`, [userIds, b.id]);
             if (alreadyNotified.rows.length === 0) {
-                const isBorrower = b.borrower_id === userId;
+                const isBorrower = userIds.includes(String(b.borrower_id));
                 const dayLabel = b.is_today ? 'today' : 'tomorrow';
                 await createNotification({
                     userId,

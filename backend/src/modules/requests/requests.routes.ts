@@ -4,6 +4,7 @@ import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { extractCity } from '../../utils/city';
+import { resolveUserIds, getCanonicalUserId } from '../../utils/user';
 
 const router = Router();
 
@@ -116,7 +117,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         u.phone AS seeker_phone, 
         u.email AS seeker_email
       FROM requests r
-      LEFT JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -180,7 +181,7 @@ router.get('/:id', async (req: Request, res: Response, next) => {
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r
-      JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE r.id = $1`,
       [id]
     );
@@ -365,7 +366,7 @@ router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest,
     const reqResult = await query(
       `SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
        FROM requests r
-       JOIN users u ON r.seeker_id = u.id
+       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
        WHERE r.id = $1`,
       [id]
     );
@@ -376,7 +377,8 @@ router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest,
 
     const request = reqResult.rows[0];
 
-    if (request.seeker_id === lenderId) {
+    const myIds = await resolveUserIds(lenderId);
+    if (myIds.includes(String(request.seeker_id))) {
       return sendError(res, 'BAD_REQUEST', 'You cannot lend gear to your own request', 400);
     }
 
@@ -469,7 +471,8 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       return sendError(res, 'NOT_FOUND', 'Wish request not found', 404);
     }
 
-    const isSeeker = check.rows[0].seeker_id === req.user!.id || req.user!.role === 'ADMIN';
+    const userIds = await resolveUserIds(req.user!.id);
+    const isSeeker = userIds.includes(String(check.rows[0].seeker_id)) || req.user!.role === 'ADMIN';
 
     // If another neighbor is claiming/fulfilling it
     if (!isSeeker) {
@@ -600,7 +603,8 @@ router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Res
       return sendError(res, 'NOT_FOUND', 'Wish request not found', 404);
     }
 
-    if (check.rows[0].seeker_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+    const userIds = await resolveUserIds(req.user!.id);
+    if (!userIds.includes(String(check.rows[0].seeker_id)) && req.user!.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
     }
 

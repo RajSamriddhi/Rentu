@@ -5,6 +5,7 @@ import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { extractCity } from '../../utils/city';
 import { createNotification } from '../notifications/notifications.service';
+import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
 
@@ -193,7 +194,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         u.trust_score AS owner_trust_score,
         u.rating AS owner_rating
       FROM items i
-      LEFT JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE 1=1 ${distanceFilter}
     `;
 
@@ -273,7 +274,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
       FROM items i
-      JOIN users u ON i.owner_id = u.id
+      LEFT JOIN users u ON (i.owner_id = u.id OR i.owner_id = u.firebase_uid)
       WHERE i.id = $1`,
       [id]
     );
@@ -301,14 +302,15 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     // Privacy protection: Only show exact address to the item owner or renters who have an accepted/active booking
     let canViewAddress = false;
     if (currentViewerId) {
-      if (currentViewerId === item.owner_id) {
+      const viewerIds = await resolveUserIds(currentViewerId);
+      if (viewerIds.includes(String(item.owner_id))) {
         canViewAddress = true;
       } else {
         const acceptedBookingCheck = await query(
           `SELECT 1 FROM bookings 
-           WHERE item_id = $1 AND borrower_id = $2 AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
+           WHERE item_id = $1 AND borrower_id = ANY($2::text[]) AND status IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED')
            LIMIT 1`,
-          [item.id, currentViewerId]
+          [item.id, viewerIds]
         );
         canViewAddress = acceptedBookingCheck.rows.length > 0;
       }
@@ -398,7 +400,8 @@ router.patch('/:id/borrowing', authMiddleware, async (req: AuthenticatedRequest,
       return sendError(res, 'NOT_FOUND', 'Item not found', 404);
     }
 
-    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+    const ownerIds = await resolveUserIds(req.user!.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user!.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', 'Only the item owner can change borrowing options', 403);
     }
 
@@ -524,7 +527,8 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
       return sendError(res, 'NOT_FOUND', 'Item not found', 404);
     }
 
-    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+    const ownerIds = await resolveUserIds(req.user!.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user!.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', 'You do not have permission to edit this listing', 403);
     }
 
@@ -650,7 +654,8 @@ router.delete('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Res
       return sendError(res, 'NOT_FOUND', 'Item not found', 404);
     }
 
-    if (check.rows[0].owner_id !== req.user!.id && req.user!.role !== 'ADMIN') {
+    const ownerIds = await resolveUserIds(req.user!.id);
+    if (!ownerIds.includes(String(check.rows[0].owner_id)) && req.user!.role !== 'ADMIN') {
       return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
     }
 

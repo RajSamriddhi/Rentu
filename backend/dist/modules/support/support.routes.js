@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 const createTicketSchema = zod_1.z.object({
     type: zod_1.z.enum(['CONCERN', 'FEEDBACK']),
@@ -59,7 +60,8 @@ router.post('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
 router.get('/my', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const result = await (0, db_1.query)(`SELECT * FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
+        const myIds = await (0, user_1.resolveUserIds)(userId);
+        const result = await (0, db_1.query)(`SELECT * FROM support_tickets WHERE user_id = ANY($1::text[]) ORDER BY created_at DESC`, [myIds]);
         return (0, response_1.sendSuccess)(res, result.rows);
     }
     catch (error) {
@@ -74,7 +76,7 @@ router.get('/admin', auth_1.adminMiddleware, async (req, res, next) => {
         let sql = `
       SELECT st.*, u.avatar_url AS user_avatar, u.phone AS user_phone, u.locality AS user_locality
       FROM support_tickets st
-      LEFT JOIN users u ON st.user_id = u.id
+      LEFT JOIN users u ON (st.user_id = u.id::text OR st.user_id = u.firebase_uid)
       WHERE 1=1
     `;
         if (status && status !== 'ALL') {

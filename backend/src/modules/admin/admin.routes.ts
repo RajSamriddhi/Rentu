@@ -144,7 +144,7 @@ router.get('/requests', async (req: AuthenticatedRequest, res: Response, next) =
         u.email AS seeker_email,
         u.avatar_url AS seeker_avatar
       FROM requests r
-      LEFT JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id::text OR r.seeker_id = u.firebase_uid)
       ORDER BY r.created_at DESC
     `);
     return sendSuccess(res, result.rows);
@@ -181,8 +181,8 @@ router.get('/bookings', async (req: AuthenticatedRequest, res: Response, next) =
         lender.avatar_url AS lender_avatar
       FROM bookings b
       JOIN items i ON b.item_id = i.id
-      LEFT JOIN users borrower ON b.borrower_id = borrower.id
-      LEFT JOIN users lender ON b.lender_id = lender.id
+      LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
+      LEFT JOIN users lender ON (b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid)
       ORDER BY b.created_at DESC
     `);
     return sendSuccess(res, result.rows);

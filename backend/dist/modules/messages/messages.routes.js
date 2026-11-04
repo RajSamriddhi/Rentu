@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 const sendMessageSchema = zod_1.z.object({
     booking_id: zod_1.z.string().optional().nullable(),
@@ -457,7 +458,8 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Proposal message not found', 404);
         }
         const message = msgRes.rows[0];
-        if (message.receiver_id !== currentUserId) {
+        const myIds = await (0, user_1.resolveUserIds)(currentUserId);
+        if (!myIds.includes(String(message.receiver_id))) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the intended recipient can accept this agreement', 403);
         }
         const proposal = typeof message.proposal_data === 'string'
@@ -526,9 +528,15 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         const isOffer = proposal.type === 'LISTING' || proposal.is_lend_offer === true;
         const lenderId = isOffer ? message.sender_id : currentUserId;
         const borrowerId = isOffer ? currentUserId : message.sender_id;
-        // Fetch lender details for locality
-        const lenderUserRes = await (0, db_1.query)(`SELECT locality, address_text FROM users WHERE id = $1`, [lenderId]);
+        // Fetch canonical user records for lender and borrower
+        const [lenderUserRes, borrowerUserRes] = await Promise.all([
+            (0, db_1.query)(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
+            (0, db_1.query)(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId]),
+        ]);
         const lenderInfo = lenderUserRes.rows[0] || {};
+        const borrowerInfo = borrowerUserRes.rows[0] || {};
+        const canonicalLenderId = lenderInfo.id || lenderId;
+        const canonicalBorrowerId = borrowerInfo.id || borrowerId;
         const startDate = proposal.start_date || new Date().toISOString().split('T')[0];
         const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
         const pricePerDay = Number(proposal.price_per_day) || (Number(proposal.total_price) / durationDays) || 0;
@@ -540,7 +548,7 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         image_urls, locality, address_text, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
       RETURNING *`, [
-            lenderId,
+            canonicalLenderId,
             itemTitle,
             proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
             proposal.category || 'Other',
@@ -568,8 +576,8 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
       ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *`, [
             createdItem.id,
-            borrowerId,
-            lenderId,
+            canonicalBorrowerId,
+            canonicalLenderId,
             startDate,
             durationDays,
             totalPrice,
@@ -617,9 +625,9 @@ router.post('/proposal/:messageId/accept', auth_1.authMiddleware, async (req, re
         }
         // 7. Send notifications to both lender and borrower about the ongoing booking
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [message.sender_id, currentUserId, itemTitle, createdBooking.id]).catch(() => { });
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [canonicalBorrowerId, canonicalLenderId, itemTitle, createdBooking.id]).catch(() => { });
         await (0, db_1.query)(`INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [currentUserId, message.sender_id, itemTitle, createdBooking.id]).catch(() => { });
+       VALUES ($1, $2, 'BOOKING_STARTED', 'Booking Confirmed: ' || $3, 'Rental agreement confirmed. Handover is now live in your Ongoing Bookings.', $4, 'BOOKING')`, [canonicalLenderId, canonicalBorrowerId, itemTitle, createdBooking.id]).catch(() => { });
         const safeCreatedBooking = { ...createdBooking };
         // Never expose pickup code or return code upon immediate acceptance before scheduled meetup time
         delete safeCreatedBooking.pickup_code;
@@ -648,7 +656,8 @@ router.post('/proposal/:messageId/decline', auth_1.authMiddleware, async (req, r
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Proposal message not found', 404);
         }
         const message = msgRes.rows[0];
-        if (message.receiver_id !== currentUserId && message.sender_id !== currentUserId) {
+        const myIds = await (0, user_1.resolveUserIds)(currentUserId);
+        if (!myIds.includes(String(message.receiver_id)) && !myIds.includes(String(message.sender_id))) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Access denied', 403);
         }
         const proposal = typeof message.proposal_data === 'string'

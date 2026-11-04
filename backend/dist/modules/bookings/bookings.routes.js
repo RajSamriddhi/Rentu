@@ -935,7 +935,8 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        if (booking.borrower_id !== userId && req.user.role !== 'ADMIN') {
+        const myIds = await resolveUserIds(userId);
+        if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the renter can submit payment', 403);
         }
         const updateRes = await (0, db_1.query)(`UPDATE bookings 
@@ -957,7 +958,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
     try {
         const { id } = req.params;
         const userId = req.user.id;
-        const bookingRes = await (0, db_1.query)(`SELECT b.*, i.owner_id AS lender_id, b.item_id, i.title AS item_title
+        const bookingRes = await (0, db_1.query)(`SELECT b.*, COALESCE(b.lender_id, i.owner_id) AS lender_id, b.item_id, i.title AS item_title
        FROM bookings b
        JOIN items i ON b.item_id = i.id
        WHERE b.id = $1`, [id]);
@@ -965,7 +966,8 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        if (booking.lender_id !== userId && req.user.role !== 'ADMIN') {
+        const myIds = await resolveUserIds(userId);
+        if (!myIds.includes(String(booking.lender_id)) && !myIds.includes(String(booking.item_owner_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Only the owner can confirm receiving payment', 403);
         }
         const updateRes = await (0, db_1.query)(`UPDATE bookings 
@@ -1083,7 +1085,11 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
           ROUND(COALESCE(AVG(rating), 0.00), 2) AS trust_rating,
           COUNT(*)::int AS total_reviews
         FROM reviews
-        WHERE reviewee_id = $1
+        WHERE reviewee_id IN (
+          SELECT id FROM users WHERE id = $1 OR firebase_uid = $1
+          UNION
+          SELECT firebase_uid FROM users WHERE (id = $1 OR firebase_uid = $1) AND firebase_uid IS NOT NULL
+        )
       )
       UPDATE users
       SET 

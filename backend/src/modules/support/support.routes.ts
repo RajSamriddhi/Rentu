@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest, adminMiddleware } from '../../middleware/auth';
+import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
 
@@ -71,9 +72,10 @@ router.post('/', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: 
 router.get('/my', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.id;
+    const myIds = await resolveUserIds(userId);
     const result = await query(
-      `SELECT * FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC`,
-      [userId]
+      `SELECT * FROM support_tickets WHERE user_id = ANY($1::text[]) ORDER BY created_at DESC`,
+      [myIds]
     );
     return sendSuccess(res, result.rows);
   } catch (error) {
@@ -89,7 +91,7 @@ router.get('/admin', adminMiddleware, async (req: AuthenticatedRequest, res: Res
     let sql = `
       SELECT st.*, u.avatar_url AS user_avatar, u.phone AS user_phone, u.locality AS user_locality
       FROM support_tickets st
-      LEFT JOIN users u ON st.user_id = u.id
+      LEFT JOIN users u ON (st.user_id = u.id::text OR st.user_id = u.firebase_uid)
       WHERE 1=1
     `;
 

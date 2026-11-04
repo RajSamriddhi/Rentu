@@ -6,6 +6,7 @@ const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const city_1 = require("../../utils/city");
+const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
 const createRequestSchema = zod_1.z.object({
     item_name: zod_1.z.string().min(3, 'Item name must be at least 3 characters'),
@@ -108,7 +109,7 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         u.phone AS seeker_phone, 
         u.email AS seeker_email
       FROM requests r
-      LEFT JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
     `;
         const params = [];
@@ -165,7 +166,7 @@ router.get('/:id', async (req, res, next) => {
         u.locality AS seeker_locality, u.trust_score AS seeker_trust_score,
         u.phone AS seeker_phone, u.email AS seeker_email
       FROM requests r
-      JOIN users u ON r.seeker_id = u.id
+      LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE r.id = $1`, [id]);
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Wish request not found', 404);
@@ -316,13 +317,14 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         const lenderName = req.user.name || 'A Neighbor';
         const reqResult = await (0, db_1.query)(`SELECT r.*, u.name as seeker_name, u.avatar_url as seeker_avatar, u.locality as seeker_user_locality
        FROM requests r
-       JOIN users u ON r.seeker_id = u.id
+       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
        WHERE r.id = $1`, [id]);
         if (reqResult.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Request not found', 404);
         }
         const request = reqResult.rows[0];
-        if (request.seeker_id === lenderId) {
+        const myIds = await (0, user_1.resolveUserIds)(lenderId);
+        if (myIds.includes(String(request.seeker_id))) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot lend gear to your own request', 400);
         }
         if (request.status !== 'OPEN') {
@@ -399,7 +401,8 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (check.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Wish request not found', 404);
         }
-        const isSeeker = check.rows[0].seeker_id === req.user.id || req.user.role === 'ADMIN';
+        const userIds = await (0, user_1.resolveUserIds)(req.user.id);
+        const isSeeker = userIds.includes(String(check.rows[0].seeker_id)) || req.user.role === 'ADMIN';
         // If another neighbor is claiming/fulfilling it
         if (!isSeeker) {
             if (validated.status === 'FULFILLED') {
@@ -519,7 +522,8 @@ router.delete('/:id', auth_1.authMiddleware, async (req, res, next) => {
         if (check.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Wish request not found', 404);
         }
-        if (check.rows[0].seeker_id !== req.user.id && req.user.role !== 'ADMIN') {
+        const userIds = await (0, user_1.resolveUserIds)(req.user.id);
+        if (!userIds.includes(String(check.rows[0].seeker_id)) && req.user.role !== 'ADMIN') {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Permission denied', 403);
         }
         await (0, db_1.query)('DELETE FROM requests WHERE id = $1', [id]);
