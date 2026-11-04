@@ -150,19 +150,25 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [selectedStageBooking, setSelectedStageBooking] = useState<Booking | null>(null);
 
   useEffect(() => {
-    loadBookings();
+    loadBookings(true);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadBookings(false);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [user]);
 
-  const loadBookings = async () => {
-    setIsLoading(true);
+  const loadBookings = async (showLoadingSpinner = true) => {
+    if (showLoadingSpinner) setIsLoading(true);
     try {
       const data = await api.getBookings();
       setBookings(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load bookings:', err);
-      setBookings([]);
+      if (showLoadingSpinner) setBookings([]);
     } finally {
-      setIsLoading(false);
+      if (showLoadingSpinner) setIsLoading(false);
     }
   };
 

@@ -97256,37 +97256,77 @@ var requests_routes_default = router3;
 var import_express4 = __toESM(require_express2());
 var import_crypto = __toESM(require("crypto"));
 var router4 = (0, import_express4.Router)();
-var failedCodeAttempts = /* @__PURE__ */ new Map();
-function checkCodeLockout(key) {
-  const record = failedCodeAttempts.get(key);
-  if (!record) return { locked: false };
-  const now = Date.now();
-  if (record.lockedUntil > now) {
-    return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1e3) };
+function sanitizeTzOffset(tzOffsetMinutes) {
+  if (typeof tzOffsetMinutes === "number" && !isNaN(tzOffsetMinutes) && tzOffsetMinutes >= -840 && tzOffsetMinutes <= 720) {
+    return tzOffsetMinutes;
   }
-  if (record.lockedUntil <= now && record.attempts >= 5) {
-    failedCodeAttempts.delete(key);
-  }
-  return { locked: false };
+  return -330;
 }
-function recordFailedCodeAttempt(key) {
-  const now = Date.now();
-  const record = failedCodeAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
-  record.attempts += 1;
-  if (record.attempts >= 5) {
-    record.lockedUntil = now + 15 * 60 * 1e3;
+var memoryLockouts = /* @__PURE__ */ new Map();
+async function checkCodeLockout(key) {
+  try {
+    const res = await query(
+      `SELECT attempts, locked_until FROM verification_attempts WHERE key = $1`,
+      [key]
+    );
+    if (res.rows.length === 0) return { locked: false };
+    const row = res.rows[0];
+    if (row.locked_until) {
+      const lockedUntilMs = new Date(row.locked_until).getTime();
+      const now = Date.now();
+      if (lockedUntilMs > now) {
+        return { locked: true, waitSeconds: Math.ceil((lockedUntilMs - now) / 1e3) };
+      }
+      await query(`UPDATE verification_attempts SET attempts = 0, locked_until = NULL WHERE key = $1`, [key]).catch(() => {
+      });
+    }
+    return { locked: false };
+  } catch {
+    const record = memoryLockouts.get(key);
+    if (!record) return { locked: false };
+    const now = Date.now();
+    if (record.lockedUntil > now) {
+      return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1e3) };
+    }
+    return { locked: false };
   }
-  failedCodeAttempts.set(key, record);
-  return record.attempts;
 }
-function resetCodeAttempts(key) {
-  failedCodeAttempts.delete(key);
+async function recordFailedCodeAttempt(key) {
+  try {
+    const res = await query(
+      `INSERT INTO verification_attempts (key, attempts, locked_until, updated_at)
+       VALUES ($1, 1, NULL, CURRENT_TIMESTAMP)
+       ON CONFLICT (key) DO UPDATE
+       SET attempts = verification_attempts.attempts + 1,
+           locked_until = CASE WHEN verification_attempts.attempts + 1 >= 5 THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE NULL END,
+           updated_at = CURRENT_TIMESTAMP
+       RETURNING attempts`,
+      [key]
+    );
+    return res.rows[0]?.attempts || 1;
+  } catch {
+    const now = Date.now();
+    const record = memoryLockouts.get(key) || { attempts: 0, lockedUntil: 0 };
+    record.attempts += 1;
+    if (record.attempts >= 5) {
+      record.lockedUntil = now + 15 * 60 * 1e3;
+    }
+    memoryLockouts.set(key, record);
+    return record.attempts;
+  }
+}
+async function resetCodeAttempts(key) {
+  try {
+    await query(`DELETE FROM verification_attempts WHERE key = $1`, [key]);
+  } catch {
+    memoryLockouts.delete(key);
+  }
 }
 var createBookingSchema = external_exports.object({
   item_id: external_exports.string().uuid("Invalid item ID"),
-  start_date: external_exports.string().min(1, "Start date is required"),
+  start_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format"),
   start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
+  end_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format").optional(),
   end_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive("Duration must be at least 1 day"),
   total_price: external_exports.number().min(0).optional(),
@@ -97301,22 +97341,23 @@ var createBookingSchema = external_exports.object({
   requires_pickup: external_exports.boolean().optional().default(false),
   pickup_fee: external_exports.number().min(0).optional().default(0),
   message: external_exports.string().optional(),
-  timezone_offset_minutes: external_exports.number().optional()
+  timezone_offset_minutes: external_exports.number().int().min(-840).max(720).optional()
 });
 var updateStatusSchema = external_exports.object({
   status: external_exports.enum(["ACCEPTED", "REJECTED", "CANCELLED"]),
-  timezone_offset_minutes: external_exports.number().optional()
+  timezone_offset_minutes: external_exports.number().int().min(-840).max(720).optional()
+});
+var verifyCodeSchema = external_exports.object({
+  code: external_exports.string().length(6, "Verification code must be exactly 6 digits"),
+  timezone_offset_minutes: external_exports.number().int().min(-840).max(720).optional()
 });
 function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
   const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
   const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
   const [hour, minute] = cleanTime.split(":").map(Number);
-  if (typeof tzOffsetMinutes === "number") {
-    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-    return localUtcMs + tzOffsetMinutes * 6e4;
-  }
-  const d = /* @__PURE__ */ new Date(`${dateStr.slice(0, 10)}T${cleanTime}:00`);
-  return d.getTime();
+  const effectiveOffset = sanitizeTzOffset(tzOffsetMinutes);
+  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+  return localUtcMs + effectiveOffset * 6e4;
 }
 var lastBookingsExpirationRun = 0;
 async function checkAndAutoCancelExpiredBookings() {
@@ -97444,9 +97485,6 @@ async function checkAndAutoCancelExpiredBookings() {
     console.warn("checkAndAutoCancelExpiredBookings notice:", err);
   }
 }
-var verifyCodeSchema = external_exports.object({
-  code: external_exports.string().min(4, "Verification code is required")
-});
 var submitReviewSchema = external_exports.object({
   rating: external_exports.number().int().min(1, "Rating must be between 1 and 5 stars").max(5, "Rating must be between 1 and 5 stars"),
   comment: external_exports.string().max(1e3, "Comment cannot exceed 1000 characters").optional().default(""),
@@ -97454,11 +97492,12 @@ var submitReviewSchema = external_exports.object({
 });
 router4.post("/", authMiddleware, async (req, res, next) => {
   try {
+    await checkAndAutoCancelExpiredBookings();
     const validated = createBookingSchema.parse(req.body);
     const borrowerId = req.user.id;
     const itemRes = await query(
       `SELECT id, owner_id, price_per_day, title, status, available_for_borrowing, 
-              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category
+              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category, max_duration_days
        FROM items WHERE id = $1`,
       [validated.item_id]
     );
@@ -97482,16 +97521,36 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       return sendError(res, "FORBIDDEN", "Cannot rent from this user due to a block.", 403);
     }
     let finalEndDate = validated.end_date;
-    if (!finalEndDate) {
+    let durationDays = validated.duration_days;
+    if (finalEndDate) {
+      const [sY, sM, sD] = validated.start_date.split("-").map(Number);
+      const [eY, eM, eD] = finalEndDate.split("-").map(Number);
+      const sUtc = Date.UTC(sY, (sM || 1) - 1, sD || 1);
+      const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
+      if (eUtc < sUtc) {
+        return sendError(res, "BAD_REQUEST", "Return end date cannot be earlier than start date.", 400);
+      }
+      const calendarDiff = Math.round((eUtc - sUtc) / (1e3 * 60 * 60 * 24));
+      durationDays = Math.max(1, calendarDiff);
+    } else {
       const sDate = new Date(validated.start_date);
       if (!isNaN(sDate.getTime())) {
-        sDate.setDate(sDate.getDate() + Math.max(0, validated.duration_days - 1));
+        sDate.setDate(sDate.getDate() + Math.max(0, durationDays - 1));
         finalEndDate = sDate.toISOString().split("T")[0];
       } else {
         finalEndDate = validated.start_date;
       }
     }
-    const tzOffset = typeof validated.timezone_offset_minutes === "number" ? validated.timezone_offset_minutes : -330;
+    const maxAllowedDays = Number(item.max_duration_days) || 30;
+    if (durationDays > maxAllowedDays) {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Rental duration (${durationDays} days) exceeds maximum allowed rental period (${maxAllowedDays} days) for this item.`,
+        400
+      );
+    }
+    const tzOffset = sanitizeTzOffset(validated.timezone_offset_minutes);
     const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
     const currentTimestampWithGrace = Date.now() - 2 * 60 * 1e3;
     if (startTimestamp < currentTimestampWithGrace) {
@@ -97542,7 +97601,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       }
     }
     const itemRate = Number(item.price_per_day || 0);
-    const wantsBorrowing = validated.is_borrowing === true || validated.booking_type === "BORROW" || validated.total_price === 0 && itemRate === 0;
+    const wantsBorrowing = itemRate <= 0 ? true : validated.booking_type === "BORROW" || validated.is_borrowing === true;
     if (wantsBorrowing && itemRate > 0 && !item.available_for_borrowing) {
       return sendError(
         res,
@@ -97568,13 +97627,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         );
       }
     }
-    const [sY, sM, sD] = validated.start_date.split("-").map(Number);
-    const [eY, eM, eD] = finalEndDate.split("-").map(Number);
-    const sUtc = Date.UTC(sY, (sM || 1) - 1, sD || 1);
-    const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
-    const calendarDiff = Math.round((eUtc - sUtc) / (1e3 * 60 * 60 * 24));
-    const durationDays = Math.max(1, calendarDiff);
-    const isFreeBorrow = wantsBorrowing && (itemRate <= 0 || item.available_for_borrowing);
+    const isFreeBorrow = itemRate <= 0 || wantsBorrowing && Boolean(item.available_for_borrowing);
     const baseCost = isFreeBorrow ? 0 : itemRate * durationDays;
     let deliveryFee = 0;
     if (validated.requires_delivery) {
@@ -97720,13 +97773,15 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         COALESCE(i.category, 'Other') AS item_category,
         COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
         COALESCE(i.price_per_day, 0) AS item_rate,
-        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
-        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
-        lender.address_text AS lender_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
-        borrower.phone AS borrower_phone, borrower.email AS borrower_email,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.phone ELSE NULL END AS borrower_phone,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.email ELSE NULL END AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
-        lender.phone AS lender_phone, lender.email AS lender_email,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.phone ELSE NULL END AS lender_phone,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.email ELSE NULL END AS lender_email,
         rev.id AS user_review_id,
         rev.rating AS user_rating,
         rev.comment AS user_comment,
@@ -97753,12 +97808,13 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
+    const queryTz = sanitizeTzOffset(req.query.timezone_offset_minutes ? Number(req.query.timezone_offset_minutes) : void 0);
     const currentMs = Date.now();
     for (const b of result.rows) {
       if (b.status === "ACCEPTED" && b.pickup_code) {
         const sDate = b.start_date;
         const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
-        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+        const startMs = parseToUtcTimestamp(sDate, sTime, queryTz);
         if (currentMs < startMs - 5 * 60 * 1e3) {
           b.pickup_code = null;
         }
@@ -97767,8 +97823,10 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     const proposalsRes = await query(
       `SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
-        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
-        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address,
+        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, 
+        NULL AS sender_phone, NULL AS sender_email, sender.locality AS sender_locality, sender.locality AS sender_address,
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, 
+        NULL AS receiver_phone, NULL AS receiver_email, receiver.locality AS receiver_locality, receiver.locality AS receiver_address,
         req.status AS request_status
       FROM messages m
       LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
@@ -98020,7 +98078,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     let updateRes;
     let conflictingPendingList = [];
     if (status === "ACCEPTED") {
-      const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+      const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
       const startTimestamp = parseToUtcTimestamp(
         sDate,
         booking.start_time || "10:00",
@@ -98038,6 +98096,11 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       try {
         await client.query("BEGIN");
         await client.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [booking.item_id]);
+        const lockRes = await client.query("SELECT id, status FROM bookings WHERE id = $1 FOR UPDATE", [id]);
+        if (lockRes.rows.length === 0 || lockRes.rows[0].status !== "PENDING") {
+          await client.query("ROLLBACK");
+          return sendError(res, "CONFLICT", "Booking has already been accepted, rejected, or cancelled.", 409);
+        }
         const conflictRes = await client.query(
           `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
                   TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
@@ -98114,10 +98177,14 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
                pickup_code = COALESCE(pickup_code, $1),
                return_code = NULL,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2
+           WHERE id = $2 AND status = 'PENDING'
            RETURNING *`,
           [pickupCode, id]
         );
+        if (updateRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return sendError(res, "CONFLICT", "Booking has already been updated or processed.", 409);
+        }
         await client.query("COMMIT");
       } catch (txErr) {
         await client.query("ROLLBACK");
@@ -98137,15 +98204,30 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         }).catch(() => {
         });
       }
-    } else {
+    } else if (status === "REJECTED") {
       updateRes = await query(
         `UPDATE bookings 
-         SET status = $1, 
+         SET status = 'REJECTED', 
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
+         WHERE id = $1 AND status = 'PENDING'
          RETURNING *`,
-        [status, id]
+        [id]
       );
+      if (updateRes.rows.length === 0) {
+        return sendError(res, "CONFLICT", "Booking has already been updated or processed.", 409);
+      }
+    } else if (status === "CANCELLED") {
+      updateRes = await query(
+        `UPDATE bookings 
+         SET status = 'CANCELLED', 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND status IN ('PENDING', 'ACCEPTED')
+         RETURNING *`,
+        [id]
+      );
+      if (updateRes.rows.length === 0) {
+        return sendError(res, "CONFLICT", "Booking cannot be cancelled because its status has already progressed.", 409);
+      }
     }
     if (status === "ACCEPTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
@@ -98277,7 +98359,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     if (booking.status !== "ACCEPTED") {
       return sendError(res, "BAD_REQUEST", `Cannot verify handover for booking with status ${booking.status}`, 400);
     }
-    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
     const startTimestamp = parseToUtcTimestamp(
       booking.start_date_str || booking.start_date,
       booking.start_time || "10:00",
@@ -98303,12 +98385,12 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
       );
     }
     const lockoutKey = `pickup_${id}_${userId}`;
-    const lockoutStatus = checkCodeLockout(lockoutKey);
+    const lockoutStatus = await checkCodeLockout(lockoutKey);
     if (lockoutStatus.locked) {
       return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
     }
     if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
-      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const attempts = await recordFailedCodeAttempt(lockoutKey);
       const remaining = Math.max(0, 5 - attempts);
       return sendError(
         res,
@@ -98317,22 +98399,34 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
         400
       );
     }
-    resetCodeAttempts(lockoutKey);
+    await resetCodeAttempts(lockoutKey);
     const returnCode = import_crypto.default.randomInt(1e5, 1e6).toString();
     const client = await pool.connect();
     let updateRes;
     try {
       await client.query("BEGIN");
+      const lockRes = await client.query(
+        `SELECT id, status, handed_over_at FROM bookings WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (lockRes.rows.length === 0 || lockRes.rows[0].status !== "ACCEPTED" || lockRes.rows[0].handed_over_at) {
+        await client.query("ROLLBACK");
+        return sendError(res, "CONFLICT", "Handover has already been confirmed or booking status has progressed.", 409);
+      }
       updateRes = await client.query(
         `UPDATE bookings 
          SET status = 'HANDED_OVER', 
              handed_over_at = CURRENT_TIMESTAMP, 
              return_code = $1, 
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
+         WHERE id = $2 AND status = 'ACCEPTED' AND handed_over_at IS NULL
          RETURNING *`,
         [returnCode, id]
       );
+      if (updateRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return sendError(res, "CONFLICT", "Handover has already been confirmed.", 409);
+      }
       await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await client.query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
@@ -98348,7 +98442,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     }
     const sDate = booking.start_date_str || booking.start_date;
     const eDate = booking.end_date_str || booking.end_date;
-    await createNotification({
+    createNotification({
       userId: booking.borrower_id,
       senderId: booking.lender_id,
       bookingId: id,
@@ -98357,8 +98451,8 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
       type: "BOOKING_RECEIVED",
       title: "Handover Completed",
       body: `${booking.lender_name || "Owner"} handed over "${booking.item_title}" to you.`
-    });
-    await createNotification({
+    }).catch((err) => console.warn("Failed to send pickup notification:", err));
+    createNotification({
       userId: booking.lender_id,
       senderId: booking.borrower_id,
       bookingId: id,
@@ -98367,7 +98461,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
       type: "BOOKING_HANDED_OVER",
       title: "Handover Completed",
       body: `${booking.borrower_name || "Borrower"} received "${booking.item_title}".`
-    });
+    }).catch((err) => console.warn("Failed to send pickup notification:", err));
     const updatedRow = { ...updateRes.rows[0] };
     if (!isLender && !isAdmin) {
       updatedRow.return_code = null;
@@ -98414,7 +98508,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     if (booking.status !== "HANDED_OVER") {
       return sendError(res, "BAD_REQUEST", `Cannot verify return for booking with status ${booking.status}`, 400);
     }
-    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
     const returnTimestamp = parseToUtcTimestamp(
       booking.end_date_str || booking.start_date_str,
       booking.end_time || "18:00",
@@ -98429,12 +98523,12 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
       );
     }
     const lockoutKey = `return_${id}_${userId}`;
-    const lockoutStatus = checkCodeLockout(lockoutKey);
+    const lockoutStatus = await checkCodeLockout(lockoutKey);
     if (lockoutStatus.locked) {
       return sendError(res, "TOO_MANY_REQUESTS", `Too many failed attempts. Return code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
     }
     if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
-      const attempts = recordFailedCodeAttempt(lockoutKey);
+      const attempts = await recordFailedCodeAttempt(lockoutKey);
       const remaining = Math.max(0, 5 - attempts);
       return sendError(
         res,
@@ -98443,12 +98537,20 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
         400
       );
     }
-    resetCodeAttempts(lockoutKey);
+    await resetCodeAttempts(lockoutKey);
     const isFree = Number(booking.total_price) === 0;
     const client = await pool.connect();
     let updateRes;
     try {
       await client.query("BEGIN");
+      const lockRes = await client.query(
+        `SELECT id, status, returned_at FROM bookings WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (lockRes.rows.length === 0 || lockRes.rows[0].status !== "HANDED_OVER" || lockRes.rows[0].returned_at) {
+        await client.query("ROLLBACK");
+        return sendError(res, "CONFLICT", "Return has already been confirmed or booking status has progressed.", 409);
+      }
       updateRes = await client.query(
         `UPDATE bookings 
          SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
@@ -98456,10 +98558,14 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
              completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
              payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1
+         WHERE id = $1 AND status = 'HANDED_OVER' AND returned_at IS NULL
          RETURNING *`,
         [id, isFree]
       );
+      if (updateRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return sendError(res, "CONFLICT", "Return has already been confirmed.", 409);
+      }
       await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await client.query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
@@ -98500,8 +98606,14 @@ router4.post("/:id/submit-payment", authMiddleware, async (req, res, next) => {
       return sendError(res, "NOT_FOUND", "Booking not found", 404);
     }
     const booking = bookingRes.rows[0];
-    if (!booking.returned_at && booking.status !== "HANDED_OVER" && booking.status !== "COMPLETED") {
-      return sendError(res, "BAD_REQUEST", "Payment can only be submitted once the product has been handed over or returned.", 400);
+    if (!booking.returned_at && booking.status !== "COMPLETED") {
+      return sendError(res, "BAD_REQUEST", "Payment can only be submitted once the product has been returned to the owner.", 400);
+    }
+    if (booking.payment_status === "CONFIRMED") {
+      return sendError(res, "BAD_REQUEST", "Payment has already been confirmed by the owner.", 400);
+    }
+    if (booking.payment_status === "SUBMITTED") {
+      return sendError(res, "BAD_REQUEST", "Payment has already been marked as sent and is awaiting owner confirmation.", 400);
     }
     const myIds = await resolveUserIds(userId);
     if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== "ADMIN") {
@@ -98578,7 +98690,7 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
     } finally {
       client.release();
     }
-    await createNotification({
+    createNotification({
       userId: booking.borrower_id,
       senderId: booking.lender_id,
       bookingId: id,
@@ -98587,7 +98699,7 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
       type: "BOOKING_COMPLETED",
       title: "Rental Completed",
       body: `${booking.lender_name || "Owner"} confirmed the return of "${booking.item_title}".`
-    });
+    }).catch((err) => console.warn("Failed to send completion notification to borrower:", err));
     return sendSuccess(res, updateRes.rows[0], "Product returned successfully! You can now leave a review.");
   } catch (error) {
     next(error);
@@ -98725,6 +98837,9 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     next(error);
   }
 });
+setInterval(() => {
+  checkAndAutoCancelExpiredBookings().catch((err) => console.warn("Background auto-cancellation error:", err));
+}, 60 * 1e3);
 var bookings_routes_default = router4;
 
 // src/modules/analytics/analytics.routes.ts
@@ -102929,6 +103044,14 @@ var runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
       CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
       CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+
+      -- 4.9. VERIFICATION ATTEMPTS (Persistent distributed rate limiting & lockout for handover codes)
+      CREATE TABLE IF NOT EXISTS verification_attempts (
+        key TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TIMESTAMP WITH TIME ZONE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
     await client.query(`DROP VIEW IF EXISTS bookings_3nf_v, messages_3nf_v, user_scores_3nf_v CASCADE;`);
     await client.query(`UPDATE users SET pincode = NULL WHERE pincode = '' OR (pincode IS NOT NULL AND TRIM(pincode) = '');`);

@@ -389,6 +389,7 @@ export const api = {
     requires_pickup?: boolean;
     pickup_fee?: number;
     message?: string;
+    timezone_offset_minutes?: number;
   }): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings`, {
       method: 'POST',

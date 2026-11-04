@@ -379,6 +379,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         total_price: totalCost,
         is_borrowing: rentType === 'Borrow',
         booking_type: rentType === 'Borrow' ? 'BORROW' : 'RENT',
+        timezone_offset_minutes: new Date().getTimezoneOffset(),
         requires_delivery: isDeliveredByLender,
         delivery_fee: deliveryCost,
         requires_pickup: isCollectedByLender,

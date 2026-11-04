@@ -426,6 +426,14 @@ export const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id);
       CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
       CREATE INDEX IF NOT EXISTS idx_support_tickets_type ON support_tickets(type);
+
+      -- 4.9. VERIFICATION ATTEMPTS (Persistent distributed rate limiting & lockout for handover codes)
+      CREATE TABLE IF NOT EXISTS verification_attempts (
+        key TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TIMESTAMP WITH TIME ZONE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Clean up unnecessary helper views to maintain clean database tables

@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sanitizeTzOffset = sanitizeTzOffset;
 const express_1 = require("express");
 const crypto_1 = __importDefault(require("crypto"));
 const zod_1 = require("zod");
@@ -12,39 +13,78 @@ const auth_1 = require("../../middleware/auth");
 const notifications_service_1 = require("../notifications/notifications.service");
 const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
-// Rate limiting & lockout tracker for 6-digit verification codes (prevents brute-force)
-const failedCodeAttempts = new Map();
-function checkCodeLockout(key) {
-    const record = failedCodeAttempts.get(key);
-    if (!record)
+// Sanitize timezone offset to valid bounds (-14h to +12h: -840 to 720 minutes)
+function sanitizeTzOffset(tzOffsetMinutes) {
+    if (typeof tzOffsetMinutes === 'number' && !isNaN(tzOffsetMinutes) && tzOffsetMinutes >= -840 && tzOffsetMinutes <= 720) {
+        return tzOffsetMinutes;
+    }
+    return -330; // Default IST UTC+5:30
+}
+// Persistent distributed rate limiting & lockout tracker for 6-digit verification codes (backed by verification_attempts table)
+const memoryLockouts = new Map();
+async function checkCodeLockout(key) {
+    try {
+        const res = await (0, db_1.query)(`SELECT attempts, locked_until FROM verification_attempts WHERE key = $1`, [key]);
+        if (res.rows.length === 0)
+            return { locked: false };
+        const row = res.rows[0];
+        if (row.locked_until) {
+            const lockedUntilMs = new Date(row.locked_until).getTime();
+            const now = Date.now();
+            if (lockedUntilMs > now) {
+                return { locked: true, waitSeconds: Math.ceil((lockedUntilMs - now) / 1000) };
+            }
+            // Lockout expired: reset attempts
+            await (0, db_1.query)(`UPDATE verification_attempts SET attempts = 0, locked_until = NULL WHERE key = $1`, [key]).catch(() => { });
+        }
         return { locked: false };
-    const now = Date.now();
-    if (record.lockedUntil > now) {
-        return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1000) };
     }
-    if (record.lockedUntil <= now && record.attempts >= 5) {
-        failedCodeAttempts.delete(key);
+    catch {
+        const record = memoryLockouts.get(key);
+        if (!record)
+            return { locked: false };
+        const now = Date.now();
+        if (record.lockedUntil > now) {
+            return { locked: true, waitSeconds: Math.ceil((record.lockedUntil - now) / 1000) };
+        }
+        return { locked: false };
     }
-    return { locked: false };
 }
-function recordFailedCodeAttempt(key) {
-    const now = Date.now();
-    const record = failedCodeAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
-    record.attempts += 1;
-    if (record.attempts >= 5) {
-        record.lockedUntil = now + (15 * 60 * 1000); // 15-minute lockout after 5 consecutive failures
+async function recordFailedCodeAttempt(key) {
+    try {
+        const res = await (0, db_1.query)(`INSERT INTO verification_attempts (key, attempts, locked_until, updated_at)
+       VALUES ($1, 1, NULL, CURRENT_TIMESTAMP)
+       ON CONFLICT (key) DO UPDATE
+       SET attempts = verification_attempts.attempts + 1,
+           locked_until = CASE WHEN verification_attempts.attempts + 1 >= 5 THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE NULL END,
+           updated_at = CURRENT_TIMESTAMP
+       RETURNING attempts`, [key]);
+        return res.rows[0]?.attempts || 1;
     }
-    failedCodeAttempts.set(key, record);
-    return record.attempts;
+    catch {
+        const now = Date.now();
+        const record = memoryLockouts.get(key) || { attempts: 0, lockedUntil: 0 };
+        record.attempts += 1;
+        if (record.attempts >= 5) {
+            record.lockedUntil = now + (15 * 60 * 1000);
+        }
+        memoryLockouts.set(key, record);
+        return record.attempts;
+    }
 }
-function resetCodeAttempts(key) {
-    failedCodeAttempts.delete(key);
+async function resetCodeAttempts(key) {
+    try {
+        await (0, db_1.query)(`DELETE FROM verification_attempts WHERE key = $1`, [key]);
+    }
+    catch {
+        memoryLockouts.delete(key);
+    }
 }
 const createBookingSchema = zod_1.z.object({
     item_id: zod_1.z.string().uuid('Invalid item ID'),
-    start_date: zod_1.z.string().min(1, 'Start date is required'),
+    start_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format'),
     start_time: zod_1.z.string().optional(),
-    end_date: zod_1.z.string().optional(),
+    end_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format').optional(),
     end_time: zod_1.z.string().optional(),
     duration_days: zod_1.z.number().int().positive('Duration must be at least 1 day'),
     total_price: zod_1.z.number().min(0).optional(),
@@ -59,22 +99,23 @@ const createBookingSchema = zod_1.z.object({
     requires_pickup: zod_1.z.boolean().optional().default(false),
     pickup_fee: zod_1.z.number().min(0).optional().default(0),
     message: zod_1.z.string().optional(),
-    timezone_offset_minutes: zod_1.z.number().optional(),
+    timezone_offset_minutes: zod_1.z.number().int().min(-840).max(720).optional(),
 });
 const updateStatusSchema = zod_1.z.object({
     status: zod_1.z.enum(['ACCEPTED', 'REJECTED', 'CANCELLED']),
-    timezone_offset_minutes: zod_1.z.number().optional(),
+    timezone_offset_minutes: zod_1.z.number().int().min(-840).max(720).optional(),
+});
+const verifyCodeSchema = zod_1.z.object({
+    code: zod_1.z.string().length(6, 'Verification code must be exactly 6 digits'),
+    timezone_offset_minutes: zod_1.z.number().int().min(-840).max(720).optional(),
 });
 function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
     const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
     const cleanTime = (timeStr && timeStr.trim() && timeStr.slice(0, 5) !== '00:00') ? timeStr.slice(0, 5) : '10:00';
     const [hour, minute] = cleanTime.split(':').map(Number);
-    if (typeof tzOffsetMinutes === 'number') {
-        const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-        return localUtcMs + (tzOffsetMinutes * 60000);
-    }
-    const d = new Date(`${dateStr.slice(0, 10)}T${cleanTime}:00`);
-    return d.getTime();
+    const effectiveOffset = sanitizeTzOffset(tzOffsetMinutes);
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    return localUtcMs + (effectiveOffset * 60000);
 }
 let lastBookingsExpirationRun = 0;
 /**
@@ -189,9 +230,6 @@ async function checkAndAutoCancelExpiredBookings() {
         console.warn('checkAndAutoCancelExpiredBookings notice:', err);
     }
 }
-const verifyCodeSchema = zod_1.z.object({
-    code: zod_1.z.string().min(4, 'Verification code is required'),
-});
 const submitReviewSchema = zod_1.z.object({
     rating: zod_1.z.number().int().min(1, 'Rating must be between 1 and 5 stars').max(5, 'Rating must be between 1 and 5 stars'),
     comment: zod_1.z.string().max(1000, 'Comment cannot exceed 1000 characters').optional().default(''),
@@ -200,11 +238,12 @@ const submitReviewSchema = zod_1.z.object({
 // Create Booking Proposal ("Snag for the Weekend")
 router.post('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
+        await checkAndAutoCancelExpiredBookings();
         const validated = createBookingSchema.parse(req.body);
         const borrowerId = req.user.id;
         // Fetch Item & Owner
         const itemRes = await (0, db_1.query)(`SELECT id, owner_id, price_per_day, title, status, available_for_borrowing, 
-              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category
+              offers_delivery, delivery_fee, offers_pickup, pickup_fee, locality, image_urls, category, max_duration_days
        FROM items WHERE id = $1`, [validated.item_id]);
         if (itemRes.rows.length === 0) {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Item not found', 404);
@@ -224,23 +263,38 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
         if (blockCheck.rows.length > 0) {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Cannot rent from this user due to a block.', 403);
         }
-        // Determine concrete end date for rental period
+        // Determine concrete end date and validate calendar duration
         let finalEndDate = validated.end_date;
-        if (!finalEndDate) {
+        let durationDays = validated.duration_days;
+        if (finalEndDate) {
+            const [sY, sM, sD] = validated.start_date.split('-').map(Number);
+            const [eY, eM, eD] = finalEndDate.split('-').map(Number);
+            const sUtc = Date.UTC(sY, (sM || 1) - 1, sD || 1);
+            const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
+            if (eUtc < sUtc) {
+                return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Return end date cannot be earlier than start date.', 400);
+            }
+            const calendarDiff = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
+            durationDays = Math.max(1, calendarDiff);
+        }
+        else {
             const sDate = new Date(validated.start_date);
             if (!isNaN(sDate.getTime())) {
-                sDate.setDate(sDate.getDate() + Math.max(0, validated.duration_days - 1));
+                sDate.setDate(sDate.getDate() + Math.max(0, durationDays - 1));
                 finalEndDate = sDate.toISOString().split('T')[0];
             }
             else {
                 finalEndDate = validated.start_date;
             }
         }
+        // Enforce item's max_duration_days
+        const maxAllowedDays = Number(item.max_duration_days) || 30;
+        if (durationDays > maxAllowedDays) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', `Rental duration (${durationDays} days) exceeds maximum allowed rental period (${maxAllowedDays} days) for this item.`, 400);
+        }
         // PAST TIME VALIDATION:
         // Reject any booking where the scheduled start time or return time has already passed
-        const tzOffset = typeof validated.timezone_offset_minutes === 'number'
-            ? validated.timezone_offset_minutes
-            : -330; // Default IST UTC+5:30
+        const tzOffset = sanitizeTzOffset(validated.timezone_offset_minutes);
         const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
         // Allow 2-minute buffer for network transit and clock differences
         const currentTimestampWithGrace = Date.now() - (2 * 60 * 1000);
@@ -275,9 +329,11 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
                 return (0, response_1.sendError)(res, 'CONFLICT', `This product is unavailable from ${conflict.start_date} ${conflict.start_time || '10:00'} to ${conflict.end_date} ${conflict.end_time || '18:00'} because it is already reserved. Please pick different dates or hours on the calendar.`, 409);
             }
         }
-        // Check borrowing permission if user chose free borrowing
+        // Check borrowing permission vs paid rental
         const itemRate = Number(item.price_per_day || 0);
-        const wantsBorrowing = validated.is_borrowing === true || validated.booking_type === 'BORROW' || (validated.total_price === 0 && itemRate === 0);
+        const wantsBorrowing = itemRate <= 0
+            ? true
+            : (validated.booking_type === 'BORROW' || validated.is_borrowing === true);
         if (wantsBorrowing && itemRate > 0 && !item.available_for_borrowing) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The owner has not made this item available for free borrowing. It is only available for paid rent.', 400);
         }
@@ -297,14 +353,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             }
         }
         // SERVER-SIDE CALCULATION OF DURATION AND TOTAL PRICE:
-        // Accurately compute duration from calendar date range
-        const [sY, sM, sD] = validated.start_date.split('-').map(Number);
-        const [eY, eM, eD] = finalEndDate.split('-').map(Number);
-        const sUtc = Date.UTC(sY, (sM || 1) - 1, sD || 1);
-        const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
-        const calendarDiff = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
-        const durationDays = Math.max(1, calendarDiff);
-        const isFreeBorrow = wantsBorrowing && (itemRate <= 0 || item.available_for_borrowing);
+        const isFreeBorrow = itemRate <= 0 || (wantsBorrowing && Boolean(item.available_for_borrowing));
         const baseCost = isFreeBorrow ? 0 : itemRate * durationDays;
         let deliveryFee = 0;
         if (validated.requires_delivery) {
@@ -454,13 +503,15 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         COALESCE(i.category, 'Other') AS item_category,
         COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
         COALESCE(i.price_per_day, 0) AS item_rate,
-        COALESCE(b.pickup_locality, i.address_text, lender.address_text) AS pickup_address,
-        COALESCE(b.return_locality, i.address_text, lender.address_text) AS return_address,
-        lender.address_text AS lender_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
-        borrower.phone AS borrower_phone, borrower.email AS borrower_email,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.phone ELSE NULL END AS borrower_phone,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.email ELSE NULL END AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
-        lender.phone AS lender_phone, lender.email AS lender_email,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.phone ELSE NULL END AS lender_phone,
+        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.email ELSE NULL END AS lender_email,
         rev.id AS user_review_id,
         rev.rating AS user_rating,
         rev.comment AS user_comment,
@@ -490,12 +541,13 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         const result = await (0, db_1.query)(sql, params);
         // Enforce pickup code visibility:
         // Never reveal the pickup verification code to the borrower before the scheduled pickup time
+        const queryTz = sanitizeTzOffset(req.query.timezone_offset_minutes ? Number(req.query.timezone_offset_minutes) : undefined);
         const currentMs = Date.now();
         for (const b of result.rows) {
             if (b.status === 'ACCEPTED' && b.pickup_code) {
                 const sDate = b.start_date;
                 const sTime = (b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== '00:00') ? b.start_time.slice(0, 5) : '10:00';
-                const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+                const startMs = parseToUtcTimestamp(sDate, sTime, queryTz);
                 // Unlock 5 minutes before scheduled start time for the meetup
                 if (currentMs < startMs - (5 * 60 * 1000)) {
                     b.pickup_code = null;
@@ -505,8 +557,10 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         // Also query pending proposals from messages so custom gear requests, lend offers, and booking proposals appear in Booking Requests
         const proposalsRes = await (0, db_1.query)(`SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
-        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
-        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address,
+        sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, 
+        NULL AS sender_phone, NULL AS sender_email, sender.locality AS sender_locality, sender.locality AS sender_address,
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, 
+        NULL AS receiver_phone, NULL AS receiver_email, receiver.locality AS receiver_locality, receiver.locality AS receiver_address,
         req.status AS request_status
       FROM messages m
       LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
@@ -761,9 +815,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         let updateRes;
         let conflictingPendingList = [];
         if (status === 'ACCEPTED') {
-            const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
-                ? req.body.timezone_offset_minutes
-                : -330;
+            const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
             const startTimestamp = parseToUtcTimestamp(sDate, booking.start_time || '10:00', tzOffset);
             if (startTimestamp < Date.now()) {
                 return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This booking request cannot be accepted because its scheduled pickup time has already passed. Please ask the renter to send a request for upcoming dates.', 400);
@@ -771,8 +823,13 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
             const client = await db_1.pool.connect();
             try {
                 await client.query('BEGIN');
-                // ATOMIC LOCK: Lock the item row to prevent concurrent race conditions
+                // ATOMIC LOCK: Lock the item row and the booking row to prevent concurrent race conditions
                 await client.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [booking.item_id]);
+                const lockRes = await client.query('SELECT id, status FROM bookings WHERE id = $1 FOR UPDATE', [id]);
+                if (lockRes.rows.length === 0 || lockRes.rows[0].status !== 'PENDING') {
+                    await client.query('ROLLBACK');
+                    return (0, response_1.sendError)(res, 'CONFLICT', 'Booking has already been accepted, rejected, or cancelled.', 409);
+                }
                 // Overlap check against bookings already ACCEPTED or HANDED_OVER
                 const conflictRes = await client.query(`SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
                   TO_CHAR(COALESCE(end_date, (start_date + ((GREATEST(duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
@@ -832,8 +889,12 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                pickup_code = COALESCE(pickup_code, $1),
                return_code = NULL,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2
+           WHERE id = $2 AND status = 'PENDING'
            RETURNING *`, [pickupCode, id]);
+                if (updateRes.rows.length === 0) {
+                    await client.query('ROLLBACK');
+                    return (0, response_1.sendError)(res, 'CONFLICT', 'Booking has already been updated or processed.', 409);
+                }
                 await client.query('COMMIT');
             }
             catch (txErr) {
@@ -856,12 +917,25 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
                 }).catch(() => { });
             }
         }
-        else {
+        else if (status === 'REJECTED') {
             updateRes = await (0, db_1.query)(`UPDATE bookings 
-         SET status = $1, 
+         SET status = 'REJECTED', 
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`, [status, id]);
+         WHERE id = $1 AND status = 'PENDING'
+         RETURNING *`, [id]);
+            if (updateRes.rows.length === 0) {
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Booking has already been updated or processed.', 409);
+            }
+        }
+        else if (status === 'CANCELLED') {
+            updateRes = await (0, db_1.query)(`UPDATE bookings 
+         SET status = 'CANCELLED', 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND status IN ('PENDING', 'ACCEPTED')
+         RETURNING *`, [id]);
+            if (updateRes.rows.length === 0) {
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Booking cannot be cancelled because its status has already progressed.', 409);
+            }
         }
         // Sync item status & trigger lifecycle notifications
         if (status === 'ACCEPTED') {
@@ -993,9 +1067,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         }
         // TIMING WINDOW CHECK:
         // Pickup code is not active until the scheduled pickup time arrives
-        const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
-            ? req.body.timezone_offset_minutes
-            : -330;
+        const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
         const startTimestamp = parseToUtcTimestamp(booking.start_date_str || booking.start_date, booking.start_time || '10:00', tzOffset);
         // 1-Hour Verification Window Check:
         // If code was not provided within 1 hour of the scheduled start time, request cancels on its own.
@@ -1011,29 +1083,38 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         }
         // Rate limiting & Lockout check
         const lockoutKey = `pickup_${id}_${userId}`;
-        const lockoutStatus = checkCodeLockout(lockoutKey);
+        const lockoutStatus = await checkCodeLockout(lockoutKey);
         if (lockoutStatus.locked) {
             return (0, response_1.sendError)(res, 'TOO_MANY_REQUESTS', `Too many failed attempts. Code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
         }
         if (!booking.pickup_code || booking.pickup_code.trim() !== code.trim()) {
-            const attempts = recordFailedCodeAttempt(lockoutKey);
+            const attempts = await recordFailedCodeAttempt(lockoutKey);
             const remaining = Math.max(0, 5 - attempts);
             return (0, response_1.sendError)(res, 'BAD_REQUEST', `Incorrect 6-digit handover code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : 'Too many failed attempts. Locked for 15 minutes.'}`, 400);
         }
-        resetCodeAttempts(lockoutKey);
+        await resetCodeAttempts(lockoutKey);
         // Generate Return Code for the next stage (Receiving back the product) cryptographically
         const returnCode = crypto_1.default.randomInt(100000, 1000000).toString();
         const client = await db_1.pool.connect();
         let updateRes;
         try {
             await client.query('BEGIN');
+            const lockRes = await client.query(`SELECT id, status, handed_over_at FROM bookings WHERE id = $1 FOR UPDATE`, [id]);
+            if (lockRes.rows.length === 0 || lockRes.rows[0].status !== 'ACCEPTED' || lockRes.rows[0].handed_over_at) {
+                await client.query('ROLLBACK');
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Handover has already been confirmed or booking status has progressed.', 409);
+            }
             updateRes = await client.query(`UPDATE bookings 
          SET status = 'HANDED_OVER', 
              handed_over_at = CURRENT_TIMESTAMP, 
              return_code = $1, 
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
+         WHERE id = $2 AND status = 'ACCEPTED' AND handed_over_at IS NULL
          RETURNING *`, [returnCode, id]);
+            if (updateRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Handover has already been confirmed.', 409);
+            }
             // Keep item status as AVAILABLE since item is rented only for agreed dates
             await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
             // Send chat system message
@@ -1051,7 +1132,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         const sDate = booking.start_date_str || booking.start_date;
         const eDate = booking.end_date_str || booking.end_date;
         // 1. Notify Borrower: Gear Received
-        await (0, notifications_service_1.createNotification)({
+        (0, notifications_service_1.createNotification)({
             userId: booking.borrower_id,
             senderId: booking.lender_id,
             bookingId: id,
@@ -1060,9 +1141,9 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
             type: 'BOOKING_RECEIVED',
             title: 'Handover Completed',
             body: `${booking.lender_name || 'Owner'} handed over "${booking.item_title}" to you.`,
-        });
+        }).catch((err) => console.warn('Failed to send pickup notification:', err));
         // 2. Notify Lender: Handover Verified
-        await (0, notifications_service_1.createNotification)({
+        (0, notifications_service_1.createNotification)({
             userId: booking.lender_id,
             senderId: booking.borrower_id,
             bookingId: id,
@@ -1071,7 +1152,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
             type: 'BOOKING_HANDED_OVER',
             title: 'Handover Completed',
             body: `${booking.borrower_name || 'Borrower'} received "${booking.item_title}".`,
-        });
+        }).catch((err) => console.warn('Failed to send pickup notification:', err));
         const updatedRow = { ...updateRes.rows[0] };
         if (!isLender && !isAdmin) {
             updatedRow.return_code = null;
@@ -1119,9 +1200,7 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
         }
         // TIMING WINDOW CHECK:
         // Return code is not active until the scheduled return / delivery time arrives
-        const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
-            ? req.body.timezone_offset_minutes
-            : -330;
+        const tzOffset = sanitizeTzOffset(req.body.timezone_offset_minutes);
         const returnTimestamp = parseToUtcTimestamp(booking.end_date_str || booking.start_date_str, booking.end_time || '18:00', tzOffset);
         // Allow 2-minute clock skew buffer
         if (Date.now() < returnTimestamp - (2 * 60 * 1000)) {
@@ -1129,29 +1208,38 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
         }
         // Rate limiting & Lockout check
         const lockoutKey = `return_${id}_${userId}`;
-        const lockoutStatus = checkCodeLockout(lockoutKey);
+        const lockoutStatus = await checkCodeLockout(lockoutKey);
         if (lockoutStatus.locked) {
             return (0, response_1.sendError)(res, 'TOO_MANY_REQUESTS', `Too many failed attempts. Return code verification is locked for ${lockoutStatus.waitSeconds} seconds.`, 429);
         }
         if (!booking.return_code || booking.return_code.trim() !== code.trim()) {
-            const attempts = recordFailedCodeAttempt(lockoutKey);
+            const attempts = await recordFailedCodeAttempt(lockoutKey);
             const remaining = Math.max(0, 5 - attempts);
             return (0, response_1.sendError)(res, 'BAD_REQUEST', `Incorrect 6-digit return code. ${remaining > 0 ? `${remaining} attempts remaining before lockout.` : 'Too many failed attempts. Locked for 15 minutes.'}`, 400);
         }
-        resetCodeAttempts(lockoutKey);
+        await resetCodeAttempts(lockoutKey);
         const isFree = Number(booking.total_price) === 0;
         const client = await db_1.pool.connect();
         let updateRes;
         try {
             await client.query('BEGIN');
+            const lockRes = await client.query(`SELECT id, status, returned_at FROM bookings WHERE id = $1 FOR UPDATE`, [id]);
+            if (lockRes.rows.length === 0 || lockRes.rows[0].status !== 'HANDED_OVER' || lockRes.rows[0].returned_at) {
+                await client.query('ROLLBACK');
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Return has already been confirmed or booking status has progressed.', 409);
+            }
             updateRes = await client.query(`UPDATE bookings 
          SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
              returned_at = CURRENT_TIMESTAMP,
              completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
              payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1
+         WHERE id = $1 AND status = 'HANDED_OVER' AND returned_at IS NULL
          RETURNING *`, [id, isFree]);
+            if (updateRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return (0, response_1.sendError)(res, 'CONFLICT', 'Return has already been confirmed.', 409);
+            }
             // Release item back to AVAILABLE
             await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
             // Send chat system message
@@ -1195,8 +1283,14 @@ router.post('/:id/submit-payment', auth_1.authMiddleware, async (req, res, next)
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'Booking not found', 404);
         }
         const booking = bookingRes.rows[0];
-        if (!booking.returned_at && booking.status !== 'HANDED_OVER' && booking.status !== 'COMPLETED') {
-            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been handed over or returned.', 400);
+        if (!booking.returned_at && booking.status !== 'COMPLETED') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment can only be submitted once the product has been returned to the owner.', 400);
+        }
+        if (booking.payment_status === 'CONFIRMED') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment has already been confirmed by the owner.', 400);
+        }
+        if (booking.payment_status === 'SUBMITTED') {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Payment has already been marked as sent and is awaiting owner confirmation.', 400);
         }
         const myIds = await (0, user_1.resolveUserIds)(userId);
         if (!myIds.includes(String(booking.borrower_id)) && req.user.role !== 'ADMIN') {
@@ -1264,7 +1358,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
             client.release();
         }
         // Notify Borrower: Rental Completed
-        await (0, notifications_service_1.createNotification)({
+        (0, notifications_service_1.createNotification)({
             userId: booking.borrower_id,
             senderId: booking.lender_id,
             bookingId: id,
@@ -1273,7 +1367,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
             type: 'BOOKING_COMPLETED',
             title: 'Rental Completed',
             body: `${booking.lender_name || 'Owner'} confirmed the return of "${booking.item_title}".`,
-        });
+        }).catch((err) => console.warn('Failed to send completion notification to borrower:', err));
         return (0, response_1.sendSuccess)(res, updateRes.rows[0], 'Product returned successfully! You can now leave a review.');
     }
     catch (error) {
@@ -1417,4 +1511,8 @@ router.post('/:id/review', auth_1.authMiddleware, async (req, res, next) => {
         next(error);
     }
 });
+// Run background auto-cancellation for expired bookings periodically every 60 seconds
+setInterval(() => {
+    checkAndAutoCancelExpiredBookings().catch((err) => console.warn('Background auto-cancellation error:', err));
+}, 60 * 1000);
 exports.default = router;

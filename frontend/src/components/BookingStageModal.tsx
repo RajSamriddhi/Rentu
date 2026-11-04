@@ -23,6 +23,7 @@ import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { formatTime12 } from '../lib/formatters';
+import { generateQrDataUri } from '../lib/qr';
 
 interface BookingStageModalProps {
   booking: Booking | null;
@@ -188,6 +189,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const [successMessage, setSuccessMessage] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [hasBarcodeDetector, setHasBarcodeDetector] = useState<boolean>(true);
   const [isReturnActive, setIsReturnActive] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -196,6 +198,7 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<any>(null);
 
   // Live real-time tick every second when modal is open
   useEffect(() => {
@@ -205,6 +208,25 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [isOpen]);
+
+  // Live background poll every 4 seconds to synchronize partner actions, code unlocks, and stage transitions
+  useEffect(() => {
+    if (!isOpen || !booking?.id) return;
+    const pollInterval = setInterval(async () => {
+      try {
+        const bookingsList = await api.getBookings();
+        if (Array.isArray(bookingsList)) {
+          const fresh = bookingsList.find((b: any) => b.id === booking.id);
+          if (fresh) {
+            onUpdated(fresh);
+          }
+        }
+      } catch (err) {
+        // Silently ignore background poll errors
+      }
+    }, 4000);
+    return () => clearInterval(pollInterval);
+  }, [isOpen, booking?.id]);
 
   useEffect(() => {
     // Reset transient errors/state when modal opens for a booking
@@ -359,12 +381,49 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+
+      // Live frame barcode scanning with native BarcodeDetector
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        setHasBarcodeDetector(true);
+        const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+        scanIntervalRef.current = setInterval(async () => {
+          if (videoRef.current && videoRef.current.readyState >= 2) {
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0) {
+                const raw = barcodes[0].rawValue || '';
+                const match = raw.match(/\b\d{6}\b/);
+                if (match) {
+                  const code = match[0];
+                  handleStopCamera();
+                  if (currentStage === 2) {
+                    setPickupCodeInput(code);
+                    handleVerifyPickup(code);
+                  } else if (currentStage === 4) {
+                    setReturnCodeInput(code);
+                    handleVerifyReturn(code);
+                  }
+                }
+              }
+            } catch {
+              // Frame decoding error or empty frame
+            }
+          }
+        }, 300);
+      } else {
+        setHasBarcodeDetector(false);
+      }
     } catch (err) {
       console.warn('Camera access denied or unavailable:', err);
+      setIsCameraActive(false);
     }
   };
 
   const handleStopCamera = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -469,12 +528,12 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
     { number: 5, title: 'Payment & Finish', desc: 'Take payment & finish' },
   ];
 
-  // Fast standard QR rendering for pickup and return
+  // Completely offline client-side QR generation (zero third-party data leakage)
   const pickupQrUrl = booking.pickup_code
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_PICKUP:${booking.id}:${booking.pickup_code}`)}`
+    ? generateQrDataUri(`RENTU_PICKUP:${booking.id}:${booking.pickup_code}`)
     : '';
   const returnQrUrl = booking.return_code
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(`RENTU_RETURN:${booking.id}:${booking.return_code}`)}`
+    ? generateQrDataUri(`RENTU_RETURN:${booking.id}:${booking.return_code}`)
     : '';
 
   return (
@@ -837,9 +896,16 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     </button>
 
                     {isCameraActive && (
-                      <div className="mt-3 relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">
-                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                        <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-brand shadow-[0_0_8px_#ff007a]" />
+                      <div className="mt-3 space-y-2">
+                        <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">
+                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-brand shadow-[0_0_8px_#ff007a]" />
+                        </div>
+                        {!hasBarcodeDetector && (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold text-center">
+                            Note: Live QR auto-decoding is not supported in this browser. Please enter the 6-digit code directly above.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1066,9 +1132,16 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                     </button>
 
                     {isCameraActive && (
-                      <div className="mt-3 relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">
-                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                        <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-brand shadow-[0_0_8px_#ff007a]" />
+                      <div className="mt-3 space-y-2">
+                        <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-zinc-800">
+                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-brand shadow-[0_0_8px_#ff007a]" />
+                        </div>
+                        {!hasBarcodeDetector && (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold text-center">
+                            Note: Live QR auto-decoding is not supported in this browser. Please enter the 6-digit code directly above.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1181,25 +1254,37 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   </div>
                 ) : isLender ? (
                   <div className="space-y-3">
-                    {booking.payment_status === 'SUBMITTED' && (
-                      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                        <Clock className="w-4 h-4 shrink-0 text-amber-500" />
-                        <span>{otherPartyName} has marked payment of ₹{Number(booking.total_price)} as sent via {booking.payment_method || 'UPI'}. Please confirm once received!</span>
+                    {booking.payment_status === 'SUBMITTED' ? (
+                      <>
+                        <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                          <Clock className="w-4 h-4 shrink-0 text-amber-500" />
+                          <span>{otherPartyName} has marked payment of ₹{Number(booking.total_price)} as sent via {booking.payment_method || 'UPI'}. Please confirm once received!</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleConfirmPayment}
+                          disabled={isVerifying}
+                          className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold shadow-pink flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {isVerifying ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                          )}
+                          <span>Confirm Payment Received (₹{Number(booking.total_price)})</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="p-4 rounded-2xl bg-surface border border-divider text-center space-y-1.5">
+                        <div className="text-xs font-bold text-ink flex items-center justify-center gap-1.5">
+                          <Clock className="w-4 h-4 text-brand" />
+                          <span>Waiting for {otherPartyName} to send payment</span>
+                        </div>
+                        <p className="text-[11px] text-ink-secondary max-w-sm mx-auto">
+                          Once {otherPartyName} marks their payment of ₹{Number(booking.total_price)} as sent, the confirmation button will unlock here for you to verify.
+                        </p>
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleConfirmPayment}
-                      disabled={isVerifying}
-                      className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold shadow-pink flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {isVerifying ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                      )}
-                      <span>Confirm Payment Received (₹{Number(booking.total_price)})</span>
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
