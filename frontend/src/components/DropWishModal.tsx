@@ -96,16 +96,20 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   useEffect(() => {
     if (startDate && endDate) {
       try {
-        const s = new Date(`${startDate}T${startTime || '10:00'}`);
-        const e = new Date(`${endDate}T${endTime || '18:00'}`);
-        const diffMs = e.getTime() - s.getTime();
-        const days = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
-        setDurationDays(days);
+        const [sY, sM, sD] = startDate.split('-').map(Number);
+        const [eY, eM, eD] = endDate.split('-').map(Number);
+        if (sY && sM && sD && eY && eM && eD) {
+          const sUtc = Date.UTC(sY, sM - 1, sD);
+          const eUtc = Date.UTC(eY, eM - 1, eD);
+          const calDiff = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
+          const days = Math.max(1, calDiff);
+          setDurationDays(days);
+        }
       } catch (err) {
         // Fallback
       }
     }
-  }, [startDate, endDate, startTime, endTime]);
+  }, [startDate, endDate]);
 
   // Clean stopCamera defined before any early return to prevent TDZ
   const stopCamera = () => {

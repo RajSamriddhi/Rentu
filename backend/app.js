@@ -96646,9 +96646,9 @@ var createRequestSchema = external_exports.object({
   item_name: external_exports.string().min(3, "Item name must be at least 3 characters"),
   description: external_exports.string().min(5, "Description is required"),
   category: external_exports.string().default("Other"),
-  start_date: external_exports.string().min(1, "Needed date is required"),
+  start_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format"),
   start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
+  end_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format").optional(),
   end_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive().default(1),
   offered_amount: external_exports.number().min(0, "Offered budget cannot be negative"),
@@ -96670,9 +96670,9 @@ var updateRequestSchema = external_exports.object({
   item_name: external_exports.string().min(3).optional(),
   description: external_exports.string().min(5).optional(),
   category: external_exports.string().optional(),
-  start_date: external_exports.string().optional(),
+  start_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format").optional(),
   start_time: external_exports.string().optional(),
-  end_date: external_exports.string().optional(),
+  end_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format").optional(),
   end_time: external_exports.string().optional(),
   duration_days: external_exports.number().int().positive().optional(),
   offered_amount: external_exports.number().min(0).optional(),
@@ -96717,12 +96717,16 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
   try {
     await autoCancelExpiredRequests();
     const { category, locality, status = "OPEN", seekerId } = req.query;
+    const currentViewerId = req.user?.id;
+    const viewerIds = currentViewerId ? await resolveUserIds(currentViewerId, req.user?.email) : [];
+    const params = [viewerIds];
     let sql = `
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
         r.offered_amount, r.locality, 
-        NULL AS address_text, NULL AS pincode,
+        CASE WHEN r.seeker_id = ANY($1::text[]) THEN r.address_text ELSE NULL END AS address_text,
+        CASE WHEN r.seeker_id = ANY($1::text[]) THEN r.pincode ELSE NULL END AS pincode,
         r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
@@ -96738,7 +96742,6 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
     `;
-    const params = [];
     if (status && status !== "ALL") {
       params.push(status);
       sql += ` AND r.status = $${params.length}`;
@@ -96758,7 +96761,6 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
         sql += ` AND (r.locality ILIKE $${params.length} OR u.locality ILIKE $${params.length})`;
       }
     }
-    const currentViewerId = req.user?.id;
     if (currentViewerId) {
       params.push(currentViewerId);
       sql += ` AND r.seeker_id NOT IN (
@@ -96820,6 +96822,23 @@ router3.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
 router3.post("/", authMiddleware, async (req, res, next) => {
   try {
     const validated = createRequestSchema.parse(req.body);
+    const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
+    const [year, month, day] = validated.start_date.split("-").map(Number);
+    const cleanTime = validated.start_time && validated.start_time.trim() ? validated.start_time.slice(0, 5) : "10:00";
+    const [hour, minute] = cleanTime.split(":").map(Number);
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    const startMs = localUtcMs + tzOffset * 6e4;
+    if (startMs < Date.now() - 2 * 60 * 1e3) {
+      return sendError(res, "BAD_REQUEST", "Cannot create request for a date and time that has already passed.", 400);
+    }
+    let calculatedDuration = validated.duration_days;
+    if (validated.end_date) {
+      const [eY, eM, eD] = validated.end_date.split("-").map(Number);
+      const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
+      const sUtc = Date.UTC(year, (month || 1) - 1, day || 1);
+      const calDiff = Math.round((eUtc - sUtc) / (1e3 * 60 * 60 * 24));
+      calculatedDuration = Math.max(1, calDiff);
+    }
     await query(`
       INSERT INTO users (id, name, email, role, locality)
       VALUES ($1, $2, $3, 'USER', $4)
@@ -96855,7 +96874,7 @@ router3.post("/", authMiddleware, async (req, res, next) => {
         validated.start_time || "10:00",
         validated.end_date || null,
         validated.end_time || "18:00",
-        validated.duration_days,
+        calculatedDuration,
         validated.offered_amount,
         finalLocality,
         validated.address_text || finalLocality,
@@ -96983,6 +97002,17 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     if (request.status !== "OPEN") {
       return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
     }
+    const [year, month, day] = String(request.start_date).slice(0, 10).split("-").map(Number);
+    const cleanTime = request.start_time && request.start_time.trim() ? request.start_time.slice(0, 5) : "10:00";
+    const [hour, minute] = cleanTime.split(":").map(Number);
+    const tzOffset = -330;
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    const startMs = localUtcMs + tzOffset * 6e4;
+    if (startMs < Date.now() - 2 * 60 * 1e3) {
+      await query(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => {
+      });
+      return sendError(res, "BAD_REQUEST", "This request has expired and can no longer receive offers.", 400);
+    }
     const existingOffer = await query(
       `SELECT id FROM bookings 
        WHERE request_id = $1 
@@ -97005,11 +97035,12 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     }
     const durationDays = Math.max(1, Number(request.duration_days) || 1);
     const offeredAmount = Number(request.offered_amount) || 0;
-    const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
-    const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
-    const totalDealPrice = offeredAmount + deliveryFee + returnFee;
+    const totalExtraFee = !request.will_pickup || !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
+    const deliveryFee = !request.will_pickup ? request.will_drop_back ? totalExtraFee : Math.round(totalExtraFee / 2) : 0;
+    const returnFee = !request.will_drop_back ? request.will_pickup ? totalExtraFee : totalExtraFee - deliveryFee : 0;
+    const totalDealPrice = offeredAmount + totalExtraFee;
     const pricePerDay = Math.round(offeredAmount / durationDays);
-    const fullDestinationAddress = request.address_text || request.locality || "Handover location";
+    const coarseHandoverLocation = request.locality || "Handover location";
     const proposalPayload = {
       type: "REQUEST",
       is_lend_offer: true,
@@ -97030,8 +97061,8 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       delivery_fee: deliveryFee,
       collection_option: !request.will_drop_back ? "LENDER_COLLECT" : "SELF",
       collection_fee: returnFee,
-      delivery_location: fullDestinationAddress,
-      return_location: fullDestinationAddress,
+      delivery_location: coarseHandoverLocation,
+      return_location: coarseHandoverLocation,
       notes: request.description,
       image_url: request.image_url || null,
       status: "PENDING"
@@ -97178,7 +97209,18 @@ router3.put("/:id", authMiddleware, async (req, res, next) => {
       RETURNING *
     `;
     const result = await query(updateSql, values);
-    return sendSuccess(res, result.rows[0], "Wish request updated successfully");
+    const updatedRequest = result.rows[0];
+    const coreTermsChanged = validated.offered_amount !== void 0 || validated.start_date !== void 0 || validated.end_date !== void 0 || validated.duration_days !== void 0;
+    if (validated.status === "CANCELLED" || validated.status === "FULFILLED" || coreTermsChanged) {
+      await query(
+        `UPDATE messages
+         SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+         WHERE (proposal_data->>'request_id') = $1
+           AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`,
+        [id]
+      ).catch((e2) => console.warn("Failed to cancel pending proposals for request:", e2));
+    }
+    return sendSuccess(res, updatedRequest, "Wish request updated successfully");
   } catch (error) {
     next(error);
   }
@@ -97195,6 +97237,14 @@ router3.delete("/:id", authMiddleware, async (req, res, next) => {
       return sendError(res, "FORBIDDEN", "Permission denied", 403);
     }
     await query("DELETE FROM requests WHERE id = $1", [id]);
+    await query(
+      `UPDATE messages
+       SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+       WHERE (proposal_data->>'request_id') = $1
+         AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`,
+      [id]
+    ).catch(() => {
+    });
     return sendSuccess(res, { id }, "Wish request deleted");
   } catch (error) {
     next(error);
@@ -97718,10 +97768,12 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       `SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
         sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
-        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address,
+        req.status AS request_status
       FROM messages m
       LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
       LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
+      LEFT JOIN requests req ON (req.id::text = (m.proposal_data->>'request_id'))
       WHERE m.message_type = 'PROPOSAL'
         AND (
           m.sender_id = ANY($1::text[]) 
@@ -97735,6 +97787,10 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         AND (
           (m.proposal_data->>'status') IS NULL 
           OR (m.proposal_data->>'status') = 'PENDING'
+        )
+        AND (
+          m.proposal_data->>'request_id' IS NULL
+          OR req.status = 'OPEN'
         )
       ORDER BY m.created_at DESC`,
       [myIds]
@@ -97751,6 +97807,12 @@ router4.get("/", authMiddleware, async (req, res, next) => {
           continue;
         }
         if (pData.booking_id && existingBookingIds.has(String(pData.booking_id))) {
+          continue;
+        }
+        if (pData.status && pData.status !== "PENDING") {
+          continue;
+        }
+        if (pData.request_id && pRow.request_status && pRow.request_status !== "OPEN") {
           continue;
         }
         const isOffer = pData.type === "LISTING" || pData.is_lend_offer === true;
@@ -100178,9 +100240,10 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         await client.query("ROLLBACK");
         return sendError(res, "CONFLICT", "This proposal has already been accepted or processed.", 409);
       }
+      let reqRow = null;
       if (proposal.request_id) {
         const reqCheck = await client.query(
-          `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
+          `SELECT id, status, seeker_id, locality, address_text, will_pickup, will_drop_back FROM requests WHERE id = $1 FOR UPDATE`,
           [proposal.request_id]
         );
         if (reqCheck.rows.length === 0) {
@@ -100196,11 +100259,24 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             409
           );
         }
+        reqRow = reqCheck.rows[0];
         await client.query(
           `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [proposal.request_id]
         );
+        await client.query(
+          `UPDATE messages
+           SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+           WHERE id != $1
+             AND (proposal_data->>'request_id') = $2
+             AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`,
+          [messageId, proposal.request_id]
+        );
       }
+      const borrowerAddress = reqRow?.address_text || reqRow?.locality || proposal.delivery_location || "Handover location";
+      const lenderAddress = lenderInfo.address_text || lenderInfo.locality || "Lender location";
+      const pickupLocality = proposal.delivery_option === "LENDER_DELIVERY" ? borrowerAddress : lenderAddress;
+      const returnLocality = proposal.collection_option === "LENDER_COLLECT" ? borrowerAddress : lenderAddress;
       const itemRes = await client.query(
         `INSERT INTO items (
           owner_id, title, description, category, price_per_day, max_duration_days, 
@@ -100215,8 +100291,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           pricePerDay,
           Math.max(durationDays, 3),
           proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-          proposal.locality || lenderInfo.locality || "",
-          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || ""
+          lenderInfo.locality || proposal.locality || "",
+          lenderInfo.address_text || lenderInfo.locality || ""
         ]
       );
       createdItem = itemRes.rows[0];
@@ -100241,9 +100317,9 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           proposal.start_time || "10:00:00",
           proposal.end_time || "18:00",
           proposal.delivery_option === "LENDER_DELIVERY" ? "OWNER_DELIVERY" : "LENDER_LOCATION",
-          proposal.delivery_location || lenderInfo.locality || "Handover location",
+          pickupLocality,
           proposal.collection_option === "LENDER_COLLECT" ? "OWNER_COLLECT" : "LENDER_LOCATION",
-          proposal.return_location || lenderInfo.locality || "Return location",
+          returnLocality,
           !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
           Number(proposal.delivery_fee) || 0,
           !!proposal.collection_fee && Number(proposal.collection_fee) > 0,

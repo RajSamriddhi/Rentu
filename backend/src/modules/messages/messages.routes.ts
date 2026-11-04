@@ -895,9 +895,10 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       }
 
       // 1. If this proposal originated from a community request, atomically check and claim it:
+      let reqRow: any = null;
       if (proposal.request_id) {
         const reqCheck = await client.query(
-          `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
+          `SELECT id, status, seeker_id, locality, address_text, will_pickup, will_drop_back FROM requests WHERE id = $1 FOR UPDATE`,
           [proposal.request_id]
         );
         if (reqCheck.rows.length === 0) {
@@ -914,14 +915,40 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           );
         }
 
+        reqRow = reqCheck.rows[0];
+
         // Mark request fulfilled atomically inside transaction
         await client.query(
           `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [proposal.request_id]
         );
+
+        // Auto-cancel all other pending offer messages for this request
+        await client.query(
+          `UPDATE messages
+           SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+           WHERE id != $1
+             AND (proposal_data->>'request_id') = $2
+             AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`,
+          [messageId, proposal.request_id]
+        );
       }
 
-      // 2. Create the item record for this custom listing
+      // Determine correct meetup locations:
+      // If lender delivers/collects, destination is borrower's address;
+      // If borrower picks up/drops back, meetup is at lender's location.
+      const borrowerAddress = reqRow?.address_text || reqRow?.locality || proposal.delivery_location || 'Handover location';
+      const lenderAddress = lenderInfo.address_text || lenderInfo.locality || 'Lender location';
+
+      const pickupLocality = proposal.delivery_option === 'LENDER_DELIVERY'
+        ? borrowerAddress
+        : lenderAddress;
+
+      const returnLocality = proposal.collection_option === 'LENDER_COLLECT'
+        ? borrowerAddress
+        : lenderAddress;
+
+      // 2. Create the item record for this custom listing (owned by lender)
       const itemRes = await client.query(
         `INSERT INTO items (
           owner_id, title, description, category, price_per_day, max_duration_days, 
@@ -936,8 +963,8 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           pricePerDay,
           Math.max(durationDays, 3),
           proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-          proposal.locality || lenderInfo.locality || '',
-          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || '',
+          lenderInfo.locality || proposal.locality || '',
+          lenderInfo.address_text || lenderInfo.locality || '',
         ]
       );
       createdItem = itemRes.rows[0];
@@ -966,9 +993,9 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
           proposal.start_time || '10:00:00',
           proposal.end_time || '18:00',
           proposal.delivery_option === 'LENDER_DELIVERY' ? 'OWNER_DELIVERY' : 'LENDER_LOCATION',
-          proposal.delivery_location || lenderInfo.locality || 'Handover location',
+          pickupLocality,
           proposal.collection_option === 'LENDER_COLLECT' ? 'OWNER_COLLECT' : 'LENDER_LOCATION',
-          proposal.return_location || lenderInfo.locality || 'Return location',
+          returnLocality,
           !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
           Number(proposal.delivery_fee) || 0,
           !!proposal.collection_fee && Number(proposal.collection_fee) > 0,

@@ -506,10 +506,12 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         const proposalsRes = await (0, db_1.query)(`SELECT 
         m.id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.created_at, m.booking_id,
         sender.id::text AS sender_user_id, sender.name AS sender_name, sender.avatar_url AS sender_avatar, sender.phone AS sender_phone, sender.email AS sender_email, sender.locality AS sender_locality, sender.address_text AS sender_address,
-        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address
+        receiver.id::text AS receiver_user_id, receiver.name AS receiver_name, receiver.avatar_url AS receiver_avatar, receiver.phone AS receiver_phone, receiver.email AS receiver_email, receiver.locality AS receiver_locality, receiver.address_text AS receiver_address,
+        req.status AS request_status
       FROM messages m
       LEFT JOIN users sender ON (m.sender_id = sender.id::text OR m.sender_id = sender.firebase_uid)
       LEFT JOIN users receiver ON (m.receiver_id = receiver.id::text OR m.receiver_id = receiver.firebase_uid)
+      LEFT JOIN requests req ON (req.id::text = (m.proposal_data->>'request_id'))
       WHERE m.message_type = 'PROPOSAL'
         AND (
           m.sender_id = ANY($1::text[]) 
@@ -523,6 +525,10 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
         AND (
           (m.proposal_data->>'status') IS NULL 
           OR (m.proposal_data->>'status') = 'PENDING'
+        )
+        AND (
+          m.proposal_data->>'request_id' IS NULL
+          OR req.status = 'OPEN'
         )
       ORDER BY m.created_at DESC`, [myIds]);
         const existingBookingIds = new Set();
@@ -539,6 +545,12 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
                     continue;
                 }
                 if (pData.booking_id && existingBookingIds.has(String(pData.booking_id))) {
+                    continue;
+                }
+                if (pData.status && pData.status !== 'PENDING') {
+                    continue;
+                }
+                if (pData.request_id && pRow.request_status && pRow.request_status !== 'OPEN') {
                     continue;
                 }
                 const isOffer = pData.type === 'LISTING' || pData.is_lend_offer === true;

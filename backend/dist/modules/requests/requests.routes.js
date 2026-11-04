@@ -12,9 +12,9 @@ const createRequestSchema = zod_1.z.object({
     item_name: zod_1.z.string().min(3, 'Item name must be at least 3 characters'),
     description: zod_1.z.string().min(5, 'Description is required'),
     category: zod_1.z.string().default('Other'),
-    start_date: zod_1.z.string().min(1, 'Needed date is required'),
+    start_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format'),
     start_time: zod_1.z.string().optional(),
-    end_date: zod_1.z.string().optional(),
+    end_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format').optional(),
     end_time: zod_1.z.string().optional(),
     duration_days: zod_1.z.number().int().positive().default(1),
     offered_amount: zod_1.z.number().min(0, 'Offered budget cannot be negative'),
@@ -36,9 +36,9 @@ const updateRequestSchema = zod_1.z.object({
     item_name: zod_1.z.string().min(3).optional(),
     description: zod_1.z.string().min(5).optional(),
     category: zod_1.z.string().optional(),
-    start_date: zod_1.z.string().optional(),
+    start_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format').optional(),
     start_time: zod_1.z.string().optional(),
-    end_date: zod_1.z.string().optional(),
+    end_date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format').optional(),
     end_time: zod_1.z.string().optional(),
     duration_days: zod_1.z.number().int().positive().optional(),
     offered_amount: zod_1.z.number().min(0).optional(),
@@ -97,12 +97,16 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
     try {
         await autoCancelExpiredRequests();
         const { category, locality, status = 'OPEN', seekerId } = req.query;
+        const currentViewerId = req.user?.id;
+        const viewerIds = currentViewerId ? await (0, user_1.resolveUserIds)(currentViewerId, req.user?.email) : [];
+        const params = [viewerIds];
         let sql = `
       SELECT 
         r.id, r.item_name, r.description, r.category, 
         r.start_date, r.start_time, r.end_date, r.end_time, r.duration_days, 
         r.offered_amount, r.locality, 
-        NULL AS address_text, NULL AS pincode,
+        CASE WHEN r.seeker_id = ANY($1::text[]) THEN r.address_text ELSE NULL END AS address_text,
+        CASE WHEN r.seeker_id = ANY($1::text[]) THEN r.pincode ELSE NULL END AS pincode,
         r.pickup_type, r.pickup_locality, r.return_type, r.return_locality,
         r.will_pickup, r.will_drop_back, r.delivery_fee,
         r.status, r.created_at, r.image_url,
@@ -118,7 +122,6 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
       LEFT JOIN users u ON (r.seeker_id = u.id OR r.seeker_id = u.firebase_uid)
       WHERE 1=1
     `;
-        const params = [];
         if (status && status !== 'ALL') {
             params.push(status);
             sql += ` AND r.status = $${params.length}`;
@@ -140,7 +143,6 @@ router.get('/', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             }
         }
         // Exclude requests from blocked users
-        const currentViewerId = req.user?.id;
         if (currentViewerId) {
             params.push(currentViewerId);
             sql += ` AND r.seeker_id NOT IN (
@@ -203,6 +205,26 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
 router.post('/', auth_1.authMiddleware, async (req, res, next) => {
     try {
         const validated = createRequestSchema.parse(req.body);
+        // Validate that start date and time has not already passed
+        const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
+            ? req.body.timezone_offset_minutes
+            : -330;
+        const [year, month, day] = validated.start_date.split('-').map(Number);
+        const cleanTime = (validated.start_time && validated.start_time.trim()) ? validated.start_time.slice(0, 5) : '10:00';
+        const [hour, minute] = cleanTime.split(':').map(Number);
+        const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+        const startMs = localUtcMs + (tzOffset * 60000);
+        if (startMs < Date.now() - (2 * 60 * 1000)) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Cannot create request for a date and time that has already passed.', 400);
+        }
+        let calculatedDuration = validated.duration_days;
+        if (validated.end_date) {
+            const [eY, eM, eD] = validated.end_date.split('-').map(Number);
+            const eUtc = Date.UTC(eY, (eM || 1) - 1, eD || 1);
+            const sUtc = Date.UTC(year, (month || 1) - 1, day || 1);
+            const calDiff = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
+            calculatedDuration = Math.max(1, calDiff);
+        }
         // Ensure seeker exists in users table to prevent FK constraint errors
         await (0, db_1.query)(`
       INSERT INTO users (id, name, email, role, locality)
@@ -233,7 +255,7 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
             validated.start_time || '10:00',
             validated.end_date || null,
             validated.end_time || '18:00',
-            validated.duration_days,
+            calculatedDuration,
             validated.offered_amount,
             finalLocality,
             validated.address_text || finalLocality,
@@ -353,6 +375,17 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         if (request.status !== 'OPEN') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request is no longer open', 400);
         }
+        // Expiration check: if start date and time has passed, mark CANCELLED and return 400
+        const [year, month, day] = String(request.start_date).slice(0, 10).split('-').map(Number);
+        const cleanTime = (request.start_time && request.start_time.trim()) ? request.start_time.slice(0, 5) : '10:00';
+        const [hour, minute] = cleanTime.split(':').map(Number);
+        const tzOffset = -330; // standard default IST offset
+        const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+        const startMs = localUtcMs + (tzOffset * 60000);
+        if (startMs < Date.now() - (2 * 60 * 1000)) {
+            await (0, db_1.query)(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => { });
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request has expired and can no longer receive offers.', 400);
+        }
         // DUPLICATE CHECK: Prevent multiple pending offers from the same lender on the same request
         const existingOffer = await (0, db_1.query)(`SELECT id FROM bookings 
        WHERE request_id = $1 
@@ -371,11 +404,13 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         }
         const durationDays = Math.max(1, Number(request.duration_days) || 1);
         const offeredAmount = Number(request.offered_amount) || 0;
-        const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
-        const returnFee = !request.will_drop_back ? Number(request.delivery_fee || 0) : 0;
-        const totalDealPrice = offeredAmount + deliveryFee + returnFee;
+        const totalExtraFee = (!request.will_pickup || !request.will_drop_back) ? Number(request.delivery_fee || 0) : 0;
+        const deliveryFee = !request.will_pickup ? (request.will_drop_back ? totalExtraFee : Math.round(totalExtraFee / 2)) : 0;
+        const returnFee = !request.will_drop_back ? (request.will_pickup ? totalExtraFee : totalExtraFee - deliveryFee) : 0;
+        const totalDealPrice = offeredAmount + totalExtraFee;
         const pricePerDay = Math.round(offeredAmount / durationDays);
-        const fullDestinationAddress = request.address_text || request.locality || 'Handover location';
+        // Address privacy: coarse locality only in proposal payload prior to acceptance
+        const coarseHandoverLocation = request.locality || 'Handover location';
         const proposalPayload = {
             type: 'REQUEST',
             is_lend_offer: true,
@@ -396,8 +431,8 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
             delivery_fee: deliveryFee,
             collection_option: !request.will_drop_back ? 'LENDER_COLLECT' : 'SELF',
             collection_fee: returnFee,
-            delivery_location: fullDestinationAddress,
-            return_location: fullDestinationAddress,
+            delivery_location: coarseHandoverLocation,
+            return_location: coarseHandoverLocation,
             notes: request.description,
             image_url: request.image_url || null,
             status: 'PENDING',
@@ -542,7 +577,16 @@ router.put('/:id', auth_1.authMiddleware, async (req, res, next) => {
       RETURNING *
     `;
         const result = await (0, db_1.query)(updateSql, values);
-        return (0, response_1.sendSuccess)(res, result.rows[0], 'Wish request updated successfully');
+        const updatedRequest = result.rows[0];
+        // If request was cancelled or fulfilled, or core dates/budget terms changed, invalidate pending proposals
+        const coreTermsChanged = validated.offered_amount !== undefined || validated.start_date !== undefined || validated.end_date !== undefined || validated.duration_days !== undefined;
+        if (validated.status === 'CANCELLED' || validated.status === 'FULFILLED' || coreTermsChanged) {
+            await (0, db_1.query)(`UPDATE messages
+         SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+         WHERE (proposal_data->>'request_id') = $1
+           AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`, [id]).catch((e) => console.warn('Failed to cancel pending proposals for request:', e));
+        }
+        return (0, response_1.sendSuccess)(res, updatedRequest, 'Wish request updated successfully');
     }
     catch (error) {
         next(error);
@@ -561,6 +605,10 @@ router.delete('/:id', auth_1.authMiddleware, async (req, res, next) => {
             return (0, response_1.sendError)(res, 'FORBIDDEN', 'Permission denied', 403);
         }
         await (0, db_1.query)('DELETE FROM requests WHERE id = $1', [id]);
+        await (0, db_1.query)(`UPDATE messages
+       SET proposal_data = jsonb_set(proposal_data, '{status}', '"CANCELLED"')
+       WHERE (proposal_data->>'request_id') = $1
+         AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)`, [id]).catch(() => { });
         return (0, response_1.sendSuccess)(res, { id }, 'Wish request deleted');
     }
     catch (error) {

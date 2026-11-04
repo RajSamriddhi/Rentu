@@ -68,7 +68,9 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
   };
 
   const filteredRequests = (requests || []).filter((r) => {
-    if (activeTab === 'my') return r.seeker_id === user?.id;
+    if (activeTab === 'my' && r.seeker_id !== user?.id) return false;
+    if (activeTab === 'offers' && (r.seeker_id !== user?.id || r.status !== 'OPEN')) return false;
+    if (selectedCategory && selectedCategory !== 'All' && r.category !== selectedCategory) return false;
     return true;
   });
 
@@ -229,10 +231,20 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
                     </div>
                   </div>
 
-                  {/* Right Action + Badge matching Screen 6 */}
+                  {/* Right Action + Badge */}
                   <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 shrink-0">
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EDE9FE] text-[#6D28D9] border border-[#DDD6FE]">
-                      {Math.floor(2 + (req.id.charCodeAt(0) % 4))} offers
+                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                      req.status === 'FULFILLED'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : req.status === 'CANCELLED'
+                        ? 'bg-zinc-100 text-zinc-600 border border-zinc-200'
+                        : 'bg-brand/10 text-brand border border-brand/20'
+                    }`}>
+                      {req.status === 'FULFILLED'
+                        ? 'Fulfilled'
+                        : req.status === 'CANCELLED'
+                        ? 'Cancelled'
+                        : `${req.duration_days || 1} ${(req.duration_days || 1) === 1 ? 'day' : 'days'}`}
                     </span>
 
                     {isFulfilled ? (

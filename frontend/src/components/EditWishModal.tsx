@@ -71,10 +71,16 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
           setBuildingHouseNo(parts[0]);
           if (parts.length > 1) {
             setStreetArea(parts.slice(1).join(', '));
+          } else {
+            setStreetArea('');
           }
         } else {
+          setBuildingHouseNo('');
           setStreetArea(request.address_text);
         }
+      } else {
+        setBuildingHouseNo('');
+        setStreetArea('');
       }
       setLocality(request.locality || '');
       setPincode(request.pincode || '');
@@ -85,6 +91,25 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setLocationSuccessMsg('');
     }
   }, [request, isOpen]);
+
+  // Automatically calculate duration days based on start and return dates
+  useEffect(() => {
+    if (startDate && endDate) {
+      try {
+        const [sY, sM, sD] = startDate.split('-').map(Number);
+        const [eY, eM, eD] = endDate.split('-').map(Number);
+        if (sY && sM && sD && eY && eM && eD) {
+          const sUtc = Date.UTC(sY, sM - 1, sD);
+          const eUtc = Date.UTC(eY, eM - 1, eD);
+          const calDiff = Math.round((eUtc - sUtc) / (1000 * 60 * 60 * 24));
+          const days = Math.max(1, calDiff);
+          setDurationDays(days);
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
+  }, [startDate, endDate]);
 
   const handleDetectLocation = async () => {
     setIsDetectingLocation(true);
