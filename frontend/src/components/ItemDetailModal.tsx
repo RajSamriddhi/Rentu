@@ -57,28 +57,58 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const { user, isAuthenticated } = useAuth();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const isFreeOnly = Boolean(
+  const isFreeListing = Boolean(
     item && (
-      item.available_for_borrowing ||
       Number(item.price_per_day) <= 0 ||
       item.price_per_day === 0 ||
       item.price_per_day === '0' ||
       item.price_per_day === '0.00' ||
-      !item.price_per_day
+      !item.price_per_day ||
+      (item.available_for_borrowing && (Number(item.price_per_day) <= 0 || !item.price_per_day))
     )
   );
-  const isAvailableForBorrowing = Boolean(item?.available_for_borrowing || isFreeOnly);
-  const [rentType, setRentType] = useState<'Rent' | 'Borrow'>(isFreeOnly ? 'Borrow' : 'Rent');
-  const [isLiked, setIsLiked] = useState(false);
+  const isAvailableForBorrowing = Boolean(item?.available_for_borrowing || isFreeListing);
+  const [rentType, setRentType] = useState<'Rent' | 'Borrow'>(isFreeListing ? 'Borrow' : 'Rent');
+  const [isLiked, setIsLiked] = useState(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+      return Array.isArray(favs) && Boolean(item?.id && favs.includes(item.id));
+    } catch {
+      return false;
+    }
+  });
   const [isDeleting, setIsDeleting] = useState(false);
 
   React.useEffect(() => {
-    if (isFreeOnly) {
+    if (isFreeListing) {
       setRentType('Borrow');
     } else if (!isAvailableForBorrowing) {
       setRentType('Rent');
     }
-  }, [isFreeOnly, isAvailableForBorrowing, item?.id]);
+  }, [isFreeListing, isAvailableForBorrowing, item?.id]);
+
+  React.useEffect(() => {
+    if (!item?.id) return;
+    try {
+      const favs = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+      setIsLiked(Array.isArray(favs) && favs.includes(item.id));
+    } catch {}
+  }, [item?.id]);
+
+  const toggleFavorite = () => {
+    if (!item?.id) return;
+    try {
+      const favs: string[] = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+      const updated = favs.includes(item.id)
+        ? favs.filter((id) => id !== item.id)
+        : [...favs, item.id];
+      localStorage.setItem('rentu_favorites', JSON.stringify(updated));
+      setIsLiked(updated.includes(item.id));
+      window.dispatchEvent(new Event('rentu_favorites_updated'));
+    } catch {
+      setIsLiked(!isLiked);
+    }
+  };
   const reachDistanceText = item ? getReachDistance(item, user) : 'Nearby';
 
   // Owner detection: checks user id or firebase_uid against item.owner_id
@@ -333,7 +363,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
         pickup_locality: isDeliveredByLender ? deliveryAddress.trim() : (item.locality || 'Lender Locality'),
         return_type: isCollectedByLender ? 'MY_LOCATION' : 'LENDER_LOCATION',
         return_locality: isCollectedByLender ? pickupAddress.trim() : (item.locality || 'Lender Locality'),
-        message: proposalMessage || `Hey! I'd love to ${(isFreeOnly || rentType === 'Borrow') ? 'borrow' : 'rent'} your ${item.title} for ${durationDays} days.`,
+        message: proposalMessage || `Hey! I'd love to ${(isFreeListing || rentType === 'Borrow') ? 'borrow' : 'rent'} your ${item.title} for ${durationDays} days.`,
       });
 
       confetti({
@@ -345,7 +375,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
       setSubmittedBookingId(booking.id);
       onBookingSuccess();
     } catch (err: any) {
-      setErrorMsg(err.message || `Failed to submit ${(isFreeOnly || rentType === 'Borrow') ? 'borrowing' : 'rental'} request.`);
+      setErrorMsg(err.message || `Failed to submit ${(isFreeListing || rentType === 'Borrow') ? 'borrowing' : 'rental'} request.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -448,20 +478,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </h1>
 
                   <div className="mt-2 flex flex-wrap items-center gap-3">
-                    {isFreeOnly ? (
-                      <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display flex items-center gap-1.5">
-                        Free <span className="text-xs font-normal text-ink-secondary">to borrow</span>
-                      </span>
+                    {isFreeListing ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display flex items-center gap-1.5">
+                          <Sparkles className="w-5 h-5 text-emerald-500" /> Free to Borrow
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                          Community Gear
+                        </span>
+                      </div>
                     ) : (
-                      <span className="text-xl sm:text-2xl font-black text-ink font-display">
-                        ₹{Number(item.price_per_day)} <span className="text-xs font-normal text-ink-secondary">/ day</span>
-                      </span>
-                    )}
-
-                    {isAvailableForBorrowing && (
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                        <Sparkles className="w-3 h-3" /> Free Borrowing
-                      </span>
+                      <>
+                        <span className="text-xl sm:text-2xl font-black text-ink font-display">
+                          ₹{Number(item.price_per_day)} <span className="text-xs font-normal text-ink-secondary">/ day</span>
+                        </span>
+                        {isAvailableForBorrowing && (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                            <Sparkles className="w-3 h-3" /> Free Borrowing Available
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -496,7 +532,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   </button>
 
                   <button
-                    onClick={() => setIsLiked(!isLiked)}
+                    onClick={toggleFavorite}
                     className="w-9 h-9 rounded-full border border-divider hover:bg-canvas flex items-center justify-center text-ink transition-colors cursor-pointer"
                     title="Save to favorites"
                   >
@@ -550,20 +586,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* Distance & Pickup Info Box */}
-              <div className="p-3.5 rounded-2xl bg-surface border border-divider flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
-                    <MapPin className="w-4 h-4" />
+              {/* Pickup & Handover Guide Box */}
+              <div className="p-3.5 rounded-2xl bg-surface border border-divider flex items-center gap-3 text-xs">
+                <div className="w-8 h-8 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                  <Truck className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-bold text-ink truncate">
+                    Safe Handover & Return
                   </div>
-                  <div className="min-w-0">
-                    <div className="font-bold text-ink flex items-center gap-1.5 truncate">
-                      <span>Distance:</span>
-                      <span className="text-brand font-extrabold truncate">{reachDistanceText}</span>
-                    </div>
-                    <div className="text-[11px] text-ink-secondary font-medium">
-                      Self pickup & return is available
-                    </div>
+                  <div className="text-[11px] text-ink-secondary font-medium">
+                    Self pickup and return coordinate directly with owner via chat upon request confirmation.
                   </div>
                 </div>
               </div>
@@ -653,11 +686,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <div className="bg-canvas border border-divider rounded-3xl p-6 shadow-md sticky top-6">
                 
                 <h3 className="text-lg font-extrabold text-ink mb-4 font-display">
-                  {isFreeOnly || rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
+                  {isFreeListing || rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
                 </h3>
 
                 {/* If available for borrowing AND has rental price, allow choice. If strictly free borrowing, hide rent choice completely! */}
-                {isAvailableForBorrowing && !isFreeOnly && (
+                {isAvailableForBorrowing && !isFreeListing && (
                   <div className="grid grid-cols-2 p-1 bg-surface rounded-full border border-divider mb-5">
                     <button
                       type="button"
@@ -697,7 +730,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     </div>
                     <h4 className="text-lg font-extrabold text-ink">Request Sent!</h4>
                     <p className="text-xs text-ink-secondary max-w-xs mx-auto">
-                      {item.owner_name} has received your {isFreeOnly || rentType === 'Borrow' ? 'borrowing request' : 'rental proposal'}. Check your coordination chat for updates!
+                      {item.owner_name} has received your {isFreeListing || rentType === 'Borrow' ? 'borrowing request' : 'rental proposal'}. Check your coordination chat for updates!
                     </p>
                     <button
                       onClick={() => {
@@ -976,7 +1009,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         type="text"
                         value={proposalMessage}
                         onChange={(e) => setProposalMessage(e.target.value)}
-                        placeholder={isFreeOnly || rentType === 'Borrow'
+                        placeholder={isFreeListing || rentType === 'Borrow'
                           ? "e.g. Shooting a college project this weekend, promise to return safely!"
                           : "e.g. Shooting a college project this weekend..."}
                         className="w-full bg-surface border border-divider rounded-xl px-3 py-2 text-xs font-medium text-ink outline-none focus:border-brand"
@@ -986,8 +1019,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     {/* Total cost & breakdown info box */}
                     <div className="pt-2 border-t border-divider space-y-1">
                       <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
-                        <span>{isFreeOnly || rentType === 'Borrow' ? 'Borrowing' : 'Rental'} ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
-                        <span>{isFreeOnly || rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
+                        <span>{isFreeListing || rentType === 'Borrow' ? 'Free Borrowing' : 'Rental'} ({durationDays} {durationDays === 1 ? 'day' : 'days'})</span>
+                        <span>{isFreeListing || rentType === 'Borrow' ? 'Free (Borrow)' : `₹${baseCost}`}</span>
                       </div>
                       {item.offers_delivery && optForDelivery && Number(item.delivery_fee) > 0 && (
                         <div className="flex items-center justify-between text-xs text-ink-secondary font-medium">
@@ -1064,7 +1097,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         <span>
                           {isSubmitting
                             ? 'Sending Request...'
-                            : (isFreeOnly || rentType === 'Borrow')
+                            : (isFreeListing || rentType === 'Borrow')
                             ? 'Request to Borrow (Free)'
                             : `Request to Rent (₹${totalCost})`}
                         </span>

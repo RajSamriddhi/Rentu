@@ -23,9 +23,10 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Electronics & Tech');
+  const [condition, setCondition] = useState('Like new');
   const { user } = useAuth();
   const savedLocations = getEffectiveSavedLocations(user);
-  const [selectedLocationId, setSelectedLocationId] = useState<string>('primary');
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('keep_current');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
   const [pricePerDay, setPricePerDay] = useState<number | ''>('');
   const [maxDurationDays, setMaxDurationDays] = useState(5);
@@ -49,6 +50,8 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       setTitle(item.title || '');
       setDescription(item.description || '');
       setCategory(item.category || 'Electronics & Tech');
+      setCondition(item.condition || 'Good');
+      setSelectedLocationId('keep_current');
       setPricePerDay(Number(item.price_per_day) || '');
       setMaxDurationDays(item.max_duration_days || 5);
       setLocality(item.locality || '');
@@ -107,23 +110,35 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
-      const itemAddress = chosenLocation
-        ? [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ')
-        : '';
-      const finalLocality = chosenLocation?.locality || locality.trim() || user?.locality || '';
+      let finalLocality = item.locality || '';
+      let itemAddress = item.address_text || '';
+      let pincode = item.pincode;
+      let latitude = item.latitude;
+      let longitude = item.longitude;
+
+      if (selectedLocationId !== 'keep_current') {
+        const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
+        if (chosenLocation) {
+          itemAddress = [chosenLocation.building_flat_house, chosenLocation.street_road_landmark].filter(Boolean).join(', ');
+          finalLocality = chosenLocation.locality || locality.trim() || user?.locality || '';
+          pincode = chosenLocation.pincode || user?.pincode || undefined;
+          latitude = chosenLocation.latitude ?? user?.latitude;
+          longitude = chosenLocation.longitude ?? user?.longitude;
+        }
+      }
 
       await api.updateItem(item.id, {
         title: title.trim(),
         description: description.trim(),
         category,
+        condition,
         price_per_day: Number(pricePerDay),
         max_duration_days: Number(maxDurationDays),
         locality: finalLocality,
         address_text: itemAddress || finalLocality,
-        pincode: chosenLocation?.pincode || user?.pincode || undefined,
-        latitude: chosenLocation?.latitude ?? user?.latitude,
-        longitude: chosenLocation?.longitude ?? user?.longitude,
+        pincode,
+        latitude,
+        longitude,
         status,
         available_for_borrowing: item.available_for_borrowing ?? false,
         offers_delivery: offersDelivery,
@@ -249,7 +264,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           </div>
 
           {/* Category & Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-ink mb-1">Category *</label>
               <select
@@ -265,6 +280,19 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
                 <option value="Sports & Fitness">Sports & Fitness</option>
                 <option value="Books & Media">Books & Media</option>
                 <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">Condition *</label>
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none cursor-pointer"
+              >
+                <option value="Like new">Like new</option>
+                <option value="Good">Good</option>
+                <option value="Fair">Fair</option>
               </select>
             </div>
 
@@ -339,6 +367,37 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
 
             {/* List of Saved Locations in User's Profile */}
             <div className="space-y-2.5">
+              {/* Keep Existing Listing Location Option */}
+              <div
+                onClick={() => setSelectedLocationId('keep_current')}
+                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                  selectedLocationId === 'keep_current'
+                    ? 'bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs'
+                    : 'bg-canvas border-divider hover:border-brand/40'
+                }`}
+              >
+                <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                  selectedLocationId === 'keep_current' ? 'border-brand bg-brand' : 'border-divider bg-surface'
+                }`}>
+                  {selectedLocationId === 'keep_current' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-extrabold text-ink">
+                      Keep Current Item Location
+                    </span>
+                    {selectedLocationId === 'keep_current' && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        <Check className="w-2.5 h-2.5" /> Retain existing coordinates
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-ink-secondary mt-1 truncate">
+                    {item?.address_text || item?.locality || 'Current location on file'}
+                  </div>
+                </div>
+              </div>
+
               {savedLocations.map((loc) => {
                 const isSelected = selectedLocationId === loc.id;
                 const formattedFull = formatSavedLocationFull(loc);

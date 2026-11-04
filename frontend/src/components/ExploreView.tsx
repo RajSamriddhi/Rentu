@@ -125,7 +125,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       const itemCond = (item.condition || '').toLowerCase();
       if (!itemCond.includes(selectedCondition.toLowerCase())) return false;
     }
-    if (selectedPerks.includes('available') && item.status && item.status !== 'AVAILABLE') {
+    if (selectedPerks.includes('available') && (item.status !== 'AVAILABLE' || (item as any).is_currently_booked)) {
       return false;
     }
     if (selectedPerks.includes('delivery') && !item.offers_delivery) {
@@ -142,7 +142,26 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     if (sortBy === 'price_low') return Number(a.price_per_day) - Number(b.price_per_day);
     if (sortBy === 'price_high') return Number(b.price_per_day) - Number(a.price_per_day);
     if (sortBy === 'distance') {
-      return getReachDistanceKm(a, user) - getReachDistanceKm(b, user);
+      const distA = getReachDistanceKm(a, user);
+      const distB = getReachDistanceKm(b, user);
+      return distA - distB;
+    }
+    if (sortBy === 'relevance' && searchQuery && searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const getScore = (item: any) => {
+        const title = (item.title || '').toLowerCase();
+        const desc = (item.description || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        let score = 0;
+        if (title === q) score += 100;
+        else if (title.startsWith(q)) score += 50;
+        else if (title.includes(q)) score += 30;
+        if (cat.includes(q)) score += 15;
+        if (desc.includes(q)) score += 5;
+        return score;
+      };
+      const scoreDiff = getScore(b) - getScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
     }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });

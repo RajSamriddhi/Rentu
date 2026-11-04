@@ -242,6 +242,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         title: title.trim(),
         description: description.trim(),
         category,
+        condition,
         price_per_day: listingType === 'Borrow' ? 0 : Number(pricePerDay || 0),
         max_duration_days: Number(maxDurationDays),
         image_urls: [imageUrl],

@@ -14,8 +14,41 @@ interface ItemCardProps {
 
 export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserProfile }) => {
   const { user } = useAuth();
-  const [isLiked, setIsLiked] = useState(false);
+  const [isLiked, setIsLiked] = useState(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+      return Array.isArray(favs) && favs.includes(item.id);
+    } catch {
+      return false;
+    }
+  });
   const [imageError, setImageError] = useState(false);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      try {
+        const favs = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+        setIsLiked(Array.isArray(favs) && favs.includes(item.id));
+      } catch {}
+    };
+    window.addEventListener('rentu_favorites_updated', handleSync);
+    return () => window.removeEventListener('rentu_favorites_updated', handleSync);
+  }, [item.id]);
+
+  const toggleFavorite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const favs: string[] = JSON.parse(localStorage.getItem('rentu_favorites') || '[]');
+      const updated = favs.includes(item.id)
+        ? favs.filter((id) => id !== item.id)
+        : [...favs, item.id];
+      localStorage.setItem('rentu_favorites', JSON.stringify(updated));
+      setIsLiked(updated.includes(item.id));
+      window.dispatchEvent(new Event('rentu_favorites_updated'));
+    } catch {
+      setIsLiked(!isLiked);
+    }
+  };
 
   const images = Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean) : [];
   const hasImage = images.length > 0 && Boolean(images[0]);
@@ -46,10 +79,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
           {/* Floating Favorite Heart Icon */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsLiked(!isLiked);
-            }}
+            onClick={toggleFavorite}
             className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm border border-zinc-200 dark:border-zinc-700 flex items-center justify-center shadow-xs transition-transform active:scale-90 hover:bg-white dark:hover:bg-zinc-800"
             title="Save to favorites"
           >
@@ -132,9 +162,19 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, onOpenUserPro
               </span>
             </button>
 
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
-              <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
-            </span>
+            {item.status === 'RENTED' || (item as any).is_currently_booked ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Currently Rented
+              </span>
+            ) : item.status === 'UNAVAILABLE' ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border border-zinc-500/20">
+                Unavailable
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-[#ECFDF5] text-[#059669] dark:bg-emerald-950/40 dark:text-emerald-400">
+                <Check className="w-2.5 h-2.5 stroke-[2.5]" /> Available
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -23,6 +23,7 @@ const createItemSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   available_for_borrowing: z.boolean().optional().default(false),
+  condition: z.string().optional().default('Good'),
   offers_delivery: z.boolean().optional().default(false),
   delivery_fee: z.number().min(0).optional().default(0),
   offers_pickup: z.boolean().optional().default(false),
@@ -33,6 +34,7 @@ const updateItemSchema = z.object({
   title: z.string().min(3).optional(),
   description: z.string().min(10).optional(),
   category: z.string().optional(),
+  condition: z.string().optional(),
   price_per_day: z.number().min(0).optional(),
   max_duration_days: z.number().int().positive().optional(),
   image_urls: z.array(z.string().min(1, 'Photo URL cannot be empty')).optional(),
@@ -62,7 +64,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       latitude, 
       longitude, 
       radar, 
-      max_distance 
+      max_distance,
+      limit,
+      offset
     } = req.query;
 
     const params: any[] = [];
@@ -173,14 +177,20 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
 
     let sql = `
       SELECT 
-        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(i.locality, u.locality) AS locality, 
         NULL AS address_text, 
         NULL AS pincode,
         NULL AS latitude, 
         NULL AS longitude, 
-        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.status AS status, 
+        EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.item_id = i.id
+            AND b.status IN ('ACCEPTED', 'HANDED_OVER')
+            AND CURRENT_DATE BETWEEN b.start_date::date AND (COALESCE(b.end_date, b.start_date))::date
+        ) AS is_currently_booked,
         i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
@@ -188,7 +198,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.username AS owner_username,
         u.avatar_url AS owner_avatar,
-        COALESCE(u.locality, i.locality) AS owner_locality, 
+        COALESCE(i.locality, u.locality) AS owner_locality, 
         NULL AS owner_address_text,
         NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
@@ -244,6 +254,18 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
       sql += ` ORDER BY i.created_at DESC`;
     }
 
+    if (limit) {
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
+      params.push(parsedLimit);
+      sql += ` LIMIT $${params.length}`;
+    }
+
+    if (offset) {
+      const parsedOffset = Math.max(0, parseInt(String(offset), 10) || 0);
+      params.push(parsedOffset);
+      sql += ` OFFSET $${params.length}`;
+    }
+
     const result = await query(sql, params);
     return sendSuccess(res, result.rows);
   } catch (error) {
@@ -259,18 +281,18 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
 
     const result = await query(
       `SELECT 
-        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(i.locality, u.locality) AS locality, 
         COALESCE(u.address_text, i.address_text) AS address_text, 
         COALESCE(u.pincode, i.pincode) AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude,
-        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(i.locality, u.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
@@ -334,13 +356,10 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
     const bookedRes = await query(
       `SELECT 
-        id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
         TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
-        end_time,
-        duration_days,
-        status
+        end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
@@ -376,13 +395,10 @@ router.get('/:id/availability', async (req: Request, res: Response, next) => {
     const { id } = req.params;
     const result = await query(
       `SELECT 
-        id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
         TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
-        end_time,
-        duration_days,
-        status
+        end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
@@ -481,15 +497,16 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
+        (owner_id, title, description, category, condition, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14, $15, $16, $17, $18)
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, 'AVAILABLE', $15, $16, $17, $18, $19)
        RETURNING *`,
       [
         req.user!.id,
         validated.title,
         validated.description,
         validated.category,
+        validated.condition || 'Good',
         validated.price_per_day,
         validated.max_duration_days,
         JSON.stringify(validated.image_urls),
@@ -554,6 +571,10 @@ router.put('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Respon
     if (validated.category !== undefined) {
       values.push(validated.category);
       fields.push(`category = $${values.length}`);
+    }
+    if (validated.condition !== undefined) {
+      values.push(validated.condition);
+      fields.push(`condition = $${values.length}`);
     }
     if (validated.price_per_day !== undefined) {
       values.push(validated.price_per_day);

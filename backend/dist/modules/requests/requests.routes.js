@@ -350,6 +350,15 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         if (request.status !== 'OPEN') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request is no longer open', 400);
         }
+        // DUPLICATE CHECK: Prevent multiple pending offers from the same lender on the same request
+        const existingOffer = await (0, db_1.query)(`SELECT id FROM bookings 
+       WHERE request_id = $1 
+         AND lender_id = ANY($2::text[]) 
+         AND status = 'PENDING'
+       LIMIT 1`, [request.id, myIds]);
+        if (existingOffer.rows.length > 0) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.', 400);
+        }
         // BLOCK CHECK: Prevent lending if either party has blocked the other
         const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
        WHERE (blocker_id = $1 AND blocked_id = $2)

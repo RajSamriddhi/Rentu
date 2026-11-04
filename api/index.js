@@ -87763,6 +87763,7 @@ var createItemSchema = external_exports.object({
   latitude: external_exports.number().optional(),
   longitude: external_exports.number().optional(),
   available_for_borrowing: external_exports.boolean().optional().default(false),
+  condition: external_exports.string().optional().default("Good"),
   offers_delivery: external_exports.boolean().optional().default(false),
   delivery_fee: external_exports.number().min(0).optional().default(0),
   offers_pickup: external_exports.boolean().optional().default(false),
@@ -87772,6 +87773,7 @@ var updateItemSchema = external_exports.object({
   title: external_exports.string().min(3).optional(),
   description: external_exports.string().min(10).optional(),
   category: external_exports.string().optional(),
+  condition: external_exports.string().optional(),
   price_per_day: external_exports.number().min(0).optional(),
   max_duration_days: external_exports.number().int().positive().optional(),
   image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).optional(),
@@ -87799,7 +87801,9 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
       latitude,
       longitude,
       radar,
-      max_distance
+      max_distance,
+      limit,
+      offset
     } = req.query;
     const params = [];
     let distanceField = "NULL AS distance_meters";
@@ -87907,14 +87911,20 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     }
     let sql = `
       SELECT 
-        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(i.locality, u.locality) AS locality, 
         NULL AS address_text, 
         NULL AS pincode,
         NULL AS latitude, 
         NULL AS longitude, 
-        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.status AS status, 
+        EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.item_id = i.id
+            AND b.status IN ('ACCEPTED', 'HANDED_OVER')
+            AND CURRENT_DATE BETWEEN b.start_date::date AND (COALESCE(b.end_date, b.start_date))::date
+        ) AS is_currently_booked,
         i.available_for_borrowing,
         i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         ${distanceField},
@@ -87922,7 +87932,7 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
         COALESCE(u.name, 'Community Member') AS owner_name, 
         u.username AS owner_username,
         u.avatar_url AS owner_avatar,
-        COALESCE(u.locality, i.locality) AS owner_locality, 
+        COALESCE(i.locality, u.locality) AS owner_locality, 
         NULL AS owner_address_text,
         NULL AS owner_pincode,
         u.trust_score AS owner_trust_score,
@@ -87970,6 +87980,16 @@ router2.get("/", optionalAuthMiddleware, async (req, res, next) => {
     } else {
       sql += ` ORDER BY i.created_at DESC`;
     }
+    if (limit) {
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
+      params.push(parsedLimit);
+      sql += ` LIMIT $${params.length}`;
+    }
+    if (offset) {
+      const parsedOffset = Math.max(0, parseInt(String(offset), 10) || 0);
+      params.push(parsedOffset);
+      sql += ` OFFSET $${params.length}`;
+    }
     const result = await query(sql, params);
     return sendSuccess(res, result.rows);
   } catch (error) {
@@ -87981,18 +88001,18 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const { id } = req.params;
     const result = await query(
       `SELECT 
-        i.id, i.title, i.description, i.category, i.price_per_day, 
+        i.id, i.title, i.description, i.category, i.condition, i.price_per_day, 
         i.max_duration_days, i.image_urls, i.sticker_badge, 
-        COALESCE(u.locality, i.locality) AS locality, 
+        COALESCE(i.locality, u.locality) AS locality, 
         COALESCE(u.address_text, i.address_text) AS address_text, 
         COALESCE(u.pincode, i.pincode) AS pincode,
         COALESCE(u.latitude, i.latitude) AS latitude, 
         COALESCE(u.longitude, i.longitude) AS longitude,
-        CASE WHEN i.status = 'RENTED' THEN 'AVAILABLE' ELSE i.status END AS status, 
+        i.status AS status, 
         i.available_for_borrowing, i.offers_delivery, i.delivery_fee, i.offers_pickup, i.pickup_fee, i.created_at,
         u.id AS owner_id, u.name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar,
         u.bio AS owner_bio, u.trust_score AS owner_trust_score, 
-        COALESCE(u.locality, i.locality) AS owner_locality,
+        COALESCE(i.locality, u.locality) AS owner_locality,
         COALESCE(u.address_text, i.address_text) AS owner_address_text,
         COALESCE(u.pincode, i.pincode) AS owner_pincode,
         u.email AS owner_email, u.phone AS owner_phone
@@ -88047,13 +88067,10 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     }
     const bookedRes = await query(
       `SELECT 
-        id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
         TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
-        end_time,
-        duration_days,
-        status
+        end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
@@ -88084,13 +88101,10 @@ router2.get("/:id/availability", async (req, res, next) => {
     const { id } = req.params;
     const result = await query(
       `SELECT 
-        id, 
         TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
         TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date,
         start_time,
-        end_time,
-        duration_days,
-        status
+        end_time
       FROM bookings
       WHERE item_id = $1 
         AND status IN ('ACCEPTED', 'HANDED_OVER')
@@ -88188,15 +88202,16 @@ router2.post("/", authMiddleware, async (req, res, next) => {
     }
     const result = await query(
       `INSERT INTO items 
-        (owner_id, title, description, category, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
+        (owner_id, title, description, category, condition, price_per_day, max_duration_days, image_urls, sticker_badge, locality, address_text, pincode, latitude, longitude, status, available_for_borrowing, offers_delivery, delivery_fee, offers_pickup, pickup_fee)
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14, $15, $16, $17, $18)
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, 'AVAILABLE', $15, $16, $17, $18, $19)
        RETURNING *`,
       [
         req.user.id,
         validated.title,
         validated.description,
         validated.category,
+        validated.condition || "Good",
         validated.price_per_day,
         validated.max_duration_days,
         JSON.stringify(validated.image_urls),
@@ -88253,6 +88268,10 @@ router2.put("/:id", authMiddleware, async (req, res, next) => {
     if (validated.category !== void 0) {
       values.push(validated.category);
       fields.push(`category = $${values.length}`);
+    }
+    if (validated.condition !== void 0) {
+      values.push(validated.condition);
+      fields.push(`condition = $${values.length}`);
     }
     if (validated.price_per_day !== void 0) {
       values.push(validated.price_per_day);
@@ -88704,6 +88723,17 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     }
     if (request.status !== "OPEN") {
       return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
+    }
+    const existingOffer = await query(
+      `SELECT id FROM bookings 
+       WHERE request_id = $1 
+         AND lender_id = ANY($2::text[]) 
+         AND status = 'PENDING'
+       LIMIT 1`,
+      [request.id, myIds]
+    );
+    if (existingOffer.rows.length > 0) {
+      return sendError(res, "BAD_REQUEST", "You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.", 400);
     }
     const blockCheck = await query(
       `SELECT 1 FROM user_blocks 
@@ -102329,6 +102359,7 @@ var runMigrations = async () => {
       ALTER TABLE items ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS offers_pickup BOOLEAN DEFAULT false;
       ALTER TABLE items ADD COLUMN IF NOT EXISTS pickup_fee NUMERIC(10, 2) DEFAULT 0;
+      ALTER TABLE items ADD COLUMN IF NOT EXISTS condition VARCHAR(50) DEFAULT 'Good';
 
       CREATE INDEX IF NOT EXISTS idx_items_owner ON items(owner_id);
       CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);

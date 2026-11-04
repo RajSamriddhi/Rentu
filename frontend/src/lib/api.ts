@@ -216,6 +216,7 @@ export const api = {
     title: string;
     description: string;
     category: string;
+    condition?: string;
     price_per_day: number;
     max_duration_days: number;
     image_urls: string[];

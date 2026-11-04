@@ -92,26 +92,23 @@ export function getReachDistanceMeters(
     longitude?: number | null;
     locality?: string | null;
   } | null
-): number {
+): number | null {
   // 1. If backend provided exact Haversine distance_meters
   if (
     typeof item.distance_meters === 'number' &&
     !isNaN(item.distance_meters) &&
     item.distance_meters > 0 &&
-    item.distance_meters < 50000
+    item.distance_meters < 500000
   ) {
     const m = Math.round(item.distance_meters);
     return m < 100 ? 500 : m;
   }
 
   // 2. Resolve coordinates
-  let userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
-  if (!userCoords) {
-    userCoords = { lat: 12.9140, lon: 77.4993 };
-  }
-
+  const userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
   const itemCoords = resolveCoords(item.latitude, item.longitude, item.locality);
-  if (itemCoords) {
+
+  if (userCoords && itemCoords) {
     const km = haversineDistanceKm(userCoords.lat, userCoords.lon, itemCoords.lat, itemCoords.lon);
     const m = Math.round(km * 1000);
     return m < 100 ? 500 : m;
@@ -127,7 +124,7 @@ export function getReachDistanceMeters(
     }
   }
 
-  return 1500;
+  return null;
 }
 
 /**
@@ -148,6 +145,7 @@ export function getReachDistanceKm(
   } | null
 ): number {
   const meters = getReachDistanceMeters(item, user);
+  if (meters === null) return Infinity;
   return Number((meters / 1000).toFixed(2));
 }
 
@@ -171,7 +169,7 @@ export function formatDistanceString(totalMeters: number): string {
 
 /**
  * Formats reach distance into clean user-facing string strictly indicating distance:
- * e.g. "500 m away", "1.2 km away", "2 km away".
+ * e.g. "500 m away", "1.2 km away", "Nearby".
  * No private user locations/localities are shown.
  */
 export function getReachDistance(
@@ -189,5 +187,8 @@ export function getReachDistance(
   } | null
 ): string {
   const meters = getReachDistanceMeters(item, user);
+  if (meters === null) {
+    return item.locality || 'Nearby';
+  }
   return formatDistanceString(meters);
 }
