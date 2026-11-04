@@ -89,7 +89,7 @@ async function autoCancelExpiredRequests(): Promise<void> {
           start_date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
           OR (
             start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
-            AND (COALESCE(NULLIF(TRIM(start_time), ''), '10:00') || ':00')::time < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
+            AND COALESCE(start_time, '10:00:00'::time) < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
           )
         )
     `);
