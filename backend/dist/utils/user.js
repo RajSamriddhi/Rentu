@@ -6,29 +6,41 @@ const db_1 = require("../config/db");
  * Resolves all database identifiers for a user (both internal ID UUID and firebase_uid).
  * This bridges the dual-identity mapping between Firebase Auth and PostgreSQL.
  */
-const resolveUserIds = async (userId) => {
+const resolveUserIds = async (userId, emailHint) => {
     if (!userId)
         return [];
     try {
-        const res = await (0, db_1.query)(`SELECT id::text, firebase_uid, email FROM users WHERE id::text = $1 OR firebase_uid = $1`, [userId]);
         const ids = new Set([userId]);
         const emails = new Set();
+        if (emailHint && emailHint.trim() && !emailHint.includes('.internal')) {
+            emails.add(emailHint.trim().toLowerCase());
+        }
+        const res = await (0, db_1.query)(`SELECT id::text, firebase_uid, clerk_id, email 
+       FROM users 
+       WHERE id::text = $1 
+          OR firebase_uid = $1 
+          OR clerk_id = $1
+          OR (email IS NOT NULL AND LOWER(email) = LOWER($1))`, [userId]);
         for (const row of res.rows) {
             if (row.id)
                 ids.add(String(row.id));
             if (row.firebase_uid)
                 ids.add(String(row.firebase_uid));
+            if (row.clerk_id)
+                ids.add(String(row.clerk_id));
             if (row.email && typeof row.email === 'string' && row.email.trim() && !row.email.includes('.internal')) {
                 emails.add(row.email.trim().toLowerCase());
             }
         }
         if (emails.size > 0) {
-            const emailRes = await (0, db_1.query)(`SELECT id::text, firebase_uid FROM users WHERE LOWER(email) = ANY($1::text[])`, [Array.from(emails)]);
+            const emailRes = await (0, db_1.query)(`SELECT id::text, firebase_uid, clerk_id FROM users WHERE LOWER(email) = ANY($1::text[])`, [Array.from(emails)]);
             for (const row of emailRes.rows) {
                 if (row.id)
                     ids.add(String(row.id));
                 if (row.firebase_uid)
                     ids.add(String(row.firebase_uid));
+                if (row.clerk_id)
+                    ids.add(String(row.clerk_id));
             }
         }
         return Array.from(ids);

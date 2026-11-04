@@ -296,6 +296,7 @@ const runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique_booking_reviewer ON reviews(booking_id, reviewer_id);
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;

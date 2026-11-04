@@ -55,6 +55,13 @@ const updateRequestSchema = zod_1.z.object({
     will_drop_back: zod_1.z.boolean().optional(),
     delivery_fee: zod_1.z.number().min(0).optional(),
 });
+function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes = -330) {
+    const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
+    const cleanTime = (timeStr && timeStr.trim() && timeStr.slice(0, 5) !== '00:00') ? timeStr.slice(0, 5) : '10:00';
+    const [hour, minute] = cleanTime.split(':').map(Number);
+    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+    return localUtcMs + (tzOffsetMinutes * 60000);
+}
 /**
  * Automatically checks and cancels any OPEN gear requests where the acceptance / needed start time has already passed.
  */
@@ -72,10 +79,7 @@ async function autoCancelExpiredRequests() {
             const sDate = row.start_date_str;
             if (!sDate)
                 continue;
-            const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
-            const [y, m, d] = sDate.split('-').map(Number);
-            const [h, min] = sTime.split(':').map(Number);
-            const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+            const startMs = parseToUtcTimestamp(sDate, row.start_time, -330);
             if (now > startMs) {
                 await (0, db_1.query)(`UPDATE requests 
            SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
@@ -345,6 +349,13 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         if (request.status !== 'OPEN') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request is no longer open', 400);
         }
+        // BLOCK CHECK: Prevent lending if either party has blocked the other
+        const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`, [lenderId, request.seeker_id]);
+        if (blockCheck.rows.length > 0) {
+            return (0, response_1.sendError)(res, 'FORBIDDEN', 'Cannot send lend offer. Communication between these users is blocked.', 403);
+        }
         const durationDays = Math.max(1, Number(request.duration_days) || 1);
         const offeredAmount = Number(request.offered_amount) || 0;
         const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
@@ -392,7 +403,7 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
             `${lenderName} is ready to lend gear`,
             `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
             request.id,
-        ]);
+        ]).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
         return (0, response_1.sendSuccess)(res, {
             message: createdMessage,
             proposal: proposalPayload,

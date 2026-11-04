@@ -15,7 +15,8 @@ import {
   ShieldCheck, 
   AlertCircle, 
   Copy,
-  Lock
+  Lock,
+  Star
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
@@ -190,6 +191,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
   const [isReturnActive, setIsReturnActive] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CASH'>('UPI');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -438,6 +441,23 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
       setErrorMessage(err.message || 'Failed to confirm payment.');
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleSubmitPayment = async (method: 'UPI' | 'CASH') => {
+    setIsSubmittingPayment(true);
+    setErrorMessage('');
+    try {
+      const updated = await api.submitBookingPayment(booking.id, method);
+      try {
+        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+      } catch {}
+      setSuccessMessage(`Payment of ₹${booking.total_price} marked as sent via ${method}. Owner has been notified to verify.`);
+      onUpdated({ ...booking, ...updated, payment_status: 'SUBMITTED', payment_method: method });
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to submit payment.');
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -1067,21 +1087,33 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   Stage 5: Payment & Finish
                 </span>
                 <h4 className="text-base font-extrabold text-ink font-display">
-                  {isLender
+                  {booking.payment_status === 'CONFIRMED' || booking.status === 'COMPLETED'
+                    ? 'Rental Process Completed'
+                    : Number(booking.total_price) === 0
+                    ? 'Free Borrowing Completed'
+                    : isLender
                     ? `Collect your money from ${otherPartyName} and complete the process`
                     : `Give ₹${Number(booking.total_price)} to ${otherPartyName} and finish the payment`}
                 </h4>
                 <p className="text-xs text-ink-secondary max-w-md mx-auto">
-                  {isLender
-                    ? `Product return has been verified. Collect ₹${Number(booking.total_price)} directly from ${otherPartyName} to complete the rental process.`
-                    : `Product return has been verified. Give ₹${Number(booking.total_price)} directly to ${otherPartyName} to finish the payment.`}
+                  {booking.payment_status === 'CONFIRMED' || booking.status === 'COMPLETED'
+                    ? 'All handover and return steps are successfully finalized. Both parties can now leave reviews.'
+                    : Number(booking.total_price) === 0
+                    ? 'Product has been returned safely. Click Complete to finish this exchange.'
+                    : isLender
+                    ? `Product return has been verified. Collect ₹${Number(booking.total_price)} directly from ${otherPartyName} via UPI or Cash.`
+                    : `Product return has been verified. Give ₹${Number(booking.total_price)} directly to ${otherPartyName} via UPI or Cash.`}
                 </p>
               </div>
 
               {/* Total Rental Amount Card */}
               <div className="p-5 rounded-2xl bg-canvas border border-divider text-center space-y-1.5 max-w-sm mx-auto shadow-xs">
                 <span className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider block">
-                  {isLender ? 'Amount to Collect' : 'Amount to Pay'}
+                  {Number(booking.total_price) === 0
+                    ? 'Exchange Type'
+                    : isLender
+                    ? 'Amount to Collect'
+                    : 'Amount to Pay'}
                 </span>
                 <div className="text-3xl font-black text-ink font-display">
                   {Number(booking.total_price) === 0 ? 'Free (Community Borrow)' : `₹${Number(booking.total_price)}`}
@@ -1099,10 +1131,131 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
                   Return Verified Successfully
                 </h5>
                 <p className="text-xs text-ink-secondary leading-relaxed">
-                  {isLender
-                    ? `The product has been picked back and verified. Collect ₹${Number(booking.total_price)} directly from ${otherPartyName} to complete the process.`
-                    : `The product has been returned and verified. Hand over ₹${Number(booking.total_price)} directly to ${otherPartyName} to finish the payment.`}
+                  {booking.payment_status === 'CONFIRMED' || booking.status === 'COMPLETED'
+                    ? 'Return and payment have both been verified. This booking is completed.'
+                    : Number(booking.total_price) === 0
+                    ? 'The gear has been returned in good condition. Complete the exchange below.'
+                    : isLender
+                    ? `The product has been picked back and verified. Confirm payment receipt below to complete the rental.`
+                    : `The product has been returned and verified. Mark your payment as sent below once you pay ${otherPartyName}.`}
                 </p>
+              </div>
+
+              {/* Action Controls for Payment & Completion */}
+              <div className="max-w-md mx-auto space-y-3 pt-2">
+                {booking.payment_status === 'CONFIRMED' || booking.status === 'COMPLETED' ? (
+                  <div className="text-center space-y-3">
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-2">
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Payment & Return Confirmed • Rental Closed</span>
+                    </div>
+                    {onLeaveReview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onLeaveReview(booking);
+                        }}
+                        className="btn-primary w-full py-3 text-xs sm:text-sm font-bold shadow-pink inline-flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Star className="w-4 h-4 fill-white" />
+                        <span>Leave Verified Review</span>
+                      </button>
+                    )}
+                  </div>
+                ) : Number(booking.total_price) === 0 ? (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={handleConfirmPayment}
+                      disabled={isVerifying}
+                      className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold shadow-pink flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isVerifying ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                      )}
+                      <span>Complete Free Borrowing</span>
+                    </button>
+                  </div>
+                ) : isLender ? (
+                  <div className="space-y-3">
+                    {booking.payment_status === 'SUBMITTED' && (
+                      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                        <Clock className="w-4 h-4 shrink-0 text-amber-500" />
+                        <span>{otherPartyName} has marked payment of ₹{Number(booking.total_price)} as sent via {booking.payment_method || 'UPI'}. Please confirm once received!</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleConfirmPayment}
+                      disabled={isVerifying}
+                      className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold shadow-pink flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isVerifying ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                      )}
+                      <span>Confirm Payment Received (₹{Number(booking.total_price)})</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {booking.payment_status === 'SUBMITTED' ? (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1">
+                        <div className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                          <span>Payment of ₹{Number(booking.total_price)} marked as sent ({booking.payment_method || 'UPI'})</span>
+                        </div>
+                        <p className="text-[11px] text-ink-secondary">
+                          Waiting for {otherPartyName} to confirm receiving the payment.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 justify-center">
+                          <span className="text-xs font-bold text-ink-secondary">Select payment method:</span>
+                          <div className="inline-flex rounded-xl bg-canvas border border-divider p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('UPI')}
+                              className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                                paymentMethod === 'UPI' ? 'bg-brand text-white shadow-xs' : 'text-ink-secondary hover:text-ink'
+                              }`}
+                            >
+                              UPI
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('CASH')}
+                              className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                                paymentMethod === 'CASH' ? 'bg-brand text-white shadow-xs' : 'text-ink-secondary hover:text-ink'
+                              }`}
+                            >
+                              Cash
+                            </button>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitPayment(paymentMethod)}
+                          disabled={isSubmittingPayment}
+                          className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold shadow-pink flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {isSubmittingPayment ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4 stroke-[3]" />
+                          )}
+                          <span>Mark Payment as Sent (₹{Number(booking.total_price)} via {paymentMethod})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

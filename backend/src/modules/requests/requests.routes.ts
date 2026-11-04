@@ -58,6 +58,14 @@ const updateRequestSchema = z.object({
 });
 
 
+function parseToUtcTimestamp(dateStr: string, timeStr?: string, tzOffsetMinutes: number = -330): number {
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
+  const cleanTime = (timeStr && timeStr.trim() && timeStr.slice(0, 5) !== '00:00') ? timeStr.slice(0, 5) : '10:00';
+  const [hour, minute] = cleanTime.split(':').map(Number);
+  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+  return localUtcMs + (tzOffsetMinutes * 60000);
+}
+
 /**
  * Automatically checks and cancels any OPEN gear requests where the acceptance / needed start time has already passed.
  */
@@ -75,10 +83,7 @@ async function autoCancelExpiredRequests(): Promise<void> {
     for (const row of expiredRes.rows) {
       const sDate = row.start_date_str;
       if (!sDate) continue;
-      const sTime = (row.start_time && row.start_time.trim()) ? row.start_time.slice(0, 5) : '10:00';
-      const [y, m, d] = sDate.split('-').map(Number);
-      const [h, min] = sTime.split(':').map(Number);
-      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+      const startMs = parseToUtcTimestamp(sDate, row.start_time, -330);
 
       if (now > startMs) {
         await query(
@@ -403,6 +408,17 @@ router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest,
       return sendError(res, 'BAD_REQUEST', 'This request is no longer open', 400);
     }
 
+    // BLOCK CHECK: Prevent lending if either party has blocked the other
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [lenderId, request.seeker_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, 'FORBIDDEN', 'Cannot send lend offer. Communication between these users is blocked.', 403);
+    }
+
     const durationDays = Math.max(1, Number(request.duration_days) || 1);
     const offeredAmount = Number(request.offered_amount) || 0;
     const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
@@ -461,7 +477,7 @@ router.post('/:id/offer-lend', authMiddleware, async (req: AuthenticatedRequest,
         `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
         request.id,
       ]
-    );
+    ).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
 
     return sendSuccess(res, {
       message: createdMessage,

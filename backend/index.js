@@ -52898,30 +52898,40 @@ function extractCity(locality) {
 }
 
 // src/utils/user.ts
-var resolveUserIds = async (userId) => {
+var resolveUserIds = async (userId, emailHint) => {
   if (!userId) return [];
   try {
-    const res = await query(
-      `SELECT id::text, firebase_uid, email FROM users WHERE id::text = $1 OR firebase_uid = $1`,
-      [userId]
-    );
     const ids = /* @__PURE__ */ new Set([userId]);
     const emails = /* @__PURE__ */ new Set();
+    if (emailHint && emailHint.trim() && !emailHint.includes(".internal")) {
+      emails.add(emailHint.trim().toLowerCase());
+    }
+    const res = await query(
+      `SELECT id::text, firebase_uid, clerk_id, email 
+       FROM users 
+       WHERE id::text = $1 
+          OR firebase_uid = $1 
+          OR clerk_id = $1
+          OR (email IS NOT NULL AND LOWER(email) = LOWER($1))`,
+      [userId]
+    );
     for (const row of res.rows) {
       if (row.id) ids.add(String(row.id));
       if (row.firebase_uid) ids.add(String(row.firebase_uid));
+      if (row.clerk_id) ids.add(String(row.clerk_id));
       if (row.email && typeof row.email === "string" && row.email.trim() && !row.email.includes(".internal")) {
         emails.add(row.email.trim().toLowerCase());
       }
     }
     if (emails.size > 0) {
       const emailRes = await query(
-        `SELECT id::text, firebase_uid FROM users WHERE LOWER(email) = ANY($1::text[])`,
+        `SELECT id::text, firebase_uid, clerk_id FROM users WHERE LOWER(email) = ANY($1::text[])`,
         [Array.from(emails)]
       );
       for (const row of emailRes.rows) {
         if (row.id) ids.add(String(row.id));
         if (row.firebase_uid) ids.add(String(row.firebase_uid));
+        if (row.clerk_id) ids.add(String(row.clerk_id));
       }
     }
     return Array.from(ids);
@@ -53710,6 +53720,13 @@ var updateRequestSchema = external_exports.object({
   will_drop_back: external_exports.boolean().optional(),
   delivery_fee: external_exports.number().min(0).optional()
 });
+function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes = -330) {
+  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
+  const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
+  const [hour, minute] = cleanTime.split(":").map(Number);
+  const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
+  return localUtcMs + tzOffsetMinutes * 6e4;
+}
 async function autoCancelExpiredRequests() {
   try {
     const expiredRes = await query(`
@@ -53723,10 +53740,7 @@ async function autoCancelExpiredRequests() {
     for (const row of expiredRes.rows) {
       const sDate = row.start_date_str;
       if (!sDate) continue;
-      const sTime = row.start_time && row.start_time.trim() ? row.start_time.slice(0, 5) : "10:00";
-      const [y, m, d] = sDate.split("-").map(Number);
-      const [h, min] = sTime.split(":").map(Number);
-      const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0).getTime();
+      const startMs = parseToUtcTimestamp(sDate, row.start_time, -330);
       if (now > startMs) {
         await query(
           `UPDATE requests 
@@ -54008,6 +54022,15 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     if (request.status !== "OPEN") {
       return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
     }
+    const blockCheck = await query(
+      `SELECT 1 FROM user_blocks 
+       WHERE (blocker_id = $1 AND blocked_id = $2)
+          OR (blocker_id = $2 AND blocked_id = $1)`,
+      [lenderId, request.seeker_id]
+    );
+    if (blockCheck.rows.length > 0) {
+      return sendError(res, "FORBIDDEN", "Cannot send lend offer. Communication between these users is blocked.", 403);
+    }
     const durationDays = Math.max(1, Number(request.duration_days) || 1);
     const offeredAmount = Number(request.offered_amount) || 0;
     const deliveryFee = !request.will_pickup ? Number(request.delivery_fee || 0) : 0;
@@ -54059,7 +54082,7 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
         `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
         request.id
       ]
-    );
+    ).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
     return sendSuccess(res, {
       message: createdMessage,
       proposal: proposalPayload,
@@ -54240,7 +54263,7 @@ var updateStatusSchema = external_exports.object({
   status: external_exports.enum(["PENDING", "ACCEPTED", "REJECTED", "HANDED_OVER", "COMPLETED", "CANCELLED"]),
   timezone_offset_minutes: external_exports.number().optional()
 });
-function parseToUtcTimestamp(dateStr, timeStr, tzOffsetMinutes) {
+function parseToUtcTimestamp2(dateStr, timeStr, tzOffsetMinutes) {
   const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
   const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
   const [hour, minute] = cleanTime.split(":").map(Number);
@@ -54270,7 +54293,7 @@ async function checkAndAutoCancelExpiredBookings() {
       const sDate = row.start_date_str;
       if (!sDate) continue;
       const sTime = row.start_time && row.start_time.trim() && row.start_time.slice(0, 5) !== "00:00" ? row.start_time.slice(0, 5) : "10:00";
-      const startTimestamp = parseToUtcTimestamp(sDate, sTime, -330);
+      const startTimestamp = parseToUtcTimestamp2(sDate, sTime, -330);
       if (row.status === "PENDING" && now > startTimestamp) {
         await query(
           `UPDATE bookings 
@@ -54418,7 +54441,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
       }
     }
     const tzOffset = typeof validated.timezone_offset_minutes === "number" ? validated.timezone_offset_minutes : -330;
-    const startTimestamp = parseToUtcTimestamp(validated.start_date, validated.start_time, tzOffset);
+    const startTimestamp = parseToUtcTimestamp2(validated.start_date, validated.start_time, tzOffset);
     const currentTimestampWithGrace = Date.now() - 2 * 60 * 1e3;
     if (startTimestamp < currentTimestampWithGrace) {
       return sendError(
@@ -54428,7 +54451,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         400
       );
     }
-    const endTimestamp = parseToUtcTimestamp(finalEndDate, validated.end_time || "18:00", tzOffset);
+    const endTimestamp = parseToUtcTimestamp2(finalEndDate, validated.end_time || "18:00", tzOffset);
     if (endTimestamp <= startTimestamp) {
       return sendError(
         res,
@@ -54607,7 +54630,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
     const userId = req.user.id;
     const { role } = req.query;
     await checkAndAutoCancelExpiredBookings();
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds(userId, req.user?.email);
     let sql = `
       SELECT 
         b.id, b.item_id, b.borrower_id, COALESCE(b.lender_id, i.owner_id) AS lender_id, 
@@ -54667,7 +54690,7 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       if (b.status === "ACCEPTED" && b.pickup_code) {
         const sDate = b.start_date;
         const sTime = b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== "00:00" ? b.start_time.slice(0, 5) : "10:00";
-        const startMs = parseToUtcTimestamp(sDate, sTime, -330);
+        const startMs = parseToUtcTimestamp2(sDate, sTime, -330);
         if (currentMs < startMs - 5 * 60 * 1e3) {
           b.pickup_code = null;
         }
@@ -54685,6 +54708,11 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         AND (
           m.sender_id = ANY($1::text[]) 
           OR m.receiver_id = ANY($1::text[])
+          OR (m.booking_id IS NOT NULL AND m.booking_id IN (
+            SELECT b_sub.id FROM bookings b_sub 
+            WHERE b_sub.borrower_id = ANY($1::text[]) 
+               OR b_sub.lender_id = ANY($1::text[])
+          ))
         )
         AND (
           (m.proposal_data->>'status') IS NULL 
@@ -54901,9 +54929,12 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     }
     const sDate = booking.start_date_str || booking.start_date;
     const eDate = booking.end_date_str || booking.end_date;
+    let pickupCode = booking.pickup_code;
+    let updateRes;
+    let conflictingPendingList = [];
     if (status === "ACCEPTED") {
       const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-      const endTimestamp = parseToUtcTimestamp(
+      const endTimestamp = parseToUtcTimestamp2(
         eDate,
         booking.end_time || "18:00",
         tzOffset
@@ -54916,54 +54947,82 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
           400
         );
       }
-      const conflictRes = await query(
-        `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-         FROM bookings
-         WHERE item_id = $1
-           AND id != $2
-           AND status IN ('ACCEPTED', 'HANDED_OVER')
-           AND (
-             start_date <= $4::date
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-           )
-         LIMIT 1`,
-        [booking.item_id, id, sDate, eDate]
-      );
-      if (conflictRes.rows.length > 0) {
-        const c = conflictRes.rows[0];
-        return sendError(
-          res,
-          "CONFLICT",
-          `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
-          409
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [booking.item_id]);
+        const conflictRes = await client.query(
+          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )
+           LIMIT 1`,
+          [booking.item_id, id, sDate, eDate]
         );
+        if (conflictRes.rows.length > 0) {
+          await client.query("ROLLBACK");
+          const c = conflictRes.rows[0];
+          return sendError(
+            res,
+            "CONFLICT",
+            `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+            409
+          );
+        }
+        const conflictingPendingRes = await client.query(
+          `SELECT id, borrower_id 
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status = 'PENDING'
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )`,
+          [booking.item_id, id, sDate, eDate]
+        );
+        conflictingPendingList = conflictingPendingRes.rows;
+        for (const conflicting of conflictingPendingList) {
+          await client.query(
+            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [conflicting.id]
+          );
+          await client.query(
+            `UPDATE messages 
+             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+            [conflicting.id]
+          ).catch(() => {
+          });
+        }
+        if (!pickupCode) {
+          pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+        }
+        updateRes = await client.query(
+          `UPDATE bookings 
+           SET status = 'ACCEPTED', 
+               pickup_code = COALESCE(pickup_code, $1),
+               return_code = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2
+           RETURNING *`,
+          [pickupCode, id]
+        );
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
       }
-      const conflictingPendingRes = await query(
-        `SELECT id, borrower_id 
-         FROM bookings
-         WHERE item_id = $1
-           AND id != $2
-           AND status = 'PENDING'
-           AND (
-             start_date <= $4::date
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-           )`,
-        [booking.item_id, id, sDate, eDate]
-      );
-      for (const conflicting of conflictingPendingRes.rows) {
-        await query(
-          `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-          [conflicting.id]
-        );
-        await query(
-          `UPDATE messages 
-           SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
-           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-          [conflicting.id]
-        ).catch(() => {
-        });
-        await createNotification({
+      for (const conflicting of conflictingPendingList) {
+        createNotification({
           userId: conflicting.borrower_id,
           bookingId: conflicting.id,
           referenceId: conflicting.id,
@@ -54974,20 +55033,16 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         }).catch(() => {
         });
       }
+    } else {
+      updateRes = await query(
+        `UPDATE bookings 
+         SET status = $1, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [status, id]
+      );
     }
-    let pickupCode = booking.pickup_code;
-    if (status === "ACCEPTED" && !pickupCode) {
-      pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
-    }
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET status = $1, 
-           pickup_code = COALESCE(pickup_code, $2),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-       RETURNING *`,
-      [status, pickupCode, id]
-    );
     if (status === "ACCEPTED") {
       await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
       await query(
@@ -55068,7 +55123,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
     } else if (safeBooking.status === "ACCEPTED" && safeBooking.pickup_code) {
       const sDate2 = safeBooking.start_date_str || safeBooking.start_date;
       const sTime = safeBooking.start_time && safeBooking.start_time.trim() && safeBooking.start_time.slice(0, 5) !== "00:00" ? safeBooking.start_time.slice(0, 5) : "10:00";
-      const startMs = parseToUtcTimestamp(String(sDate2), sTime, -330);
+      const startMs = parseToUtcTimestamp2(String(sDate2), sTime, -330);
       if (Date.now() < startMs - 5 * 60 * 1e3) {
         delete safeBooking.pickup_code;
       }
@@ -55112,14 +55167,14 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user.role === "ADMIN";
-    if (!isLender && !isBorrower && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    if (!isLender && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Only the gear owner/lender can enter and verify the renter\u2019s handover code to confirm pickup.", 403);
     }
     if (booking.status !== "ACCEPTED") {
       return sendError(res, "BAD_REQUEST", `Cannot verify handover for booking with status ${booking.status}`, 400);
     }
     const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-    const startTimestamp = parseToUtcTimestamp(
+    const startTimestamp = parseToUtcTimestamp2(
       booking.start_date_str || booking.start_date,
       booking.start_time || "10:00",
       tzOffset
@@ -55225,14 +55280,14 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     const isLender = myIds.includes(String(booking.lender_id)) || myIds.includes(String(booking.item_owner_id));
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user.role === "ADMIN";
-    if (!isLender && !isBorrower && !isAdmin) {
-      return sendError(res, "FORBIDDEN", "Permission denied", 403);
+    if (!isBorrower && !isAdmin) {
+      return sendError(res, "FORBIDDEN", "Only the renter can enter and verify the owner\u2019s return code to complete the return.", 403);
     }
     if (booking.status !== "HANDED_OVER") {
       return sendError(res, "BAD_REQUEST", `Cannot verify return for booking with status ${booking.status}`, 400);
     }
     const tzOffset = typeof req.body.timezone_offset_minutes === "number" ? req.body.timezone_offset_minutes : -330;
-    const returnTimestamp = parseToUtcTimestamp(
+    const returnTimestamp = parseToUtcTimestamp2(
       booking.end_date_str || booking.start_date_str,
       booking.end_time || "18:00",
       tzOffset
@@ -55251,14 +55306,14 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
     const isFree = Number(booking.total_price) === 0;
     const updateRes = await query(
       `UPDATE bookings 
-       SET status = 'COMPLETED'::booking_status,
+       SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
            returned_at = CURRENT_TIMESTAMP,
-           completed_at = CURRENT_TIMESTAMP,
-           payment_status = 'CONFIRMED',
+           completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+           payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
-      [id]
+      [id, isFree]
     );
     await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
     await query(
@@ -55413,6 +55468,9 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     if (booking.status !== "COMPLETED") {
       return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after the product is returned and completed", 400);
     }
+    if (Number(booking.total_price) > 0 && booking.payment_status !== "CONFIRMED") {
+      return sendError(res, "BAD_REQUEST", "Reviews can only be submitted after rental payment has been confirmed by the owner", 400);
+    }
     const completedAt = new Date(booking.completed_at || booking.updated_at);
     const threeDaysMs = 3 * 24 * 60 * 60 * 1e3;
     if (Date.now() - completedAt.getTime() > threeDaysMs) {
@@ -55425,27 +55483,18 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
     } else {
       resolvedReviewType = "RENTER";
     }
-    const existing = await query(
-      `SELECT id FROM reviews WHERE booking_id = $1 AND (reviewer_id = $2 OR reviewer_id = $3)`,
-      [id, reviewerId, userId]
+    const reviewResult = await query(
+      `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (booking_id, reviewer_id)
+       DO UPDATE SET 
+         rating = EXCLUDED.rating, 
+         comment = EXCLUDED.comment, 
+         review_type = EXCLUDED.review_type, 
+         created_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [id, reviewerId, revieweeId, rating, comment || "", resolvedReviewType]
     );
-    let reviewResult;
-    if (existing.rows.length > 0) {
-      reviewResult = await query(
-        `UPDATE reviews 
-         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
-         WHERE id = $4
-         RETURNING *`,
-        [rating, comment || "", resolvedReviewType, existing.rows[0].id]
-      );
-    } else {
-      reviewResult = await query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [id, reviewerId, revieweeId, rating, comment || "", resolvedReviewType]
-      );
-    }
     await query(`
       WITH stats AS (
         SELECT 
@@ -56288,7 +56337,7 @@ var sendMessageSchema = external_exports.object({
 var isUuid = (val) => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 };
-function parseToUtcTimestamp2(dateStr, timeStr, tzOffsetMinutes = -330) {
+function parseToUtcTimestamp3(dateStr, timeStr, tzOffsetMinutes = -330) {
   const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
   const cleanTime = timeStr && timeStr.trim() && timeStr.slice(0, 5) !== "00:00" ? timeStr.slice(0, 5) : "10:00";
   const [hour, minute] = cleanTime.split(":").map(Number);
@@ -56298,7 +56347,7 @@ function parseToUtcTimestamp2(dateStr, timeStr, tzOffsetMinutes = -330) {
 router7.get("/conversations", authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds(userId, req.user?.email);
     await query(
       `UPDATE messages
        SET is_delivered = true,
@@ -56763,13 +56812,18 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
     }
     const message = msgRes.rows[0];
-    const myIds = await resolveUserIds(currentUserId);
+    const myIds = await resolveUserIds(currentUserId, req.user?.email);
     if (!myIds.includes(String(message.receiver_id))) {
       return sendError(res, "FORBIDDEN", "Only the intended recipient can accept this agreement", 403);
     }
     const proposal = typeof message.proposal_data === "string" ? JSON.parse(message.proposal_data) : message.proposal_data || {};
-    if (proposal.status === "ACCEPTED") {
-      return sendError(res, "BAD_REQUEST", "This agreement has already been accepted", 400);
+    if (proposal.status && proposal.status !== "PENDING") {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        `Cannot accept agreement with status "${proposal.status}". Only pending proposals can be accepted.`,
+        400
+      );
     }
     const existingBookingId = message.booking_id || proposal.booking_id;
     if (existingBookingId && isUuid(existingBookingId)) {
@@ -56789,7 +56843,7 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         }
         const sDate2 = existingBooking.start_date_str || existingBooking.start_date;
         const eDate2 = existingBooking.end_date_str || existingBooking.end_date;
-        const endTimestamp = parseToUtcTimestamp2(
+        const endTimestamp = parseToUtcTimestamp3(
           eDate2,
           existingBooking.end_time || "18:00",
           -330
@@ -56802,54 +56856,106 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
             400
           );
         }
-        const conflictRes = await query(
-          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-           FROM bookings
-           WHERE item_id = $1
-             AND id != $2
-             AND status IN ('ACCEPTED', 'HANDED_OVER')
-             AND (
-               start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-             )
-           LIMIT 1`,
-          [existingBooking.item_id, existingBookingId, sDate2, eDate2]
-        );
-        if (conflictRes.rows.length > 0) {
-          const c = conflictRes.rows[0];
-          return sendError(
-            res,
-            "CONFLICT",
-            `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
-            409
+        const client2 = await pool.connect();
+        let updatedBooking;
+        let updatedProposal2;
+        let conflictingPendingList = [];
+        const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
+        try {
+          await client2.query("BEGIN");
+          await client2.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [existingBooking.item_id]);
+          const conflictRes = await client2.query(
+            `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                    TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+             FROM bookings
+             WHERE item_id = $1
+               AND id != $2
+               AND status IN ('ACCEPTED', 'HANDED_OVER')
+               AND (
+                 start_date <= $4::date
+                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+               )
+             LIMIT 1`,
+            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
           );
+          if (conflictRes.rows.length > 0) {
+            await client2.query("ROLLBACK");
+            const c = conflictRes.rows[0];
+            return sendError(
+              res,
+              "CONFLICT",
+              `Cannot accept proposal: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+              409
+            );
+          }
+          const conflictingPendingRes = await client2.query(
+            `SELECT id, borrower_id 
+             FROM bookings
+             WHERE item_id = $1
+               AND id != $2
+               AND status = 'PENDING'
+               AND (
+                 start_date <= $4::date
+                 AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+               )`,
+            [existingBooking.item_id, existingBookingId, sDate2, eDate2]
+          );
+          conflictingPendingList = conflictingPendingRes.rows;
+          for (const conflicting of conflictingPendingList) {
+            await client2.query(
+              `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [conflicting.id]
+            );
+            await client2.query(
+              `UPDATE messages 
+               SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+               WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+              [conflicting.id]
+            ).catch(() => {
+            });
+          }
+          const pickupCode = existingBooking.pickup_code || Math.floor(1e5 + Math.random() * 9e5).toString();
+          const updateRes = await client2.query(
+            `UPDATE bookings
+             SET status = 'ACCEPTED',
+                 pickup_code = $1,
+                 return_code = NULL,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`,
+            [pickupCode, existingBookingId]
+          );
+          updatedBooking = updateRes.rows[0];
+          updatedProposal2 = {
+            ...proposal,
+            status: "ACCEPTED",
+            accepted_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          await client2.query(
+            `UPDATE messages SET proposal_data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedProposal2), messageId]
+          );
+          const totalPrice2 = updatedBooking.total_price || proposal.total_price || 0;
+          const priceDisplay = Number(totalPrice2) === 0 ? "Free" : `\u20B9${totalPrice2}`;
+          await client2.query(
+            `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+             VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+            [
+              existingBookingId,
+              currentUserId,
+              message.sender_id,
+              `Request Accepted. Confirmed booking for "${itemTitle2}" (${priceDisplay}). Handover is now live in Bookings.`
+            ]
+          );
+          await client2.query("COMMIT");
+        } catch (txErr) {
+          await client2.query("ROLLBACK");
+          throw txErr;
+        } finally {
+          client2.release();
         }
-        const conflictingPendingRes = await query(
-          `SELECT id, borrower_id 
-           FROM bookings
-           WHERE item_id = $1
-             AND id != $2
-             AND status = 'PENDING'
-             AND (
-               start_date <= $4::date
-               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-             )`,
-          [existingBooking.item_id, existingBookingId, sDate2, eDate2]
-        );
-        for (const conflicting of conflictingPendingRes.rows) {
-          await query(
-            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [conflicting.id]
-          );
-          await query(
-            `UPDATE messages 
-             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
-             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-            [conflicting.id]
-          ).catch(() => {
-          });
-          await createNotification({
+        for (const conflicting of conflictingPendingList) {
+          createNotification({
             userId: conflicting.borrower_id,
             bookingId: conflicting.id,
             referenceId: conflicting.id,
@@ -56860,44 +56966,16 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
           }).catch(() => {
           });
         }
-        const pickupCode2 = existingBooking.pickup_code || Math.floor(1e5 + Math.random() * 9e5).toString();
-        const updateRes = await query(
-          `UPDATE bookings
-           SET status = 'ACCEPTED',
-               pickup_code = $1,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2
-           RETURNING *`,
-          [pickupCode2, existingBookingId]
-        );
-        const updatedBooking = updateRes.rows[0];
-        const updatedProposal2 = {
-          ...proposal,
-          status: "ACCEPTED",
-          accepted_at: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        await query(
-          `UPDATE messages SET proposal_data = $1 WHERE id = $2`,
-          [JSON.stringify(updatedProposal2), messageId]
-        );
-        const itemTitle2 = existingBooking.item_title || proposal.item_title || "Item";
-        const totalPrice2 = updatedBooking.total_price || proposal.total_price || 0;
-        const priceDisplay2 = Number(totalPrice2) === 0 ? "Free" : `\u20B9${totalPrice2}`;
-        await query(
-          `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-           VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-          [
-            existingBookingId,
-            currentUserId,
-            message.sender_id,
-            `Request Accepted. Confirmed booking for "${itemTitle2}" (${priceDisplay2}). Handover is now live in Bookings.`
-          ]
-        );
-        await query(
-          `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
-           VALUES ($1, $2, 'BOOKING_ACCEPTED', 'Rental Request Accepted', 'Your request for "' || $3 || '" was accepted. Handover is now active in Bookings.', $4, 'BOOKING')`,
-          [message.sender_id, currentUserId, itemTitle2, existingBookingId]
-        ).catch(() => {
+        createNotification({
+          userId: message.sender_id,
+          senderId: currentUserId,
+          bookingId: existingBookingId,
+          referenceId: existingBookingId,
+          referenceType: "BOOKING",
+          type: "BOOKING_ACCEPTED",
+          title: "Rental Request Accepted",
+          body: `Your request for "${itemTitle2}" was accepted. Handover is now active in Bookings.`
+        }).catch(() => {
         });
         const safeProposal2 = { ...updatedProposal2 };
         delete safeProposal2.pickup_code;
@@ -56927,94 +57005,123 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
     const durationDays = Math.max(1, Number(proposal.duration_days) || 1);
     const pricePerDay = Number(proposal.price_per_day) || Number(proposal.total_price) / durationDays || 0;
     const totalPrice = Number(proposal.total_price) || pricePerDay * durationDays;
-    const itemTitle = proposal.title || "Personal Agreement Item";
-    const itemRes = await query(
-      `INSERT INTO items (
-        owner_id, title, description, category, price_per_day, max_duration_days, 
-        image_urls, locality, address_text, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
-      RETURNING *`,
-      [
-        canonicalLenderId,
-        itemTitle,
-        proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
-        proposal.category || "Other",
-        pricePerDay,
-        Math.max(durationDays, 3),
-        proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
-        proposal.locality || lenderInfo.locality || "Bangalore",
-        proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
-      ]
-    );
-    const createdItem = itemRes.rows[0];
     const sDate = new Date(startDate);
     const eDate = new Date(sDate);
     eDate.setDate(sDate.getDate() + durationDays);
     const endDateStr = proposal.end_date || eDate.toISOString().split("T")[0];
-    const pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
-    const bookingRes = await query(
-      `INSERT INTO bookings (
-        item_id, borrower_id, lender_id, start_date, duration_days, total_price,
-        status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
-        return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
-        pickup_code, return_code
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NULL)
-      RETURNING *`,
-      [
-        createdItem.id,
-        canonicalBorrowerId,
-        canonicalLenderId,
-        startDate,
-        durationDays,
-        totalPrice,
-        `Agreed personal deal in DM: ${proposal.notes || ""}`,
-        endDateStr,
-        proposal.start_time || "10:00:00",
-        proposal.end_time || "18:00",
-        proposal.delivery_option === "LENDER_DELIVERY" ? "OWNER_DELIVERY" : "LENDER_LOCATION",
-        proposal.delivery_location || lenderInfo.locality || "Handover location",
-        proposal.collection_option === "LENDER_COLLECT" ? "OWNER_COLLECT" : "LENDER_LOCATION",
-        proposal.return_location || lenderInfo.locality || "Return location",
-        !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
-        Number(proposal.delivery_fee) || 0,
-        !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
-        Number(proposal.collection_fee) || 0,
-        pickupCode
-      ]
-    );
-    const createdBooking = bookingRes.rows[0];
-    const updatedProposal = {
-      ...proposal,
-      status: "ACCEPTED",
-      booking_id: createdBooking.id,
-      item_id: createdItem.id,
-      accepted_at: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await query(
-      `UPDATE messages 
-       SET proposal_data = $1, booking_id = $2
-       WHERE id = $3`,
-      [JSON.stringify(updatedProposal), createdBooking.id, messageId]
-    );
-    const cleanStartDate = String(startDate).split("T")[0];
-    const cleanEndDate = String(endDateStr).split("T")[0];
-    const priceDisplay = Number(totalPrice) === 0 ? "Free" : `\u20B9${totalPrice}`;
-    await query(
-      `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-       VALUES ($1, $2, $3, $4, 'SYSTEM')`,
-      [
-        createdBooking.id,
-        currentUserId,
-        message.sender_id,
-        `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`
-      ]
-    );
-    if (proposal.request_id) {
-      await query(
-        `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        [proposal.request_id]
-      ).catch(() => {
-      });
+    const client = await pool.connect();
+    let createdItem;
+    let createdBooking;
+    let updatedProposal;
+    const itemTitle = proposal.title || "Personal Agreement Item";
+    try {
+      await client.query("BEGIN");
+      if (proposal.request_id) {
+        const reqCheck = await client.query(
+          `SELECT id, status, seeker_id FROM requests WHERE id = $1 FOR UPDATE`,
+          [proposal.request_id]
+        );
+        if (reqCheck.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return sendError(res, "NOT_FOUND", "Community request for this offer not found", 404);
+        }
+        if (reqCheck.rows[0].status !== "OPEN") {
+          await client.query("ROLLBACK");
+          return sendError(
+            res,
+            "CONFLICT",
+            "This community request has already been fulfilled by another neighbor or cancelled.",
+            409
+          );
+        }
+        await client.query(
+          `UPDATE requests SET status = 'FULFILLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [proposal.request_id]
+        );
+      }
+      const itemRes = await client.query(
+        `INSERT INTO items (
+          owner_id, title, description, category, price_per_day, max_duration_days, 
+          image_urls, locality, address_text, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
+        RETURNING *`,
+        [
+          canonicalLenderId,
+          itemTitle,
+          proposal.description || proposal.notes || `Personal custom agreement via Rentu DM`,
+          proposal.category || "Other",
+          pricePerDay,
+          Math.max(durationDays, 3),
+          proposal.image_url ? JSON.stringify([proposal.image_url]) : JSON.stringify([]),
+          proposal.locality || lenderInfo.locality || "Bangalore",
+          proposal.address_text || proposal.delivery_location || lenderInfo.address_text || "Local pickup"
+        ]
+      );
+      createdItem = itemRes.rows[0];
+      const pickupCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+      const bookingRes = await client.query(
+        `INSERT INTO bookings (
+          item_id, borrower_id, lender_id, start_date, duration_days, total_price,
+          status, message, end_date, start_time, end_time, pickup_type, pickup_locality,
+          return_type, return_locality, requires_delivery, delivery_fee, requires_pickup, pickup_fee,
+          pickup_code, return_code
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NULL)
+        RETURNING *`,
+        [
+          createdItem.id,
+          canonicalBorrowerId,
+          canonicalLenderId,
+          startDate,
+          durationDays,
+          totalPrice,
+          `Agreed personal deal in DM: ${proposal.notes || ""}`,
+          endDateStr,
+          proposal.start_time || "10:00:00",
+          proposal.end_time || "18:00",
+          proposal.delivery_option === "LENDER_DELIVERY" ? "OWNER_DELIVERY" : "LENDER_LOCATION",
+          proposal.delivery_location || lenderInfo.locality || "Handover location",
+          proposal.collection_option === "LENDER_COLLECT" ? "OWNER_COLLECT" : "LENDER_LOCATION",
+          proposal.return_location || lenderInfo.locality || "Return location",
+          !!proposal.delivery_fee && Number(proposal.delivery_fee) > 0,
+          Number(proposal.delivery_fee) || 0,
+          !!proposal.collection_fee && Number(proposal.collection_fee) > 0,
+          Number(proposal.collection_fee) || 0,
+          pickupCode
+        ]
+      );
+      createdBooking = bookingRes.rows[0];
+      updatedProposal = {
+        ...proposal,
+        status: "ACCEPTED",
+        booking_id: createdBooking.id,
+        item_id: createdItem.id,
+        accepted_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await client.query(
+        `UPDATE messages 
+         SET proposal_data = $1, booking_id = $2
+         WHERE id = $3`,
+        [JSON.stringify(updatedProposal), createdBooking.id, messageId]
+      );
+      const cleanStartDate = String(startDate).split("T")[0];
+      const cleanEndDate = String(endDateStr).split("T")[0];
+      const priceDisplay = Number(totalPrice) === 0 ? "Free" : `\u20B9${totalPrice}`;
+      await client.query(
+        `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
+         VALUES ($1, $2, $3, $4, 'SYSTEM')`,
+        [
+          createdBooking.id,
+          currentUserId,
+          message.sender_id,
+          `Agreement Accepted. Confirmed booking for "${itemTitle}" (${priceDisplay}) is scheduled from ${cleanStartDate} to ${cleanEndDate}. Active in Bookings.`
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
     }
     await query(
       `INSERT INTO notifications (user_id, sender_id, type, title, body, reference_id, reference_type)
@@ -57053,7 +57160,7 @@ router7.post("/proposal/:messageId/decline", authMiddleware, async (req, res, ne
       return sendError(res, "NOT_FOUND", "Proposal message not found", 404);
     }
     const message = msgRes.rows[0];
-    const myIds = await resolveUserIds(currentUserId);
+    const myIds = await resolveUserIds(currentUserId, req.user?.email);
     if (!myIds.includes(String(message.receiver_id)) && !myIds.includes(String(message.sender_id))) {
       return sendError(res, "FORBIDDEN", "Access denied", 403);
     }
@@ -57112,7 +57219,7 @@ router7.delete("/conversations/:conversationId", authMiddleware, async (req, res
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds(userId, req.user?.email);
     const isDm = conversationId.startsWith("dm_") || !isUuid(conversationId);
     const rawPartnerId = isDm ? conversationId.replace(/^dm_/, "") : null;
     if (isDm && rawPartnerId) {
@@ -57186,7 +57293,7 @@ router7.delete("/:messageId", authMiddleware, async (req, res, next) => {
   try {
     const { messageId } = req.params;
     const userId = req.user.id;
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds(userId, req.user?.email);
     const checkRes = await query(`SELECT * FROM messages WHERE id::text = $1`, [messageId]);
     if (checkRes.rows.length === 0) {
       return sendError(res, "NOT_FOUND", "Message not found", 404);
@@ -67579,6 +67686,7 @@ var runMigrations = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
       CREATE INDEX IF NOT EXISTS idx_reviews_booking ON reviews(booking_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique_booking_reviewer ON reviews(booking_id, reviewer_id);
 
       ALTER TABLE reviews ADD COLUMN IF NOT EXISTS review_type VARCHAR(50) DEFAULT 'OWNER_RENTAL';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_rating NUMERIC(3, 2) DEFAULT 0.00;

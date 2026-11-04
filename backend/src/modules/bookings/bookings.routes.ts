@@ -477,7 +477,7 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
     // Check and auto-cancel any bookings where 1 hour has elapsed after start time without pickup verification
     await checkAndAutoCancelExpiredBookings();
 
-    const myIds = await resolveUserIds(userId);
+    const myIds = await resolveUserIds(userId, req.user?.email);
 
     let sql = `
       SELECT 
@@ -565,6 +565,11 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response,
         AND (
           m.sender_id = ANY($1::text[]) 
           OR m.receiver_id = ANY($1::text[])
+          OR (m.booking_id IS NOT NULL AND m.booking_id IN (
+            SELECT b_sub.id FROM bookings b_sub 
+            WHERE b_sub.borrower_id = ANY($1::text[]) 
+               OR b_sub.lender_id = ANY($1::text[])
+          ))
         )
         AND (
           (m.proposal_data->>'status') IS NULL 
@@ -827,6 +832,10 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
     const eDate = booking.end_date_str || booking.end_date;
 
     // PAST TIME & CALENDAR OVERLAP CHECK ON ACCEPTANCE:
+    let pickupCode = booking.pickup_code;
+    let updateRes: any;
+    let conflictingPendingList: any[] = [];
+
     if (status === 'ACCEPTED') {
       const tzOffset = typeof req.body.timezone_offset_minutes === 'number'
         ? req.body.timezone_offset_minutes
@@ -847,58 +856,94 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
         );
       }
 
-      // Overlap check against bookings already ACCEPTED or HANDED_OVER
-      const conflictRes = await query(
-        `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
-                TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
-         FROM bookings
-         WHERE item_id = $1
-           AND id != $2
-           AND status IN ('ACCEPTED', 'HANDED_OVER')
-           AND (
-             start_date <= $4::date
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-           )
-         LIMIT 1`,
-        [booking.item_id, id, sDate, eDate]
-      );
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      if (conflictRes.rows.length > 0) {
-        const c = conflictRes.rows[0];
-        return sendError(
-          res,
-          'CONFLICT',
-          `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
-          409
+        // ATOMIC LOCK: Lock the item row to prevent concurrent race conditions
+        await client.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [booking.item_id]);
+
+        // Overlap check against bookings already ACCEPTED or HANDED_OVER
+        const conflictRes = await client.query(
+          `SELECT id, TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date, 
+                  TO_CHAR(COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status IN ('ACCEPTED', 'HANDED_OVER')
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )
+           LIMIT 1`,
+          [booking.item_id, id, sDate, eDate]
         );
+
+        if (conflictRes.rows.length > 0) {
+          await client.query('ROLLBACK');
+          const c = conflictRes.rows[0];
+          return sendError(
+            res,
+            'CONFLICT',
+            `Cannot accept booking: This item is already booked from ${c.start_date} to ${c.end_date}.`,
+            409
+          );
+        }
+
+        // Auto-cancel any conflicting pending requests for this item during the same dates
+        const conflictingPendingRes = await client.query(
+          `SELECT id, borrower_id 
+           FROM bookings
+           WHERE item_id = $1
+             AND id != $2
+             AND status = 'PENDING'
+             AND (
+               start_date <= $4::date
+               AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
+             )`,
+          [booking.item_id, id, sDate, eDate]
+        );
+        conflictingPendingList = conflictingPendingRes.rows;
+
+        for (const conflicting of conflictingPendingList) {
+          await client.query(
+            `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [conflicting.id]
+          );
+          await client.query(
+            `UPDATE messages 
+             SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
+             WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
+            [conflicting.id]
+          ).catch(() => {});
+        }
+
+        if (!pickupCode) {
+          pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        updateRes = await client.query(
+          `UPDATE bookings 
+           SET status = 'ACCEPTED', 
+               pickup_code = COALESCE(pickup_code, $1),
+               return_code = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2
+           RETURNING *`,
+          [pickupCode, id]
+        );
+
+        await client.query('COMMIT');
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+      } finally {
+        client.release();
       }
 
-      // Auto-cancel any conflicting pending requests for this item during the same dates
-      const conflictingPendingRes = await query(
-        `SELECT id, borrower_id 
-         FROM bookings
-         WHERE item_id = $1
-           AND id != $2
-           AND status = 'PENDING'
-           AND (
-             start_date <= $4::date
-             AND COALESCE(end_date, (start_date + (duration_days || ' days')::interval)::date) >= $3::date
-           )`,
-        [booking.item_id, id, sDate, eDate]
-      );
-
-      for (const conflicting of conflictingPendingRes.rows) {
-        await query(
-          `UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-          [conflicting.id]
-        );
-        await query(
-          `UPDATE messages 
-           SET proposal_data = jsonb_set(COALESCE(proposal_data, '{}'::jsonb), '{status}', '"CANCELLED"'::jsonb)
-           WHERE booking_id = $1 OR (proposal_data->>'booking_id' = $1::text)`,
-          [conflicting.id]
-        ).catch(() => {});
-        await createNotification({
+      // Non-blocking async notifications for cancelled pending requests
+      for (const conflicting of conflictingPendingList) {
+        createNotification({
           userId: conflicting.borrower_id,
           bookingId: conflicting.id,
           referenceId: conflicting.id,
@@ -908,24 +953,16 @@ router.patch('/:id/status', authMiddleware, async (req: AuthenticatedRequest, re
           body: `Your rental request for "${booking.item_title}" was cancelled because the owner accepted another booking for those dates.`,
         }).catch(() => {});
       }
+    } else {
+      updateRes = await query(
+        `UPDATE bookings 
+         SET status = $1, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [status, id]
+      );
     }
-
-    // Generate pickup code if accepting and not already set
-    let pickupCode = booking.pickup_code;
-    if (status === 'ACCEPTED' && !pickupCode) {
-      pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
-    }
-
-    // Update status
-    const updateRes = await query(
-      `UPDATE bookings 
-       SET status = $1, 
-           pickup_code = COALESCE(pickup_code, $2),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-       RETURNING *`,
-      [status, pickupCode, id]
-    );
 
     // Sync item status & trigger lifecycle notifications
     if (status === 'ACCEPTED') {
@@ -1076,8 +1113,8 @@ router.post('/:id/verify-pickup', authMiddleware, async (req: AuthenticatedReque
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user!.role === 'ADMIN';
 
-    if (!isLender && !isBorrower && !isAdmin) {
-      return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
+    if (!isLender && !isAdmin) {
+      return sendError(res, 'FORBIDDEN', 'Only the gear owner/lender can enter and verify the renter’s handover code to confirm pickup.', 403);
     }
 
     if (booking.status !== 'ACCEPTED') {
@@ -1222,8 +1259,8 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
     const isBorrower = myIds.includes(String(booking.borrower_id));
     const isAdmin = req.user!.role === 'ADMIN';
 
-    if (!isLender && !isBorrower && !isAdmin) {
-      return sendError(res, 'FORBIDDEN', 'Permission denied', 403);
+    if (!isBorrower && !isAdmin) {
+      return sendError(res, 'FORBIDDEN', 'Only the renter can enter and verify the owner’s return code to complete the return.', 403);
     }
 
     if (booking.status !== 'HANDED_OVER') {
@@ -1260,14 +1297,14 @@ router.post('/:id/verify-return', authMiddleware, async (req: AuthenticatedReque
 
     const updateRes = await query(
       `UPDATE bookings 
-       SET status = 'COMPLETED'::booking_status,
+       SET status = (CASE WHEN $2 = true THEN 'COMPLETED'::booking_status ELSE 'HANDED_OVER'::booking_status END),
            returned_at = CURRENT_TIMESTAMP,
-           completed_at = CURRENT_TIMESTAMP,
-           payment_status = 'CONFIRMED',
+           completed_at = (CASE WHEN $2 = true THEN CURRENT_TIMESTAMP ELSE NULL END),
+           payment_status = (CASE WHEN $2 = true THEN 'CONFIRMED' ELSE 'PENDING' END),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
-      [id]
+      [id, isFree]
     );
 
     // Release item back to AVAILABLE
@@ -1467,6 +1504,10 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       return sendError(res, 'BAD_REQUEST', 'Reviews can only be submitted after the product is returned and completed', 400);
     }
 
+    if (Number(booking.total_price) > 0 && booking.payment_status !== 'CONFIRMED') {
+      return sendError(res, 'BAD_REQUEST', 'Reviews can only be submitted after rental payment has been confirmed by the owner', 400);
+    }
+
     // Check 3-day window (at most 3 days after completion)
     const completedAt = new Date(booking.completed_at || booking.updated_at);
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
@@ -1485,29 +1526,18 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
       resolvedReviewType = 'RENTER';
     }
 
-    // Check if user already reviewed this booking
-    const existing = await query(
-      `SELECT id FROM reviews WHERE booking_id = $1 AND (reviewer_id = $2 OR reviewer_id = $3)`,
-      [id, reviewerId, userId]
+    const reviewResult = await query(
+      `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (booking_id, reviewer_id)
+       DO UPDATE SET 
+         rating = EXCLUDED.rating, 
+         comment = EXCLUDED.comment, 
+         review_type = EXCLUDED.review_type, 
+         created_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [id, reviewerId, revieweeId, rating, comment || '', resolvedReviewType]
     );
-
-    let reviewResult;
-    if (existing.rows.length > 0) {
-      reviewResult = await query(
-        `UPDATE reviews 
-         SET rating = $1, comment = $2, review_type = $3, created_at = CURRENT_TIMESTAMP 
-         WHERE id = $4
-         RETURNING *`,
-        [rating, comment || '', resolvedReviewType, existing.rows[0].id]
-      );
-    } else {
-      reviewResult = await query(
-        `INSERT INTO reviews (booking_id, reviewer_id, reviewee_id, rating, comment, review_type)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [id, reviewerId, revieweeId, rating, comment || '', resolvedReviewType]
-      );
-    }
 
     // Recalculate review ratings and verified counts for reviewee
     await query(`
