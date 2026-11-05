@@ -589,7 +589,9 @@ export const RentalCalendar: React.FC<RentalCalendarProps> = ({
         ];
 
         return (
-          <div className="mt-3.5 pt-3 border-t border-divider space-y-2">
+          <div className={`mt-3.5 pt-3 border-t border-divider space-y-2 transition-all ${
+            (isStartPickerOpen || isEndPickerOpen) ? 'pb-56 sm:pb-48' : ''
+          }`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Pickup / Start Time */}
               <TimePickerCard

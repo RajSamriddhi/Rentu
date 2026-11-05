@@ -461,7 +461,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
         {/* Modal Body: Left gallery + details, Right booking card */}
         <div className="p-3.5 sm:p-6 lg:p-8 max-h-[88dvh] sm:max-h-[85vh] overflow-y-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
             {/* Left 7 Columns: Gallery + Item Details */}
             <div className="lg:col-span-7 space-y-6">
@@ -707,8 +707,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             </div>
 
             {/* Right 5 Columns: "Rent this item" Sidebar Card from Screen 3 */}
-            <div className="lg:col-span-5">
-              <div className="bg-canvas border border-divider rounded-3xl p-6 shadow-md sticky top-6">
+            <div className="lg:col-span-5 lg:sticky lg:top-4 self-start">
+              <div className="bg-canvas border border-divider rounded-3xl p-6 shadow-md max-h-[calc(85vh-3rem)] overflow-y-auto">
                 
                 <h3 className="text-lg font-extrabold text-ink mb-4 font-display">
                   {isFreeListing || rentType === 'Borrow' ? 'Borrow this item' : 'Rent this item'}
