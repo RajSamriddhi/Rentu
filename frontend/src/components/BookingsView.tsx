@@ -136,7 +136,12 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
-  const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
 
   // 6-digit verification code input states keyed by booking ID
   const [pickupCodeInput, setPickupCodeInput] = useState<Record<string, string>>({});
@@ -643,7 +648,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                     key={`${day.dateStr}-${idx}`}
                     type="button"
                     onClick={() => handleSelectCalendarDate(day.dateStr, day.activeBookings)}
-                    className={`relative min-h-[58px] sm:min-h-[70px] p-1.5 sm:p-2 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    className={`relative min-h-[46px] sm:min-h-[70px] p-1 sm:p-2 rounded-xl sm:rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                       isSelected
                         ? 'border-brand ring-2 ring-brand/40 bg-brand/10 shadow-sm'
                         : hasActive && dayStatus
@@ -752,29 +757,29 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       {/* ======================================================== */}
       {/* 3. FOUR MAIN TABS (Ongoing, Requests, Finished, Cancelled) */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5">
         
         {/* Tab 1: Ongoing Bookings */}
         <button
           onClick={() => { setActiveTab('ongoing'); }}
-          className={`p-4 rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
+          className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
             activeTab === 'ongoing'
               ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
               : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
           }`}
         >
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                Ongoing Bookings
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-ink font-display line-clamp-1">
+                Ongoing
               </span>
             </div>
-            <p className="text-[11px] text-ink-secondary font-medium mt-0.5">
-              Active handoffs & in-use rentals
+            <p className="text-[10px] sm:text-[11px] text-ink-secondary font-medium mt-0.5 hidden sm:block">
+              Active handoffs & rentals
             </p>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+          <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-black shrink-0 ${
             activeTab === 'ongoing' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
             {isLoading ? '...' : ongoingList.length}
@@ -784,24 +789,24 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         {/* Tab 2: Booking Requests */}
         <button
           onClick={() => { setActiveTab('requests'); setSelectedDateFilter(null); }}
-          className={`p-4 rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
+          className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
             activeTab === 'requests'
               ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
               : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
           }`}
         >
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                Booking Requests
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-ink font-display line-clamp-1">
+                Requests
               </span>
             </div>
-            <p className="text-[11px] text-ink-secondary font-medium mt-0.5">
-              Proposals to accept or decline
+            <p className="text-[10px] sm:text-[11px] text-ink-secondary font-medium mt-0.5 hidden sm:block">
+              Proposals to accept
             </p>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+          <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-black shrink-0 ${
             activeTab === 'requests' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
             {isLoading ? '...' : requestsList.length}
@@ -811,24 +816,24 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         {/* Tab 3: Finished Bookings */}
         <button
           onClick={() => { setActiveTab('finished'); setSelectedDateFilter(null); }}
-          className={`p-4 rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
+          className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
             activeTab === 'finished'
               ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
               : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
           }`}
         >
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                Finished Bookings
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-ink font-display line-clamp-1">
+                Finished
               </span>
             </div>
-            <p className="text-[11px] text-ink-secondary font-medium mt-0.5">
-              Completed exchanges & reviews
+            <p className="text-[10px] sm:text-[11px] text-ink-secondary font-medium mt-0.5 hidden sm:block">
+              Completed exchanges
             </p>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+          <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-black shrink-0 ${
             activeTab === 'finished' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
             {isLoading ? '...' : finishedList.length}
@@ -838,24 +843,24 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         {/* Tab 4: Cancelled & Declined Bookings */}
         <button
           onClick={() => { setActiveTab('cancelled'); setSelectedDateFilter(null); }}
-          className={`p-4 rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
+          className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl text-left border transition-all cursor-pointer relative overflow-hidden flex items-center justify-between ${
             activeTab === 'cancelled'
               ? 'bg-surface border-brand ring-2 ring-brand/20 shadow-sm'
               : 'bg-canvas/60 border-divider hover:bg-surface hover:border-zinc-300 dark:hover:border-zinc-700'
           }`}
         >
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span className="text-xs font-black uppercase tracking-wider text-ink font-display">
-                Cancelled / Declined
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-ink font-display line-clamp-1">
+                Cancelled
               </span>
             </div>
-            <p className="text-[11px] text-ink-secondary font-medium mt-0.5">
-              Declined proposals & cancelled
+            <p className="text-[10px] sm:text-[11px] text-ink-secondary font-medium mt-0.5 hidden sm:block">
+              Declined proposals
             </p>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+          <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-black shrink-0 ${
             activeTab === 'cancelled' ? 'bg-brand text-white' : 'bg-canvas text-ink-secondary border border-divider'
           }`}>
             {isLoading ? '...' : cancelledList.length}

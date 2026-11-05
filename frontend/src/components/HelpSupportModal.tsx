@@ -193,28 +193,28 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
   return (
     <div 
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 overflow-hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
         role="dialog"
         aria-modal="true"
         aria-labelledby="help-support-modal-title"
-        className="relative bg-surface rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden my-4 border border-divider"
+        className="relative bg-surface rounded-2xl sm:rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden my-auto border border-divider max-h-[90dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-divider bg-canvas/30 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-divider bg-canvas/30 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
               <HelpCircle className="w-4 h-4" />
             </div>
             <div>
-              <h2 id="help-support-modal-title" className="text-sm font-black text-ink uppercase tracking-wider font-display">
+              <h2 id="help-support-modal-title" className="text-xs sm:text-sm font-black text-ink uppercase tracking-wider font-display">
                 Help & Community Care
               </h2>
-              <p className="text-[11px] text-ink-secondary">
+              <p className="text-[10px] sm:text-[11px] text-ink-secondary">
                 Directly connected to Rentu Founders & Support Admin
               </p>
             </div>
@@ -230,10 +230,10 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Top Mode Tabs: New Submission vs My History */}
-        <div className="flex border-b border-divider text-xs font-bold bg-canvas/20">
+        <div className="flex border-b border-divider text-xs font-bold bg-canvas/20 shrink-0">
           <button
             onClick={() => { setActiveTab('NEW'); handleResetForm(); }}
-            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer ${activeTab === 'NEW'
+            className={`flex-1 py-2.5 sm:py-3 text-center border-b-2 transition-colors cursor-pointer ${activeTab === 'NEW'
               ? 'border-brand text-brand font-black'
               : 'border-transparent text-ink-secondary hover:text-ink'
               }`}
@@ -243,7 +243,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
           {isAuthenticated && (
             <button
               onClick={() => setActiveTab('HISTORY')}
-              className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'HISTORY'
+              className={`flex-1 py-2.5 sm:py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'HISTORY'
                 ? 'border-brand text-brand font-black'
                 : 'border-transparent text-ink-secondary hover:text-ink'
                 }`}
@@ -260,7 +260,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
         {/* TAB 1: NEW SUBMISSION */}
         {activeTab === 'NEW' && (
-          <div className="p-6">
+          <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
             {submitSuccess ? (
               <div className="py-8 text-center space-y-4 animate-in zoom-in-95 duration-150">
                 <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
@@ -348,7 +348,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
                         type="button"
                         key={cat}
                         onClick={() => setCategory(cat)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-bold transition-all cursor-pointer ${category === cat
+                        className={`text-[11px] sm:text-xs px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full font-bold transition-all cursor-pointer ${category === cat
                           ? 'bg-brand text-white shadow-xs'
                           : 'bg-canvas border border-divider text-ink-secondary hover:text-ink hover:bg-surface'
                           }`}
@@ -490,7 +490,7 @@ export const HelpSupportModal: React.FC<HelpSupportModalProps> = ({ isOpen, onCl
 
         {/* TAB 2: MY TICKETS & REPLIES HISTORY */}
         {activeTab === 'HISTORY' && (
-          <div className="p-6 max-h-[460px] overflow-y-auto space-y-3">
+          <div className="p-4 sm:p-6 flex-1 overflow-y-auto space-y-3">
             <div className="flex items-center justify-between pb-1">
               <span className="text-xs font-bold text-ink">Recent Inquiries & Admin Replies</span>
               <button

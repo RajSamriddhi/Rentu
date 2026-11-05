@@ -1039,8 +1039,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </button>
 
-                {/* Post Menu Button (+ List Item / + Post Request) */}
-                <div className="relative" ref={postMenuRef}>
+                {/* Post Menu Button (+ List Item / + Post Request - Hidden on mobile since bottom bar has floating +) */}
+                <div className="relative hidden sm:block" ref={postMenuRef}>
                   <button
                     id="post-menu-btn"
                     onClick={() => setShowPostMenu(!showPostMenu)}
@@ -1297,7 +1297,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div className="md:hidden border-t border-divider/60 bg-white dark:bg-[#111218] px-3 py-4 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
+          <div className="md:hidden fixed inset-x-0 top-[56px] bottom-0 z-50 bg-white/98 dark:bg-[#111218]/98 backdrop-blur-xl px-4 py-5 space-y-4 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
 
             {/* Navigation Links */}
             <div className="space-y-1">
@@ -1387,14 +1387,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {unreadCount} new
                     </span>
                   )}
-                </button>
-
-                <button
-                  onClick={() => { setActiveTab('bookings'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <Calendar className="w-4 h-4 text-ink-secondary" />
-                  <span>Bookings & Activity</span>
                 </button>
 
                 <button

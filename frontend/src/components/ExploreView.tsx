@@ -75,7 +75,12 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [selectedCondition, setSelectedCondition] = useState<string>('Any');
   const [selectedPerks, setSelectedPerks] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'relevance' | 'distance' | 'price_low' | 'price_high'>('relevance');
-  const [showFilters, setShowFilters] = useState<boolean>(true);
+  const [showFilters, setShowFilters] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return false;
+  });
 
   // Active filter count
   const activeFiltersCount = 
@@ -256,7 +261,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           
           {/* Top Control Bar: Filter Toggle + Active Tags + Sort */}
           <div className="flex flex-col gap-3 pt-2 pb-4 border-b border-divider mb-6">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex items-center gap-3">
                 {/* Toggle Filter Sidebar Button */}
                 <button
