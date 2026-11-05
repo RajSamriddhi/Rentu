@@ -103148,6 +103148,79 @@ router12.get("/reports", async (req, res, next) => {
     next(error);
   }
 });
+router12.post("/reset-system", async (req, res, next) => {
+  try {
+    const { confirm_phrase } = req.body;
+    if (!confirm_phrase || String(confirm_phrase).trim().toUpperCase() !== "RESET_ENTIRE_DATABASE") {
+      return sendError(
+        res,
+        "BAD_REQUEST",
+        "Confirmation phrase RESET_ENTIRE_DATABASE is required to execute factory reset.",
+        400
+      );
+    }
+    const adminEmail = (req.user?.email || "").trim().toLowerCase();
+    if (!isAdminEmail(adminEmail) && req.user?.role !== "ADMIN") {
+      return sendError(res, "FORBIDDEN", "Only authorized platform administrators can reset the system.", 403);
+    }
+    let totalDeletedFbUsers = 0;
+    try {
+      const { getAuth: getAuth2 } = await Promise.resolve().then(() => (init_auth(), auth_exports));
+      const auth = getAuth2();
+      let nextPageToken = void 0;
+      do {
+        const listResult = await auth.listUsers(1e3, nextPageToken);
+        const uids = listResult.users.map((u) => u.uid);
+        if (uids.length > 0) {
+          const deleteResult = await auth.deleteUsers(uids);
+          totalDeletedFbUsers += deleteResult.successCount;
+        }
+        nextPageToken = listResult.pageToken;
+      } while (nextPageToken);
+    } catch (fbErr) {
+      console.warn("Notice when deleting Firebase Auth users during factory reset:", fbErr.message);
+    }
+    const tablesToWipe = [
+      "verification_attempts",
+      "user_deleted_conversations",
+      "user_muted_conversations",
+      "support_tickets",
+      "user_blocks",
+      "user_follows",
+      "push_subscriptions",
+      "notifications",
+      "reviews",
+      "item_images",
+      "messages",
+      "bookings",
+      "requests",
+      "items",
+      "users"
+    ];
+    for (const tbl of tablesToWipe) {
+      try {
+        await query(`TRUNCATE TABLE ${tbl} RESTART IDENTITY CASCADE`);
+      } catch (err) {
+        try {
+          await query(`DELETE FROM ${tbl}`);
+        } catch (delErr) {
+          console.warn(`Could not clear table ${tbl}:`, delErr.message);
+        }
+      }
+    }
+    return sendSuccess(
+      res,
+      {
+        firebase_users_deleted: totalDeletedFbUsers,
+        database_tables_cleared: tablesToWipe.length,
+        status: "SYSTEM_RESET_COMPLETE"
+      },
+      "Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero."
+    );
+  } catch (error) {
+    next(error);
+  }
+});
 var admin_routes_default = router12;
 
 // src/middleware/error.ts

@@ -898,6 +898,15 @@ export const api = {
     return handleResponse(res);
   },
 
+  async resetEntireSystem(confirmPhrase: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/reset-system`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ confirm_phrase: confirmPhrase }),
+    });
+    return handleResponse(res);
+  },
+
   // Rentu AI Assistant
   async sendAiChatMessage(
     messages: { role: 'user' | 'assistant'; content: string }[],

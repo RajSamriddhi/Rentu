@@ -34,6 +34,7 @@ import {
 import { api } from '../lib/api';
 import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
 import { useAuth } from '../lib/authContext';
+import { auth, fbSignOut } from '../lib/firebase';
 
 export const HustleHub: React.FC = () => {
   const { user, firebaseUser } = useAuth();
@@ -98,6 +99,13 @@ export const HustleHub: React.FC = () => {
   const [isLoadingReports, setIsLoadingReports] = useState(false);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [exportingType, setExportingType] = useState<string | null>(null);
+
+  // 8. Factory Reset System State (Zero clean slate)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetConfirmationText, setResetConfirmationText] = useState('');
+  const [isResettingSystem, setIsResettingSystem] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
+  const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadOverviewAnalytics();
@@ -435,6 +443,42 @@ export const HustleHub: React.FC = () => {
       alert(err.message || `Failed to export ${type} data. Please check your connection and try again.`);
     } finally {
       setExportingType(null);
+    }
+  };
+
+  const handleFactoryReset = async () => {
+    if (resetConfirmationText.trim().toUpperCase() !== 'RESET') {
+      setResetErrorMessage('Please type RESET in capital letters to confirm.');
+      return;
+    }
+
+    setIsResettingSystem(true);
+    setResetErrorMessage(null);
+
+    try {
+      await api.resetEntireSystem('RESET_ENTIRE_DATABASE');
+
+      setIsResetModalOpen(false);
+      setResetSuccessMessage('Everything has been reset to zero! The database and Firebase auth have been completely cleared.');
+
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {}
+
+      try {
+        if (auth) {
+          await fbSignOut(auth);
+        }
+      } catch {}
+
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (err: any) {
+      console.error('Factory reset failed:', err);
+      setResetErrorMessage(err.message || 'Failed to complete system reset. Check server logs.');
+      setIsResettingSystem(false);
     }
   };
 
@@ -2032,6 +2076,52 @@ export const HustleHub: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* DANGER ZONE: Factory Reset Entire System Back to Zero */}
+                <div className="p-5 rounded-2xl bg-red-500/5 border-2 border-red-500/30 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0 border border-red-500/20">
+                        <AlertTriangle className="w-5 h-5 text-red-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black text-red-500 uppercase tracking-wider flex items-center gap-2">
+                          <span>Danger Zone: Reset Everything Back to Zero</span>
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
+                            Destructive
+                          </span>
+                        </h3>
+                        <p className="text-xs text-ink-secondary mt-0.5">
+                          Clean slate wipe of entire PostgreSQL database & Firebase Authentication.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsResetModalOpen(true);
+                        setResetConfirmationText('');
+                        setResetErrorMessage(null);
+                      }}
+                      className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-md shadow-red-500/20 cursor-pointer flex items-center gap-2 shrink-0 transition-all self-start sm:self-auto"
+                    >
+                      <Trash2 className="w-4 h-4 stroke-[2.5]" />
+                      <span>Reset Everything to Zero</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-ink-secondary leading-relaxed bg-surface/80 p-3.5 rounded-xl border border-divider">
+                    ⚠️ <strong>Warning:</strong> Clicking this button will wipe all records completely clean: <strong>no users will remain in Firebase</strong>, <strong>no users in Supabase PostgreSQL</strong>, and all items, bookings, chats, requests, reviews, and support tickets will be cleared out. The website will become brand new for day-one usage.
+                  </p>
+
+                  {resetSuccessMessage && (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2 animate-in zoom-in-95">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>{resetSuccessMessage} Redirecting to fresh home page...</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -2039,6 +2129,99 @@ export const HustleHub: React.FC = () => {
         </main>
 
       </div>
+
+      {/* Factory Reset Danger Confirmation Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="relative bg-surface rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border-2 border-red-500/40 p-6 space-y-5 animate-in zoom-in-95 duration-150">
+            
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0 border border-red-500/20">
+                <AlertTriangle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-black text-ink font-display leading-tight">
+                  Reset Everything Back to Zero?
+                </h3>
+                <p className="text-xs text-red-500 font-bold mt-0.5">
+                  Permanent clean slate. All database records & users will be deleted.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isResettingSystem && setIsResetModalOpen(false)}
+                disabled={isResettingSystem}
+                className="p-1 rounded-full text-ink-secondary hover:text-ink hover:bg-canvas cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-ink-secondary space-y-2 bg-canvas p-4 rounded-2xl border border-divider">
+              <p className="font-bold text-ink">The following will be completely erased back to 0:</p>
+              <ul className="list-disc list-inside space-y-1 text-[11px]">
+                <li><strong className="text-red-500">All users</strong> in Firebase Authentication & Supabase PostgreSQL</li>
+                <li><strong className="text-red-500">All gear items</strong> & photos</li>
+                <li><strong className="text-red-500">All active bookings</strong>, schedules & verification codes</li>
+                <li><strong className="text-red-500">All chat messages</strong>, conversations & community requests</li>
+                <li><strong className="text-red-500">All reviews</strong>, trust ratings & support tickets</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-ink">
+                To confirm, type <span className="font-mono font-black text-red-500">RESET</span> below:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmationText}
+                onChange={(e) => setResetConfirmationText(e.target.value)}
+                placeholder="Type RESET"
+                disabled={isResettingSystem}
+                className="w-full bg-canvas border border-red-500/40 rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:ring-2 focus:ring-red-500"
+                autoFocus
+              />
+            </div>
+
+            {resetErrorMessage && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{resetErrorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-divider">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(false)}
+                disabled={isResettingSystem}
+                className="btn-secondary text-xs px-4 py-2.5 font-bold cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFactoryReset}
+                disabled={isResettingSystem || resetConfirmationText.trim().toUpperCase() !== 'RESET'}
+                className="text-xs px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {isResettingSystem ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Clearing Database & Firebase...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Confirm & Reset Everything to Zero</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

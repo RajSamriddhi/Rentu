@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
-import { adminMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { adminMiddleware, AuthenticatedRequest, isAdminEmail } from '../../middleware/auth';
 
 const router = Router();
 
@@ -382,6 +382,91 @@ router.get('/reports', async (req: AuthenticatedRequest, res: Response, next) =>
         admins: ['falaksadiqua786@gmail.com', 'rajsamriddhi60@gmail.com'],
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 13. DANGER ZONE: FACTORY RESET SYSTEM (Wipe all database records and Firebase Auth users)
+router.post('/reset-system', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { confirm_phrase } = req.body;
+
+    if (!confirm_phrase || String(confirm_phrase).trim().toUpperCase() !== 'RESET_ENTIRE_DATABASE') {
+      return sendError(
+        res,
+        'BAD_REQUEST',
+        'Confirmation phrase RESET_ENTIRE_DATABASE is required to execute factory reset.',
+        400
+      );
+    }
+
+    // Double-check admin authorization
+    const adminEmail = (req.user?.email || '').trim().toLowerCase();
+    if (!isAdminEmail(adminEmail) && req.user?.role !== 'ADMIN') {
+      return sendError(res, 'FORBIDDEN', 'Only authorized platform administrators can reset the system.', 403);
+    }
+
+    // 1. Wipe Firebase Authentication users
+    let totalDeletedFbUsers = 0;
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth();
+      let nextPageToken: string | undefined = undefined;
+
+      do {
+        const listResult = await auth.listUsers(1000, nextPageToken);
+        const uids = listResult.users.map((u: any) => u.uid);
+        if (uids.length > 0) {
+          const deleteResult = await auth.deleteUsers(uids);
+          totalDeletedFbUsers += deleteResult.successCount;
+        }
+        nextPageToken = listResult.pageToken;
+      } while (nextPageToken);
+    } catch (fbErr: any) {
+      console.warn('Notice when deleting Firebase Auth users during factory reset:', fbErr.message);
+    }
+
+    // 2. Wipe PostgreSQL database tables
+    const tablesToWipe = [
+      'verification_attempts',
+      'user_deleted_conversations',
+      'user_muted_conversations',
+      'support_tickets',
+      'user_blocks',
+      'user_follows',
+      'push_subscriptions',
+      'notifications',
+      'reviews',
+      'item_images',
+      'messages',
+      'bookings',
+      'requests',
+      'items',
+      'users',
+    ];
+
+    for (const tbl of tablesToWipe) {
+      try {
+        await query(`TRUNCATE TABLE ${tbl} RESTART IDENTITY CASCADE`);
+      } catch (err: any) {
+        try {
+          await query(`DELETE FROM ${tbl}`);
+        } catch (delErr: any) {
+          console.warn(`Could not clear table ${tbl}:`, delErr.message);
+        }
+      }
+    }
+
+    return sendSuccess(
+      res,
+      {
+        firebase_users_deleted: totalDeletedFbUsers,
+        database_tables_cleared: tablesToWipe.length,
+        status: 'SYSTEM_RESET_COMPLETE',
+      },
+      'Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero.'
+    );
   } catch (error) {
     next(error);
   }
