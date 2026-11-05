@@ -321,10 +321,10 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
               {/* Reputation Badges & Three-Dot Options Menu */}
               <div className="flex flex-wrap items-center gap-2">
-                {profile.reviews && profile.reviews.length > 0 && profile.rating > 0 && (
+                {profile.reviews && profile.reviews.length > 0 && Number(profile.rating || 0) > 0 && (
                   <div className="px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
                     <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    <span>{profile.rating.toFixed(2)} Rating</span>
+                    <span>{Number(profile.rating || 0).toFixed(2)} Rating</span>
                   </div>
                 )}
 
@@ -569,7 +569,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
               <div className="p-4 sm:p-5 text-center sm:text-left">
                 <div className="text-xl sm:text-2xl font-black text-ink font-display flex items-center justify-center sm:justify-start gap-1">
-                  {(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(1)} ★
+                  {(profile.reviews && profile.reviews.length > 0 ? Number(profile.rating || 0) : 0.0).toFixed(1)} ★
                 </div>
                 <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
                   Neighbor Score
@@ -732,7 +732,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               <div className="flex items-center gap-4 bg-canvas p-4 rounded-2xl border border-divider shrink-0">
                 <div className="text-center">
                   <div className="text-3xl font-black text-amber-500 font-display">
-                    {profile.reviews && profile.reviews.length > 0 ? (profile.trust_rating || profile.rating).toFixed(2) : '—'}
+                    {profile.reviews && profile.reviews.length > 0 ? Number(profile.trust_rating || profile.rating || 0).toFixed(2) : '—'}
                   </div>
                   <div className="text-[10px] font-bold text-ink-muted uppercase mt-0.5">
                     Trust Rating
@@ -792,7 +792,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     </div>
                     <p className="text-[11px] text-ink-secondary">
                       {reviewCount > 0 && avgRating >= 4.0
-                        ? `Maintains a stellar ${avgRating.toFixed(1)}-star care and equipment safety record.`
+                        ? `Maintains a stellar ${Number(avgRating || 0).toFixed(1)}-star care and equipment safety record.`
                         : reviewCount > 0
                         ? `${reviewCount} verified review${reviewCount === 1 ? '' : 's'} recorded.`
                         : 'Committed to Rentu⁺ equipment care and safety standards.'}

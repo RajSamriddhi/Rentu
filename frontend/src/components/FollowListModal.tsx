@@ -187,12 +187,12 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
                             </span>
                           </>
                         )}
-                        {item.rating && item.rating > 0 ? (
+                        {Number(item.rating) > 0 ? (
                           <>
                             <span>•</span>
                             <span className="flex items-center gap-0.5 font-bold text-ink">
                               <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                              {item.rating.toFixed(1)}
+                              {Number(item.rating).toFixed(1)}
                             </span>
                           </>
                         ) : null}

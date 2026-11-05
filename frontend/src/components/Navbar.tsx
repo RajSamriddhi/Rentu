@@ -790,7 +790,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 )}
                                 <span className="inline-flex items-center text-[10px] font-black text-amber-500">
                                   <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 mr-0.5 shrink-0" />
-                                  <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'}</span>
+                                  <span>{Number(u.rating) > 0 ? Number(u.rating).toFixed(1) : '0.0'}</span>
                                 </span>
                               </div>
                               <div className="text-[10px] text-ink-secondary truncate">
@@ -1298,7 +1298,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </div>
                             <div className="text-[10px] text-ink-secondary truncate flex items-center gap-1">
                               <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
-                              <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {getReachDistance(u, user)}</span>
+                              <span>{Number(u.rating) > 0 ? Number(u.rating).toFixed(1) : '0.0'} • {getReachDistance(u, user)}</span>
                             </div>
                           </div>
                         </div>

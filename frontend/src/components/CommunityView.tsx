@@ -85,7 +85,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Trust Rating (Avg)</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{((member.trust_rating || member.rating) || 0.0).toFixed(2)}</span>
+              <span>{Number((member.trust_rating || member.rating) || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -105,7 +105,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Gear Owner Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.owner_rating || 0.0).toFixed(2)}</span>
+              <span>{Number(member.owner_rating || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -124,7 +124,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Renter Rating</div>
             <div className="font-black text-ink flex items-center gap-1 mt-0.5">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{(member.renter_rating || 0.0).toFixed(2)}</span>
+              <span>{Number(member.renter_rating || 0.0).toFixed(2)}</span>
             </div>
           </div>
           <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -142,7 +142,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className="text-[10px] text-ink-muted font-bold uppercase">Free Lender Rating</div>
           <div className="font-black text-ink flex items-center gap-1 mt-0.5">
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span>{(member.community_lender_rating || 0.0).toFixed(2)}</span>
+            <span>{Number(member.community_lender_rating || 0.0).toFixed(2)}</span>
           </div>
         </div>
         <div className={`p-2.5 rounded-xl bg-canvas ${isGold ? 'border border-amber-300 dark:border-amber-800/40' : ''}`}>
@@ -621,12 +621,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                               <span>
                                 {activeCategory === 'top_lenders'
-                                  ? (member.owner_rating || 0.0).toFixed(2)
+                                  ? Number(member.owner_rating || 0.0).toFixed(2)
                                   : activeCategory === 'top_borrowers'
-                                  ? (member.renter_rating || 0.0).toFixed(2)
+                                  ? Number(member.renter_rating || 0.0).toFixed(2)
                                   : activeCategory === 'top_sharers'
-                                  ? (member.community_lender_rating || 0.0).toFixed(2)
-                                  : ((member.trust_rating || member.rating) || 0.0).toFixed(2)}
+                                  ? Number(member.community_lender_rating || 0.0).toFixed(2)
+                                  : Number((member.trust_rating || member.rating) || 0.0).toFixed(2)}
                               </span>
                             </div>
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-black mt-0.5">
