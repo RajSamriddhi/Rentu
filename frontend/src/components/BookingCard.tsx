@@ -138,6 +138,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
     ? (booking.borrower_name || 'Renter')
     : (booking.lender_name || 'Lender / Owner');
 
+  const otherPartyUsername = isLender ? booking.borrower_username : booking.lender_username;
   const otherPartyAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
   const otherPartyId = isLender ? booking.borrower_id : booking.lender_id;
 
@@ -261,11 +262,14 @@ export const BookingCard: React.FC<BookingCardProps> = ({
             className="w-7 h-7 rounded-full object-cover border border-divider shrink-0 shadow-2xs"
           />
           <div className="min-w-0">
-            <span className="text-[9px] uppercase font-bold text-ink-muted block leading-none">
-              {isLender ? 'Rented by' : 'Lender'}
+            <span className="text-[9px] uppercase font-extrabold text-ink-muted block leading-none">
+              {isLender ? 'Renter (Borrower)' : 'Gear Owner (Lender)'}
             </span>
             <span className="text-xs font-bold text-ink truncate block">
               {otherPartyName}
+              {otherPartyUsername ? (
+                <span className="text-[11px] text-brand font-semibold font-mono ml-1">@{otherPartyUsername}</span>
+              ) : null}
             </span>
           </div>
         </div>

@@ -181,10 +181,12 @@ export interface Booking {
   item_locality?: string;
   item_rate?: number | string;
   borrower_name?: string;
+  borrower_username?: string;
   borrower_avatar?: string;
   borrower_phone?: string;
   borrower_email?: string;
   lender_name?: string;
+  lender_username?: string;
   lender_avatar?: string;
   lender_phone?: string;
   lender_email?: string;
