@@ -132,6 +132,33 @@ router.delete('/users/:id', async (req, res, next) => {
         next(error);
     }
 });
+// 2.2 SYNC FIREBASE USER TO SUPABASE (Admin tool to manually add or sync any Firebase user)
+router.post('/sync-user', async (req, res, next) => {
+    try {
+        const { uid, email, name, avatar_url } = req.body;
+        if (!uid || !email) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'UID and email are required to sync user', 400);
+        }
+        const cleanEmail = String(email).trim().toLowerCase();
+        const cleanName = name || cleanEmail.split('@')[0];
+        const username = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() || `user_${uid.slice(0, 6)}`;
+        const avatar = avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(cleanName)}`;
+        const result = await (0, db_1.query)(`
+      INSERT INTO users (id, firebase_uid, email, name, username, avatar_url, role, trust_score)
+      VALUES ($1, $2, $3, $4, $5, $6, 'USER', 85)
+      ON CONFLICT (id) DO UPDATE SET
+        firebase_uid = EXCLUDED.firebase_uid,
+        email = EXCLUDED.email,
+        name = EXCLUDED.name,
+        avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url)
+      RETURNING id, firebase_uid, email, name, username, role, created_at;
+    `, [uid, uid, cleanEmail, cleanName, username, avatar]);
+        return (0, response_1.sendSuccess)(res, result.rows[0], 'User synchronized to Supabase successfully');
+    }
+    catch (error) {
+        next(error);
+    }
+});
 // 3. GET ALL LISTINGS
 router.get('/listings', async (req, res, next) => {
     try {
