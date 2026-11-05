@@ -4,6 +4,7 @@ import { query } from '../../config/db';
 import { sendError, sendSuccess } from '../../middleware/response';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { createNotification } from '../notifications/notifications.service';
+import { extractCity } from '../../utils/city';
 
 const router = Router();
 
@@ -529,7 +530,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       id: user.id,
       username: user.username || '',
       name: user.name || 'Community Member',
-      locality: user.locality || '',
+      locality: isSelf ? (user.locality || '') : (user.locality ? extractCity(user.locality) : ''),
       address_text: isSelf ? (user.address_text || '') : '',
       pincode: isSelf ? (user.pincode || '') : '',
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,

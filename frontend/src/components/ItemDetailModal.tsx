@@ -1021,9 +1021,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div className="pt-2 border-t border-divider flex items-center gap-2 text-xs text-ink-secondary">
-                        <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                        <span>Self pickup & return: <strong className="text-brand font-bold">{reachDistanceText}</strong></span>
+                      <div className="pt-2 border-t border-divider space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-ink-secondary">
+                          <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                          <span>Self pickup & return: <strong className="text-brand font-bold">{reachDistanceText}</strong></span>
+                        </div>
+                        <p className="text-[10px] text-ink-muted pl-5.5">
+                          Exact pickup address shared privately after booking is confirmed.
+                        </p>
                       </div>
                     )}
 

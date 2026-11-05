@@ -96376,6 +96376,25 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         canViewAddress = acceptedBookingCheck.rows.length > 0;
       }
     }
+    let viewerLat = req.query.lat ? parseFloat(String(req.query.lat)) : null;
+    let viewerLon = req.query.lng ? parseFloat(String(req.query.lng)) : null;
+    if ((!viewerLat || !viewerLon) && currentViewerId) {
+      try {
+        const vRes = await query(`SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`, [currentViewerId]);
+        if (vRes.rows.length > 0 && vRes.rows[0].latitude && vRes.rows[0].longitude) {
+          viewerLat = parseFloat(vRes.rows[0].latitude);
+          viewerLon = parseFloat(vRes.rows[0].longitude);
+        }
+      } catch {
+      }
+    }
+    if (viewerLat && viewerLon && item.latitude && item.longitude) {
+      const dLat = (parseFloat(item.latitude) - viewerLat) * (Math.PI / 180);
+      const dLon = (parseFloat(item.longitude) - viewerLon) * (Math.PI / 180);
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(viewerLat * (Math.PI / 180)) * Math.cos(parseFloat(item.latitude) * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      item.distance_meters = Math.round(6371e3 * c);
+    }
     if (!canViewAddress) {
       item.address_text = null;
       item.owner_address_text = null;
@@ -96385,6 +96404,12 @@ router2.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       item.owner_phone = null;
       item.latitude = null;
       item.longitude = null;
+      if (item.locality) {
+        item.locality = extractCity(item.locality);
+      }
+      if (item.owner_locality) {
+        item.owner_locality = extractCity(item.owner_locality);
+      }
     }
     const bookedRes = await query(
       `SELECT 
@@ -99561,7 +99586,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
       id: user.id,
       username: user.username || "",
       name: user.name || "Community Member",
-      locality: user.locality || "",
+      locality: isSelf ? user.locality || "" : user.locality ? extractCity(user.locality) : "",
       address_text: isSelf ? user.address_text || "" : "",
       pincode: isSelf ? user.pincode || "" : "",
       avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || "user")}`,

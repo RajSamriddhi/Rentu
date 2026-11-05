@@ -32,6 +32,7 @@ import { ItemCard } from './ItemCard';
 import { RequestCard } from './RequestCard';
 import { useAuth } from '../lib/authContext';
 import { formatFullAddress } from '../lib/location';
+import { getReachDistance } from '../lib/distance';
 import { FollowListModal } from './FollowListModal';
 
 interface PublicProfileViewProps {
@@ -451,7 +452,9 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                   <span className="flex items-center gap-1 text-ink">
                     <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
                     <span>
-                      {formatFullAddress(profile) || (profile.locality && profile.locality.toLowerCase() !== 'bengaluru' ? profile.locality : 'Location Not Set')}
+                      {isOwnProfile
+                        ? (formatFullAddress(profile) || 'Location Not Set')
+                        : getReachDistance(profile, currentUser)}
                     </span>
                   </span>
                   <span className="text-divider">•</span>

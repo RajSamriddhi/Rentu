@@ -7,6 +7,7 @@ const db_1 = require("../../config/db");
 const response_1 = require("../../middleware/response");
 const auth_1 = require("../../middleware/auth");
 const notifications_service_1 = require("../notifications/notifications.service");
+const city_1 = require("../../utils/city");
 const router = (0, express_1.Router)();
 exports.RESERVED_USERNAMES = new Set([
     'admin', 'api', 'messages', 'chat', 'explore', 'marketplace', 'requests', 'bookings',
@@ -498,7 +499,7 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             id: user.id,
             username: user.username || '',
             name: user.name || 'Community Member',
-            locality: user.locality || '',
+            locality: isSelf ? (user.locality || '') : (user.locality ? (0, city_1.extractCity)(user.locality) : ''),
             address_text: isSelf ? (user.address_text || '') : '',
             pincode: isSelf ? (user.pincode || '') : '',
             avatar_url: user.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(user.name || 'user')}`,

@@ -98,13 +98,25 @@ export function getReachDistanceMeters(
     typeof item.distance_meters === 'number' &&
     !isNaN(item.distance_meters) &&
     item.distance_meters >= 0 &&
-    item.distance_meters < 500000
+    item.distance_meters < 5000000
   ) {
     return Math.round(item.distance_meters);
   }
 
   // 2. Resolve coordinates
-  const userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
+  let userCoords = resolveCoords(user?.latitude, user?.longitude, user?.locality);
+
+  // Check client-side cached location in localStorage if profile coords are not yet populated
+  if (!userCoords && typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('rentu_user_location');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        userCoords = resolveCoords(parsed.latitude, parsed.longitude, parsed.locality);
+      }
+    } catch {}
+  }
+
   const itemCoords = resolveCoords(item.latitude, item.longitude, item.locality);
 
   if (userCoords && itemCoords) {
@@ -119,6 +131,13 @@ export function getReachDistanceMeters(
   if (itemLoc && userLoc) {
     if (itemLoc === userLoc || itemLoc.includes(userLoc) || userLoc.includes(itemLoc)) {
       return 500;
+    }
+    // Same city fallback
+    if (
+      (itemLoc.includes('bengaluru') || itemLoc.includes('bangalore')) &&
+      (userLoc.includes('bengaluru') || userLoc.includes('bangalore'))
+    ) {
+      return 2000;
     }
   }
 
@@ -143,39 +162,35 @@ export function getReachDistanceKm(
   } | null
 ): number {
   const meters = getReachDistanceMeters(item, user);
-  if (meters === null) return Infinity;
+  if (meters === null) return 2.0;
   return Number((meters / 1000).toFixed(2));
 }
 
 /**
- * Formats distance into meters and kilometers representation:
- * - If 0m: "At your location"
- * - If < 100m: "< 100 m away"
- * - If < 1000m: e.g. "250 m away", "600 m away"
- * - If >= 1000m: e.g. "1.2 km away", "2.5 km away"
+ * Formats distance into clean user-facing distance text:
+ * - If <= 100m: "Within ~100 m"
+ * - If < 1000m: "Within ~350 m", "Within ~500 m"
+ * - If >= 1000m: "Within ~1.2 km", "Within ~2 km"
  */
 export function formatDistanceString(totalMeters: number): string {
-  if (totalMeters <= 0) {
-    return 'At your location';
-  }
-  if (totalMeters < 100) {
-    return '< 100 m away';
+  if (totalMeters <= 100) {
+    return 'Within ~100 m';
   }
 
   const roundedMeters = Math.round(totalMeters / 50) * 50;
   if (roundedMeters < 1000) {
-    return `${roundedMeters} m away`;
+    return `Within ~${roundedMeters} m`;
   }
 
   const km = roundedMeters / 1000;
   const formattedKm = Number(km.toFixed(1));
-  return `${formattedKm} km away`;
+  return `Within ~${formattedKm} km`;
 }
 
 /**
  * Formats reach distance into clean user-facing string strictly indicating distance:
- * e.g. "500 m away", "1.2 km away", "Nearby".
- * No private user locations/localities are shown.
+ * e.g. "Within ~500 m", "Within ~1.2 km", "Within ~2 km".
+ * Privacy Rule: UNDER NO CIRCUMSTANCES is anyone's physical location/locality shown publicly.
  */
 export function getReachDistance(
   item: {
@@ -184,16 +199,25 @@ export function getReachDistance(
     longitude?: number | null;
     locality?: string | null;
     id?: string;
+    owner_id?: string;
   },
   user?: {
+    id?: string;
     latitude?: number | null;
     longitude?: number | null;
     locality?: string | null;
   } | null
 ): string {
-  const meters = getReachDistanceMeters(item, user);
-  if (meters === null) {
-    return item.locality || 'Nearby';
+  // If the viewing user is the item owner
+  if (user?.id && item.owner_id && String(user.id) === String(item.owner_id)) {
+    return 'Within ~100 m (Your Gear)';
   }
-  return formatDistanceString(meters);
+
+  const meters = getReachDistanceMeters(item, user);
+  if (meters !== null) {
+    return formatDistanceString(meters);
+  }
+
+  // Privacy protection: Never expose raw locality/address publicly!
+  return 'Within ~2 km';
 }

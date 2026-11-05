@@ -954,7 +954,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               <div>
                                 <div className="text-xs font-extrabold text-ink">{rev.reviewer_name}</div>
                                 <div className="text-[10px] text-ink-secondary">
-                                  {rev.reviewer_locality || 'Verified Neighbor'} • {new Date(rev.created_at).toLocaleDateString()}
+                                  Verified Neighbor • {new Date(rev.created_at).toLocaleDateString()}
                                 </div>
                               </div>
                             </div>

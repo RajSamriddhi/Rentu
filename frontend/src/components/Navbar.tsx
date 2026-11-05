@@ -33,6 +33,7 @@ import { useTheme } from '../lib/themeContext';
 import { api } from '../lib/api';
 import { initWebPush } from '../lib/push';
 import { UserSearchResult, isAuthorizedAdmin, AppNotification } from '../lib/types';
+import { getReachDistance } from '../lib/distance';
 
 interface NavbarProps {
   activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
@@ -773,7 +774,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 </span>
                               </div>
                               <div className="text-[10px] text-ink-secondary truncate">
-                                {u.locality || 'Verified Neighbor'} • {u.items_count} gear listed • {u.trust_score}% trust
+                                {getReachDistance(u, user)} • {u.items_count} gear listed • {u.trust_score}% trust
                               </div>
                             </div>
                           </div>
@@ -1277,7 +1278,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </div>
                             <div className="text-[10px] text-ink-secondary truncate flex items-center gap-1">
                               <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
-                              <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {u.locality || 'Nearby'}</span>
+                              <span>{Number(u.rating) > 0 ? u.rating.toFixed(1) : '0.0'} • {getReachDistance(u, user)}</span>
                             </div>
                           </div>
                         </div>

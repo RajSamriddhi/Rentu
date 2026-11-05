@@ -328,6 +328,28 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
                 canViewAddress = acceptedBookingCheck.rows.length > 0;
             }
         }
+        // Calculate distance if viewer coordinates are available
+        let viewerLat = req.query.lat ? parseFloat(String(req.query.lat)) : null;
+        let viewerLon = req.query.lng ? parseFloat(String(req.query.lng)) : null;
+        if ((!viewerLat || !viewerLon) && currentViewerId) {
+            try {
+                const vRes = await (0, db_1.query)(`SELECT latitude, longitude FROM users WHERE id::text = $1 OR firebase_uid = $1`, [currentViewerId]);
+                if (vRes.rows.length > 0 && vRes.rows[0].latitude && vRes.rows[0].longitude) {
+                    viewerLat = parseFloat(vRes.rows[0].latitude);
+                    viewerLon = parseFloat(vRes.rows[0].longitude);
+                }
+            }
+            catch { }
+        }
+        if (viewerLat && viewerLon && item.latitude && item.longitude) {
+            const dLat = (parseFloat(item.latitude) - viewerLat) * (Math.PI / 180);
+            const dLon = (parseFloat(item.longitude) - viewerLon) * (Math.PI / 180);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(viewerLat * (Math.PI / 180)) * Math.cos(parseFloat(item.latitude) * (Math.PI / 180)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            item.distance_meters = Math.round(6371000 * c);
+        }
         if (!canViewAddress) {
             item.address_text = null;
             item.owner_address_text = null;
@@ -337,6 +359,12 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
             item.owner_phone = null;
             item.latitude = null;
             item.longitude = null;
+            if (item.locality) {
+                item.locality = (0, city_1.extractCity)(item.locality);
+            }
+            if (item.owner_locality) {
+                item.owner_locality = (0, city_1.extractCity)(item.owner_locality);
+            }
         }
         // Fetch booked calendar dates for this item (Active / Confirmed rentals in the future or ongoing)
         const bookedRes = await (0, db_1.query)(`SELECT 
