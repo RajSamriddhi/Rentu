@@ -912,12 +912,42 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
       }
     }
 
-    // Determine lender and borrower based on proposal type for custom deals:
-    // If proposal was created as LISTING or is a lend offer from owner: creator/lender is message.sender_id, recipient is borrower.
-    // If proposal was created as REQUEST: creator is borrower, recipient is lender.
-    const isOffer = proposal.type === 'LISTING' || proposal.is_lend_offer === true;
-    const lenderId = isOffer ? message.sender_id : currentUserId;
-    const borrowerId = isOffer ? currentUserId : message.sender_id;
+    // 1. If this proposal originated from a community request, inspect the request first
+    let requestSeekerId: string | null = null;
+    let initialReqRow: any = null;
+    if (proposal.request_id) {
+      const reqLookup = await query(
+        `SELECT id, status, seeker_id, locality, address_text, will_pickup, will_drop_back FROM requests WHERE id = $1`,
+        [proposal.request_id]
+      );
+      if (reqLookup.rows.length > 0) {
+        initialReqRow = reqLookup.rows[0];
+        requestSeekerId = String(initialReqRow.seeker_id);
+      }
+    }
+
+    // Determine lender and borrower strictly:
+    // Rule A: If from a community request, the seeker who raised the request is ALWAYS the borrower (renter). The other party offering the gear is ALWAYS the lender (owner).
+    // Rule B: If proposal has explicit lender_id and borrower_id, honor them.
+    // Rule C: If proposal type is REQUEST (borrow request from sender to receiver), sender is borrower, receiver is lender.
+    // Rule D: If proposal type is LISTING (lend offer from sender to receiver), sender is lender, receiver is borrower.
+    let lenderId: string;
+    let borrowerId: string;
+
+    if (requestSeekerId) {
+      borrowerId = requestSeekerId;
+      const otherParty = (String(message.sender_id) === requestSeekerId) ? String(message.receiver_id) : String(message.sender_id);
+      lenderId = otherParty;
+    } else if (proposal.lender_id && proposal.borrower_id) {
+      lenderId = String(proposal.lender_id);
+      borrowerId = String(proposal.borrower_id);
+    } else if (proposal.type === 'REQUEST') {
+      borrowerId = String(message.sender_id);
+      lenderId = String(message.receiver_id);
+    } else {
+      lenderId = String(message.sender_id);
+      borrowerId = String(message.receiver_id);
+    }
 
     // Fetch canonical user records for lender and borrower
     const [lenderUserRes, borrowerUserRes] = await Promise.all([
@@ -1035,12 +1065,12 @@ router.post('/proposal/:messageId/accept', authMiddleware, async (req: Authentic
         ? borrowerAddress
         : lenderAddress;
 
-      // 2. Create the item record for this custom listing (owned by lender)
+      // 2. Create the backing item record for this custom/fulfilled request (marked UNAVAILABLE and is_deleted = true so it never enters the public marketplace or profile listings)
       const itemRes = await client.query(
         `INSERT INTO items (
           owner_id, title, description, category, price_per_day, max_duration_days, 
-          image_urls, locality, address_text, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
+          image_urls, locality, address_text, status, is_deleted
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'UNAVAILABLE', true)
         RETURNING *`,
         [
           canonicalLenderId,

@@ -163,7 +163,7 @@ async function checkAndAutoCancelExpiredBookings() {
                 await (0, db_1.query)(`UPDATE bookings 
            SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
            WHERE id = $1 AND status = 'PENDING'`, [row.id]);
-                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [row.item_id]);
                 await (0, db_1.query)(`UPDATE messages 
            SET proposal_data = jsonb_set(
              COALESCE(proposal_data, '{}'::jsonb),
@@ -201,7 +201,7 @@ async function checkAndAutoCancelExpiredBookings() {
                 await (0, db_1.query)(`UPDATE bookings 
            SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
            WHERE id = $1 AND status = 'ACCEPTED' AND handed_over_at IS NULL`, [row.id]);
-                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+                await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [row.item_id]);
                 await (0, db_1.query)(`UPDATE messages 
            SET proposal_data = jsonb_set(
              COALESCE(proposal_data, '{}'::jsonb),
@@ -529,14 +529,13 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
       LEFT JOIN items i ON b.item_id = i.id
       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
       LEFT JOIN users lender ON (
-        b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-        i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+        COALESCE(b.lender_id, i.owner_id) = lender.id::text 
+        OR COALESCE(b.lender_id, i.owner_id) = lender.firebase_uid
       )
       LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
       WHERE (
         b.borrower_id = ANY($1::text[]) 
-        OR b.lender_id = ANY($1::text[]) 
-        OR i.owner_id = ANY($1::text[])
+        OR COALESCE(b.lender_id, i.owner_id) = ANY($1::text[])
       )
     `;
         const params = [myIds];
@@ -544,7 +543,7 @@ router.get('/', auth_1.authMiddleware, async (req, res, next) => {
             sql += ` AND b.borrower_id = ANY($1::text[])`;
         }
         else if (role === 'lender') {
-            sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
+            sql += ` AND COALESCE(b.lender_id, i.owner_id) = ANY($1::text[])`;
         }
         sql += ` ORDER BY b.created_at DESC`;
         const result = await (0, db_1.query)(sql, params);
@@ -949,7 +948,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
         // Sync item status & trigger lifecycle notifications
         if (status === 'ACCEPTED') {
             // Items remain AVAILABLE because rentals are date-specific (booked for particular days only)
-            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             // Sync proposal_data status in messages so proposal cards in chat are marked ACCEPTED
             await (0, db_1.query)(`UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -974,7 +973,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
             }).catch((err) => console.warn('Failed to send acceptance notification:', err));
         }
         else if (status === 'REJECTED') {
-            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             // Sync proposal_data status in messages so proposal cards in chat are marked DECLINED
             await (0, db_1.query)(`UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -996,7 +995,7 @@ router.patch('/:id/status', auth_1.authMiddleware, async (req, res, next) => {
             }).catch((err) => console.warn('Failed to send rejection notification:', err));
         }
         else if (status === 'CANCELLED') {
-            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             // Sync proposal_data status in messages so proposal cards in chat are marked CANCELLED
             await (0, db_1.query)(`UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -1083,7 +1082,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
         const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
         if (Date.now() > oneHourAfterStart) {
             await (0, db_1.query)(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
-            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await (0, db_1.query)(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'The 1-hour pickup handover window has expired. This rental request has been automatically cancelled.', 400);
         }
         // Allow 2-minute clock skew buffer
@@ -1125,7 +1124,7 @@ router.post('/:id/verify-pickup', auth_1.authMiddleware, async (req, res, next) 
                 return (0, response_1.sendError)(res, 'CONFLICT', 'Handover has already been confirmed.', 409);
             }
             // Keep item status as AVAILABLE since item is rented only for agreed dates
-            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             // Send chat system message
             await client.query(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`, [id, userId, isBorrower ? booking.lender_id : booking.borrower_id]);
@@ -1251,7 +1250,7 @@ router.post('/:id/verify-return', auth_1.authMiddleware, async (req, res, next) 
                 return (0, response_1.sendError)(res, 'CONFLICT', 'Return has already been confirmed.', 409);
             }
             // Release item back to AVAILABLE
-            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             // Send chat system message
             await client.query(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, $4, 'SYSTEM')`, [
@@ -1355,7 +1354,7 @@ router.post('/:id/confirm-payment', auth_1.authMiddleware, async (req, res, next
          WHERE id = $1
          RETURNING *`, [id]);
             // Release item back to AVAILABLE
-            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+            await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
             await client.query(`INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`, [id, userId, booking.borrower_id]);
             await client.query('COMMIT');

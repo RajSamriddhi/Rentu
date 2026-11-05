@@ -97586,7 +97586,7 @@ async function checkAndAutoCancelExpiredBookings() {
            WHERE id = $1 AND status = 'PENDING'`,
           [row.id]
         );
-        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [row.item_id]);
         await query(
           `UPDATE messages 
            SET proposal_data = jsonb_set(
@@ -97634,7 +97634,7 @@ async function checkAndAutoCancelExpiredBookings() {
            WHERE id = $1 AND status = 'ACCEPTED' AND handed_over_at IS NULL`,
           [row.id]
         );
-        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [row.item_id]);
+        await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [row.item_id]);
         await query(
           `UPDATE messages 
            SET proposal_data = jsonb_set(
@@ -97986,21 +97986,20 @@ router4.get("/", authMiddleware, async (req, res, next) => {
       LEFT JOIN items i ON b.item_id = i.id
       LEFT JOIN users borrower ON (b.borrower_id = borrower.id::text OR b.borrower_id = borrower.firebase_uid)
       LEFT JOIN users lender ON (
-        b.lender_id = lender.id::text OR b.lender_id = lender.firebase_uid OR
-        i.owner_id = lender.id::text OR i.owner_id = lender.firebase_uid
+        COALESCE(b.lender_id, i.owner_id) = lender.id::text 
+        OR COALESCE(b.lender_id, i.owner_id) = lender.firebase_uid
       )
       LEFT JOIN reviews rev ON rev.booking_id = b.id AND rev.reviewer_id = ANY($1::text[])
       WHERE (
         b.borrower_id = ANY($1::text[]) 
-        OR b.lender_id = ANY($1::text[]) 
-        OR i.owner_id = ANY($1::text[])
+        OR COALESCE(b.lender_id, i.owner_id) = ANY($1::text[])
       )
     `;
     const params = [myIds];
     if (role === "borrower") {
       sql += ` AND b.borrower_id = ANY($1::text[])`;
     } else if (role === "lender") {
-      sql += ` AND (b.lender_id = ANY($1::text[]) OR i.owner_id = ANY($1::text[]))`;
+      sql += ` AND COALESCE(b.lender_id, i.owner_id) = ANY($1::text[])`;
     }
     sql += ` ORDER BY b.created_at DESC`;
     const result = await query(sql, params);
@@ -98426,7 +98425,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
       }
     }
     if (status === "ACCEPTED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await query(
         `UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -98453,7 +98452,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         body: `${booking.lender_name} accepted your request for "${booking.item_title}".`
       }).catch((err) => console.warn("Failed to send acceptance notification:", err));
     } else if (status === "REJECTED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await query(
         `UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -98475,7 +98474,7 @@ router4.patch("/:id/status", authMiddleware, async (req, res, next) => {
         body: `${booking.lender_name} declined your request for "${booking.item_title}".`
       }).catch((err) => console.warn("Failed to send rejection notification:", err));
     } else if (status === "CANCELLED") {
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await query(
         `UPDATE messages 
          SET proposal_data = jsonb_set(
@@ -98564,7 +98563,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
     const oneHourAfterStart = startTimestamp + 60 * 60 * 1e3;
     if (Date.now() > oneHourAfterStart) {
       await query(`UPDATE bookings SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
-      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       return sendError(
         res,
         "BAD_REQUEST",
@@ -98623,7 +98622,7 @@ router4.post("/:id/verify-pickup", authMiddleware, async (req, res, next) => {
         await client.query("ROLLBACK");
         return sendError(res, "CONFLICT", "Handover has already been confirmed.", 409);
       }
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await client.query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, 'Product received and handed over successfully. The rental is now active. When returning, exchange the 6-digit return code.', 'SYSTEM')`,
@@ -98763,7 +98762,7 @@ router4.post("/:id/verify-return", authMiddleware, async (req, res, next) => {
         await client.query("ROLLBACK");
         return sendError(res, "CONFLICT", "Return has already been confirmed.", 409);
       }
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await client.query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, $4, 'SYSTEM')`,
@@ -98874,7 +98873,7 @@ router4.post("/:id/confirm-payment", authMiddleware, async (req, res, next) => {
          RETURNING *`,
         [id]
       );
-      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1`, [booking.item_id]);
+      await client.query(`UPDATE items SET status = 'AVAILABLE' WHERE id = $1 AND COALESCE(is_deleted, false) = false AND status != 'UNAVAILABLE'`, [booking.item_id]);
       await client.query(
         `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
          VALUES ($1, $2, $3, 'Product returned to owner. The rental process is completed. Please leave reviews and feedback for each other (open for the next 3 days).', 'SYSTEM')`,
@@ -99570,12 +99569,12 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     if (!isBlocked && !isBlockedBy) {
       const itemsRes = await query(
         `SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
-         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
+         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE' AND COALESCE(is_deleted, false) = false
          ORDER BY created_at DESC`,
         [targetUserIds]
       );
       userItems = itemsRes.rows;
-      const reqStatusFilter = currentUserId && targetUserIds.includes(currentUserId) ? "" : "AND status = 'OPEN'";
+      const reqStatusFilter = "AND status = 'OPEN'";
       const requestsRes = await query(
         `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
          FROM requests WHERE seeker_id = ANY($1::text[]) ${reqStatusFilter}
@@ -99603,10 +99602,10 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const reviewsList = reviewsRes.rows;
     const statsRes = await query(
       `SELECT 
-        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
+        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE' AND COALESCE(is_deleted, false) = false) AS listings_count,
         (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
         (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[]) AND status = 'OPEN') AS requests_count,
         (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`,
       [targetUserIds]
     );
@@ -100725,9 +100724,34 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
         return sendError(res, "BAD_REQUEST", "This message is not a rental proposal or agreement offer.", 400);
       }
     }
-    const isOffer = proposal.type === "LISTING" || proposal.is_lend_offer === true;
-    const lenderId = isOffer ? message2.sender_id : currentUserId;
-    const borrowerId = isOffer ? currentUserId : message2.sender_id;
+    let requestSeekerId = null;
+    let initialReqRow = null;
+    if (proposal.request_id) {
+      const reqLookup = await query(
+        `SELECT id, status, seeker_id, locality, address_text, will_pickup, will_drop_back FROM requests WHERE id = $1`,
+        [proposal.request_id]
+      );
+      if (reqLookup.rows.length > 0) {
+        initialReqRow = reqLookup.rows[0];
+        requestSeekerId = String(initialReqRow.seeker_id);
+      }
+    }
+    let lenderId;
+    let borrowerId;
+    if (requestSeekerId) {
+      borrowerId = requestSeekerId;
+      const otherParty = String(message2.sender_id) === requestSeekerId ? String(message2.receiver_id) : String(message2.sender_id);
+      lenderId = otherParty;
+    } else if (proposal.lender_id && proposal.borrower_id) {
+      lenderId = String(proposal.lender_id);
+      borrowerId = String(proposal.borrower_id);
+    } else if (proposal.type === "REQUEST") {
+      borrowerId = String(message2.sender_id);
+      lenderId = String(message2.receiver_id);
+    } else {
+      lenderId = String(message2.sender_id);
+      borrowerId = String(message2.receiver_id);
+    }
     const [lenderUserRes, borrowerUserRes] = await Promise.all([
       query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [lenderId]),
       query(`SELECT id::text, locality, address_text FROM users WHERE id::text = $1 OR firebase_uid = $1`, [borrowerId])
@@ -100815,8 +100839,8 @@ router7.post("/proposal/:messageId/accept", authMiddleware, async (req, res, nex
       const itemRes = await client.query(
         `INSERT INTO items (
           owner_id, title, description, category, price_per_day, max_duration_days, 
-          image_urls, locality, address_text, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AVAILABLE')
+          image_urls, locality, address_text, status, is_deleted
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'UNAVAILABLE', true)
         RETURNING *`,
         [
           canonicalLenderId,

@@ -122,6 +122,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   // Filter items based on sidebar state
   const filteredItems = (items || []).filter((item) => {
+    if (item.status === 'UNAVAILABLE' || Boolean((item as any).is_deleted)) return false;
     const price = Number(item.price_per_day);
     if (maxPrice < 5000 && price > maxPrice) return false;
     if (selectedType === 'Rent' && price <= 0) return false;
@@ -190,8 +191,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   }, [requests]);
 
   const myRequests = useMemo<CommunityRequest[]>(() => {
-    return (requests || []).filter((r: CommunityRequest) => r.seeker_id === user?.id);
-  }, [requests, user?.id]);
+    return openRequests.filter((r: CommunityRequest) => {
+      const seeker = String(r.seeker_id || '');
+      const uid = String(user?.id || '');
+      const fbUid = String(user?.firebase_uid || '');
+      return seeker === uid || (fbUid && seeker === fbUid);
+    });
+  }, [openRequests, user?.id, user?.firebase_uid]);
 
   const filteredRequests = useMemo<CommunityRequest[]>(() => {
     if (requestSubTab === 'my') {

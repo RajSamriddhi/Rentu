@@ -139,12 +139,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       const [items, reqs, books, profile] = await Promise.all([
         api.getItems({ ownerId: user.id, status: 'ALL' }),
-        api.getRequests({ seekerId: user.id, status: 'ALL' }),
+        api.getRequests({ seekerId: user.id, status: 'OPEN' }),
         api.getBookings(),
         api.getUserProfile(user.id).catch(() => null),
       ]);
-      const effectiveItems = (items && items.length > 0) ? items : (profile?.items || []);
-      const effectiveReqs = (reqs && reqs.length > 0) ? reqs : (profile?.requests || []);
+      const effectiveItems = ((items && items.length > 0) ? items : (profile?.items || [])).filter(
+        (it) => it.status !== 'UNAVAILABLE' && !Boolean((it as any).is_deleted)
+      );
+      const effectiveReqs = ((reqs && reqs.length > 0) ? reqs : (profile?.requests || [])).filter(
+        (rq) => rq.status === 'OPEN'
+      );
       setMyItems(effectiveItems);
       setMyRequests(effectiveReqs);
       setMyBookings(books || []);

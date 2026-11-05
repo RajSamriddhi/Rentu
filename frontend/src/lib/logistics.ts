@@ -45,15 +45,7 @@ export function checkIsLender(booking: Booking, user: any): boolean {
   const bookingLenderEmail = String(booking.lender_email || '').trim().toLowerCase();
   const bookingBorrowerEmail = String(booking.borrower_email || '').trim().toLowerCase();
 
-  // 1. Strict match on unique ID / Firebase UID
-  if (bookingLenderId && (bookingLenderId === currentUserId || (currentFirebaseUid && bookingLenderId === currentFirebaseUid))) {
-    return true;
-  }
-  if (bookingBorrowerId && (bookingBorrowerId === currentUserId || (currentFirebaseUid && bookingBorrowerId === currentFirebaseUid))) {
-    return false;
-  }
-
-  // 2. Strict match on unique Username (usernames are unique across all users)
+  // 1. Strict match on unique Username first (usernames are unique across all users)
   if (currentUsername) {
     if (bookingLenderUsername && currentUsername === bookingLenderUsername) {
       return true;
@@ -61,6 +53,14 @@ export function checkIsLender(booking: Booking, user: any): boolean {
     if (bookingBorrowerUsername && currentUsername === bookingBorrowerUsername) {
       return false;
     }
+  }
+
+  // 2. Strict match on unique ID / Firebase UID
+  if (bookingLenderId && (bookingLenderId === currentUserId || (currentFirebaseUid && bookingLenderId === currentFirebaseUid))) {
+    return true;
+  }
+  if (bookingBorrowerId && (bookingBorrowerId === currentUserId || (currentFirebaseUid && bookingBorrowerId === currentFirebaseUid))) {
+    return false;
   }
 
   // 3. Strict match on unique Email

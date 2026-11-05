@@ -454,10 +454,10 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         let userRequests = [];
         if (!isBlocked && !isBlockedBy) {
             const itemsRes = await (0, db_1.query)(`SELECT id, title, category, price_per_day, max_duration_days, image_urls, sticker_badge, CASE WHEN status = 'RENTED' THEN 'AVAILABLE' ELSE status END AS status, locality, created_at
-         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
+         FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE' AND COALESCE(is_deleted, false) = false
          ORDER BY created_at DESC`, [targetUserIds]);
             userItems = itemsRes.rows;
-            const reqStatusFilter = (currentUserId && targetUserIds.includes(currentUserId)) ? '' : "AND status = 'OPEN'";
+            const reqStatusFilter = "AND status = 'OPEN'";
             const requestsRes = await (0, db_1.query)(`SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
          FROM requests WHERE seeker_id = ANY($1::text[]) ${reqStatusFilter}
          ORDER BY created_at DESC`, [targetUserIds]);
@@ -480,10 +480,10 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
         const reviewsList = reviewsRes.rows;
         // User's activity stats
         const statsRes = await (0, db_1.query)(`SELECT 
-        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[])) AS listings_count,
+        (SELECT COUNT(*) FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE' AND COALESCE(is_deleted, false) = false) AS listings_count,
         (SELECT COUNT(*) FROM bookings WHERE lender_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_lent,
         (SELECT COUNT(*) FROM bookings WHERE borrower_id = ANY($1::text[]) AND status = 'COMPLETED') AS completed_borrowed,
-        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[])) AS requests_count,
+        (SELECT COUNT(*) FROM requests WHERE seeker_id = ANY($1::text[]) AND status = 'OPEN') AS requests_count,
         (SELECT COUNT(*) FROM reviews WHERE reviewee_id = ANY($1::text[])) AS reviews_count`, [targetUserIds]);
         const stats = statsRes.rows[0];
         const revCount = Math.max(parseInt(stats?.reviews_count, 10) || 0, reviewsList.length);

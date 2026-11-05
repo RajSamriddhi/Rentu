@@ -357,6 +357,7 @@ export const App: React.FC = () => {
         }),
         api.getRequests({
           category: selectedCategory,
+          status: 'OPEN',
         }),
         api.getAnalytics(),
       ]);
