@@ -21,6 +21,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
+import { Footer } from './components/Footer';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
@@ -661,6 +662,25 @@ export const App: React.FC = () => {
           </>
         )}
       </main>
+
+      {/* Website Footer with Licensing & Navigation Links */}
+      {activeTab !== 'messages' && (
+        <Footer
+          onNavigate={(tab) => {
+            setSearchQuery('');
+            setActiveTab(tab);
+          }}
+          onSelectCategory={(cat) => setSelectedCategory(cat)}
+          onOpenDropGear={() => setIsDropGearOpen(true)}
+          onOpenDropWish={() => setIsDropWishOpen(true)}
+          onOpenHelp={(tab) => {
+            setHelpInitialTab(tab || 'NEW');
+            setIsHelpOpen(true);
+          }}
+          onOpenAuth={(mode) => setIsAuthOpen(true)}
+          isAuthenticated={isAuthenticated}
+        />
+      )}
 
       {/* Screen 3: Item Detail Modal */}
       {selectedItem && (
