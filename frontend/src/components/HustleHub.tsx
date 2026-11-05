@@ -34,7 +34,7 @@ import {
 import { api } from '../lib/api';
 import { SupportTicket, isAuthorizedAdmin } from '../lib/types';
 import { useAuth } from '../lib/authContext';
-import { auth, fbSignOut } from '../lib/firebase';
+import { auth, fbSignOut, fbDeleteUser } from '../lib/firebase';
 
 export const HustleHub: React.FC = () => {
   const { user, firebaseUser } = useAuth();
@@ -456,10 +456,27 @@ export const HustleHub: React.FC = () => {
     setResetErrorMessage(null);
 
     try {
-      await api.resetEntireSystem('RESET_ENTIRE_DATABASE');
+      // 1. Delete currently logged in admin user directly from Firebase client SDK
+      try {
+        if (auth?.currentUser) {
+          await fbDeleteUser(auth.currentUser);
+        }
+      } catch (cErr: any) {
+        console.warn('Client user delete notice:', cErr.message);
+      }
+
+      // 2. Call backend reset endpoint
+      const res = await api.resetEntireSystem('RESET_ENTIRE_DATABASE');
 
       setIsResetModalOpen(false);
-      setResetSuccessMessage('Everything has been reset to zero! The database and Firebase auth have been completely cleared.');
+
+      if (res?.firebase_error) {
+        setResetSuccessMessage(
+          `Supabase database was completely wiped to 0! To delete remaining accounts in Firebase, add FIREBASE_SERVICE_ACCOUNT to Vercel or delete them in Firebase Console > Authentication > Users.`
+        );
+      } else {
+        setResetSuccessMessage('Everything has been reset to zero! The database and Firebase auth have been completely cleared.');
+      }
 
       try {
         localStorage.clear();
@@ -474,7 +491,7 @@ export const HustleHub: React.FC = () => {
 
       setTimeout(() => {
         window.location.href = '/';
-      }, 2000);
+      }, 3500);
     } catch (err: any) {
       console.error('Factory reset failed:', err);
       setResetErrorMessage(err.message || 'Failed to complete system reset. Check server logs.');

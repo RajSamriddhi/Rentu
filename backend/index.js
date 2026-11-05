@@ -87083,22 +87083,49 @@ init_auth();
 try {
   const existingApps = getApps();
   if (!existingApps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    let credential = null;
+    const rawSa = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (rawSa) {
       try {
-        const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        initializeApp({
-          credential: cert(sa),
-          projectId: ENV.FIREBASE_PROJECT_ID
-        });
-      } catch {
-        initializeApp({ projectId: ENV.FIREBASE_PROJECT_ID });
+        let saObj;
+        if (typeof rawSa === "object") {
+          saObj = rawSa;
+        } else if (rawSa.trim().startsWith("{")) {
+          saObj = JSON.parse(rawSa);
+        } else {
+          try {
+            saObj = JSON.parse(Buffer.from(rawSa, "base64").toString("utf-8"));
+          } catch {
+            saObj = JSON.parse(rawSa);
+          }
+        }
+        credential = cert(saObj);
+      } catch (err) {
+        console.warn("Could not parse FIREBASE_SERVICE_ACCOUNT JSON:", err.message);
       }
+    } else if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+      try {
+        credential = cert({
+          projectId: ENV.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
+        });
+      } catch (err) {
+        console.warn("Could not build credentials from FIREBASE_PRIVATE_KEY:", err.message);
+      }
+    }
+    if (credential) {
+      initializeApp({
+        credential,
+        projectId: ENV.FIREBASE_PROJECT_ID
+      });
+      console.log("Firebase Admin initialized with verified service account credentials.");
     } else {
       initializeApp({ projectId: ENV.FIREBASE_PROJECT_ID });
     }
   }
 } catch (e2) {
-  console.warn("Firebase Admin init notice:", e2);
+  console.warn("Firebase Admin init notice:", e2.message);
 }
 async function resolveUserFromToken(token) {
   try {
@@ -103164,6 +103191,7 @@ router12.post("/reset-system", async (req, res, next) => {
       return sendError(res, "FORBIDDEN", "Only authorized platform administrators can reset the system.", 403);
     }
     let totalDeletedFbUsers = 0;
+    let fbWipeError = null;
     try {
       const { getAuth: getAuth2 } = await Promise.resolve().then(() => (init_auth(), auth_exports));
       const auth = getAuth2();
@@ -103178,7 +103206,8 @@ router12.post("/reset-system", async (req, res, next) => {
         nextPageToken = listResult.pageToken;
       } while (nextPageToken);
     } catch (fbErr) {
-      console.warn("Notice when deleting Firebase Auth users during factory reset:", fbErr.message);
+      fbWipeError = fbErr.message || "Firebase Admin credentials missing or rejected";
+      console.warn("Notice when deleting Firebase Auth users during factory reset:", fbWipeError);
     }
     const tablesToWipe = [
       "verification_attempts",
@@ -103212,10 +103241,11 @@ router12.post("/reset-system", async (req, res, next) => {
       res,
       {
         firebase_users_deleted: totalDeletedFbUsers,
+        firebase_error: fbWipeError,
         database_tables_cleared: tablesToWipe.length,
-        status: "SYSTEM_RESET_COMPLETE"
+        status: fbWipeError ? "PARTIAL_RESET" : "SYSTEM_RESET_COMPLETE"
       },
-      "Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero."
+      fbWipeError ? `Database cleared completely. Firebase users could not be auto-deleted because FIREBASE_SERVICE_ACCOUNT is not configured on Vercel.` : "Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero."
     );
   } catch (error) {
     next(error);

@@ -6,6 +6,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut as fbSignOut,
+  deleteUser as fbDeleteUser,
   updateProfile,
   onAuthStateChanged,
   User as FirebaseUser
@@ -52,6 +53,7 @@ export {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   fbSignOut, 
+  fbDeleteUser,
   updateProfile, 
   onAuthStateChanged 
 };

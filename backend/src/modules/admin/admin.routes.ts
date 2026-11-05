@@ -409,6 +409,7 @@ router.post('/reset-system', async (req: AuthenticatedRequest, res: Response, ne
 
     // 1. Wipe Firebase Authentication users
     let totalDeletedFbUsers = 0;
+    let fbWipeError: string | null = null;
     try {
       const { getAuth } = await import('firebase-admin/auth');
       const auth = getAuth();
@@ -424,7 +425,8 @@ router.post('/reset-system', async (req: AuthenticatedRequest, res: Response, ne
         nextPageToken = listResult.pageToken;
       } while (nextPageToken);
     } catch (fbErr: any) {
-      console.warn('Notice when deleting Firebase Auth users during factory reset:', fbErr.message);
+      fbWipeError = fbErr.message || 'Firebase Admin credentials missing or rejected';
+      console.warn('Notice when deleting Firebase Auth users during factory reset:', fbWipeError);
     }
 
     // 2. Wipe PostgreSQL database tables
@@ -462,10 +464,13 @@ router.post('/reset-system', async (req: AuthenticatedRequest, res: Response, ne
       res,
       {
         firebase_users_deleted: totalDeletedFbUsers,
+        firebase_error: fbWipeError,
         database_tables_cleared: tablesToWipe.length,
-        status: 'SYSTEM_RESET_COMPLETE',
+        status: fbWipeError ? 'PARTIAL_RESET' : 'SYSTEM_RESET_COMPLETE',
       },
-      'Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero.'
+      fbWipeError
+        ? `Database cleared completely. Firebase users could not be auto-deleted because FIREBASE_SERVICE_ACCOUNT is not configured on Vercel.`
+        : 'Platform reset complete. All database tables and Firebase authentication records have been cleared back to zero.'
     );
   } catch (error) {
     next(error);

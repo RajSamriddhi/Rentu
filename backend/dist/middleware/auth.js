@@ -14,17 +14,49 @@ const response_1 = require("./response");
 try {
     const existingApps = (0, app_1.getApps)();
     if (!existingApps.length) {
-        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        let credential = null;
+        const rawSa = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+        if (rawSa) {
             try {
-                const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-                (0, app_1.initializeApp)({
-                    credential: (0, app_1.cert)(sa),
+                let saObj;
+                if (typeof rawSa === 'object') {
+                    saObj = rawSa;
+                }
+                else if (rawSa.trim().startsWith('{')) {
+                    saObj = JSON.parse(rawSa);
+                }
+                else {
+                    try {
+                        saObj = JSON.parse(Buffer.from(rawSa, 'base64').toString('utf-8'));
+                    }
+                    catch {
+                        saObj = JSON.parse(rawSa);
+                    }
+                }
+                credential = (0, app_1.cert)(saObj);
+            }
+            catch (err) {
+                console.warn('Could not parse FIREBASE_SERVICE_ACCOUNT JSON:', err.message);
+            }
+        }
+        else if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+            try {
+                credential = (0, app_1.cert)({
                     projectId: env_1.ENV.FIREBASE_PROJECT_ID,
+                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
                 });
             }
-            catch {
-                (0, app_1.initializeApp)({ projectId: env_1.ENV.FIREBASE_PROJECT_ID });
+            catch (err) {
+                console.warn('Could not build credentials from FIREBASE_PRIVATE_KEY:', err.message);
             }
+        }
+        if (credential) {
+            (0, app_1.initializeApp)({
+                credential,
+                projectId: env_1.ENV.FIREBASE_PROJECT_ID,
+            });
+            console.log('Firebase Admin initialized with verified service account credentials.');
         }
         else {
             (0, app_1.initializeApp)({ projectId: env_1.ENV.FIREBASE_PROJECT_ID });
@@ -32,7 +64,7 @@ try {
     }
 }
 catch (e) {
-    console.warn('Firebase Admin init notice:', e);
+    console.warn('Firebase Admin init notice:', e.message);
 }
 async function resolveUserFromToken(token) {
     // 1. Try local Rentu⁺ JWT first (verified with HMAC signature)
