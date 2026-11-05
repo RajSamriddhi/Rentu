@@ -133,6 +133,15 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response, next
     if (status && status !== 'ALL') {
       params.push(status);
       sql += ` AND r.status = $${params.length}`;
+      if (status === 'OPEN') {
+        sql += ` AND (
+          r.start_date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+          OR (
+            r.start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+            AND COALESCE(r.start_time, '10:00:00'::time) >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
+          )
+        )`;
+      }
     }
 
     if (category && category !== 'All') {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   SlidersHorizontal, 
   ChevronDown, 
@@ -171,13 +171,34 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  // Filter requests
-  const filteredRequests = (requests || []).filter((r) => {
-    if (requestSubTab === 'my') return r.seeker_id === user?.id;
-    return true;
-  });
+  // Filter active/open requests for the public Marketplace feed. Cancelled, fulfilled, or expired requests are automatically removed!
+  const openRequests = useMemo<CommunityRequest[]>(() => {
+    return (requests || []).filter((r: CommunityRequest) => {
+      if (r.status === 'CANCELLED' || r.status === 'FULFILLED') return false;
+      if (!r.start_date) return true;
+      try {
+        const sDate = r.start_date.split('T')[0];
+        const sTime = r.start_time ? r.start_time.slice(0, 5) : '10:00';
+        const [y, m, d] = sDate.split('-').map(Number);
+        const [h, min] = sTime.split(':').map(Number);
+        const startMs = new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0).getTime();
+        return Date.now() <= startMs;
+      } catch {
+        return r.status === 'OPEN';
+      }
+    });
+  }, [requests]);
 
-  const myRequests = (requests || []).filter((r) => r.seeker_id === user?.id);
+  const myRequests = useMemo<CommunityRequest[]>(() => {
+    return (requests || []).filter((r: CommunityRequest) => r.seeker_id === user?.id);
+  }, [requests, user?.id]);
+
+  const filteredRequests = useMemo<CommunityRequest[]>(() => {
+    if (requestSubTab === 'my') {
+      return myRequests;
+    }
+    return openRequests;
+  }, [requestSubTab, myRequests, openRequests]);
 
   const handleResetFilters = () => {
     setMaxPrice(5000);
@@ -226,7 +247,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             }`}
           >
             <Target className="w-3.5 h-3.5" />
-            <span>Requests ({(requests || []).length})</span>
+            <span>Requests ({openRequests.length})</span>
           </button>
         </div>
       </div>
@@ -754,7 +775,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     : 'bg-surface border border-divider text-ink-secondary hover:text-ink'
                 }`}
               >
-                All Requests ({(requests || []).length})
+                All Requests ({openRequests.length})
               </button>
 
               {isAuthenticated && (

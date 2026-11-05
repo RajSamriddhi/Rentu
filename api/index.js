@@ -96910,6 +96910,15 @@ router3.get("/", optionalAuthMiddleware, async (req, res, next) => {
     if (status && status !== "ALL") {
       params.push(status);
       sql += ` AND r.status = $${params.length}`;
+      if (status === "OPEN") {
+        sql += ` AND (
+          r.start_date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+          OR (
+            r.start_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+            AND COALESCE(r.start_time, '10:00:00'::time) >= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::time
+          )
+        )`;
+      }
     }
     if (category && category !== "All") {
       params.push(category);
@@ -99566,9 +99575,10 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         [targetUserIds]
       );
       userItems = itemsRes.rows;
+      const reqStatusFilter = currentUserId && targetUserIds.includes(currentUserId) ? "" : "AND status = 'OPEN'";
       const requestsRes = await query(
         `SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-         FROM requests WHERE seeker_id = ANY($1::text[])
+         FROM requests WHERE seeker_id = ANY($1::text[]) ${reqStatusFilter}
          ORDER BY created_at DESC`,
         [targetUserIds]
       );

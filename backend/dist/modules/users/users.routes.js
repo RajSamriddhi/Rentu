@@ -457,8 +457,9 @@ router.get('/:id', auth_1.optionalAuthMiddleware, async (req, res, next) => {
          FROM items WHERE owner_id = ANY($1::text[]) AND status != 'UNAVAILABLE'
          ORDER BY created_at DESC`, [targetUserIds]);
             userItems = itemsRes.rows;
+            const reqStatusFilter = (currentUserId && targetUserIds.includes(currentUserId)) ? '' : "AND status = 'OPEN'";
             const requestsRes = await (0, db_1.query)(`SELECT id, item_name, description, category, start_date, start_time, end_date, end_time, duration_days, offered_amount, locality, status, image_url, pickup_type, pickup_locality, return_type, return_locality, created_at
-         FROM requests WHERE seeker_id = ANY($1::text[])
+         FROM requests WHERE seeker_id = ANY($1::text[]) ${reqStatusFilter}
          ORDER BY created_at DESC`, [targetUserIds]);
             userRequests = requestsRes.rows;
         }
