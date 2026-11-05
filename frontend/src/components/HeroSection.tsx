@@ -7,6 +7,7 @@ interface HeroSectionProps {
   onGetStarted: () => void;
   itemsCount?: number;
   requestsCount?: number;
+  activeUsersCount?: number;
   isLoading?: boolean;
   searchQuery?: string;
   setSearchQuery?: (query: string) => void;
@@ -19,6 +20,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onGetStarted,
   itemsCount = 0,
   requestsCount = 0,
+  activeUsersCount = 0,
   isLoading = false,
 }) => {
   return (
@@ -94,8 +96,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
           </div>
           <div className="p-3">
-            <div className="text-xl sm:text-2xl font-black text-ink font-display">8</div>
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Categories</div>
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{activeUsersCount}</div>
+            )}
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Users</div>
           </div>
           <div className="p-3">
             <div className="text-xl sm:text-2xl font-black text-brand font-display">100%</div>

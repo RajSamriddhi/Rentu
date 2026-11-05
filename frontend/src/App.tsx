@@ -278,6 +278,7 @@ export const App: React.FC = () => {
   // Data State
   const [items, setItems] = useState<Item[]>([]);
   const [requests, setRequests] = useState<CommunityRequest[]>([]);
+  const [activeUsersCount, setActiveUsersCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals
@@ -349,7 +350,7 @@ export const App: React.FC = () => {
   const loadFeed = async () => {
     setIsLoading(true);
     try {
-      const [itemsRes, requestsRes] = await Promise.allSettled([
+      const [itemsRes, requestsRes, analyticsRes] = await Promise.allSettled([
         api.getItems({
           category: selectedCategory,
           search: searchQuery,
@@ -357,6 +358,7 @@ export const App: React.FC = () => {
         api.getRequests({
           category: selectedCategory,
         }),
+        api.getAnalytics(),
       ]);
 
       if (itemsRes.status === 'fulfilled' && Array.isArray(itemsRes.value)) {
@@ -371,6 +373,10 @@ export const App: React.FC = () => {
       } else if (requestsRes.status === 'rejected') {
         console.error('Failed to load requests:', requestsRes.reason);
         setRequests([]);
+      }
+
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.pulse) {
+        setActiveUsersCount(Number(analyticsRes.value.pulse.total_users) || 0);
       }
     } catch (err) {
       console.error('Failed to load feed data:', err);
@@ -510,6 +516,7 @@ export const App: React.FC = () => {
                   onOpenDropWish={() => setIsDropWishOpen(true)}
                   itemsCount={(items || []).length}
                   requestsCount={(requests || []).length}
+                  activeUsersCount={activeUsersCount}
                   isLoading={isLoading}
                   onOpenUserProfile={handleOpenUserProfile}
                 />
