@@ -984,7 +984,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         setDetectedGpsLocation(loc);
       }
 
-      const addr = [loc.address_text, loc.locality, loc.city].filter(Boolean).join(', ') || 'Current Location';
+      const addrTokens: string[] = [];
+      const seenTokens = new Set<string>();
+      for (const part of [loc.address_text, loc.locality, loc.city]) {
+        if (!part) continue;
+        for (const token of part.split(',').map((s) => s.trim()).filter(Boolean)) {
+          if (!seenTokens.has(token.toLowerCase())) {
+            seenTokens.add(token.toLowerCase());
+            addrTokens.push(token);
+          }
+        }
+      }
+      const addr = addrTokens.join(', ') || 'Current Location';
       const mapsUrl = getGoogleMapsUrl(loc.latitude, loc.longitude, addr);
       const directionsUrl = getGoogleMapsDirectionsUrl(loc.latitude, loc.longitude, addr);
 
@@ -1024,7 +1035,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         setDetectedGpsLocation(loc);
       }
 
-      const addr = [loc.address_text, loc.locality, loc.city].filter(Boolean).join(', ') || 'Live Location';
+      const liveAddrTokens: string[] = [];
+      const seenLiveTokens = new Set<string>();
+      for (const part of [loc.address_text, loc.locality, loc.city]) {
+        if (!part) continue;
+        for (const token of part.split(',').map((s) => s.trim()).filter(Boolean)) {
+          if (!seenLiveTokens.has(token.toLowerCase())) {
+            seenLiveTokens.add(token.toLowerCase());
+            liveAddrTokens.push(token);
+          }
+        }
+      }
+      const addr = liveAddrTokens.join(', ') || 'Live Location';
       const expiresAt = new Date(Date.now() + durationMins * 60 * 1000).toISOString();
       const mapsUrl = getGoogleMapsUrl(loc.latitude, loc.longitude, addr);
       const directionsUrl = getGoogleMapsDirectionsUrl(loc.latitude, loc.longitude, addr);

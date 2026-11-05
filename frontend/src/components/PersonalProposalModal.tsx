@@ -23,7 +23,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull, parseAddressText, buildAddressString } from '../lib/location';
 import { MessageProposalData, SavedLocation } from '../lib/types';
 import { AddLocationModal } from './AddLocationModal';
 import { formatTime12 } from '../lib/formatters';
@@ -273,15 +273,9 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
   useEffect(() => {
     if (user && isOpen) {
       if (user.address_text && !reqBuildingHouseNo && !reqStreetArea) {
-        const parts = user.address_text.split(',').map((p) => p.trim()).filter(Boolean);
-        if (parts.length > 0) {
-          setReqBuildingHouseNo(parts[0]);
-          if (parts.length > 1) {
-            setReqStreetArea(parts.slice(1).join(', '));
-          }
-        } else {
-          setReqStreetArea(user.address_text);
-        }
+        const addr = parseAddressText(user.address_text);
+        setReqBuildingHouseNo(addr.building);
+        setReqStreetArea(addr.street);
       }
       if (user.locality && !reqLocality) {
         setReqLocality(user.locality);
@@ -422,12 +416,12 @@ export const PersonalProposalModal: React.FC<PersonalProposalModalProps> = ({
       return;
     }
 
-    const fullDestinationAddress = [
+    const fullDestinationAddress = buildAddressString(
       reqBuildingHouseNo.trim(),
       reqStreetArea.trim(),
-      reqLocality.trim(),
       reqPincode.trim(),
-    ].filter(Boolean).join(', ');
+      reqLocality.trim()
+    );
 
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

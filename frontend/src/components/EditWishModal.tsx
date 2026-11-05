@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, MapPin, Loader2, Trash2, Calendar, Target, Upload, Camera, ImageIcon } from 'lucide-react';
 import { CommunityRequest } from '../lib/types';
 import { api } from '../lib/api';
-import { detectCurrentLocation } from '../lib/location';
+import { detectCurrentLocation, parseAddressText, buildAddressString } from '../lib/location';
 import { uploadItemPhoto } from '../lib/supabase';
 
 interface EditWishModalProps {
@@ -66,18 +66,9 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
       setDeliveryFee(Number(request.delivery_fee) || '');
 
       if (request.address_text) {
-        const parts = request.address_text.split(',').map(p => p.trim()).filter(Boolean);
-        if (parts.length > 0) {
-          setBuildingHouseNo(parts[0]);
-          if (parts.length > 1) {
-            setStreetArea(parts.slice(1).join(', '));
-          } else {
-            setStreetArea('');
-          }
-        } else {
-          setBuildingHouseNo('');
-          setStreetArea(request.address_text);
-        }
+        const addr = parseAddressText(request.address_text);
+        setBuildingHouseNo(addr.building);
+        setStreetArea(addr.street);
       } else {
         setBuildingHouseNo('');
         setStreetArea('');
@@ -182,7 +173,7 @@ export const EditWishModal: React.FC<EditWishModalProps> = ({
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const fullDestinationAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
+      const fullDestinationAddress = buildAddressString(trimmedBuilding, streetArea.trim(), pincode.trim(), locality.trim());
       const extraFeeNumber = (!willPickup || !willDropBack) ? Number(deliveryFee || 0) : 0;
 
       await api.updateRequest(request.id, {

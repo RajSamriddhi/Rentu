@@ -22,7 +22,7 @@ import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto } from '../lib/supabase';
-import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
+import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull, parseAddressText, buildAddressString } from '../lib/location';
 
 interface DropWishModalProps {
   isOpen: boolean;
@@ -134,15 +134,9 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
   useEffect(() => {
     if (user && isOpen) {
       if (user.address_text && !buildingHouseNo && !streetArea) {
-        const parts = user.address_text.split(',').map((p) => p.trim()).filter(Boolean);
-        if (parts.length > 0) {
-          setBuildingHouseNo(parts[0]);
-          if (parts.length > 1) {
-            setStreetArea(parts.slice(1).join(', '));
-          }
-        } else {
-          setStreetArea(user.address_text);
-        }
+        const addr = parseAddressText(user.address_text);
+        setBuildingHouseNo(addr.building);
+        setStreetArea(addr.street);
       }
       if (user.locality && !locality) {
         setLocality(user.locality);
@@ -173,8 +167,19 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
       if (loc.latitude && loc.longitude) {
         setCoords({ latitude: loc.latitude, longitude: loc.longitude });
       }
-      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
-      setLocationSuccessMsg(`Location detected: ${locSummary}`);
+      const uniqueTokens: string[] = [];
+      const seenTokens = new Set<string>();
+      for (const part of [loc.address_text, loc.locality]) {
+        if (!part) continue;
+        for (const token of part.split(',').map((t) => t.trim()).filter(Boolean)) {
+          if (!seenTokens.has(token.toLowerCase())) {
+            seenTokens.add(token.toLowerCase());
+            uniqueTokens.push(token);
+          }
+        }
+      }
+      const locSummary = uniqueTokens.join(', ') || loc.city || 'Neighborhood location detected';
+      setLocationSuccessMsg(`Location detected: ${locSummary}. Please enter Building / Flat / House No.`);
       try {
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
       } catch { }
@@ -346,7 +351,7 @@ export const DropWishModal: React.FC<DropWishModalProps> = ({
     setErrorMsg('');
 
     try {
-      const fullDestinationAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
+      const fullDestinationAddress = buildAddressString(trimmedBuilding, streetArea.trim(), pincode.trim(), locality.trim());
       const extraFeeNumber = (!willPickup || !willDropBack) ? Number(deliveryFee || 0) : 0;
       const finalLat = coords?.latitude ?? (user?.latitude ? Number(user.latitude) : undefined);
       const finalLon = coords?.longitude ?? (user?.longitude ? Number(user.longitude) : undefined);

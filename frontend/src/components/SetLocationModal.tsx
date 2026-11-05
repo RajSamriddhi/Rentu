@@ -15,7 +15,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
-import { detectCurrentLocation, ResolvedLocation } from '../lib/location';
+import { detectCurrentLocation, ResolvedLocation, parseAddressText, buildAddressString } from '../lib/location';
 import { CITIES, extractCity } from '../lib/city';
 
 interface SetLocationModalProps {
@@ -36,7 +36,9 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
   const isDefaultLoc = (user?.locality?.toLowerCase() === 'bengaluru' || user?.locality?.toLowerCase() === 'saket, new delhi') && !user?.address_text;
   const initialLocality = isDefaultLoc ? '' : (user?.locality || '');
   const [locality, setLocality] = useState(initialLocality);
-  const [addressText, setAddressText] = useState(user?.address_text || '');
+  const initialAddr = parseAddressText(user?.address_text);
+  const [buildingHouseNo, setBuildingHouseNo] = useState(initialAddr.building);
+  const [streetArea, setStreetArea] = useState(initialAddr.street);
   const [city, setCity] = useState<string>(initialLocality ? extractCity(initialLocality) : '');
   const [pincode, setPincode] = useState(user?.pincode || '');
   const [latitude, setLatitude] = useState<number | undefined>(user?.latitude);
@@ -54,7 +56,9 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
       const isLegacy = (user.locality?.toLowerCase() === 'bengaluru' || user.locality?.toLowerCase() === 'saket, new delhi') && !user.address_text;
       const cleanLoc = isLegacy ? '' : (user.locality || '');
       setLocality(cleanLoc);
-      setAddressText(user.address_text || '');
+      const addr = parseAddressText(user.address_text);
+      setBuildingHouseNo(addr.building);
+      setStreetArea(addr.street);
       setCity(cleanLoc ? extractCity(cleanLoc) : '');
       setPincode(user.pincode || '');
       setLatitude(user.latitude);
@@ -75,12 +79,13 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
       
       setLocality(loc.locality);
       setCity(loc.city);
-      setAddressText(loc.address_text);
+      // Street/Road only, DO NOT touch or auto-fill buildingHouseNo
+      setStreetArea(loc.address_text);
       setPincode(loc.pincode);
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
       setHasDetected(true);
-      setDetectStatus(`Detected: ${loc.locality}`);
+      setDetectStatus(`Detected: ${loc.locality}. Please enter Building / Flat / House No.`);
 
       // Micro celebration
       try {
@@ -102,15 +107,28 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    if (!trimmedBuilding) {
+      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+      return;
+    }
+
     if (!locality.trim()) {
-      setErrorMsg('Please enter your locality or campus name.');
+      setErrorMsg('Please enter your locality or neighborhood.');
       return;
     }
 
     setIsSaving(true);
     try {
       const cleanLocality = locality.trim();
-      const cleanAddress = addressText.trim() || cleanLocality;
+      // Address format: Strictly [Building / Flat / House No.], [Street / Road / Landmark], [Postal Code]
+      // Locality and Neighborhood are explicitly excluded from the address.
+      const cleanAddress = buildAddressString(
+        trimmedBuilding,
+        streetArea.trim(),
+        pincode.trim(),
+        cleanLocality
+      );
 
       // Update user profile in backend
       await api.updateProfile({
@@ -161,7 +179,7 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
       // Cache locally as fallback but inform user of remote save failure
       localStorage.setItem('rentu_user_location', JSON.stringify({
         locality,
-        address_text: addressText || locality,
+        address_text: buildAddressString(buildingHouseNo, streetArea, pincode, locality),
         city,
       }));
       setErrorMsg(err.message || 'Failed to save location to your profile. Please check your connection and try again.');
@@ -302,17 +320,36 @@ export const SetLocationModal: React.FC<SetLocationModalProps> = ({
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">
-                Full Street Address / Flat / Landmark
-              </label>
-              <textarea
-                value={addressText}
-                onChange={(e) => setAddressText(e.target.value)}
-                placeholder="e.g. Flat 402, Building 3B / House #12, 5th Main Road"
-                rows={2}
-                className="w-full bg-canvas border border-divider rounded-xl px-3 py-2 text-xs font-medium text-ink outline-none focus:border-brand transition-colors"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-ink">
+                    Building / Flat / House No. <span className="text-brand font-black">* (Compulsory)</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-brand uppercase tracking-wider">Required</span>
+                </div>
+                <input
+                  type="text"
+                  value={buildingHouseNo}
+                  onChange={(e) => setBuildingHouseNo(e.target.value)}
+                  placeholder="e.g. Flat 402, Building 3B / House #12"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand transition-colors"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1">
+                  Street / Road / Landmark
+                </label>
+                <input
+                  type="text"
+                  value={streetArea}
+                  onChange={(e) => setStreetArea(e.target.value)}
+                  placeholder="e.g. 5th Main Road, Near Metro Station"
+                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none focus:border-brand transition-colors"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

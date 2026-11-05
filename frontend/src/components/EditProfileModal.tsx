@@ -22,7 +22,7 @@ import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { uploadItemPhoto, supabase } from '../lib/supabase';
-import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
+import { detectCurrentLocation, formatSavedLocationFull, parseAddressText, buildAddressString } from '../lib/location';
 import { resolveCoords } from '../lib/distance';
 import { AddLocationModal } from './AddLocationModal';
 import { SavedLocation } from '../lib/types';
@@ -67,16 +67,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 }) => {
   const { user, refreshUser } = useAuth();
 
-  const parseAddress = (text?: string) => {
-    if (!text) return { building: '', street: '' };
-    const parts = text.split(',').map((p) => p.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      return { building: parts[0], street: parts.slice(1).join(', ') };
-    }
-    return { building: '', street: text };
-  };
-
-  const initialAddr = parseAddress(user?.address_text);
+  const initialAddr = parseAddressText(user?.address_text);
   const [name, setName] = useState(user?.name || '');
   const [username, setUsername] = useState(user?.username || '');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
@@ -118,7 +109,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setUsername(user.username || '');
       setBio(user.bio || '');
       setPhone(user.phone || '');
-      const addr = parseAddress(user.address_text);
+      const addr = parseAddressText(user.address_text);
       setBuildingHouseNo(addr.building);
       setStreetArea(addr.street);
       const isLegacy = (user.locality === 'Bengaluru' || user.locality === 'Bengaluru, India') && !user.address_text;
@@ -246,7 +237,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setLocationSuccessMsg('');
     try {
       const loc = await detectCurrentLocation();
-      // DO NOT overwrite buildingHouseNo - user must manually type or keep their building/flat/house
+      // DO NOT overwrite buildingHouseNo - user must manually type their building/flat/house
       if (loc.address_text) {
         setStreetArea(loc.address_text);
       }
@@ -259,9 +250,20 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
 
-      // Clean friendly location summary without exposing raw latitude/longitude coordinates
-      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Neighborhood location detected';
-      setLocationSuccessMsg(`Location detected: ${locSummary}`);
+      // Clean friendly location summary without repeating identical tokens
+      const uniqueTokens: string[] = [];
+      const seenTokens = new Set<string>();
+      for (const part of [loc.address_text, loc.locality]) {
+        if (!part) continue;
+        for (const token of part.split(',').map((t) => t.trim()).filter(Boolean)) {
+          if (!seenTokens.has(token.toLowerCase())) {
+            seenTokens.add(token.toLowerCase());
+            uniqueTokens.push(token);
+          }
+        }
+      }
+      const locSummary = uniqueTokens.join(', ') || loc.city || 'Neighborhood location detected';
+      setLocationSuccessMsg(`Location detected: ${locSummary}. Please enter your Building / Flat / House No.`);
       try {
         confetti({ particleCount: 30, spread: 60, origin: { y: 0.6 } });
       } catch { }
@@ -293,10 +295,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       }
     }
 
+    const trimmedBuilding = buildingHouseNo.trim();
+    const hasLocationInfo = Boolean(streetArea.trim() || locality.trim() || pincode.trim() || latitude !== undefined);
+
+    // Building / Flat / House No. is strictly COMPULSORY when saving an address
+    if (!trimmedBuilding && hasLocationInfo) {
+      setErrorMsg('Building / Flat / House No. is compulsory. Please enter your building, flat, or house number before saving.');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const trimmedBuilding = buildingHouseNo.trim();
-      const fullAddress = [trimmedBuilding, streetArea.trim()].filter(Boolean).join(', ');
+      // Canonical address: Strictly [Building / Flat / House No.], [Street / Road / Landmark], [Postal Code]
+      // Locality and Neighborhood are explicitly excluded from the address string. No duplicate strings.
+      const fullAddress = trimmedBuilding
+        ? buildAddressString(trimmedBuilding, streetArea.trim(), pincode.trim(), locality.trim())
+        : null;
 
       await api.updateProfile({
         name: name.trim(),
@@ -642,9 +656,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Building / House / Flat No. */}
                 <div>
-                  <label className="block text-xs font-bold text-ink mb-1">
-                    Building / Flat / House No.
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-ink">
+                      Building / Flat / House No. <span className="text-brand font-black">* (Compulsory)</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-brand uppercase tracking-wider">Required</span>
+                  </div>
                   <input
                     type="text"
                     value={buildingHouseNo}

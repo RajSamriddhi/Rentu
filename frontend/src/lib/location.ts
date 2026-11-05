@@ -94,8 +94,9 @@ export const reverseGeocode = async (
       const data = await res.json();
       if (data && data.address) {
         const addr = data.address;
-        const building_no = addr.house_number || addr.building || addr.flat || '';
-        const road = addr.road || addr.pedestrian || addr.suburb || '';
+        // Building/Flat/House is compulsory and MUST be entered manually by the user
+        const building_no = '';
+        const road = addr.road || addr.pedestrian || addr.amenity || '';
         const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
         const city = addr.city || addr.town || addr.village || addr.city_district || addr.state_district || addr.state || '';
         const state = addr.state || '';
@@ -107,28 +108,18 @@ export const reverseGeocode = async (
           ? `${primaryLocality}, ${city}`
           : primaryLocality || city;
 
-        // Build address text with duplicate removal
-        const addressParts = deduplicateAddressParts([
-          building_no ? `No. ${building_no}` : '',
-          road,
-          neighbourhood,
-          addr.suburb && addr.suburb !== neighbourhood ? addr.suburb : '',
-          city,
-          state,
-          pincode
-        ]);
-
-        const address_text = addressParts.slice(0, 3).join(', ') || data.display_name || locality;
+        // Street/Road/Landmark should only be road/pedestrian, NOT locality/neighbourhood
+        const address_text = road || addr.pedestrian || addr.amenity || '';
 
         return {
           locality,
           city,
-          building_no,
+          building_no: '',
           address_text,
           pincode,
           latitude,
           longitude,
-          full_address: data.display_name || address_text,
+          full_address: address_text,
           state,
         };
       }
@@ -154,8 +145,8 @@ export const reverseGeocode = async (
         : rawLocality;
       const pincode = data.postcode || '';
       const state = data.principalSubdivision || '';
-      const addressParts = deduplicateAddressParts([rawLocality, city, state, pincode]);
-      const address_text = addressParts.join(', ');
+      // BigDataCloud does not provide road-level accuracy, keep address_text empty so user enters street
+      const address_text = '';
 
       return {
         locality,
@@ -178,11 +169,11 @@ export const reverseGeocode = async (
     locality: `(${latitude.toFixed(3)}, ${longitude.toFixed(3)})`,
     city: '',
     building_no: '',
-    address_text: `GPS: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+    address_text: '',
     pincode: '',
     latitude,
     longitude,
-    full_address: `Coordinates: ${latitude}, ${longitude}`,
+    full_address: '',
   };
 };
 
@@ -221,9 +212,89 @@ export const getGoogleMapsDirectionsUrl = (latitude?: number | null, longitude?:
 };
 
 /**
- * Formats the full complete location string of a user, owner, or item:
- * Includes Building/Flat/House, Street/Road, Locality/Neighborhood, and PIN code.
- * De-duplicates redundant sub-strings cleanly.
+ * Parses an address string into Building/Flat/House No. and Street/Road/Landmark.
+ * Prevents area/locality/neighborhood names (e.g., Mylasandra, BEML Layout) from mistakenly
+ * being parsed as a building number.
+ */
+export function parseAddressText(text?: string | null): { building: string; street: string } {
+  if (!text) return { building: '', street: '' };
+  const parts = text.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length === 0) return { building: '', street: '' };
+
+  const firstPart = parts[0];
+  const lowerFirst = firstPart.toLowerCase();
+
+  // If the first token matches known localities, layouts, suburbs, or cities, it is NOT a building number
+  const isAreaKeyword = [
+    'layout', 'phase', 'stage', 'sector', 'block', 'nagar', 'road', 'street', 'cross', 'main',
+    'bengaluru', 'bangalore', 'delhi', 'mumbai', 'mylasandra', 'beml', 'kengeri', 'rr nagar',
+    'koramangala', 'indiranagar', 'hsr', 'whitefield', 'jayanagar', 'jp nagar'
+  ].some(kw => lowerFirst.includes(kw));
+
+  // A valid building/flat usually contains digits or explicit keywords like Flat, House, Bldg, Stanza, Villa, Room
+  const hasBuildingIndicator = /\d/.test(firstPart) || /^(flat|house|no|apt|building|bldg|tower|room|stanza|villa|plot|door)\b/i.test(firstPart);
+
+  if (parts.length >= 2 && hasBuildingIndicator && !isAreaKeyword) {
+    return {
+      building: firstPart,
+      street: parts.slice(1).join(', ')
+    };
+  }
+
+  return {
+    building: '',
+    street: text
+  };
+}
+
+/**
+ * Builds the canonical full address string:
+ * Strictly: [Building / Flat / House No.], [Street / Road / Landmark], [Postal Code].
+ * Compulsory: Building/Flat/House No. must be entered by user.
+ * Locality and Neighborhood are explicitly excluded from the address.
+ * De-duplicates overlapping tokens cleanly.
+ */
+export function buildAddressString(
+  building?: string | null,
+  street?: string | null,
+  pincode?: string | null,
+  localityToOmit?: string | null
+): string {
+  const trimmedBuilding = (building || '').trim();
+  const trimmedStreet = (street || '').trim();
+  const trimmedPincode = (pincode || '').trim();
+
+  const localityTokens = new Set(
+    (localityToOmit || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  );
+
+  const seen = new Set<string>();
+  const cleanTokens: string[] = [];
+
+  for (const part of [trimmedBuilding, trimmedStreet, trimmedPincode]) {
+    if (!part) continue;
+    const tokens = part.split(',').map(t => t.trim()).filter(Boolean);
+    for (const token of tokens) {
+      const lower = token.toLowerCase();
+      // Omit locality or neighborhood from address string (unless it is part of building)
+      if (localityTokens.has(lower) && part !== trimmedBuilding) {
+        continue;
+      }
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        cleanTokens.push(token);
+      }
+    }
+  }
+
+  return cleanTokens.join(', ');
+}
+
+/**
+ * Formats the full address of a user or item:
+ * Strictly: [Building / Flat / House No.], [Street / Road / Landmark], [Postal Code].
+ * Per requirement: Locality and Neighborhood are NOT included in the address string.
+ * De-duplicates overlapping tokens cleanly.
  */
 export function formatFullAddress(entity?: {
   address_text?: string | null;
@@ -234,38 +305,36 @@ export function formatFullAddress(entity?: {
   if (!entity) return '';
 
   const address = (entity.address_text || '').trim();
-  let locality = (entity.locality || entity.owner_locality || '').trim();
   const pincode = (entity.pincode || '').trim();
 
-  // Do NOT assume address: if user never set address_text and locality is Bengaluru, ignore it
-  if ((locality.toLowerCase() === 'bengaluru' || locality.toLowerCase() === 'bengaluru, india' || locality.toLowerCase() === 'bangalore') && !address) {
-    locality = '';
+  if (!address || address.toLowerCase() === 'bengaluru' || address.toLowerCase() === 'bengaluru, india') {
+    return '';
   }
 
-  const rawParts = `${address}, ${locality}`
-    .split(',')
-    .map(p => p.trim())
-    .filter(Boolean);
+  const localityStr = (entity.locality || entity.owner_locality || '').trim();
+  const localityTokens = new Set(
+    localityStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  );
 
   const seen = new Set<string>();
   const parts: string[] = [];
-  for (const part of rawParts) {
-    const lower = part.toLowerCase();
-    if (!seen.has(lower)) {
-      seen.add(lower);
-      parts.push(part);
+
+  for (const part of [address, pincode]) {
+    if (!part) continue;
+    const subTokens = part.split(',').map(p => p.trim()).filter(Boolean);
+    for (const token of subTokens) {
+      const lower = token.toLowerCase();
+      if (localityTokens.has(lower)) {
+        continue;
+      }
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        parts.push(token);
+      }
     }
   }
 
-  if (pincode && !seen.has(pincode.toLowerCase())) {
-    parts.push(pincode);
-  }
-
-  const result = parts.join(', ') || locality || address || '';
-  if (result.toLowerCase() === 'bengaluru' || result.toLowerCase() === 'bengaluru, india') {
-    return '';
-  }
-  return result;
+  return parts.join(', ');
 }
 
 /**
@@ -279,19 +348,7 @@ export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] 
   let primaryLoc: SavedLocation | null = null;
 
   if (fullAddress) {
-    // Parse building and street from user.address_text
-    let building = '';
-    let street = '';
-    if (user.address_text) {
-      const parts = user.address_text.split(',').map(s => s.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        building = parts[0];
-        street = parts.slice(1).join(', ');
-      } else {
-        building = parts[0] || '';
-      }
-    }
-
+    const { building, street } = parseAddressText(user.address_text);
     const cleanLocality = (user.locality?.toLowerCase() === 'bengaluru' && !user.address_text) ? '' : (user.locality || '');
 
     primaryLoc = {
@@ -299,7 +356,7 @@ export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] 
       label: 'Primary Profile Address',
       building_flat_house: building,
       street_road_landmark: street,
-      locality: cleanLocality || fullAddress,
+      locality: cleanLocality || 'Neighborhood',
       pincode: user.pincode || '',
       latitude: user.latitude,
       longitude: user.longitude,
@@ -312,15 +369,16 @@ export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] 
 }
 
 /**
- * Formats a single SavedLocation object into its full clean address line
+ * Formats a single SavedLocation object into its clean address line:
+ * Strictly: [Building / Flat / House No.], [Street / Road / Landmark], [Postal Code].
+ * Per requirement: Locality and Neighborhood are NOT included in the address string.
+ * De-duplicates overlapping tokens cleanly.
  */
 export function formatSavedLocationFull(loc: SavedLocation): string {
-  const parts = [
+  return buildAddressString(
     loc.building_flat_house,
     loc.street_road_landmark,
-    loc.locality,
-    loc.pincode
-  ].map(s => (s || '').trim()).filter(Boolean);
-
-  return parts.join(', ') || loc.locality || '';
+    loc.pincode,
+    loc.locality
+  );
 }

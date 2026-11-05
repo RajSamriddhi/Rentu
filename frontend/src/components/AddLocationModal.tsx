@@ -80,8 +80,20 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
       setLatitude(loc.latitude);
       setLongitude(loc.longitude);
 
-      const locSummary = [loc.address_text, loc.locality].filter(Boolean).join(', ') || loc.city || 'Location detected';
-      setLocationSuccessMsg(`Current location detected: ${locSummary}`);
+      // Unique summary tokens to avoid repeating identical locality/neighborhood names
+      const uniqueTokens: string[] = [];
+      const seenTokens = new Set<string>();
+      for (const part of [loc.address_text, loc.locality]) {
+        if (!part) continue;
+        for (const token of part.split(',').map((t) => t.trim()).filter(Boolean)) {
+          if (!seenTokens.has(token.toLowerCase())) {
+            seenTokens.add(token.toLowerCase());
+            uniqueTokens.push(token);
+          }
+        }
+      }
+      const locSummary = uniqueTokens.join(', ') || loc.city || 'Location detected';
+      setLocationSuccessMsg(`Current location detected: ${locSummary}. Please enter Building / Flat / House No.`);
       try {
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.6 } });
       } catch {}
@@ -110,10 +122,20 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
 
     setIsSaving(true);
     try {
+      // Remove any duplicate locality tokens from street_road_landmark
+      const localityTokens = new Set(
+        trimmedLocality.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      );
+      const cleanStreetParts = streetArea
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s && !localityTokens.has(s.toLowerCase()));
+      const cleanStreet = cleanStreetParts.join(', ') || streetArea.trim();
+
       const locData: Omit<SavedLocation, 'id'> = {
         label: label.trim() || 'Additional Address',
         building_flat_house: trimmedBuilding,
-        street_road_landmark: streetArea.trim(),
+        street_road_landmark: cleanStreet,
         locality: trimmedLocality,
         pincode: pincode.trim(),
         latitude,
