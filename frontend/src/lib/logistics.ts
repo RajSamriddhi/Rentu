@@ -32,10 +32,49 @@ export interface DayLogisticsStatus {
 
 export function checkIsLender(booking: Booking, user: any): boolean {
   if (!booking || !user) return false;
-  return Boolean(
-    (booking.lender_id && (booking.lender_id === user.id || booking.lender_id === user.firebase_uid)) ||
-    (booking.lender_name && user.name && booking.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
-  );
+
+  const currentUserId = String(user.id || '').trim();
+  const currentFirebaseUid = String(user.firebase_uid || '').trim();
+  const currentUsername = String(user.username || '').trim().toLowerCase();
+  const currentEmail = String(user.email || '').trim().toLowerCase();
+
+  const bookingLenderId = String(booking.lender_id || '').trim();
+  const bookingBorrowerId = String(booking.borrower_id || '').trim();
+  const bookingLenderUsername = String(booking.lender_username || '').trim().toLowerCase();
+  const bookingBorrowerUsername = String(booking.borrower_username || '').trim().toLowerCase();
+  const bookingLenderEmail = String(booking.lender_email || '').trim().toLowerCase();
+  const bookingBorrowerEmail = String(booking.borrower_email || '').trim().toLowerCase();
+
+  // 1. Strict match on unique ID / Firebase UID
+  if (bookingLenderId && (bookingLenderId === currentUserId || (currentFirebaseUid && bookingLenderId === currentFirebaseUid))) {
+    return true;
+  }
+  if (bookingBorrowerId && (bookingBorrowerId === currentUserId || (currentFirebaseUid && bookingBorrowerId === currentFirebaseUid))) {
+    return false;
+  }
+
+  // 2. Strict match on unique Username (usernames are unique across all users)
+  if (currentUsername) {
+    if (bookingLenderUsername && currentUsername === bookingLenderUsername) {
+      return true;
+    }
+    if (bookingBorrowerUsername && currentUsername === bookingBorrowerUsername) {
+      return false;
+    }
+  }
+
+  // 3. Strict match on unique Email
+  if (currentEmail) {
+    if (bookingLenderEmail && currentEmail === bookingLenderEmail) {
+      return true;
+    }
+    if (bookingBorrowerEmail && currentEmail === bookingBorrowerEmail) {
+      return false;
+    }
+  }
+
+  // Strict: NEVER match by display name! Display names are not unique.
+  return false;
 }
 
 export function getBookingLogisticsInfo(booking: Booking, isLender: boolean): LogisticsInfo {

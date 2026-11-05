@@ -527,24 +527,13 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
   const [ongoingRoleFilter, setOngoingRoleFilter] = useState<'all' | 'lender' | 'renter'>('all');
 
-  // Split ongoing bookings by role: Lender vs Renter
+  // Split ongoing bookings by role: Lender vs Renter using strict unique identity
   const ongoingLendingList = useMemo(() => {
-    return displayedOngoingList.filter((b) => {
-      return Boolean(
-        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
-        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
-      );
-    });
+    return displayedOngoingList.filter((b) => checkIsLender(b, user));
   }, [displayedOngoingList, user]);
 
   const ongoingRentingList = useMemo(() => {
-    return displayedOngoingList.filter((b) => {
-      const isLender = Boolean(
-        (b.lender_id && (b.lender_id === user?.id || (user as any)?.firebase_uid === b.lender_id)) ||
-        (b.lender_name && user?.name && b.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
-      );
-      return !isLender;
-    });
+    return displayedOngoingList.filter((b) => !checkIsLender(b, user));
   }, [displayedOngoingList, user]);
 
   // Helper to check 3-day review window for finished bookings
@@ -1354,7 +1343,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               ) : (
                 finishedList.map((booking) => {
-                  const isLender = booking.lender_id === user?.id;
+                  const isLender = checkIsLender(booking, user);
                   const partnerName = isLender ? (booking.borrower_name || 'Borrower') : (booking.lender_name || 'Lender');
                   const reviewWindow = getReviewTimeRemaining(booking);
 
@@ -1470,7 +1459,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 </div>
               ) : (
                 cancelledList.map((booking) => {
-                  const isLender = booking.lender_id === user?.id;
+                  const isLender = checkIsLender(booking, user);
                   const partnerName = isLender ? (booking.borrower_name || 'Renter') : (booking.lender_name || 'Owner');
                   const isDeclined = booking.status === 'REJECTED';
 

@@ -4,6 +4,7 @@ import confetti from 'canvas-confetti';
 import { Booking } from '../lib/types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/authContext';
+import { checkIsLender } from '../lib/logistics';
 
 interface ReviewModalProps {
   booking: Booking | null;
@@ -48,13 +49,8 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [reviewType, setReviewType] = useState<'OWNER_RENTAL' | 'RENTER' | 'COMMUNITY_LENDER'>('RENTER');
 
-  // Safely compute roles unconditionally
-  const isLender = Boolean(
-    booking && (
-      (booking.lender_id && (booking.lender_id === user?.id || (user?.firebase_uid && booking.lender_id === user.firebase_uid))) ||
-      (booking.lender_name && user?.name && booking.lender_name.trim().toLowerCase() === user.name.trim().toLowerCase())
-    )
-  );
+  // Safely compute roles unconditionally using strict unique identity
+  const isLender = Boolean(booking && checkIsLender(booking, user));
 
   const isFreeItem = Boolean(
     booking && (

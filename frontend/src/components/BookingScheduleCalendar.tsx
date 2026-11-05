@@ -25,6 +25,7 @@ import {
 import { Booking } from '../lib/types';
 import { useAuth } from '../lib/authContext';
 import { formatTime12 } from '../lib/formatters';
+import { checkIsLender } from '../lib/logistics';
 
 export interface BookingScheduleCalendarProps {
   bookings: Booking[];
@@ -450,7 +451,7 @@ export const BookingScheduleCalendar: React.FC<BookingScheduleCalendarProps> = (
         ) : (
           <div className="space-y-4">
             {selectedHandoffs.map((booking) => {
-              const isLender = booking.lender_id === user?.id || (user as any)?.firebase_uid === booking.lender_id;
+              const isLender = checkIsLender(booking, user);
               const otherPartyName = isLender ? (booking.borrower_name || 'Renter') : (booking.lender_name || 'Owner');
               const otherPartyAvatar = isLender ? booking.borrower_avatar : booking.lender_avatar;
               const cfg = getStatusConfig(booking.status);

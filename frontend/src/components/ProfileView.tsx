@@ -50,6 +50,7 @@ import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
 import { ReviewModal } from './ReviewModal';
 import { getReachDistance } from '../lib/distance';
+import { checkIsLender } from '../lib/logistics';
 import { FollowListModal } from './FollowListModal';
 
 interface ProfileViewProps {
@@ -819,7 +820,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }
 
                 return completedBookings.map((b) => {
-                  const isLender = b.lender_id === user.id || (user as any).firebase_uid === b.lender_id;
+                  const isLender = checkIsLender(b, user);
                   const counterpartyName = isLender ? (b.borrower_name || 'Renter') : (b.lender_name || 'Owner');
                   const counterpartyAvatar = isLender ? b.borrower_avatar : b.lender_avatar;
                   const completedDate = new Date(b.completed_at || b.created_at);

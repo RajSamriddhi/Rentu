@@ -24,6 +24,7 @@ import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
 import { formatTime12 } from '../lib/formatters';
 import { generateQrDataUri } from '../lib/qr';
+import { checkIsLender } from '../lib/logistics';
 
 interface BookingStageModalProps {
   booking: Booking | null;
@@ -344,8 +345,8 @@ export const BookingStageModal: React.FC<BookingStageModalProps> = ({
 
   if (!isOpen || !booking) return null;
 
-  const isLender = booking.lender_id === user?.id;
-  const isBorrower = booking.borrower_id === user?.id;
+  const isLender = checkIsLender(booking, user);
+  const isBorrower = !isLender;
   const otherPartyName = isLender ? (booking.borrower_name || 'Renter') : (booking.lender_name || 'Lender / Owner');
 
   const today = new Date();
