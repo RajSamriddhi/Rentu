@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../../config/db");
@@ -63,6 +96,37 @@ router.put('/users/:id', async (req, res, next) => {
             return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found', 404);
         }
         return (0, response_1.sendSuccess)(res, result.rows[0], 'User updated successfully');
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// 2.1 DELETE USER (Admin - Cascades all records and removes from Firebase Auth)
+router.delete('/users/:id', async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        if (req.user?.id === id) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You cannot delete your own admin account', 400);
+        }
+        const userRes = await (0, db_1.query)('SELECT id, firebase_uid, email FROM users WHERE id = $1', [id]);
+        if (userRes.rows.length === 0) {
+            return (0, response_1.sendError)(res, 'NOT_FOUND', 'User not found in database', 404);
+        }
+        const user = userRes.rows[0];
+        // Delete user from PostgreSQL (cascades to items, bookings, reviews, messages, etc.)
+        await (0, db_1.query)('DELETE FROM users WHERE id = $1', [id]);
+        // Also attempt to delete from Firebase Authentication if linked
+        const fbUid = user.firebase_uid || (id.length > 20 && !id.includes('-') ? id : null);
+        if (fbUid) {
+            try {
+                const { getAuth } = await Promise.resolve().then(() => __importStar(require('firebase-admin/auth')));
+                await getAuth().deleteUser(fbUid);
+            }
+            catch (fbErr) {
+                console.warn(`Could not delete user ${fbUid} from Firebase Auth:`, fbErr.message);
+            }
+        }
+        return (0, response_1.sendSuccess)(res, { id, email: user.email }, 'User deleted successfully from database and authentication');
     }
     catch (error) {
         next(error);

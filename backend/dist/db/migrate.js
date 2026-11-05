@@ -535,8 +535,8 @@ const runMigrations = async () => {
         const relationalConstraints = [
             { name: 'fk_items_owner', sql: `ALTER TABLE items ADD CONSTRAINT fk_items_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE` },
             { name: 'fk_requests_seeker', sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_seeker FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE` },
-            { name: 'fk_bookings_borrower', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE RESTRICT` },
-            { name: 'fk_bookings_lender', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE RESTRICT` },
+            { name: 'fk_bookings_borrower', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE CASCADE` },
+            { name: 'fk_bookings_lender', sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE CASCADE` },
             { name: 'fk_messages_sender', sql: `ALTER TABLE messages ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE` },
             { name: 'fk_users_pincode', sql: `ALTER TABLE users ADD CONSTRAINT fk_users_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
             { name: 'fk_items_pincode', sql: `ALTER TABLE items ADD CONSTRAINT fk_items_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },

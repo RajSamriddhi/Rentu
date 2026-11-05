@@ -79,6 +79,42 @@ router.put('/users/:id', async (req: AuthenticatedRequest, res: Response, next) 
   }
 });
 
+// 2.1 DELETE USER (Admin - Cascades all records and removes from Firebase Auth)
+router.delete('/users/:id', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user?.id === id) {
+      return sendError(res, 'BAD_REQUEST', 'You cannot delete your own admin account', 400);
+    }
+
+    const userRes = await query('SELECT id, firebase_uid, email FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return sendError(res, 'NOT_FOUND', 'User not found in database', 404);
+    }
+
+    const user = userRes.rows[0];
+
+    // Delete user from PostgreSQL (cascades to items, bookings, reviews, messages, etc.)
+    await query('DELETE FROM users WHERE id = $1', [id]);
+
+    // Also attempt to delete from Firebase Authentication if linked
+    const fbUid = user.firebase_uid || (id.length > 20 && !id.includes('-') ? id : null);
+    if (fbUid) {
+      try {
+        const { getAuth } = await import('firebase-admin/auth');
+        await getAuth().deleteUser(fbUid);
+      } catch (fbErr: any) {
+        console.warn(`Could not delete user ${fbUid} from Firebase Auth:`, fbErr.message);
+      }
+    }
+
+    return sendSuccess(res, { id, email: user.email }, 'User deleted successfully from database and authentication');
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 3. GET ALL LISTINGS
 router.get('/listings', async (req: AuthenticatedRequest, res: Response, next) => {
   try {

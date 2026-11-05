@@ -45,13 +45,8 @@ async function resolveUserFromToken(token) {
                 const u = checkRes.rows[0];
                 return { id: u.id, email: u.email, role: u.role, name: u.name };
             }
-            // Auto-insert user into DB if not found so foreign key joins succeed
-            await (0, db_1.query)(`
-        INSERT INTO users (id, name, email, role)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
-      `, [decoded.id, decoded.name || 'User', decoded.email || `${decoded.id}@user.internal`, decoded.role || 'USER']).catch(() => { });
-            return decoded;
+            // If user is not found in database, they have been removed - do not resurrect them
+            return null;
         }
     }
     catch {
@@ -63,25 +58,14 @@ async function resolveUserFromToken(token) {
         if (decodedToken && decodedToken.uid) {
             const firebaseUid = decodedToken.uid;
             const email = decodedToken.email || `${firebaseUid}@firebase.rentu.internal`;
-            const name = decodedToken.name || (decodedToken.email ? decodedToken.email.split('@')[0] : 'User');
-            let userRes = await (0, db_1.query)('SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR (email = $3 AND email IS NOT NULL)', [firebaseUid, firebaseUid, email]);
-            if (userRes.rows.length === 0) {
-                await (0, db_1.query)(`
-          INSERT INTO users (id, firebase_uid, name, email, role)
-          VALUES ($1, $2, $3, $4, 'USER')
-          ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
-        `, [
-                    firebaseUid,
-                    firebaseUid,
-                    name,
-                    email
-                ]).catch(() => { });
-                userRes = await (0, db_1.query)('SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1', [firebaseUid]);
-            }
+            const userRes = await (0, db_1.query)('SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR (email = $3 AND email IS NOT NULL)', [firebaseUid, firebaseUid, email]);
+            // If user exists in database, return authenticated user
             if (userRes.rows.length > 0) {
                 const u = userRes.rows[0];
                 return { id: u.id, email: u.email, role: u.role, name: u.name };
             }
+            // If user is not in database, they were deleted - do not auto-insert
+            return null;
         }
     }
     catch {

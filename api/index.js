@@ -63315,6 +63315,49 @@ var require_auth2 = __commonJS({
   }
 });
 
+// ../node_modules/firebase-admin/lib/esm/auth/index.js
+var auth_exports = {};
+__export(auth_exports, {
+  Auth: () => Auth,
+  AuthErrorCode: () => AuthErrorCode,
+  BaseAuth: () => BaseAuth,
+  FirebaseAuthError: () => FirebaseAuthError,
+  MultiFactorInfo: () => MultiFactorInfo,
+  MultiFactorSettings: () => MultiFactorSettings,
+  PhoneMultiFactorInfo: () => PhoneMultiFactorInfo,
+  ProjectConfig: () => ProjectConfig,
+  ProjectConfigManager: () => ProjectConfigManager,
+  Tenant: () => Tenant,
+  TenantAwareAuth: () => TenantAwareAuth,
+  TenantManager: () => TenantManager,
+  UserInfo: () => UserInfo,
+  UserMetadata: () => UserMetadata,
+  UserRecord: () => UserRecord,
+  getAuth: () => getAuth
+});
+var import_auth, Auth, AuthErrorCode, BaseAuth, FirebaseAuthError, MultiFactorInfo, MultiFactorSettings, PhoneMultiFactorInfo, ProjectConfig, ProjectConfigManager, Tenant, TenantAwareAuth, TenantManager, UserInfo, UserMetadata, UserRecord, getAuth;
+var init_auth = __esm({
+  "../node_modules/firebase-admin/lib/esm/auth/index.js"() {
+    import_auth = __toESM(require_auth2(), 1);
+    Auth = import_auth.default.Auth;
+    AuthErrorCode = import_auth.default.AuthErrorCode;
+    BaseAuth = import_auth.default.BaseAuth;
+    FirebaseAuthError = import_auth.default.FirebaseAuthError;
+    MultiFactorInfo = import_auth.default.MultiFactorInfo;
+    MultiFactorSettings = import_auth.default.MultiFactorSettings;
+    PhoneMultiFactorInfo = import_auth.default.PhoneMultiFactorInfo;
+    ProjectConfig = import_auth.default.ProjectConfig;
+    ProjectConfigManager = import_auth.default.ProjectConfigManager;
+    Tenant = import_auth.default.Tenant;
+    TenantAwareAuth = import_auth.default.TenantAwareAuth;
+    TenantManager = import_auth.default.TenantManager;
+    UserInfo = import_auth.default.UserInfo;
+    UserMetadata = import_auth.default.UserMetadata;
+    UserRecord = import_auth.default.UserRecord;
+    getAuth = import_auth.default.getAuth;
+  }
+});
+
 // ../node_modules/postgres-array/index.js
 var require_postgres_array = __commonJS({
   "../node_modules/postgres-array/index.js"(exports2) {
@@ -86903,24 +86946,8 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// ../node_modules/firebase-admin/lib/esm/auth/index.js
-var import_auth = __toESM(require_auth2(), 1);
-var Auth = import_auth.default.Auth;
-var AuthErrorCode = import_auth.default.AuthErrorCode;
-var BaseAuth = import_auth.default.BaseAuth;
-var FirebaseAuthError = import_auth.default.FirebaseAuthError;
-var MultiFactorInfo = import_auth.default.MultiFactorInfo;
-var MultiFactorSettings = import_auth.default.MultiFactorSettings;
-var PhoneMultiFactorInfo = import_auth.default.PhoneMultiFactorInfo;
-var ProjectConfig = import_auth.default.ProjectConfig;
-var ProjectConfigManager = import_auth.default.ProjectConfigManager;
-var Tenant = import_auth.default.Tenant;
-var TenantAwareAuth = import_auth.default.TenantAwareAuth;
-var TenantManager = import_auth.default.TenantManager;
-var UserInfo = import_auth.default.UserInfo;
-var UserMetadata = import_auth.default.UserMetadata;
-var UserRecord = import_auth.default.UserRecord;
-var getAuth = import_auth.default.getAuth;
+// src/modules/auth/auth.routes.ts
+init_auth();
 
 // ../node_modules/pg/esm/index.mjs
 var import_lib = __toESM(require_lib6(), 1);
@@ -87052,6 +87079,7 @@ var initializeApp = import_app.default.initializeApp;
 var refreshToken = import_app.default.refreshToken;
 
 // src/middleware/auth.ts
+init_auth();
 try {
   const existingApps = getApps();
   if (!existingApps.length) {
@@ -87084,13 +87112,7 @@ async function resolveUserFromToken(token) {
         const u = checkRes.rows[0];
         return { id: u.id, email: u.email, role: u.role, name: u.name };
       }
-      await query(`
-        INSERT INTO users (id, name, email, role)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
-      `, [decoded.id, decoded.name || "User", decoded.email || `${decoded.id}@user.internal`, decoded.role || "USER"]).catch(() => {
-      });
-      return decoded;
+      return null;
     }
   } catch {
   }
@@ -87099,32 +87121,15 @@ async function resolveUserFromToken(token) {
     if (decodedToken && decodedToken.uid) {
       const firebaseUid = decodedToken.uid;
       const email = decodedToken.email || `${firebaseUid}@firebase.rentu.internal`;
-      const name = decodedToken.name || (decodedToken.email ? decodedToken.email.split("@")[0] : "User");
-      let userRes = await query(
+      const userRes = await query(
         "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $2 OR (email = $3 AND email IS NOT NULL)",
         [firebaseUid, firebaseUid, email]
       );
-      if (userRes.rows.length === 0) {
-        await query(`
-          INSERT INTO users (id, firebase_uid, name, email, role)
-          VALUES ($1, $2, $3, $4, 'USER')
-          ON CONFLICT (id) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid;
-        `, [
-          firebaseUid,
-          firebaseUid,
-          name,
-          email
-        ]).catch(() => {
-        });
-        userRes = await query(
-          "SELECT id, email, role, name FROM users WHERE firebase_uid = $1 OR id = $1",
-          [firebaseUid]
-        );
-      }
       if (userRes.rows.length > 0) {
         const u = userRes.rows[0];
         return { id: u.id, email: u.email, role: u.role, name: u.name };
       }
+      return null;
     }
   } catch {
   }
@@ -102883,6 +102888,32 @@ router12.put("/users/:id", async (req, res, next) => {
     next(error);
   }
 });
+router12.delete("/users/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (req.user?.id === id) {
+      return sendError(res, "BAD_REQUEST", "You cannot delete your own admin account", 400);
+    }
+    const userRes = await query("SELECT id, firebase_uid, email FROM users WHERE id = $1", [id]);
+    if (userRes.rows.length === 0) {
+      return sendError(res, "NOT_FOUND", "User not found in database", 404);
+    }
+    const user = userRes.rows[0];
+    await query("DELETE FROM users WHERE id = $1", [id]);
+    const fbUid = user.firebase_uid || (id.length > 20 && !id.includes("-") ? id : null);
+    if (fbUid) {
+      try {
+        const { getAuth: getAuth2 } = await Promise.resolve().then(() => (init_auth(), auth_exports));
+        await getAuth2().deleteUser(fbUid);
+      } catch (fbErr) {
+        console.warn(`Could not delete user ${fbUid} from Firebase Auth:`, fbErr.message);
+      }
+    }
+    return sendSuccess(res, { id, email: user.email }, "User deleted successfully from database and authentication");
+  } catch (error) {
+    next(error);
+  }
+});
 router12.get("/listings", async (req, res, next) => {
   try {
     const result = await query(`
@@ -103643,8 +103674,8 @@ var runMigrations = async () => {
     const relationalConstraints = [
       { name: "fk_items_owner", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE` },
       { name: "fk_requests_seeker", sql: `ALTER TABLE requests ADD CONSTRAINT fk_requests_seeker FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE` },
-      { name: "fk_bookings_borrower", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE RESTRICT` },
-      { name: "fk_bookings_lender", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE RESTRICT` },
+      { name: "fk_bookings_borrower", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_borrower FOREIGN KEY (borrower_id) REFERENCES users(id) ON DELETE CASCADE` },
+      { name: "fk_bookings_lender", sql: `ALTER TABLE bookings ADD CONSTRAINT fk_bookings_lender FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE CASCADE` },
       { name: "fk_messages_sender", sql: `ALTER TABLE messages ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE` },
       { name: "fk_users_pincode", sql: `ALTER TABLE users ADD CONSTRAINT fk_users_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },
       { name: "fk_items_pincode", sql: `ALTER TABLE items ADD CONSTRAINT fk_items_pincode FOREIGN KEY (pincode) REFERENCES postal_codes(pincode) ON DELETE SET NULL` },

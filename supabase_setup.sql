@@ -143,8 +143,8 @@ CREATE INDEX IF NOT EXISTS idx_requests_pincode ON requests(pincode);
 CREATE TABLE IF NOT EXISTS bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     item_id UUID NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
-    borrower_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    lender_id TEXT REFERENCES users(id) ON DELETE RESTRICT, -- Redundant in 3NF; dynamically derived in bookings_3nf_v
+    borrower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lender_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     start_date DATE NOT NULL,
     start_time TIME,
     duration_days INTEGER NOT NULL CHECK (duration_days > 0),
