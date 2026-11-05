@@ -3,7 +3,10 @@
   "short_name": "Rentu",
   "description": "Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own.",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0C0D12",
   "theme_color": "#E11D74",
   "icons": [

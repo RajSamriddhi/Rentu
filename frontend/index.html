@@ -91,6 +91,13 @@
           }
         } catch (e) {}
       })();
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(err) {
+            console.warn('PWA Service Worker registration non-fatal error:', err);
+          });
+        });
+      }
     </script>
   </head>
   <body class="bg-canvas text-ink antialiased selection:bg-brand/20 selection:text-brand">

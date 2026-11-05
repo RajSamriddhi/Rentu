@@ -22,6 +22,7 @@ import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { Footer } from './components/Footer';
+import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
@@ -465,7 +466,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-canvas font-sans">
-      
+      {/* PWA Phone Install Banner */}
+      <PwaInstallBanner />
+
       {/* Top Navbar matching Mockup Header */}
       <Navbar
         activeTab={activeTab}
