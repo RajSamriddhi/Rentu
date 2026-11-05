@@ -696,6 +696,7 @@ export const App: React.FC = () => {
           }
         }}
         onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setActiveTab('profile')}
       />
 
       {/* Screen 4: Post a Request Modal */}

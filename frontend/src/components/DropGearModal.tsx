@@ -10,7 +10,8 @@ import {
   MapPin,
   Trash2,
   RefreshCw,
-  Plus
+  Plus,
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -19,12 +20,14 @@ import { uploadItemPhoto } from '../lib/supabase';
 import { detectCurrentLocation, getEffectiveSavedLocations, formatSavedLocationFull } from '../lib/location';
 import { Item, SavedLocation } from '../lib/types';
 import { AddLocationModal } from './AddLocationModal';
+import { SetLocationModal } from './SetLocationModal';
 
 interface DropGearModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (newItem?: Item) => void;
   onOpenAuth: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const DropGearModal: React.FC<DropGearModalProps> = ({
@@ -32,6 +35,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   onClose,
   onSuccess,
   onOpenAuth,
+  onOpenProfile,
 }) => {
   const { user, isAuthenticated } = useAuth();
 
@@ -53,7 +57,9 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
 
   // Saved Pickup & Drop Locations
   const savedLocations = getEffectiveSavedLocations(user);
-  const [selectedLocationId, setSelectedLocationId] = useState<string>('primary');
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(() => {
+    return savedLocations.length > 0 ? savedLocations[0].id : '';
+  });
   const [detectedLocation, setDetectedLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -63,6 +69,14 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   } | null>(null);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+  const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
+
+  useEffect(() => {
+    if (savedLocations.length > 0 && !selectedLocationId && !detectedLocation) {
+      setSelectedLocationId(savedLocations[0].id);
+      setLocality(savedLocations[0].locality);
+    }
+  }, [savedLocations, selectedLocationId, detectedLocation]);
 
   // States
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -244,8 +258,12 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       return;
     }
 
-    const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || savedLocations[0];
+    const chosenLocation = savedLocations.find(l => l.id === selectedLocationId) || (savedLocations.length > 0 ? savedLocations[0] : null);
     const finalLocality = detectedLocation?.locality || chosenLocation?.locality || locality.trim() || user?.locality || '';
+    if (!detectedLocation && !chosenLocation) {
+      setErrorMsg('Please add your location in your profile section or use your current GPS location before listing.');
+      return;
+    }
     if (!finalLocality) {
       setErrorMsg('Please specify your pickup and drop location or add one to your profile.');
       return;
@@ -807,6 +825,58 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
 
             {/* List of Saved Locations in User's Profile */}
             <div className="space-y-2.5">
+              {/* If no location set in profile and no detected location */}
+              {savedLocations.length === 0 && !detectedLocation && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3 animate-in fade-in">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                      <AlertCircle className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-black text-ink">No Location Set in Your Profile</h4>
+                      <p className="text-[11px] text-ink-secondary mt-0.5 leading-relaxed">
+                        You have not set any location in your profile yet. Please add your location in your profile section so lenders and borrowers can coordinate handoffs, or use your current location below.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsSetLocationOpen(true)}
+                      className="btn-primary text-xs px-3.5 py-1.5 shadow-pink font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>+ Add Location to Profile</span>
+                    </button>
+
+                    {onOpenProfile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenProfile();
+                        }}
+                        className="btn-secondary text-xs px-3.5 py-1.5 font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-brand" />
+                        <span>Go to Profile Section</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleDetectLocation}
+                      disabled={isDetectingLocation}
+                      className="btn-secondary text-xs px-3.5 py-1.5 font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Navigation className={`w-3.5 h-3.5 text-brand ${isDetectingLocation ? 'animate-spin' : ''}`} />
+                      <span>{isDetectingLocation ? 'Detecting...' : 'Use Current Location'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {detectedLocation && (
                 <div className="p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 bg-brand/5 border-brand ring-1 ring-brand/20 shadow-xs">
                   <div className="mt-0.5 w-4 h-4 rounded-full border border-brand bg-brand flex items-center justify-center shrink-0">
@@ -920,6 +990,19 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
           setSelectedLocationId(newLoc.id);
           setLocality(newLoc.locality);
         }}
+      />
+
+      {/* Set Profile Location Modal */}
+      <SetLocationModal
+        isOpen={isSetLocationOpen}
+        onClose={() => setIsSetLocationOpen(false)}
+        onSuccess={(newLoc) => {
+          setIsSetLocationOpen(false);
+          setSelectedLocationId('primary');
+          setLocality(newLoc.locality);
+          setLocationSuccessMsg(`Profile location set to ${newLoc.locality}!`);
+        }}
+        canSkip={false}
       />
     </div>
   );

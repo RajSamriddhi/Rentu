@@ -270,40 +270,45 @@ export function formatFullAddress(entity?: {
 
 /**
  * Returns all saved locations for a user, ensuring their Primary Profile Address
- * is always the default first entry.
+ * is included as the default first entry ONLY if the user has actually set a location in their profile.
  */
 export function getEffectiveSavedLocations(user?: User | null): SavedLocation[] {
   if (!user) return [];
 
-  // Parse building and street from user.address_text
-  let building = '';
-  let street = '';
-  if (user.address_text) {
-    const parts = user.address_text.split(',').map(s => s.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      building = parts[0];
-      street = parts.slice(1).join(', ');
-    } else {
-      building = parts[0] || '';
+  const fullAddress = formatFullAddress(user);
+  let primaryLoc: SavedLocation | null = null;
+
+  if (fullAddress) {
+    // Parse building and street from user.address_text
+    let building = '';
+    let street = '';
+    if (user.address_text) {
+      const parts = user.address_text.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        building = parts[0];
+        street = parts.slice(1).join(', ');
+      } else {
+        building = parts[0] || '';
+      }
     }
+
+    const cleanLocality = (user.locality?.toLowerCase() === 'bengaluru' && !user.address_text) ? '' : (user.locality || '');
+
+    primaryLoc = {
+      id: 'primary',
+      label: 'Primary Profile Address',
+      building_flat_house: building,
+      street_road_landmark: street,
+      locality: cleanLocality || fullAddress,
+      pincode: user.pincode || '',
+      latitude: user.latitude,
+      longitude: user.longitude,
+      is_default: true,
+    };
   }
 
-  const cleanLocality = (user.locality?.toLowerCase() === 'bengaluru' && !user.address_text) ? '' : (user.locality || '');
-
-  const primaryLoc: SavedLocation = {
-    id: 'primary',
-    label: 'Primary Profile Address',
-    building_flat_house: building,
-    street_road_landmark: street,
-    locality: cleanLocality,
-    pincode: user.pincode || '',
-    latitude: user.latitude,
-    longitude: user.longitude,
-    is_default: true,
-  };
-
   const otherLocations = Array.isArray(user.saved_locations) ? user.saved_locations : [];
-  return [primaryLoc, ...otherLocations];
+  return primaryLoc ? [primaryLoc, ...otherLocations] : otherLocations;
 }
 
 /**
