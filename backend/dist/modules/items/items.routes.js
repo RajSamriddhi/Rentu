@@ -31,7 +31,7 @@ const createItemSchema = zod_1.z.object({
     description: zod_1.z.string().min(10, 'Description must be at least 10 characters'),
     category: zod_1.z.string().min(2, 'Category is required'),
     price_per_day: zod_1.z.number().min(0, 'Price per day cannot be negative'),
-    max_duration_days: zod_1.z.number().int().positive().default(3),
+    max_duration_days: zod_1.z.number().int().positive().optional().default(365),
     image_urls: zod_1.z.array(zod_1.z.string().min(1, 'Photo URL cannot be empty')).min(1, 'At least one photo is required'),
     sticker_badge: zod_1.z.string().default('Available'),
     locality: zod_1.z.string().optional(),

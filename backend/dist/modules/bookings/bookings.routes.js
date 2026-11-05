@@ -287,8 +287,8 @@ router.post('/', auth_1.authMiddleware, async (req, res, next) => {
                 finalEndDate = validated.start_date;
             }
         }
-        // Enforce item's max_duration_days
-        const maxAllowedDays = Number(item.max_duration_days) || 30;
+        // Enforce maximum rental duration (standardized up to 365 days)
+        const maxAllowedDays = Math.max(Number(item.max_duration_days) || 365, 365);
         if (durationDays > maxAllowedDays) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', `Rental duration (${durationDays} days) exceeds maximum allowed rental period (${maxAllowedDays} days) for this item.`, 400);
         }

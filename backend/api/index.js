@@ -96042,7 +96042,7 @@ var createItemSchema = external_exports.object({
   description: external_exports.string().min(10, "Description must be at least 10 characters"),
   category: external_exports.string().min(2, "Category is required"),
   price_per_day: external_exports.number().min(0, "Price per day cannot be negative"),
-  max_duration_days: external_exports.number().int().positive().default(3),
+  max_duration_days: external_exports.number().int().positive().optional().default(365),
   image_urls: external_exports.array(external_exports.string().min(1, "Photo URL cannot be empty")).min(1, "At least one photo is required"),
   sticker_badge: external_exports.string().default("Available"),
   locality: external_exports.string().optional(),
@@ -97645,7 +97645,7 @@ router4.post("/", authMiddleware, async (req, res, next) => {
         finalEndDate = validated.start_date;
       }
     }
-    const maxAllowedDays = Number(item.max_duration_days) || 30;
+    const maxAllowedDays = Math.max(Number(item.max_duration_days) || 365, 365);
     if (durationDays > maxAllowedDays) {
       return sendError(
         res,

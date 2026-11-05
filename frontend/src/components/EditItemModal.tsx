@@ -365,43 +365,26 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
             </div>
           </div>
 
-          {/* Price & Duration */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">
-                {listingType === 'Rent' ? 'Price Per Day (₹) *' : 'Pricing Mode'}
-              </label>
-              {listingType === 'Rent' ? (
-                <input
-                  type="number"
-                  min="1"
-                  value={pricePerDay}
-                  onChange={(e) => setPricePerDay(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="e.g. 350"
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
-                  required
-                />
-              ) : (
-                <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
-                  ₹0 (Free community borrowing)
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-ink mb-1">Max Duration (Days)</label>
-              <select
-                value={maxDurationDays}
-                onChange={(e) => setMaxDurationDays(Number(e.target.value))}
-                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none cursor-pointer"
-              >
-                <option value={3}>Up to 3 days</option>
-                <option value={5}>Up to 5 days</option>
-                <option value={7}>Up to 7 days (1 week)</option>
-                <option value={14}>Up to 14 days (2 weeks)</option>
-                <option value={30}>Up to 30 days (1 month)</option>
-              </select>
-            </div>
+          {/* Price */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1">
+              {listingType === 'Rent' ? 'Price Per Day (₹) *' : 'Pricing Mode'}
+            </label>
+            {listingType === 'Rent' ? (
+              <input
+                type="number"
+                min="1"
+                value={pricePerDay}
+                onChange={(e) => setPricePerDay(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="e.g. 350"
+                className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-semibold text-ink outline-none focus:border-brand"
+                required
+              />
+            ) : (
+              <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                ₹0 (Free community borrowing)
+              </div>
+            )}
           </div>
 
           {/* Pickup & Drop Location */}

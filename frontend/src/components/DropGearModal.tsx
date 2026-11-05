@@ -41,7 +41,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [category, setCategory] = useState('Electronics & Tech');
   const [listingType, setListingType] = useState<'Rent' | 'Borrow'>('Rent');
   const [pricePerDay, setPricePerDay] = useState<number | ''>('');
-  const [maxDurationDays, setMaxDurationDays] = useState(5);
+  const [maxDurationDays, setMaxDurationDays] = useState(365);
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
   const [imageUrl, setImageUrl] = useState('');
@@ -612,8 +612,8 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
               </button>
             </div>
 
-            {/* Price & Max Duration */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Price */}
+            <div>
               {listingType === 'Rent' ? (
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
@@ -637,23 +637,6 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                   </div>
                 </div>
               )}
-
-              <div>
-                <label className="block text-xs font-bold text-ink mb-1">
-                  Maximum lending duration
-                </label>
-                <select
-                  value={maxDurationDays}
-                  onChange={(e) => setMaxDurationDays(Number(e.target.value))}
-                  className="w-full bg-canvas border border-divider rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink outline-none cursor-pointer"
-                >
-                  <option value={3}>Up to 3 days</option>
-                  <option value={5}>Up to 5 days</option>
-                  <option value={7}>Up to 7 days (1 week)</option>
-                  <option value={14}>Up to 14 days (2 weeks)</option>
-                  <option value={30}>Up to 30 days (1 month)</option>
-                </select>
-              </div>
             </div>
 
             {/* Handover & Delivery Options by Owner */}
