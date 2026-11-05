@@ -52,3 +52,4 @@ exports.deleteUserFromSupabase = functions.auth.user().onDelete(async (user) => 
     throw err;
   }
 });
+

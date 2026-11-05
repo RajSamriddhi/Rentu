@@ -94,13 +94,7 @@ const getTabFromUrl = (): TabType => {
 
   if (path === 'admin' || hash === 'admin') return 'hustle';
   if (path === 'requests' || hash === 'requests') return 'requests';
-  if (path === 'bookings' || hash === 'bookings' || path === 'booking' || hash === 'booking') {
-    // Bookings is integrated into Profile view; sanitize URL to /profile immediately
-    try {
-      window.history.replaceState(null, '', '/profile');
-    } catch {}
-    return 'bookings';
-  }
+  if (path === 'bookings' || hash === 'bookings' || path === 'booking' || hash === 'booking') return 'bookings';
   if (path === 'messages' || hash === 'messages' || path === 'chat' || hash === 'chat') return 'messages';
   if (path === 'community' || hash === 'community') return 'community';
   if (path === 'profile' || hash === 'profile') return 'profile';
@@ -166,12 +160,13 @@ export const App: React.FC = () => {
     // ALWAYS dismiss public profile view when navigating to any tab!
     setViewingUserId(null);
     setActiveTabState(tab);
-    // Booking section is integrated inside Profile, so the URL is always /profile
     const targetPath = tab === 'home'
       ? '/'
       : tab === 'hustle'
       ? '/admin'
-      : (tab === 'bookings' || tab === 'profile')
+      : tab === 'bookings'
+      ? '/bookings'
+      : tab === 'profile'
       ? '/profile'
       : `/${tab}`;
 
@@ -187,14 +182,6 @@ export const App: React.FC = () => {
       setActiveTab('home');
     }
   }, [activeTab, isUserAdmin]);
-
-  // Ensure that /bookings or /booking URLs are automatically sanitized to /profile
-  useEffect(() => {
-    const rawPath = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
-    if (rawPath === 'bookings' || rawPath === 'booking') {
-      window.history.replaceState(null, '', '/profile');
-    }
-  }, []);
 
   // If the opened username URL belongs to the currently logged in user, directly switch to own account
   useEffect(() => {
@@ -248,7 +235,9 @@ export const App: React.FC = () => {
       ? '/'
       : activeTab === 'hustle'
       ? '/admin'
-      : (activeTab === 'bookings' || activeTab === 'profile')
+      : activeTab === 'bookings'
+      ? '/bookings'
+      : activeTab === 'profile'
       ? '/profile'
       : `/${activeTab}`;
     if (window.location.pathname !== targetPath) {
@@ -613,17 +602,12 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* VIEW 7: BOOKINGS (Integrated into Profile beside My Requests) */}
+            {/* VIEW 7: DEDICATED FULL-PAGE BOOKINGS VIEW */}
             {activeTab === 'bookings' && (
-              <ProfileView
-                initialTab="bookings"
-                initialBookingSubTab={bookingSubTab}
+              <BookingsView
+                onOpenChat={handleOpenChatWithBooking}
+                initialTab={bookingSubTab}
                 initialBookingId={highlightedBookingId}
-                onOpenDropGear={() => setIsDropGearOpen(true)}
-                onOpenDropWish={() => setIsDropWishOpen(true)}
-                onOpenChatWithBooking={handleOpenChatWithBooking}
-                onOpenAuth={() => setIsAuthOpen(true)}
-                onOpenUserProfile={handleOpenUserProfile}
               />
             )}
 
@@ -642,8 +626,7 @@ export const App: React.FC = () => {
             {/* VIEW 9: PROFILE VIEW (Screen 9 in Mockup) */}
             {activeTab === 'profile' && (
               <ProfileView
-                initialBookingSubTab={bookingSubTab}
-                initialBookingId={highlightedBookingId}
+                initialTab="listings"
                 onOpenDropGear={() => setIsDropGearOpen(true)}
                 onOpenDropWish={() => setIsDropWishOpen(true)}
                 onOpenChatWithBooking={handleOpenChatWithBooking}

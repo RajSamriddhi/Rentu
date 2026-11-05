@@ -50,17 +50,14 @@ import { EditWishModal } from './EditWishModal';
 import { ItemDetailModal } from './ItemDetailModal';
 import { ReviewModal } from './ReviewModal';
 import { getReachDistance } from '../lib/distance';
-import { BookingsView } from './BookingsView';
 import { FollowListModal } from './FollowListModal';
 
 interface ProfileViewProps {
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
-  onOpenChatWithBooking: (bookingId: string) => void;
+  onOpenChatWithBooking?: (bookingId: string) => void;
   onOpenAuth?: () => void;
-  initialTab?: 'listings' | 'requests' | 'bookings' | 'reviews';
-  initialBookingSubTab?: 'ongoing' | 'requests' | 'finished' | 'cancelled';
-  initialBookingId?: string | null;
+  initialTab?: 'listings' | 'requests' | 'reviews';
   onOpenUserProfile?: (userId: string) => void;
 }
 
@@ -70,16 +67,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenChatWithBooking,
   onOpenAuth,
   initialTab,
-  initialBookingSubTab,
-  initialBookingId,
   onOpenUserProfile,
 }) => {
   const { user, refreshUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'listings' | 'requests' | 'bookings' | 'reviews'>(initialTab || 'listings');
+  const [activeTab, setActiveTab] = useState<'listings' | 'requests' | 'reviews'>(
+    initialTab && (initialTab as any) !== 'bookings' ? initialTab : 'listings'
+  );
 
   useEffect(() => {
-    if (initialTab) {
+    if (initialTab && (initialTab as any) !== 'bookings') {
       setActiveTab(initialTab);
     }
   }, [initialTab]);
@@ -550,7 +547,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {[
           { key: 'listings', label: 'My Listings', count: myItems.length, icon: Package },
           { key: 'requests', label: 'My Requests', count: myRequests.length, icon: Sparkles },
-          { key: 'bookings', label: 'Bookings', count: myBookings.length, icon: Calendar },
           { key: 'reviews', label: 'Reviews & Trust', count: receivedReviews.length, icon: Star },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -670,17 +666,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Bookings Tab: Comprehensive bookings section with calendar, stages, codes & slide */}
-        {activeTab === 'bookings' && (
-          <div className="pt-1 animate-in fade-in duration-200">
-            <BookingsView
-              onOpenChat={onOpenChatWithBooking}
-              initialTab={initialBookingSubTab}
-              initialBookingId={initialBookingId}
-            />
           </div>
         )}
 
