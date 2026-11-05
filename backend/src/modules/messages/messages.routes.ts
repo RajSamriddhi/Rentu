@@ -362,7 +362,7 @@ router.get('/:conversationId', authMiddleware, async (req: AuthenticatedRequest,
           m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
           COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
           COALESCE(m.is_read, false) AS is_read, m.read_at,
-          m.created_at, m.updated_at,
+          m.created_at, COALESCE(m.updated_at, m.created_at) AS updated_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
           b_linked.status AS linked_booking_status
         FROM messages m

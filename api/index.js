@@ -97937,20 +97937,20 @@ router4.get("/", authMiddleware, async (req, res, next) => {
         b.handed_over_at, b.returned_at, b.completed_at, b.updated_at, b.created_at,
         b.payment_status, b.payment_method,
         COALESCE(i.title, 'Rented Gear') AS item_title, 
-        COALESCE(i.image_urls, ARRAY[]::text[]) AS item_images, 
+        COALESCE(i.image_urls, '[]'::jsonb) AS item_images, 
         COALESCE(i.category, 'Other') AS item_category,
         COALESCE(i.locality, b.pickup_locality, 'Local Hub') AS item_locality, 
         COALESCE(i.price_per_day, 0) AS item_rate,
         COALESCE(i.price_per_day, 0) AS price_per_day,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN COALESCE(b.pickup_locality, i.address_text, lender.address_text) ELSE COALESCE(b.pickup_locality, i.locality, lender.locality, 'Pickup Location') END AS pickup_address,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN COALESCE(b.return_locality, i.address_text, lender.address_text) ELSE COALESCE(b.return_locality, i.locality, lender.locality, 'Return Location') END AS return_address,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN lender.address_text ELSE NULL END AS lender_address,
         borrower.name AS borrower_name, borrower.avatar_url AS borrower_avatar, 
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.phone ELSE NULL END AS borrower_phone,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN borrower.email ELSE NULL END AS borrower_email,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN borrower.phone ELSE NULL END AS borrower_phone,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN borrower.email ELSE NULL END AS borrower_email,
         lender.name AS lender_name, lender.avatar_url AS lender_avatar,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.phone ELSE NULL END AS lender_phone,
-        CASE WHEN b.status IN ('ACCEPTED', 'HANDED_OVER', 'RETURNED', 'COMPLETED') THEN lender.email ELSE NULL END AS lender_email,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN lender.phone ELSE NULL END AS lender_phone,
+        CASE WHEN b.status::text IN ('ACCEPTED', 'HANDED_OVER', 'COMPLETED') THEN lender.email ELSE NULL END AS lender_email,
         rev.id AS user_review_id,
         rev.rating AS user_rating,
         rev.comment AS user_comment,
@@ -100244,7 +100244,7 @@ router7.get("/:conversationId", authMiddleware, async (req, res, next) => {
           m.id, m.booking_id, m.sender_id, m.receiver_id, m.content, m.message_type, m.proposal_data, m.is_edited,
           COALESCE(m.is_delivered, false) AS is_delivered, m.delivered_at,
           COALESCE(m.is_read, false) AS is_read, m.read_at,
-          m.created_at, m.updated_at,
+          m.created_at, COALESCE(m.updated_at, m.created_at) AS updated_at,
           COALESCE(u.name, 'Member') AS sender_name, u.avatar_url AS sender_avatar,
           b_linked.status AS linked_booking_status
         FROM messages m
@@ -103570,6 +103570,7 @@ var runMigrations = async () => {
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT false;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_by TEXT[] DEFAULT '{}';
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS postal_codes (
