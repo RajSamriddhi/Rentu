@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, MapPin, Navigation, Loader2, Sparkles, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, MapPin, Navigation, Loader2, Sparkles, Plus, Pencil, Check } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { api } from '../lib/api';
@@ -10,27 +10,53 @@ interface AddLocationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (location: SavedLocation) => void;
+  locationToEdit?: SavedLocation | null;
 }
 
 export const AddLocationModal: React.FC<AddLocationModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  locationToEdit,
 }) => {
   const { user, refreshUser } = useAuth();
 
-  const [label, setLabel] = useState('Office');
-  const [buildingHouseNo, setBuildingHouseNo] = useState('');
-  const [streetArea, setStreetArea] = useState('');
-  const [locality, setLocality] = useState('');
-  const [pincode, setPincode] = useState('');
-  const [latitude, setLatitude] = useState<number | undefined>(undefined);
-  const [longitude, setLongitude] = useState<number | undefined>(undefined);
+  const [label, setLabel] = useState(locationToEdit?.label || 'Office');
+  const [buildingHouseNo, setBuildingHouseNo] = useState(locationToEdit?.building_flat_house || '');
+  const [streetArea, setStreetArea] = useState(locationToEdit?.street_road_landmark || '');
+  const [locality, setLocality] = useState(locationToEdit?.locality || '');
+  const [pincode, setPincode] = useState(locationToEdit?.pincode || '');
+  const [latitude, setLatitude] = useState<number | undefined>(locationToEdit?.latitude);
+  const [longitude, setLongitude] = useState<number | undefined>(locationToEdit?.longitude);
 
   const [isDetecting, setIsDetecting] = useState(false);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (locationToEdit) {
+      setLabel(locationToEdit.label || 'Office');
+      setBuildingHouseNo(locationToEdit.building_flat_house || '');
+      setStreetArea(locationToEdit.street_road_landmark || '');
+      setLocality(locationToEdit.locality || '');
+      setPincode(locationToEdit.pincode || '');
+      setLatitude(locationToEdit.latitude);
+      setLongitude(locationToEdit.longitude);
+      setLocationSuccessMsg('');
+      setErrorMsg('');
+    } else {
+      setLabel('Office');
+      setBuildingHouseNo('');
+      setStreetArea('');
+      setLocality('');
+      setPincode('');
+      setLatitude(undefined);
+      setLongitude(undefined);
+      setLocationSuccessMsg('');
+      setErrorMsg('');
+    }
+  }, [locationToEdit, isOpen]);
 
   if (!isOpen) return null;
 
@@ -84,7 +110,7 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
 
     setIsSaving(true);
     try {
-      const newLocData: Omit<SavedLocation, 'id'> = {
+      const locData: Omit<SavedLocation, 'id'> = {
         label: label.trim() || 'Additional Address',
         building_flat_house: trimmedBuilding,
         street_road_landmark: streetArea.trim(),
@@ -94,21 +120,31 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
         longitude,
       };
 
-      const updatedUser = await api.addSavedLocation(newLocData, user);
-      await refreshUser();
+      let finalLoc: SavedLocation;
+      if (locationToEdit) {
+        await api.updateSavedLocation(locationToEdit.id, locData, user);
+        await refreshUser();
+        finalLoc = {
+          ...locData,
+          id: locationToEdit.id,
+        };
+      } else {
+        const updatedUser = await api.addSavedLocation(locData, user);
+        await refreshUser();
 
-      // Find the newly added location from updatedUser or fallback
-      const savedLocations = updatedUser.saved_locations || [];
-      const createdLoc = savedLocations[savedLocations.length - 1] || {
-        ...newLocData,
-        id: `loc_${Date.now()}`,
-      };
+        // Find the newly added location from updatedUser or fallback
+        const savedLocations = updatedUser.saved_locations || [];
+        finalLoc = savedLocations[savedLocations.length - 1] || {
+          ...locData,
+          id: `loc_${Date.now()}`,
+        };
+      }
 
       try {
         confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
       } catch {}
 
-      onSuccess(createdLoc);
+      onSuccess(finalLoc);
       onClose();
     } catch (err: any) {
       console.error('Failed to save location to profile:', err);
@@ -128,14 +164,14 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
         <div className="px-6 py-4 border-b border-divider flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center">
-              <MapPin className="w-4 h-4" />
+              {locationToEdit ? <Pencil className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
             </div>
             <div>
               <h3 className="font-extrabold text-ink text-sm sm:text-base font-display">
-                Add Another Location
+                {locationToEdit ? 'Edit Saved Location' : 'Add Another Location'}
               </h3>
               <p className="text-[11px] text-ink-secondary">
-                Saved to your profile & available for future listings and bookings
+                {locationToEdit ? 'Update this alternative pickup & drop location.' : 'Saved to your profile & available for future listings and bookings'}
               </p>
             </div>
           </div>
@@ -301,7 +337,12 @@ export const AddLocationModal: React.FC<AddLocationModalProps> = ({
               {isSaving ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Saving to Profile...</span>
+                  <span>{locationToEdit ? 'Saving Changes...' : 'Saving to Profile...'}</span>
+                </>
+              ) : locationToEdit ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Address Changes</span>
                 </>
               ) : (
                 <>

@@ -15,7 +15,8 @@ import {
   Bell,
   Plus,
   Trash2,
-  AtSign
+  AtSign,
+  Pencil
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -24,6 +25,7 @@ import { uploadItemPhoto, supabase } from '../lib/supabase';
 import { detectCurrentLocation, formatSavedLocationFull } from '../lib/location';
 import { resolveCoords } from '../lib/distance';
 import { AddLocationModal } from './AddLocationModal';
+import { SavedLocation } from '../lib/types';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -103,6 +105,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<SavedLocation | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -724,7 +727,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setIsAddLocationOpen(true)}
+                    onClick={() => {
+                      setEditingLocation(null);
+                      setIsAddLocationOpen(true);
+                    }}
                     className="btn-primary text-[11px] font-bold px-3 py-1.5 shadow-pink cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -738,7 +744,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     {user.saved_locations.map((loc) => (
                       <div
                         key={loc.id}
-                        className="p-3 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-3 text-xs"
+                        className="p-3 rounded-2xl bg-canvas border border-divider flex items-center justify-between gap-3 text-xs group"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
@@ -750,33 +756,49 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          disabled={deletingLocationId === loc.id}
-                          onClick={async () => {
-                            if (window.confirm(`Remove saved location "${loc.label}"?`)) {
-                              setDeletingLocationId(loc.id);
-                              setErrorMsg('');
-                              try {
-                                await api.deleteSavedLocation(loc.id, user);
-                                await refreshUser();
-                              } catch (err: any) {
-                                console.error('Failed to remove saved location:', err);
-                                setErrorMsg(err.message || 'Failed to remove saved location. Please try again.');
-                              } finally {
-                                setDeletingLocationId(null);
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Edit Address Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingLocation(loc);
+                              setIsAddLocationOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-ink-secondary hover:text-brand hover:bg-brand/10 transition-colors cursor-pointer"
+                            title={`Edit "${loc.label}" address`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete Address Button */}
+                          <button
+                            type="button"
+                            disabled={deletingLocationId === loc.id}
+                            onClick={async () => {
+                              if (window.confirm(`Remove saved location "${loc.label}"?`)) {
+                                setDeletingLocationId(loc.id);
+                                setErrorMsg('');
+                                try {
+                                  await api.deleteSavedLocation(loc.id, user);
+                                  await refreshUser();
+                                } catch (err: any) {
+                                  console.error('Failed to remove saved location:', err);
+                                  setErrorMsg(err.message || 'Failed to remove saved location. Please try again.');
+                                } finally {
+                                  setDeletingLocationId(null);
+                                }
                               }
-                            }
-                          }}
-                          className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-                          title="Remove location"
-                        >
-                          {deletingLocationId === loc.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                            }}
+                            className="p-1.5 rounded-lg text-ink-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Remove location"
+                          >
+                            {deletingLocationId === loc.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -817,12 +839,17 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         </form>
       </div>
 
-      {/* Add Another Location Modal */}
+      {/* Add / Edit Saved Location Modal */}
       <AddLocationModal
         isOpen={isAddLocationOpen}
-        onClose={() => setIsAddLocationOpen(false)}
+        locationToEdit={editingLocation}
+        onClose={() => {
+          setIsAddLocationOpen(false);
+          setEditingLocation(null);
+        }}
         onSuccess={async () => {
           await refreshUser();
+          setEditingLocation(null);
         }}
       />
     </div>

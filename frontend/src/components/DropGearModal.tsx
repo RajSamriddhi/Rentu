@@ -11,7 +11,8 @@ import {
   Trash2,
   RefreshCw,
   Plus,
-  AlertCircle
+  AlertCircle,
+  Pencil
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
@@ -69,6 +70,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   } | null>(null);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState('');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<SavedLocation | null>(null);
   const [isSetLocationOpen, setIsSetLocationOpen] = useState(false);
 
   useEffect(() => {
@@ -936,6 +938,25 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                             <Check className="w-2.5 h-2.5" /> Selected for this listing
                           </span>
                         )}
+
+                        {/* Edit Address Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (loc.is_default) {
+                              setIsSetLocationOpen(true);
+                            } else {
+                              setEditingLocation(loc);
+                              setIsAddLocationOpen(true);
+                            }
+                          }}
+                          className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary hover:text-brand hover:bg-brand/10 transition-colors px-2 py-0.5 rounded-lg cursor-pointer"
+                          title={`Edit ${loc.label} address`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
                       </div>
 
                       <p className="text-xs text-ink-secondary mt-1 font-medium leading-relaxed">
@@ -982,13 +1003,18 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
         </div>
       </div>
 
-      {/* Add Another Location Modal */}
+      {/* Add / Edit Saved Location Modal */}
       <AddLocationModal
         isOpen={isAddLocationOpen}
-        onClose={() => setIsAddLocationOpen(false)}
+        locationToEdit={editingLocation}
+        onClose={() => {
+          setIsAddLocationOpen(false);
+          setEditingLocation(null);
+        }}
         onSuccess={(newLoc) => {
           setSelectedLocationId(newLoc.id);
           setLocality(newLoc.locality);
+          setEditingLocation(null);
         }}
       />
 

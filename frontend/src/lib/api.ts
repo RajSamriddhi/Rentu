@@ -631,6 +631,12 @@ export const api = {
     return await this.updateProfile({ saved_locations: updatedList });
   },
 
+  async updateSavedLocation(locationId: string, locationData: Partial<Omit<SavedLocation, 'id'>>, currentUser?: User | null): Promise<User> {
+    const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
+    const updatedList = currentList.map(loc => loc.id === locationId ? { ...loc, ...locationData } : loc);
+    return await this.updateProfile({ saved_locations: updatedList });
+  },
+
   async deleteSavedLocation(locationId: string, currentUser?: User | null): Promise<User> {
     const currentList = Array.isArray(currentUser?.saved_locations) ? currentUser.saved_locations : [];
     const updatedList = currentList.filter(l => l.id !== locationId);

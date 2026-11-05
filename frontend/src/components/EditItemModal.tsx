@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles, Plus, Check } from 'lucide-react';
+import { X, Upload, MapPin, Loader2, Trash2, CheckCircle2, Sparkles, Plus, Check, Pencil } from 'lucide-react';
 import { Item, SavedLocation } from '../lib/types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/authContext';
@@ -29,6 +29,7 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   const savedLocations = getEffectiveSavedLocations(user);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('keep_current');
   const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<SavedLocation | null>(null);
   const [pricePerDay, setPricePerDay] = useState<number | ''>('');
   const [maxDurationDays, setMaxDurationDays] = useState(5);
   const [locality, setLocality] = useState('');
@@ -482,6 +483,22 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
                             <Check className="w-2.5 h-2.5" /> Selected for this listing
                           </span>
                         )}
+
+                        {!loc.is_default && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLocation(loc);
+                              setIsAddLocationOpen(true);
+                            }}
+                            className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-ink-secondary hover:text-brand hover:bg-brand/10 transition-colors px-2 py-0.5 rounded-lg cursor-pointer"
+                            title={`Edit ${loc.label} address`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                        )}
                       </div>
 
                       <p className="text-xs text-ink-secondary mt-1 font-medium leading-relaxed">
@@ -667,13 +684,18 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
         </form>
       </div>
 
-      {/* Add Another Location Modal */}
+      {/* Add / Edit Saved Location Modal */}
       <AddLocationModal
         isOpen={isAddLocationOpen}
-        onClose={() => setIsAddLocationOpen(false)}
+        locationToEdit={editingLocation}
+        onClose={() => {
+          setIsAddLocationOpen(false);
+          setEditingLocation(null);
+        }}
         onSuccess={(newLoc) => {
           setSelectedLocationId(newLoc.id);
           setLocality(newLoc.locality);
+          setEditingLocation(null);
         }}
       />
     </div>
