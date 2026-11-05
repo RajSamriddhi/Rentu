@@ -96,6 +96,31 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   }, [initialTab]);
 
   useEffect(() => {
+    const handleNavigate = (e: any) => {
+      const detail = e.detail;
+      if (detail?.subTab) {
+        setActiveTab(detail.subTab);
+        setSelectedDateFilter(null);
+      }
+      if (detail?.bookingId) {
+        setHighlightedBookingId(detail.bookingId);
+        setTimeout(() => {
+          const el = document.getElementById(`booking-${detail.bookingId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 350);
+      }
+      loadBookings(true);
+    };
+
+    window.addEventListener('rentu:navigate-booking', handleNavigate);
+    return () => {
+      window.removeEventListener('rentu:navigate-booking', handleNavigate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (initialBookingId) {
       setHighlightedBookingId(initialBookingId);
       const scrollTimer = setTimeout(() => {

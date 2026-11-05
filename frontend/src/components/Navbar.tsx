@@ -517,6 +517,26 @@ export const Navbar: React.FC<NavbarProps> = ({
       nType.includes('COMPLETED') ||
       nType.includes('REVIEW');
 
+    if (isRentalRequest) {
+      window.dispatchEvent(
+        new CustomEvent('rentu:navigate-booking', {
+          detail: { subTab: 'requests', bookingId },
+        })
+      );
+    } else if (isOngoing) {
+      window.dispatchEvent(
+        new CustomEvent('rentu:navigate-booking', {
+          detail: { subTab: 'ongoing', bookingId },
+        })
+      );
+    } else if (isFinished) {
+      window.dispatchEvent(
+        new CustomEvent('rentu:navigate-booking', {
+          detail: { subTab: 'finished', bookingId },
+        })
+      );
+    }
+
     if (onNavigateNotification) {
       if (isRentalRequest) {
         onNavigateNotification({
