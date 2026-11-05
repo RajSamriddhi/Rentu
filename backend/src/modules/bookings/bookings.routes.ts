@@ -139,7 +139,8 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
     const expiredRes = await query(`
       SELECT b.id, b.item_id, b.borrower_id, b.lender_id, b.status,
              TO_CHAR(b.start_date, 'YYYY-MM-DD') AS start_date_str, 
-             b.start_time, i.title AS item_title,
+             TO_CHAR(COALESCE(b.end_date, (b.start_date + ((GREATEST(b.duration_days, 1) - 1) || ' days')::interval)::date), 'YYYY-MM-DD') AS end_date_str,
+             b.start_time, b.end_time, i.title AS item_title,
              lender.name AS lender_name, borrower.name AS borrower_name,
              (m.proposal_data->>'timezone_offset_minutes')::numeric AS tz_offset
       FROM bookings b
@@ -161,8 +162,13 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
         : -330;
       const startTimestamp = parseToUtcTimestamp(sDate, sTime, tz);
 
-      // Case 1: PENDING booking proposals whose scheduled start time has arrived without being accepted
-      if (row.status === 'PENDING' && now > startTimestamp) {
+      const eDate = row.end_date_str || sDate;
+      const eTime = (row.end_time && row.end_time.trim() && row.end_time.slice(0, 5) !== '00:00') ? row.end_time.slice(0, 5) : '18:00';
+      const endTimestamp = parseToUtcTimestamp(eDate, eTime, tz);
+
+      // Case 1: PENDING booking proposals only expire once the entire rental period has elapsed
+      // (Never cancel immediately when the start time arrives — allow owner to accept and coordinate)
+      if (row.status === 'PENDING' && now > endTimestamp) {
         await query(
           `UPDATE bookings 
            SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP 
@@ -185,7 +191,7 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
 
         await query(
           `INSERT INTO messages (booking_id, sender_id, receiver_id, content, message_type)
-           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled start time arrived without being accepted.', 'SYSTEM')`,
+           VALUES ($1, $2, $3, 'Rental request automatically cancelled because the scheduled rental period ended without being accepted.', 'SYSTEM')`,
           [row.id, row.lender_id, row.borrower_id]
         ).catch(() => {});
 
@@ -195,8 +201,8 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
           referenceId: row.id,
           referenceType: 'BOOKING',
           type: 'BOOKING_CANCELLED',
-          title: 'Request Auto-Cancelled',
-          body: `Your rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed without being accepted.`,
+          title: 'Request Expired',
+          body: `Your rental request for "${row.item_title}" was closed because its rental period ended without confirmation.`,
         }).catch(() => {});
 
         await createNotification({
@@ -205,15 +211,16 @@ async function checkAndAutoCancelExpiredBookings(): Promise<void> {
           referenceId: row.id,
           referenceType: 'BOOKING',
           type: 'BOOKING_CANCELLED',
-          title: 'Request Expired & Cancelled',
-          body: `Rental request for "${row.item_title}" was automatically cancelled because its scheduled start time passed.`,
+          title: 'Request Expired',
+          body: `Rental request for "${row.item_title}" expired because the rental period ended.`,
         }).catch(() => {});
         continue;
       }
 
-      // Case 2: ACCEPTED booking whose 1-hour pickup window expired without code entry
-      const oneHourAfterStart = startTimestamp + (60 * 60 * 1000);
-      if (row.status === 'ACCEPTED' && now > oneHourAfterStart) {
+      // Case 2: ACCEPTED booking whose pickup window expired without code entry
+      // Provide a generous 24-hour buffer after start time before auto-cancelling
+      const pickupCutoff = Math.max(startTimestamp + (24 * 60 * 60 * 1000), endTimestamp);
+      if (row.status === 'ACCEPTED' && now > pickupCutoff) {
         // Auto cancel this booking because code was not provided within 1 hour of scheduled start time
         await query(
           `UPDATE bookings 

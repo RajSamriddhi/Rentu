@@ -179,11 +179,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
   const isBookingRequestPassed = (b: Booking): boolean => {
     try {
-      const sDate = (b.start_date || '').slice(0, 10);
-      if (!sDate) return false;
-      const sTime = (b.start_time && b.start_time.trim() && b.start_time.slice(0, 5) !== '00:00') ? b.start_time.slice(0, 5) : '10:00';
-      const startMs = new Date(`${sDate}T${sTime}:00`).getTime();
-      return !isNaN(startMs) && Date.now() > startMs;
+      const eDate = (b.end_date || b.start_date || '').slice(0, 10);
+      if (!eDate) return false;
+      const eTime = (b.end_time && b.end_time.trim() && b.end_time.slice(0, 5) !== '00:00') ? b.end_time.slice(0, 5) : '23:59';
+      const endMs = new Date(`${eDate}T${eTime}:00`).getTime();
+      return !isNaN(endMs) && Date.now() > endMs;
     } catch {
       return false;
     }
