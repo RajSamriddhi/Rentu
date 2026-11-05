@@ -215,6 +215,7 @@ export const runMigrations = async () => {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS request_id UUID;
 
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);

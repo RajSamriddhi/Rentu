@@ -97166,27 +97166,44 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
     if (request.status !== "OPEN") {
       return sendError(res, "BAD_REQUEST", "This request is no longer open", 400);
     }
-    const [year, month, day] = String(request.start_date).slice(0, 10).split("-").map(Number);
-    const cleanTime = request.start_time && request.start_time.trim() ? request.start_time.slice(0, 5) : "10:00";
-    const [hour, minute] = cleanTime.split(":").map(Number);
-    const tzOffset = -330;
-    const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-    const startMs = localUtcMs + tzOffset * 6e4;
-    if (startMs < Date.now() - 2 * 60 * 1e3) {
-      await query(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => {
-      });
-      return sendError(res, "BAD_REQUEST", "This request has expired and can no longer receive offers.", 400);
+    const toDateIso = (d) => {
+      if (!d) return "";
+      if (d instanceof Date) return d.toISOString().slice(0, 10);
+      return String(d).slice(0, 10);
+    };
+    const endDateStr = toDateIso(request.end_date || request.start_date);
+    if (endDateStr) {
+      const [eYear, eMonth, eDay] = endDateStr.split("-").map(Number);
+      if (eYear && eMonth && eDay) {
+        const endOfDayMs = Date.UTC(eYear, eMonth - 1, eDay, 18, 29, 59);
+        if (endOfDayMs < Date.now()) {
+          await query(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => {
+          });
+          return sendError(res, "BAD_REQUEST", "This request has expired and can no longer receive offers.", 400);
+        }
+      }
     }
     const existingOffer = await query(
-      `SELECT id FROM bookings 
-       WHERE request_id = $1 
-         AND lender_id = ANY($2::text[]) 
-         AND status = 'PENDING'
+      `SELECT id FROM messages 
+       WHERE (proposal_data->>'request_id') = $1 
+         AND sender_id = ANY($2::text[]) 
+         AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)
        LIMIT 1`,
       [request.id, myIds]
     );
     if (existingOffer.rows.length > 0) {
       return sendError(res, "BAD_REQUEST", "You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.", 400);
+    }
+    const existingBooking = await query(
+      `SELECT id FROM bookings 
+       WHERE request_id = $1 
+         AND lender_id = ANY($2::text[]) 
+         AND status::text IN ('PENDING', 'ACCEPTED', 'HANDED_OVER')
+       LIMIT 1`,
+      [request.id, myIds]
+    );
+    if (existingBooking.rows.length > 0) {
+      return sendError(res, "BAD_REQUEST", "You already have an active booking or offer for this request.", 400);
     }
     const blockCheck = await query(
       `SELECT 1 FROM user_blocks 
@@ -97246,7 +97263,8 @@ router3.post("/:id/offer-lend", authMiddleware, async (req, res, next) => {
       title: `${lenderName} is ready to lend gear`,
       body: `${lenderName} accepted your request terms for "${request.item_name}" (Budget: \u20B9${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
       referenceId: request.id,
-      referenceType: "PROPOSAL"
+      referenceType: "PROPOSAL",
+      messageId: createdMessage?.id
     }).catch((err) => console.warn("Failed to dispatch lend offer notification:", err));
     return sendSuccess(res, {
       message: createdMessage,
@@ -103542,6 +103560,7 @@ var runMigrations = async () => {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP WITH TIME ZONE;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status VARCHAR(40) DEFAULT 'PENDING';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(40) DEFAULT 'UPI';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS request_id UUID;
 
       CREATE INDEX IF NOT EXISTS idx_bookings_item ON bookings(item_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_borrower ON bookings(borrower_id);

@@ -373,25 +373,42 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
         if (request.status !== 'OPEN') {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request is no longer open', 400);
         }
-        // Expiration check: if start date and time has passed, mark CANCELLED and return 400
-        const [year, month, day] = String(request.start_date).slice(0, 10).split('-').map(Number);
-        const cleanTime = (request.start_time && request.start_time.trim()) ? request.start_time.slice(0, 5) : '10:00';
-        const [hour, minute] = cleanTime.split(':').map(Number);
-        const tzOffset = -330; // standard default IST offset
-        const localUtcMs = Date.UTC(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0);
-        const startMs = localUtcMs + (tzOffset * 60000);
-        if (startMs < Date.now() - (2 * 60 * 1000)) {
-            await (0, db_1.query)(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => { });
-            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request has expired and can no longer receive offers.', 400);
+        // Expiration check: request only expires if the requested rental end period has completely passed
+        const toDateIso = (d) => {
+            if (!d)
+                return '';
+            if (d instanceof Date)
+                return d.toISOString().slice(0, 10);
+            return String(d).slice(0, 10);
+        };
+        const endDateStr = toDateIso(request.end_date || request.start_date);
+        if (endDateStr) {
+            const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+            if (eYear && eMonth && eDay) {
+                // End of that calendar day in local IST (23:59:59 IST is 18:29:59 UTC)
+                const endOfDayMs = Date.UTC(eYear, eMonth - 1, eDay, 18, 29, 59);
+                if (endOfDayMs < Date.now()) {
+                    await (0, db_1.query)(`UPDATE requests SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [request.id]).catch(() => { });
+                    return (0, response_1.sendError)(res, 'BAD_REQUEST', 'This request has expired and can no longer receive offers.', 400);
+                }
+            }
         }
         // DUPLICATE CHECK: Prevent multiple pending offers from the same lender on the same request
-        const existingOffer = await (0, db_1.query)(`SELECT id FROM bookings 
-       WHERE request_id = $1 
-         AND lender_id = ANY($2::text[]) 
-         AND status = 'PENDING'
+        const existingOffer = await (0, db_1.query)(`SELECT id FROM messages 
+       WHERE (proposal_data->>'request_id') = $1 
+         AND sender_id = ANY($2::text[]) 
+         AND (proposal_data->>'status' = 'PENDING' OR (proposal_data->>'status') IS NULL)
        LIMIT 1`, [request.id, myIds]);
         if (existingOffer.rows.length > 0) {
             return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You already sent a lend offer for this request. Please wait for the seeker to review it in Messages.', 400);
+        }
+        const existingBooking = await (0, db_1.query)(`SELECT id FROM bookings 
+       WHERE request_id = $1 
+         AND lender_id = ANY($2::text[]) 
+         AND status::text IN ('PENDING', 'ACCEPTED', 'HANDED_OVER')
+       LIMIT 1`, [request.id, myIds]);
+        if (existingBooking.rows.length > 0) {
+            return (0, response_1.sendError)(res, 'BAD_REQUEST', 'You already have an active booking or offer for this request.', 400);
         }
         // BLOCK CHECK: Prevent lending if either party has blocked the other
         const blockCheck = await (0, db_1.query)(`SELECT 1 FROM user_blocks 
@@ -450,6 +467,7 @@ router.post('/:id/offer-lend', auth_1.authMiddleware, async (req, res, next) => 
             body: `${lenderName} accepted your request terms for "${request.item_name}" (Budget: ₹${request.offered_amount}). Accept the offer in messages to start your ongoing booking!`,
             referenceId: request.id,
             referenceType: 'PROPOSAL',
+            messageId: createdMessage?.id,
         }).catch((err) => console.warn('Failed to dispatch lend offer notification:', err));
         return (0, response_1.sendSuccess)(res, {
             message: createdMessage,
