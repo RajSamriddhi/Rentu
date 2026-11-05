@@ -1,7 +1,7 @@
 {
-  "name": "Rentu⁺ | Peer-to-Peer Gear Marketplace",
-  "short_name": "Rentu⁺",
-  "description": "Don't Buy It. Rent It. Flex It. Hyper-local peer-to-peer gear rentals.",
+  "name": "Rentu",
+  "short_name": "Rentu",
+  "description": "Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0C0D12",
