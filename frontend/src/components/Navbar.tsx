@@ -641,7 +641,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 dark:bg-[#111218]/95 backdrop-blur-md border-b border-divider transition-colors">
+    <header 
+      className="sticky top-0 z-50 bg-white/95 dark:bg-[#111218]/95 backdrop-blur-md border-b border-divider transition-colors header-safe"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-6">
           
@@ -1318,7 +1321,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div className="md:hidden fixed inset-x-0 top-[56px] bottom-0 z-50 bg-white/98 dark:bg-[#111218]/98 backdrop-blur-xl px-4 py-5 space-y-4 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
+          <div 
+            className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-white/98 dark:bg-[#111218]/98 backdrop-blur-xl px-4 py-5 space-y-4 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl"
+            style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
+          >
 
             {/* Navigation Links */}
             <div className="space-y-1">

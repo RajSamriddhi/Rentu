@@ -112,6 +112,7 @@ export const PwaInstallBanner: React.FC = () => {
       <aside
         aria-label="Install Rentu Application"
         className="w-full bg-gradient-to-r from-brand/15 via-purple-600/10 to-brand/20 dark:from-brand/25 dark:via-purple-950/40 dark:to-brand/20 border-b border-brand/20 text-ink backdrop-blur-md relative z-40 transition-all duration-200"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2.5 sm:gap-4">
           {/* Left badge & text */}
