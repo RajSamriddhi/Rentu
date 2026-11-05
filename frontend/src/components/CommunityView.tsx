@@ -92,7 +92,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="text-[10px] text-ink-muted font-bold uppercase">Reputation Score</div>
             <div className="font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{member.trust_score}% Verified</span>
+              <span>{member.trust_score ? `${member.trust_score}% Score` : 'New Member'}</span>
             </div>
           </div>
         </div>

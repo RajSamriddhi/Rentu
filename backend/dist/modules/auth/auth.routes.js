@@ -75,8 +75,8 @@ router.post('/register', async (req, res, next) => {
         const passwordHash = await bcryptjs_1.default.hash(validated.password, 10);
         const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
         const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-       RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`, [
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, 'USER')
+       RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`, [
             email,
             passwordHash,
             displayName,
@@ -111,7 +111,7 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', async (req, res, next) => {
     try {
         const validated = loginSchema.parse(req.body);
-        const result = await (0, db_1.query)(`SELECT id, email, password_hash, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+        const result = await (0, db_1.query)(`SELECT id, email, password_hash, name, phone, locality, avatar_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at
        FROM users WHERE email = $1`, [validated.email.toLowerCase()]);
         if (result.rows.length === 0) {
             return (0, response_1.sendError)(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
@@ -168,6 +168,8 @@ const ensureUserColumns = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ALTER COLUMN trust_score DROP DEFAULT;
     `);
     }
     catch (err) {
@@ -203,13 +205,13 @@ const handleSyncUser = async (req, res, next) => {
         const emailQueryParam = isEmailVerified ? email : null;
         let existing;
         try {
-            existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+            existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`, [uid, emailQueryParam]);
         }
         catch (err) {
             if (err?.message?.includes('saved_locations') || err?.message?.includes('does not exist')) {
                 await ensureUserColumns();
-                existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
+                existing = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(is_verified, FALSE) AS is_verified, '[]'::jsonb AS saved_locations, created_at
            FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`, [uid, emailQueryParam]);
             }
             else {
@@ -231,7 +233,7 @@ const handleSyncUser = async (req, res, next) => {
                avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
            WHERE id = $5
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]);
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]);
                 user = updated.rows[0];
             }
             catch (err) {
@@ -243,7 +245,7 @@ const handleSyncUser = async (req, res, next) => {
                avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
            WHERE id = $5
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]);
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`, [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]);
                 user = { ...updated.rows[0], saved_locations: [] };
             }
         }
@@ -252,8 +254,8 @@ const handleSyncUser = async (req, res, next) => {
             const newUsername = await generateUniqueUsername(email, validated.name);
             try {
                 const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, 'USER')
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`, [
                     uid,
                     uid,
                     email,
@@ -269,8 +271,8 @@ const handleSyncUser = async (req, res, next) => {
             catch (err) {
                 await ensureUserColumns();
                 const created = await (0, db_1.query)(`INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`, [
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, 'USER')
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`, [
                     uid,
                     uid,
                     email,
@@ -318,6 +320,7 @@ router.get('/me', auth_2.authMiddleware, async (req, res, next) => {
                 (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = users.id::text OR follower_id = users.firebase_uid) AS following_count,
                 COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
+                COALESCE(is_verified, FALSE) AS is_verified,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE id = $1`, [req.user.id]);
             if (result.rows.length > 0) {
@@ -326,6 +329,7 @@ router.get('/me', auth_2.authMiddleware, async (req, res, next) => {
                 if (revCount === 0) {
                     u.rating = 0.0;
                     u.trust_rating = 0.0;
+                    u.trust_score = null;
                 }
             }
         }
@@ -334,7 +338,8 @@ router.get('/me', auth_2.authMiddleware, async (req, res, next) => {
                 await ensureUserColumns();
                 result = await (0, db_1.query)(`SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, 
                   COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
-                  avatar_url, banner_url, bio, trust_score, role, created_at
+                  avatar_url, banner_url, bio, trust_score, role,
+                  COALESCE(is_verified, FALSE) AS is_verified, created_at
            FROM users WHERE id = $1`, [req.user.id]);
                 if (result.rows.length > 0) {
                     result.rows[0].saved_locations = [];
@@ -345,6 +350,7 @@ router.get('/me', auth_2.authMiddleware, async (req, res, next) => {
                     result.rows[0].owner_reviews_count = 0;
                     result.rows[0].renter_reviews_count = 0;
                     result.rows[0].community_lender_reviews_count = 0;
+                    result.rows[0].trust_score = null;
                 }
             }
             else {

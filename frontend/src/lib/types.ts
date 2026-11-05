@@ -22,7 +22,8 @@ export interface User {
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
-  trust_score?: number;
+  trust_score?: number | null;
+  is_verified?: boolean;
   followers_count?: number;
   following_count?: number;
   role: 'USER' | 'ADMIN';
@@ -344,7 +345,8 @@ export interface PublicUserProfile {
   avatar_url?: string;
   banner_url?: string;
   bio?: string;
-  trust_score: number;
+  trust_score?: number | null;
+  is_verified?: boolean;
   rating: number;
   trust_rating?: number;
   owner_rating?: number;

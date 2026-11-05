@@ -1095,7 +1095,7 @@ export const HustleHub: React.FC = () => {
                             </td>
                             <td className="p-3.5">
                               <div className="flex items-center gap-2">
-                                <span className="font-black text-ink">{u.trust_score !== null && u.trust_score !== undefined ? u.trust_score : 90}%</span>
+                                <span className="font-black text-ink">{u.trust_score !== null && u.trust_score !== undefined ? `${u.trust_score}%` : '—'}</span>
                                 <span className="text-amber-500 font-bold inline-flex items-center gap-1">
                                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                                   <span>{Number(u.rating || 0.0).toFixed(1)}</span>
@@ -1711,7 +1711,7 @@ export const HustleHub: React.FC = () => {
 
                           <div className="text-right">
                             <span className="font-black text-ink block">{lender.gear_count} gear listed</span>
-                            <span className="text-[10px] text-emerald-500 font-bold block">{lender.trust_score !== null && lender.trust_score !== undefined ? lender.trust_score : 90}% Trust</span>
+                            <span className="text-[10px] text-emerald-500 font-bold block">{lender.trust_score !== null && lender.trust_score !== undefined ? `${lender.trust_score}% Trust` : 'Community Lender'}</span>
                           </div>
                         </div>
                       ))}

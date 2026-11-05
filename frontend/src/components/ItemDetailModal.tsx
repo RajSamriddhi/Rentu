@@ -584,9 +584,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     className="w-12 h-12 rounded-full object-cover border border-zinc-200 group-hover:scale-105 transition-transform shrink-0"
                   />
                   <div className="min-w-0">
-                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors truncate">{item.owner_name || 'Verified Owner'}</h4>
+                    <h4 className="text-sm font-extrabold text-ink group-hover:text-brand transition-colors truncate">{item.owner_name || 'Gear Owner'}</h4>
                     <div className="text-xs text-ink-secondary font-medium flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span>Verified Lender</span>
+                      <span>{(item as any).owner_is_verified ? 'Verified Lender' : 'Gear Owner'}</span>
                       <span>•</span>
                       <span className="flex items-center gap-1 text-ink font-semibold">
                         <MapPin className="w-3 h-3 text-brand shrink-0" />

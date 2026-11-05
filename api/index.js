@@ -87285,8 +87285,8 @@ router.post("/register", async (req, res, next) => {
     const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
     const result = await query(
       `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 85, 'USER')
-       RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, created_at`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, 'USER')
+       RETURNING id, username, email, name, phone, locality, avatar_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`,
       [
         email,
         passwordHash,
@@ -87321,7 +87321,7 @@ router.post("/login", async (req, res, next) => {
   try {
     const validated = loginSchema.parse(req.body);
     const result = await query(
-      `SELECT id, email, password_hash, name, phone, locality, avatar_url, bio, trust_score, role, created_at
+      `SELECT id, email, password_hash, name, phone, locality, avatar_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at
        FROM users WHERE email = $1`,
       [validated.email.toLowerCase()]
     );
@@ -87377,6 +87377,8 @@ var ensureUserColumns = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS renter_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS community_lender_reviews_count INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_rating NUMERIC(3, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ALTER COLUMN trust_score DROP DEFAULT;
     `);
   } catch (err) {
     console.warn("ensureUserColumns notice:", err?.message || err);
@@ -87406,7 +87408,7 @@ var handleSyncUser = async (req, res, next) => {
     let existing;
     try {
       existing = await query(
-        `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+        `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`,
         [uid, emailQueryParam]
       );
@@ -87414,7 +87416,7 @@ var handleSyncUser = async (req, res, next) => {
       if (err?.message?.includes("saved_locations") || err?.message?.includes("does not exist")) {
         await ensureUserColumns();
         existing = await query(
-          `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, '[]'::jsonb AS saved_locations, created_at
+          `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, firebase_uid, COALESCE(is_verified, FALSE) AS is_verified, '[]'::jsonb AS saved_locations, created_at
            FROM users WHERE firebase_uid = $1 OR (email = $2 AND $2 IS NOT NULL)`,
           [uid, emailQueryParam]
         );
@@ -87437,7 +87439,7 @@ var handleSyncUser = async (req, res, next) => {
                avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
            WHERE id = $5
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
           [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]
         );
         user = updated.rows[0];
@@ -87451,7 +87453,7 @@ var handleSyncUser = async (req, res, next) => {
                avatar_url = COALESCE(avatar_url, NULLIF($4, '')),
                updated_at = NOW()
            WHERE id = $5
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`,
           [uid, assignedUsername, validated.name, avatar, existing.rows[0].id]
         );
         user = { ...updated.rows[0], saved_locations: [] };
@@ -87461,8 +87463,8 @@ var handleSyncUser = async (req, res, next) => {
       try {
         const created = await query(
           `INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, 'USER')
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at`,
           [
             uid,
             uid,
@@ -87480,8 +87482,8 @@ var handleSyncUser = async (req, res, next) => {
         await ensureUserColumns();
         const created = await query(
           `INSERT INTO users (id, firebase_uid, email, name, username, phone, locality, avatar_url, bio, trust_score, role)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 85, 'USER')
-           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, created_at`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, 'USER')
+           RETURNING id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, created_at`,
           [
             uid,
             uid,
@@ -87530,6 +87532,7 @@ router.get("/me", authMiddleware, async (req, res, next) => {
                 (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = users.id::text OR follower_id = users.firebase_uid) AS following_count,
                 COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
                 avatar_url, banner_url, bio, trust_score, role,
+                COALESCE(is_verified, FALSE) AS is_verified,
                 COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
          FROM users WHERE id = $1`,
         [req.user.id]
@@ -87540,6 +87543,7 @@ router.get("/me", authMiddleware, async (req, res, next) => {
         if (revCount === 0) {
           u.rating = 0;
           u.trust_rating = 0;
+          u.trust_score = null;
         }
       }
     } catch (err) {
@@ -87548,7 +87552,8 @@ router.get("/me", authMiddleware, async (req, res, next) => {
         result = await query(
           `SELECT id, username, email, name, phone, locality, address_text, pincode, latitude, longitude, 
                   COALESCE(rating, 0.00)::numeric(3, 2) AS rating, 
-                  avatar_url, banner_url, bio, trust_score, role, created_at
+                  avatar_url, banner_url, bio, trust_score, role,
+                  COALESCE(is_verified, FALSE) AS is_verified, created_at
            FROM users WHERE id = $1`,
           [req.user.id]
         );
@@ -87561,6 +87566,7 @@ router.get("/me", authMiddleware, async (req, res, next) => {
           result.rows[0].owner_reviews_count = 0;
           result.rows[0].renter_reviews_count = 0;
           result.rows[0].community_lender_reviews_count = 0;
+          result.rows[0].trust_score = null;
         }
       } else {
         throw err;
@@ -98992,7 +98998,8 @@ router4.post("/:id/review", authMiddleware, async (req, res, next) => {
           trust_rating = stats.trust_rating,
           rating = stats.trust_rating,
           trust_score = CASE 
-            WHEN stats.total_reviews = 0 THEN 85 
+            WHEN stats.total_reviews = 0 AND punctuality.completed_count = 0 THEN NULL
+            WHEN stats.total_reviews = 0 THEN LEAST(100, GREATEST(60, 60 + punctuality.completed_count * 5))
             ELSE LEAST(100, GREATEST(50, ROUND(
               (stats.trust_rating / 5.0) * 85 + 
               (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 
@@ -99315,11 +99322,11 @@ router6.get("/leaderboard", async (req, res, next) => {
       const renter_rating = renter_reviews_count > 0 ? parseFloat(u.renter_rating) || 0 : 0;
       const community_lender_rating = community_lender_reviews_count > 0 ? parseFloat(u.community_lender_rating) || 0 : 0;
       const rating = trust_rating;
-      const trust_score = u.trust_score !== null && u.trust_score !== void 0 ? parseInt(u.trust_score, 10) : 85;
       const items_count = parseInt(u.items_count, 10) || 0;
       const free_items_count = parseInt(u.free_items_count, 10) || 0;
       const lent_count = parseInt(u.lent_count, 10) || 0;
       const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
+      const trust_score = reviews_count > 0 || lent_count + borrowed_count > 0 ? u.trust_score !== null && u.trust_score !== void 0 ? parseInt(u.trust_score, 10) : null : null;
       const requests_count = parseInt(u.requests_count, 10) || 0;
       const is_punctual = Boolean(u.is_punctual);
       const highlight_review = reviews_count > 0 ? u.latest_review || "" : "";
@@ -99354,7 +99361,9 @@ router6.get("/leaderboard", async (req, res, next) => {
       const bTr = b.trust_rating ?? b.rating ?? 0;
       const aTr = a.trust_rating ?? a.rating ?? 0;
       if (bTr !== aTr) return bTr - aTr;
-      if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
+      const bScore = b.trust_score ?? 0;
+      const aScore = a.trust_score ?? 0;
+      if (bScore !== aScore) return bScore - aScore;
       return b.reviews_count - a.reviews_count;
     }).slice(0, 10).map((member, index) => ({
       ...member,
@@ -99439,7 +99448,8 @@ router6.get("/search", async (req, res, next) => {
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
         (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
@@ -99457,7 +99467,8 @@ router6.get("/search", async (req, res, next) => {
         avatar_url: u.avatar_url && u.avatar_url.trim() !== "" ? u.avatar_url : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || "user")}`,
         bio: u.bio,
         rating: revsCount > 0 ? parseFloat(u.rating) || 0 : 0,
-        trust_score: parseInt(u.trust_score, 10) || 90,
+        trust_score: revsCount > 0 && u.trust_score !== null ? parseInt(u.trust_score, 10) : null,
+        is_verified: Boolean(u.is_verified),
         items_count: parseInt(u.items_count, 10) || 0,
         requests_count: parseInt(u.requests_count, 10) || 0,
         reviews_count: revsCount
@@ -99483,7 +99494,8 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         avatar_url, 
         banner_url, 
         bio, 
-        COALESCE(trust_score, 90)::int AS trust_score, 
+        trust_score::int AS trust_score, 
+        COALESCE(is_verified, FALSE) AS is_verified,
         COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
         COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
         COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
@@ -99551,7 +99563,7 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
         r.comment, 
         COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
         r.created_at, 
-        COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
+        COALESCE(u.name, 'Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
         COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
@@ -99583,13 +99595,21 @@ router6.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     const renterRating = effectiveRenterCount > 0 ? parseFloat(user.renter_rating) || calcAvg(derivedRenterReviews) : 0;
     const communityLenderRating = effectiveCommLenderCount > 0 ? parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews) : 0;
     const trustRating = revCount > 0 ? parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList) : 0;
-    const rawScore = user.trust_score !== null && user.trust_score !== void 0 ? parseInt(user.trust_score, 10) : null;
-    const computedTrustScore = revCount === 0 ? rawScore !== null ? rawScore : 85 : Math.min(100, Math.max(0, Math.round(trustRating / 5 * 90 + Math.min(10, revCount))));
+    const totalExchanges = (parseInt(stats?.completed_lent, 10) || 0) + (parseInt(stats?.completed_borrowed, 10) || 0);
+    let computedTrustScore = null;
+    if (revCount > 0) {
+      computedTrustScore = Math.min(100, Math.max(0, Math.round(trustRating / 5 * 85 + Math.min(15, revCount * 2 + totalExchanges))));
+    } else if (totalExchanges > 0) {
+      computedTrustScore = Math.min(100, Math.max(60, 60 + totalExchanges * 5));
+    } else {
+      computedTrustScore = null;
+    }
     const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
     return sendSuccess(res, {
       id: user.id,
       username: user.username || "",
       name: user.name || "Community Member",
+      is_verified: Boolean(user.is_verified),
       locality: isSelf ? user.locality || "" : user.locality ? extractCity(user.locality) : "",
       address_text: isSelf ? user.address_text || "" : "",
       pincode: isSelf ? user.pincode || "" : "",
@@ -99728,7 +99748,7 @@ router6.put("/profile", authMiddleware, async (req, res, next) => {
       UPDATE users 
       SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
     const result = await query(updateSql, values);
     const updatedUser = result.rows[0];
@@ -99797,7 +99817,8 @@ router6.get("/:id/followers", optionalAuthMiddleware, async (req, res, next) => 
         COALESCE(u.locality, '') AS locality, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         uf.created_at AS followed_at,
         EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
        FROM user_follows uf
@@ -99825,7 +99846,8 @@ router6.get("/:id/following", optionalAuthMiddleware, async (req, res, next) => 
         COALESCE(u.locality, '') AS locality, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         uf.created_at AS followed_at,
         EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
        FROM user_follows uf
@@ -102897,6 +102919,7 @@ router12.get("/users", async (req, res, next) => {
         u.avatar_url,
         u.trust_score, 
         u.rating, 
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         u.created_at,
         (SELECT COUNT(*) FROM items i WHERE i.owner_id = u.id)::int AS items_count,
         (SELECT COUNT(*) FROM requests r WHERE r.seeker_id = u.id)::int AS requests_count,
@@ -102912,13 +102935,17 @@ router12.get("/users", async (req, res, next) => {
 router12.put("/users/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { role, trust_score, rating } = req.body;
+    const { role, trust_score, rating, is_verified } = req.body;
     const updates = [];
     const values = [];
     let idx = 1;
     if (role && (role === "USER" || role === "ADMIN")) {
       updates.push(`role = $${idx++}`);
       values.push(role);
+    }
+    if (typeof is_verified === "boolean") {
+      updates.push(`is_verified = $${idx++}`);
+      values.push(is_verified);
     }
     if (typeof trust_score === "number") {
       updates.push(`trust_score = $${idx++}`);
@@ -103367,7 +103394,7 @@ var runMigrations = async () => {
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
         rating NUMERIC(3, 2) DEFAULT 0.00,
-        trust_score INT DEFAULT 90,
+        trust_score INT DEFAULT NULL,
         role user_role DEFAULT 'USER',
         clerk_id VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -103383,6 +103410,8 @@ var runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ALTER COLUMN trust_score DROP DEFAULT;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -103679,7 +103708,8 @@ var runMigrations = async () => {
         trust_rating = stats.trust_rating,
         rating = stats.trust_rating,
         trust_score = CASE 
-          WHEN stats.total_reviews = 0 THEN 85 
+          WHEN stats.total_reviews = 0 AND punctuality.completed_count = 0 THEN NULL
+          WHEN stats.total_reviews = 0 THEN LEAST(100, GREATEST(60, 60 + punctuality.completed_count * 5))
           ELSE LEAST(100, GREATEST(50, ROUND(
             (stats.trust_rating / 5.0) * 85 + 
             (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 

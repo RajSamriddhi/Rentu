@@ -95,7 +95,7 @@ export const BountyCard: React.FC<BountyCardProps> = ({ bounty, onClaim, isOwner
           />
           <div className="truncate">
             <div className="text-xs font-extrabold text-ink truncate group-hover:text-brand">{bounty.seeker_name}</div>
-            <div className="text-[10px] text-ink-secondary font-medium">Verified Renter</div>
+            <div className="text-[10px] text-ink-secondary font-medium">{(bounty as any).seeker_is_verified ? 'Verified Renter' : 'Community Member'}</div>
           </div>
         </button>
 

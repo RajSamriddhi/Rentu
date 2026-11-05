@@ -60,7 +60,7 @@ const runMigrations = async () => {
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
         rating NUMERIC(3, 2) DEFAULT 0.00,
-        trust_score INT DEFAULT 90,
+        trust_score INT DEFAULT NULL,
         role user_role DEFAULT 'USER',
         clerk_id VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -76,6 +76,8 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS saved_locations JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ALTER COLUMN trust_score DROP DEFAULT;
       ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -376,7 +378,8 @@ const runMigrations = async () => {
         trust_rating = stats.trust_rating,
         rating = stats.trust_rating,
         trust_score = CASE 
-          WHEN stats.total_reviews = 0 THEN 85 
+          WHEN stats.total_reviews = 0 AND punctuality.completed_count = 0 THEN NULL
+          WHEN stats.total_reviews = 0 THEN LEAST(100, GREATEST(60, 60 + punctuality.completed_count * 5))
           ELSE LEAST(100, GREATEST(50, ROUND(
             (stats.trust_rating / 5.0) * 85 + 
             (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 

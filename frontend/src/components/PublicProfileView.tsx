@@ -309,30 +309,48 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div
-                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md border-2 border-surface"
-                  title="100% Verified Community Neighbor"
-                >
-                  <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
-                </div>
+                {profile.is_verified && (
+                  <div
+                    className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md border-2 border-surface"
+                    title="Verified Community Member"
+                  >
+                    <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                )}
               </div>
 
               {/* Reputation Badges & Three-Dot Options Menu */}
               <div className="flex flex-wrap items-center gap-2">
-                <div className="px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{(profile.reviews.length > 0 ? profile.rating : 0.0).toFixed(2)} Rating</span>
-                </div>
+                {profile.reviews && profile.reviews.length > 0 && profile.rating > 0 && (
+                  <div className="px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    <span>{profile.rating.toFixed(2)} Rating</span>
+                  </div>
+                )}
 
-                <div className="px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>{profile.trust_score}% Trust Score</span>
-                </div>
+                {profile.trust_score !== null && profile.trust_score !== undefined && profile.trust_score > 0 ? (
+                  <div className="px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>{profile.trust_score}% Trust Score</span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-1.5 rounded-full bg-surface border border-divider text-ink-secondary text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-brand" />
+                    <span>New Member</span>
+                  </div>
+                )}
 
-                <div className="px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 text-purple-800 dark:text-purple-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
-                  <Zap className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>Verified Neighbor</span>
-                </div>
+                {profile.is_verified ? (
+                  <div className="px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 text-purple-800 dark:text-purple-300 text-xs font-black flex items-center gap-1.5 shadow-xs">
+                    <Zap className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Verified Neighbor</span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-1.5 rounded-full bg-surface border border-divider text-ink-secondary text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                    <Users className="w-3.5 h-3.5 text-ink-muted" />
+                    <span>Community Member</span>
+                  </div>
+                )}
 
                 {/* Three-Dot Menu (Message, Share, Block) */}
                 <div className="relative" ref={menuRef}>
@@ -410,7 +428,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl sm:text-3xl font-black text-ink font-display flex items-center gap-2">
                     <span>{profile.name}</span>
-                    <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" />
+                    {profile.is_verified && <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" />}
                   </h1>
                   {profile.username && (
                     <div className="flex items-center gap-1.5">
@@ -462,11 +480,15 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     <Calendar className="w-3.5 h-3.5" />
                     <span>Member since 2024</span>
                   </span>
-                  <span className="text-divider">•</span>
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>{profile.reviews.length} Verified Reviews</span>
-                  </span>
+                  {profile.reviews && profile.reviews.length > 0 && (
+                    <>
+                      <span className="text-divider">•</span>
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>{profile.reviews.length} {profile.reviews.length === 1 ? 'Review' : 'Reviews'}</span>
+                      </span>
+                    </>
+                  )}
                   <span className="text-divider">•</span>
                   <button
                     type="button"
@@ -697,20 +719,20 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-1.5 text-xs font-black uppercase text-amber-500 tracking-wider">
                   <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  <span>Peer Verified Reputation & Trust</span>
+                  <span>{profile.is_verified ? 'Verified Member Reputation & Trust' : 'Community Standing & Trust'}</span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-ink font-display">
                   Reviews & Trust Standing for {profile.name}
                 </h3>
                 <p className="text-xs text-ink-secondary">
-                  Community verification, trust score, and peer ratings across Gear Owner, Renter, and Free Community Lender roles.
+                  Community reputation, trust score, and peer ratings across Gear Owner, Renter, and Free Community Lender roles.
                 </p>
               </div>
 
               <div className="flex items-center gap-4 bg-canvas p-4 rounded-2xl border border-divider shrink-0">
                 <div className="text-center">
                   <div className="text-3xl font-black text-amber-500 font-display">
-                    {(profile.trust_rating || profile.rating).toFixed(2)}
+                    {profile.reviews && profile.reviews.length > 0 ? (profile.trust_rating || profile.rating).toFixed(2) : '—'}
                   </div>
                   <div className="text-[10px] font-bold text-ink-muted uppercase mt-0.5">
                     Trust Rating
@@ -721,7 +743,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
                 <div className="text-center">
                   <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-display">
-                    {profile.trust_score}%
+                    {profile.trust_score && profile.trust_score > 0 ? `${profile.trust_score}%` : '—'}
                   </div>
                   <div className="text-[10px] font-bold text-ink-muted uppercase mt-0.5">
                     Trust Score
@@ -732,7 +754,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
 
             {/* Trust & Safety Verification Badges */}
             {(() => {
-              const isIdentityVerified = Boolean(profile.phone || profile.email);
+              const isIdentityVerified = Boolean(profile.is_verified);
               const exchangeCount = (profile.stats?.completed_lent || 0) + (profile.stats?.completed_borrowed || 0) + (profile.reviews_count || 0);
               const reviewCount = profile.reviews_count || 0;
               const avgRating = Number(profile.rating || profile.trust_rating || 0);
@@ -746,8 +768,8 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
                     </div>
                     <p className="text-[11px] text-ink-secondary">
                       {isIdentityVerified 
-                        ? `Confirmed neighbor on Rentu⁺ with verified ${profile.phone ? 'phone' : 'email'}.`
-                        : 'Neighbor on Rentu⁺ circular economy network.'}
+                        ? 'Confirmed verified member on Rentu.'
+                        : 'Registered member on Rentu circular economy network.'}
                     </p>
                   </div>
 

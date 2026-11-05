@@ -190,12 +190,14 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
       const community_lender_rating = community_lender_reviews_count > 0 ? (parseFloat(u.community_lender_rating) || 0.0) : 0.0;
 
       const rating = trust_rating;
-      // Preserve a zero score if assigned (do not coerce 0 to 85/90)
-      const trust_score = u.trust_score !== null && u.trust_score !== undefined ? parseInt(u.trust_score, 10) : 85;
       const items_count = parseInt(u.items_count, 10) || 0;
       const free_items_count = parseInt(u.free_items_count, 10) || 0;
       const lent_count = parseInt(u.lent_count, 10) || 0;
       const borrowed_count = parseInt(u.borrowed_count, 10) || 0;
+      // Preserve a genuine score if reviews/exchanges exist, otherwise return null
+      const trust_score = (reviews_count > 0 || (lent_count + borrowed_count) > 0)
+        ? (u.trust_score !== null && u.trust_score !== undefined ? parseInt(u.trust_score, 10) : null)
+        : null;
       const requests_count = parseInt(u.requests_count, 10) || 0;
       const is_punctual = Boolean(u.is_punctual);
       const highlight_review = reviews_count > 0 ? (u.latest_review || '') : '';
@@ -236,7 +238,9 @@ router.get('/leaderboard', async (req: Request, res: Response, next) => {
         const bTr = (b as any).trust_rating ?? (b as any).rating ?? 0.0;
         const aTr = (a as any).trust_rating ?? (a as any).rating ?? 0.0;
         if (bTr !== aTr) return bTr - aTr;
-        if (b.trust_score !== a.trust_score) return b.trust_score - a.trust_score;
+        const bScore = b.trust_score ?? 0;
+        const aScore = a.trust_score ?? 0;
+        if (bScore !== aScore) return bScore - aScore;
         return b.reviews_count - a.reviews_count;
       })
       .slice(0, 10)
@@ -345,7 +349,8 @@ router.get('/search', async (req: Request, res: Response, next) => {
         COALESCE(u.avatar_url, '') AS avatar_url, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio, 
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating, 
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         (SELECT COUNT(*)::int FROM items WHERE owner_id = u.id AND status != 'UNAVAILABLE') AS items_count,
         (SELECT COUNT(*)::int FROM requests WHERE seeker_id = u.id) AS requests_count,
         (SELECT COUNT(*)::int FROM reviews WHERE reviewee_id = u.id) AS reviews_count
@@ -366,7 +371,8 @@ router.get('/search', async (req: Request, res: Response, next) => {
           : `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(u.name || 'user')}`,
         bio: u.bio,
         rating: revsCount > 0 ? (parseFloat(u.rating) || 0.0) : 0.0,
-        trust_score: parseInt(u.trust_score, 10) || 90,
+        trust_score: revsCount > 0 && u.trust_score !== null ? parseInt(u.trust_score, 10) : null,
+        is_verified: Boolean(u.is_verified),
         items_count: parseInt(u.items_count, 10) || 0,
         requests_count: parseInt(u.requests_count, 10) || 0,
         reviews_count: revsCount,
@@ -397,7 +403,8 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         avatar_url, 
         banner_url, 
         bio, 
-        COALESCE(trust_score, 90)::int AS trust_score, 
+        trust_score::int AS trust_score, 
+        COALESCE(is_verified, FALSE) AS is_verified,
         COALESCE(trust_rating, rating, 0.00)::numeric(3, 2) AS trust_rating,
         COALESCE(owner_rating, 0.00)::numeric(3, 2) AS owner_rating,
         COALESCE(renter_rating, 0.00)::numeric(3, 2) AS renter_rating,
@@ -478,7 +485,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
         r.comment, 
         COALESCE(r.review_type, 'OWNER_RENTAL') AS review_type,
         r.created_at, 
-        COALESCE(u.name, 'Verified Neighbor') AS reviewer_name, 
+        COALESCE(u.name, 'Neighbor') AS reviewer_name, 
         COALESCE(u.avatar_url, '') AS reviewer_avatar,
         COALESCE(u.locality, '') AS reviewer_locality
        FROM reviews r
@@ -519,10 +526,16 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
     const communityLenderRating = effectiveCommLenderCount > 0 ? (parseFloat(user.community_lender_rating) || calcAvg(derivedCommLenderReviews)) : 0.0;
     const trustRating = revCount > 0 ? (parseFloat(user.trust_rating) || parseFloat(user.rating) || calcAvg(reviewsList)) : 0.0;
 
-    const rawScore = user.trust_score !== null && user.trust_score !== undefined ? parseInt(user.trust_score, 10) : null;
-    const computedTrustScore = revCount === 0 
-      ? (rawScore !== null ? rawScore : 85)
-      : Math.min(100, Math.max(0, Math.round((trustRating / 5.0) * 90 + Math.min(10, revCount))));
+    const totalExchanges = (parseInt(stats?.completed_lent, 10) || 0) + (parseInt(stats?.completed_borrowed, 10) || 0);
+    let computedTrustScore: number | null = null;
+    if (revCount > 0) {
+      computedTrustScore = Math.min(100, Math.max(0, Math.round((trustRating / 5.0) * 85 + Math.min(15, revCount * 2 + totalExchanges))));
+    } else if (totalExchanges > 0) {
+      computedTrustScore = Math.min(100, Math.max(60, 60 + totalExchanges * 5));
+    } else {
+      // Zero reviews and zero completed exchanges -> genuine unrated score (null)
+      computedTrustScore = null;
+    }
 
     const isSelf = Boolean(currentUserId && (currentUserId === user.id || currentUserId === user.firebase_uid));
 
@@ -530,6 +543,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: Request, res: Response, n
       id: user.id,
       username: user.username || '',
       name: user.name || 'Community Member',
+      is_verified: Boolean(user.is_verified),
       locality: isSelf ? (user.locality || '') : (user.locality ? extractCity(user.locality) : ''),
       address_text: isSelf ? (user.address_text || '') : '',
       pincode: isSelf ? (user.pincode || '') : '',
@@ -675,7 +689,7 @@ router.put('/profile', authMiddleware, async (req: AuthenticatedRequest, res: Re
       UPDATE users 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
       WHERE id = $${values.length}
-      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
+      RETURNING id, email, name, phone, locality, address_text, pincode, latitude, longitude, rating, avatar_url, banner_url, bio, trust_score, role, notify_nearby_requests_5km, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
     `;
 
     const result = await query(updateSql, values);
@@ -761,7 +775,8 @@ router.get('/:id/followers', optionalAuthMiddleware, async (req: Request, res: R
         COALESCE(u.locality, '') AS locality, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         uf.created_at AS followed_at,
         EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
        FROM user_follows uf
@@ -793,7 +808,8 @@ router.get('/:id/following', optionalAuthMiddleware, async (req: Request, res: R
         COALESCE(u.locality, '') AS locality, 
         COALESCE(u.bio, 'Neighbor & Gear Sharer') AS bio,
         COALESCE(u.rating, 0.00)::numeric(3, 2) AS rating,
-        COALESCE(u.trust_score, 90)::int AS trust_score,
+        u.trust_score::int AS trust_score,
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         uf.created_at AS followed_at,
         EXISTS(SELECT 1 FROM user_follows WHERE follower_id = $2 AND following_id = u.id) AS is_following
        FROM user_follows uf

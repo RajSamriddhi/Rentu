@@ -1899,7 +1899,8 @@ router.post('/:id/review', authMiddleware, async (req: AuthenticatedRequest, res
           trust_rating = stats.trust_rating,
           rating = stats.trust_rating,
           trust_score = CASE 
-            WHEN stats.total_reviews = 0 THEN 85 
+            WHEN stats.total_reviews = 0 AND punctuality.completed_count = 0 THEN NULL
+            WHEN stats.total_reviews = 0 THEN LEAST(100, GREATEST(60, 60 + punctuality.completed_count * 5))
             ELSE LEAST(100, GREATEST(50, ROUND(
               (stats.trust_rating / 5.0) * 85 + 
               (CASE WHEN punctuality.completed_count > 0 AND punctuality.late_count = 0 THEN 8 WHEN punctuality.late_count > 0 THEN 0 ELSE 4 END) + 

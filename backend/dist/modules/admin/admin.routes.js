@@ -54,6 +54,7 @@ router.get('/users', async (req, res, next) => {
         u.avatar_url,
         u.trust_score, 
         u.rating, 
+        COALESCE(u.is_verified, FALSE) AS is_verified,
         u.created_at,
         (SELECT COUNT(*) FROM items i WHERE i.owner_id = u.id)::int AS items_count,
         (SELECT COUNT(*) FROM requests r WHERE r.seeker_id = u.id)::int AS requests_count,
@@ -71,13 +72,17 @@ router.get('/users', async (req, res, next) => {
 router.put('/users/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { role, trust_score, rating } = req.body;
+        const { role, trust_score, rating, is_verified } = req.body;
         const updates = [];
         const values = [];
         let idx = 1;
         if (role && (role === 'USER' || role === 'ADMIN')) {
             updates.push(`role = $${idx++}`);
             values.push(role);
+        }
+        if (typeof is_verified === 'boolean') {
+            updates.push(`is_verified = $${idx++}`);
+            values.push(is_verified);
         }
         if (typeof trust_score === 'number') {
             updates.push(`trust_score = $${idx++}`);

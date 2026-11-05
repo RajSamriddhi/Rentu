@@ -351,7 +351,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({
                       <span className="text-ink-secondary font-medium">•</span>
                     </>
                   ) : null}
-                  <span className="text-ink-secondary font-medium">Verified Seeker</span>
+                  <span className="text-ink-secondary font-medium">{(request as any).seeker_is_verified ? 'Verified Seeker' : 'Community Member'}</span>
                 </div>
               </div>
             </div>

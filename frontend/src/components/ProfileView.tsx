@@ -368,10 +368,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {user?.name || user?.email?.split('@')[0] || 'Rentu Member'}
               </h1>
 
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-extrabold border border-emerald-500/20">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Verified Peer</span>
-              </span>
+              {user?.is_verified && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-extrabold border border-emerald-500/20">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Verified Peer</span>
+                </span>
+              )}
             </div>
 
             {/* Username */}
@@ -482,10 +484,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <div className="p-4 sm:p-5 text-center sm:text-left">
             <div className="text-xl sm:text-2xl font-black text-ink font-display">
-              {ratingDisplay ? `${ratingDisplay} ★` : `${user?.trust_score ?? 95}%`}
+              {ratingDisplay ? `${ratingDisplay} ★` : (user?.trust_score && user.trust_score > 0 ? `${user.trust_score}%` : '—')}
             </div>
             <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">
-              {ratingDisplay ? 'Trust Rating' : 'Trust Score'}
+              {ratingDisplay ? 'Trust Rating' : (user?.trust_score && user.trust_score > 0 ? 'Trust Score' : 'Status')}
             </div>
           </div>
         </div>
@@ -677,10 +679,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="bg-surface border border-divider rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-black text-ink font-display">Reviews & Verified Trust</h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    Verified Peer
-                  </span>
+                  <h3 className="text-lg font-black text-ink font-display">Reviews & Community Trust</h3>
+                  {user?.is_verified && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Verified Peer
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-ink-secondary mt-1">
                   Overall Trust Rating is the combined average across all 3 community roles: Gear Owner, Renter, and Free Community Lender.
@@ -691,19 +695,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="text-right">
                   <div className="text-2xl font-black text-ink font-display flex items-center gap-1 justify-end">
                     <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                    <span>{receivedReviews.length > 0 && user?.trust_rating ? Number(user.trust_rating).toFixed(2) : (receivedReviews.length > 0 ? (ratingDisplay || '0.00') : '0.00')}</span>
+                    <span>{receivedReviews.length > 0 && user?.trust_rating ? Number(user.trust_rating).toFixed(2) : (receivedReviews.length > 0 ? (ratingDisplay || '—') : '—')}</span>
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
-                    Trust Rating ({receivedReviews.length} reviews)
+                    {receivedReviews.length > 0 ? `Trust Rating (${receivedReviews.length} reviews)` : 'No reviews yet'}
                   </div>
                 </div>
 
                 <div className="text-right border-l border-divider pl-6">
                   <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-display">
-                    {user?.trust_score || 90}%
+                    {user?.trust_score && user.trust_score > 0 && (receivedReviews.length > 0 || completedCount > 0) ? `${user.trust_score}%` : '—'}
                   </div>
                   <div className="text-[10px] font-bold text-ink-secondary">
-                    Reputation Score
+                    {user?.trust_score && user.trust_score > 0 && (receivedReviews.length > 0 || completedCount > 0) ? 'Reputation Score' : 'Unrated'}
                   </div>
                 </div>
               </div>
