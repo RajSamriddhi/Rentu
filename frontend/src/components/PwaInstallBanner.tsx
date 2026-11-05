@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Download, X, Share, PlusSquare, CheckCircle2, QrCode } from 'lucide-react';
+import { Smartphone, Download, X, Share, PlusSquare, CheckCircle2, QrCode, MoreHorizontal, MoreVertical, Copy, Check } from 'lucide-react';
 import { generateQrDataUri } from '../lib/qr';
 
 const DISMISS_KEY = 'rentu_pwa_banner_dismissed';
@@ -15,32 +15,38 @@ export const PwaInstallBanner: React.FC = () => {
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [isIosDevice, setIsIosDevice] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
+  const [browserTab, setBrowserTab] = useState<'chrome' | 'safari'>('chrome');
+  const [isCopied, setIsCopied] = useState<boolean>(false);
   const [currentUrl, setCurrentUrl] = useState<string>('https://www.rentu.site');
 
   useEffect(() => {
-    // 1. Check if already installed & running in standalone PWA mode
+    // 1. Check if already running in standalone PWA mode
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
 
     if (isStandalone) {
-      return; // Never show if already running inside installed PWA
+      return; // Never show inside installed PWA
     }
 
-    // 2. Check if user already dismissed the banner
+    // 2. Check if user dismissed the banner
     const dismissed = localStorage.getItem(DISMISS_KEY) === 'true';
     if (dismissed) {
       return;
     }
 
-    // Detect device type
+    // Detect device type & browser
     const ua = window.navigator.userAgent.toLowerCase();
     const isIos = /iphone|ipad|ipod/.test(ua) && !(window as any).MSStream;
     const isMobile = isIos || /android|webos|blackberry|iemobile|opera mini/i.test(ua);
+    const isSafariOnly = isIos && /safari/.test(ua) && !/crios|chrome|chromium|fxios/.test(ua);
 
     setIsIosDevice(isIos);
     setIsMobileDevice(isMobile);
+    // Default to Chrome as requested by user ("replace safari with chrome")
+    setBrowserTab(isSafariOnly ? 'safari' : 'chrome');
+
     if (typeof window !== 'undefined') {
       setCurrentUrl(window.location.origin || 'https://www.rentu.site');
     }
@@ -87,6 +93,13 @@ export const PwaInstallBanner: React.FC = () => {
     }
   };
 
+  const handleCopyLink = () => {
+    navigator.clipboard?.writeText(currentUrl).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    });
+  };
+
   if (isDismissed) {
     return null;
   }
@@ -110,7 +123,7 @@ export const PwaInstallBanner: React.FC = () => {
               <p className="text-xs sm:text-sm font-semibold text-ink flex items-center gap-1.5 truncate">
                 <span className="font-bold text-brand">Install Rentu</span>
                 <span className="hidden xs:inline text-ink-muted">·</span>
-                <span className="truncate">Add to your phone for instant bookings & alerts</span>
+                <span className="truncate">Add to your phone for instant rentals & alerts</span>
               </p>
             </div>
           </div>
@@ -156,12 +169,89 @@ export const PwaInstallBanner: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-ink text-base">Install Rentu App</h3>
-                <p className="text-xs text-ink-muted">Follow the steps below to add Rentu to your phone</p>
+                <p className="text-xs text-ink-muted">Add Rentu to your phone home screen</p>
               </div>
             </div>
 
-            {isIosDevice ? (
-              /* iOS Safari instructions */
+            {/* Browser Switcher Tabs (Chrome as Primary/Default) */}
+            {isMobileDevice && (
+              <div className="flex items-center p-1 bg-surface-elevated rounded-xl border border-divider text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setBrowserTab('chrome')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                    browserTab === 'chrome'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  Google Chrome
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBrowserTab('safari')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                    browserTab === 'safari'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-ink-secondary hover:text-ink'
+                  }`}
+                >
+                  Safari
+                </button>
+              </div>
+            )}
+
+            {/* Mobile Instructions: Google Chrome (Default) */}
+            {isMobileDevice && browserTab === 'chrome' && (
+              <div className="space-y-3 bg-surface-elevated/60 p-3.5 rounded-2xl border border-divider text-xs text-ink">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-brand/15 text-brand flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    1
+                  </div>
+                  <div>
+                    <p className="font-semibold text-ink">Tap Share or Menu in Chrome</p>
+                    <p className="text-ink-secondary text-[11px] mt-0.5">
+                      {isIosDevice ? (
+                        <>
+                          Tap the <Share className="w-3.5 h-3.5 text-brand inline mx-0.5" /> <strong>Share icon</strong> in the top address bar, or tap the <MoreHorizontal className="w-3.5 h-3.5 text-brand inline mx-0.5" /> <strong>(⋯)</strong> menu at the bottom right.
+                        </>
+                      ) : (
+                        <>
+                          Tap the <MoreVertical className="w-3.5 h-3.5 text-brand inline mx-0.5" /> <strong>(⋮) menu</strong> in the top-right corner of Chrome.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-brand/15 text-brand flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    2
+                  </div>
+                  <div>
+                    <p className="font-semibold text-ink">Select "Add to Home Screen"</p>
+                    <p className="text-ink-secondary text-[11px] mt-0.5 flex items-center gap-1">
+                      Scroll down and tap <PlusSquare className="w-3.5 h-3.5 text-brand inline" /> <strong>Add to Home Screen</strong> (or <strong>Install App</strong>).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="font-semibold text-ink">Instant 1-Tap Access</p>
+                    <p className="text-ink-secondary text-[11px] mt-0.5">
+                      Tap <strong>Add</strong> in the top right. Rentu will appear on your phone screen like a native app!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Mobile Instructions: Safari */}
+            {isMobileDevice && browserTab === 'safari' && (
               <div className="space-y-3 bg-surface-elevated/60 p-3.5 rounded-2xl border border-divider text-xs text-ink">
                 <div className="flex items-start gap-2.5">
                   <div className="w-6 h-6 rounded-full bg-brand/15 text-brand flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
@@ -169,8 +259,8 @@ export const PwaInstallBanner: React.FC = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-ink">Tap Share in Safari</p>
-                    <p className="text-ink-secondary text-[11px] mt-0.5 flex items-center gap-1">
-                      Tap the <Share className="w-3.5 h-3.5 text-brand inline" /> share icon at the bottom of Safari.
+                    <p className="text-ink-secondary text-[11px] mt-0.5">
+                      Tap the <Share className="w-3.5 h-3.5 text-brand inline mx-0.5" /> share icon at the bottom of Safari.
                     </p>
                   </div>
                 </div>
@@ -181,8 +271,8 @@ export const PwaInstallBanner: React.FC = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-ink">Add to Home Screen</p>
-                    <p className="text-ink-secondary text-[11px] mt-0.5 flex items-center gap-1">
-                      Scroll down and tap <PlusSquare className="w-3.5 h-3.5 text-brand inline" /> <strong>Add to Home Screen</strong>.
+                    <p className="text-ink-secondary text-[11px] mt-0.5">
+                      Scroll down and tap <PlusSquare className="w-3.5 h-3.5 text-brand inline mx-0.5" /> <strong>Add to Home Screen</strong>.
                     </p>
                   </div>
                 </div>
@@ -192,56 +282,38 @@ export const PwaInstallBanner: React.FC = () => {
                     ✓
                   </div>
                   <div>
-                    <p className="font-semibold text-ink">Instant Access</p>
+                    <p className="font-semibold text-ink">Ready to Use</p>
                     <p className="text-ink-secondary text-[11px] mt-0.5">
-                      Launch Rentu directly from your home screen just like an app!
+                      Tap <strong>Add</strong>. Rentu is now installed on your iPhone home screen!
                     </p>
                   </div>
                 </div>
               </div>
-            ) : isMobileDevice ? (
-              /* Android Chrome or other mobile instructions */
-              <div className="space-y-3 bg-surface-elevated/60 p-3.5 rounded-2xl border border-divider text-xs text-ink">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-brand/15 text-brand flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                    1
-                  </div>
-                  <div>
-                    <p className="font-semibold text-ink">Open Browser Menu</p>
-                    <p className="text-ink-secondary text-[11px] mt-0.5">
-                      Tap the three dots (⋮) in the top-right corner of your browser.
-                    </p>
-                  </div>
-                </div>
+            )}
 
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-brand/15 text-brand flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                    2
-                  </div>
-                  <div>
-                    <p className="font-semibold text-ink">Install or Add to Phone</p>
-                    <p className="text-ink-secondary text-[11px] mt-0.5">
-                      Tap <strong>Install App</strong> or <strong>Add to Home screen</strong>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Desktop user viewing the site: show QR Code to scan with phone */
+            {/* Desktop user instructions: Scan QR Code */}
+            {!isMobileDevice && (
               <div className="space-y-3 bg-surface-elevated/60 p-4 rounded-2xl border border-divider text-center">
                 <p className="text-xs text-ink-secondary">
-                  Scan this QR code with your phone's camera to open Rentu and install it:
+                  Scan this QR code with your phone's camera to open Rentu in <strong>Google Chrome</strong> and install it:
                 </p>
                 <div className="bg-white p-3 rounded-2xl border border-divider w-44 h-44 mx-auto flex items-center justify-center shadow-inner">
                   {qrUri ? (
-                    <img src={qrUri} alt="Scan to install on phone" className="w-full h-full object-contain" />
+                    <img src={qrUri} alt="Scan to install in Chrome on phone" className="w-full h-full object-contain" />
                   ) : (
                     <QrCode className="w-20 h-20 text-zinc-400" />
                   )}
                 </div>
-                <p className="text-[11px] text-ink-muted">
-                  Open on your mobile phone browser to install directly to your home screen.
-                </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="text-xs font-semibold text-brand hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{isCopied ? 'Link Copied!' : 'Copy Website Link'}</span>
+                  </button>
+                </div>
               </div>
             )}
 
