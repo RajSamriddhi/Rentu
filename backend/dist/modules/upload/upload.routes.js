@@ -19,7 +19,7 @@ const ALLOWED_MIME_TYPES = [
     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/zip', 'application/x-zip-compressed', 'application/octet-stream',
 ];
-const supabase = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL, env_1.ENV.SUPABASE_SERVICE_ROLE_KEY || env_1.ENV.SUPABASE_ANON_KEY);
+const supabase = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co', env_1.ENV.SUPABASE_SERVICE_ROLE_KEY || env_1.ENV.SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR');
 router.post('/', auth_1.authMiddleware, async (req, res) => {
     try {
         const { data: base64Data, filename, contentType = 'image/jpeg', folder = 'items' } = req.body;

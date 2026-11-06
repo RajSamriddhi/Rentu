@@ -20,7 +20,10 @@ const ALLOWED_MIME_TYPES = [
   'application/zip', 'application/x-zip-compressed', 'application/octet-stream',
 ];
 
-const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+const supabase = createClient(
+  ENV.SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co',
+  ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR'
+);
 
 router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {

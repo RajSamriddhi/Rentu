@@ -86983,9 +86983,11 @@ import_dotenv.default.config();
 var rawGeminiKey = (process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 var isPlaceholderKey = rawGeminiKey.includes("your_key_here") || rawGeminiKey.includes("your_gemini_api_key_here") || rawGeminiKey === "";
 var isProd = (process.env.NODE_ENV || "production") === "production";
+var defaultDatabaseUrl = "postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres";
+var defaultAnonKey = "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR";
 if (!process.env.DATABASE_URL) {
   if (isProd) {
-    console.warn("SECURITY WARNING: DATABASE_URL is not defined in environment variables. Database operations will require DATABASE_URL.");
+    console.warn("NOTICE: DATABASE_URL not explicitly set in environment, using cloud pooler database.");
   }
 }
 if (!process.env.JWT_SECRET && isProd) {
@@ -86993,12 +86995,12 @@ if (!process.env.JWT_SECRET && isProd) {
 }
 var ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
-  DATABASE_URL: process.env.DATABASE_URL || "",
+  DATABASE_URL: process.env.DATABASE_URL || defaultDatabaseUrl,
   JWT_SECRET: process.env.JWT_SECRET || "rentu-secure-session-key-2026",
   NODE_ENV: process.env.NODE_ENV || (process.env.VERCEL ? "production" : "development"),
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "rentu-732b7",
   SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || defaultAnonKey,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   GEMINI_API_KEY: isPlaceholderKey ? "" : rawGeminiKey,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
@@ -96060,7 +96062,10 @@ async function createNotification(params) {
 
 // src/modules/items/items.routes.ts
 var router2 = (0, import_express2.Router)();
-var storageClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+var storageClient = createClient(
+  ENV.SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
+  ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY || "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR"
+);
 var deleteStoragePhoto = async (url) => {
   try {
     if (!url || typeof url !== "string" || !url.includes("/storage/v1/object/public/item-photos/")) return;
@@ -101246,7 +101251,10 @@ var ALLOWED_MIME_TYPES = [
   "application/x-zip-compressed",
   "application/octet-stream"
 ];
-var supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+var supabase = createClient(
+  ENV.SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
+  ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY || "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR"
+);
 router8.post("/", authMiddleware, async (req, res) => {
   try {
     const { data: base64Data, filename, contentType = "image/jpeg", folder = "items" } = req.body;

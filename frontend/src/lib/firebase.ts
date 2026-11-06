@@ -3,11 +3,13 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut as fbSignOut,
+  signOut as fbSignOut, 
   deleteUser as fbDeleteUser,
-  updateProfile,
+  updateProfile, 
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -50,6 +52,8 @@ try {
 export type { FirebaseUser };
 export { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   fbSignOut, 

@@ -11,7 +11,7 @@ const city_1 = require("../../utils/city");
 const notifications_service_1 = require("../notifications/notifications.service");
 const user_1 = require("../../utils/user");
 const router = (0, express_1.Router)();
-const storageClient = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL, env_1.ENV.SUPABASE_SERVICE_ROLE_KEY || env_1.ENV.SUPABASE_ANON_KEY);
+const storageClient = (0, supabase_js_1.createClient)(env_1.ENV.SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co', env_1.ENV.SUPABASE_SERVICE_ROLE_KEY || env_1.ENV.SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR');
 const deleteStoragePhoto = async (url) => {
     try {
         if (!url || typeof url !== 'string' || !url.includes('/storage/v1/object/public/item-photos/'))

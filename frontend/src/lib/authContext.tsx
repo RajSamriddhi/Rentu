@@ -5,6 +5,8 @@ import {
   auth, 
   googleProvider, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   fbSignOut, 
@@ -120,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Listen to Firebase Auth state changes
+  // Listen to Firebase Auth state changes & catch redirect sign-in results
   useEffect(() => {
     if (!auth) {
       const localToken = localStorage.getItem('borrowflex_token');
@@ -132,6 +134,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return;
     }
+
+    // Process redirect result if coming back from Google redirect on mobile/PWA
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result && result.user) {
+          await syncFirebaseUser(result.user);
+        }
+      })
+      .catch((err) => {
+        console.warn('Firebase getRedirectResult notification:', err);
+      });
 
     try {
       const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -160,15 +173,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Google Sign-In with popup
+  // Google Sign-In with popup or redirect (Optimized for Android, iOS, PWA and Desktop)
   const loginWithGoogle = async () => {
+    if (!auth) {
+      throw new Error('Authentication is currently not initialized. Please refresh the page.');
+    }
     setIsLoading(true);
+
+    const isMobileOrPwa =
+      /android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
+
+    if (isMobileOrPwa) {
+      // In mobile browsers and installed standalone PWAs, popups are blocked or fail silently.
+      // Use standard redirect flow which redirects to Google and returns smoothly.
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      } catch (redirectErr) {
+        console.warn('signInWithRedirect failed, attempting popup fallback:', redirectErr);
+      }
+    }
+
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
         await syncFirebaseUser(result.user);
       }
     } catch (err: any) {
+      // If popup was blocked by browser or environment does not support window popups, fallback to redirect
+      if (
+        err.code === 'auth/popup-blocked' ||
+        err.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        console.log('Popup blocked or unsupported, falling back to redirect flow...');
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       setIsLoading(false);
       console.error('Firebase Google Sign-In error:', err);
       throw err;

@@ -10,7 +10,10 @@ import { createNotification } from '../notifications/notifications.service';
 import { resolveUserIds } from '../../utils/user';
 
 const router = Router();
-const storageClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY);
+const storageClient = createClient(
+  ENV.SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co',
+  ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR'
+);
 
 const deleteStoragePhoto = async (url: string) => {
   try {
