@@ -86983,22 +86983,22 @@ import_dotenv.default.config();
 var rawGeminiKey = (process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 var isPlaceholderKey = rawGeminiKey.includes("your_key_here") || rawGeminiKey.includes("your_gemini_api_key_here") || rawGeminiKey === "";
 var isProd = (process.env.NODE_ENV || "production") === "production";
-var defaultDatabaseUrl = "postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres";
-var defaultJwtSecret = "super-secret-borrowflex-key-2026-v1";
-if (isProd && !process.env.DATABASE_URL) {
-  console.warn("NOTICE: DATABASE_URL not explicitly passed in environment variables, using project cloud database.");
+if (!process.env.DATABASE_URL) {
+  if (isProd) {
+    console.warn("SECURITY WARNING: DATABASE_URL is not defined in environment variables. Database operations will require DATABASE_URL.");
+  }
 }
-if (isProd && !process.env.JWT_SECRET) {
-  console.warn("NOTICE: JWT_SECRET not explicitly passed in environment variables, using default project key.");
+if (!process.env.JWT_SECRET && isProd) {
+  console.warn("SECURITY WARNING: JWT_SECRET is not set in production. Set a unique, secure secret in your environment settings.");
 }
 var ENV = {
   PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
-  DATABASE_URL: process.env.DATABASE_URL || defaultDatabaseUrl,
-  JWT_SECRET: process.env.JWT_SECRET || defaultJwtSecret,
+  DATABASE_URL: process.env.DATABASE_URL || "",
+  JWT_SECRET: process.env.JWT_SECRET || "rentu-secure-session-key-2026",
   NODE_ENV: process.env.NODE_ENV || (process.env.VERCEL ? "production" : "development"),
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "rentu-732b7",
   SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mkvpscrnqvkaddpmqtbm.supabase.co",
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR",
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   GEMINI_API_KEY: isPlaceholderKey ? "" : rawGeminiKey,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
@@ -87033,6 +87033,9 @@ pool.on("error", (err) => {
   console.error("Unexpected error on idle PostgreSQL client:", err);
 });
 var query = async (text, params) => {
+  if (!ENV.DATABASE_URL) {
+    throw new Error("Database connection not configured: DATABASE_URL environment variable is missing.");
+  }
   const start = Date.now();
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
@@ -87226,7 +87229,7 @@ var adminMiddleware = async (req, res, next) => {
 var router = (0, import_express.Router)();
 var registerSchema = external_exports.object({
   email: external_exports.string().email("Invalid email address format"),
-  password: external_exports.string().min(6, "Password must be at least 6 characters"),
+  password: external_exports.string().min(8, "Password must be at least 8 characters"),
   name: external_exports.string().optional(),
   username: external_exports.string().regex(/^[a-z0-9_]{3,30}$/, "Username must be 3-30 characters of lowercase letters, numbers, and underscores").optional(),
   phone: external_exports.string().optional(),
@@ -87281,7 +87284,7 @@ router.post("/register", async (req, res, next) => {
     } else {
       cleanUsername = await generateUniqueUsername(email, displayName);
     }
-    const passwordHash = await import_bcryptjs.default.hash(validated.password, 10);
+    const passwordHash = await import_bcryptjs.default.hash(validated.password, 12);
     const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
     const result = await query(
       `INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
@@ -87396,7 +87399,7 @@ var handleSyncUser = async (req, res, next) => {
     try {
       decodedToken = await getAuth().verifyIdToken(bearerToken);
     } catch (err) {
-      return sendError(res, "UNAUTHORIZED", "Invalid or expired Firebase ID token: " + (err?.message || "Verification failed"), 401);
+      return sendError(res, "UNAUTHORIZED", "Invalid or expired authentication token", 401);
     }
     const uid = decodedToken.uid;
     const email = (decodedToken.email || validated.email).toLowerCase();
@@ -101269,6 +101272,12 @@ router8.post("/", authMiddleware, async (req, res) => {
       if (!isJpeg && !isPng && !isGif && !isWebp && !isSvg && !isBmp) {
         return sendError(res, "BAD_REQUEST", "Invalid file contents: Uploaded file does not contain genuine image bytes", 400);
       }
+      if (cleanContentType === "image/svg+xml") {
+        const svgContent = buffer.toString("utf8");
+        if (/<script\b/i.test(svgContent) || /javascript\s*:/i.test(svgContent) || /\bon[a-zA-Z]+\s*=/i.test(svgContent)) {
+          return sendError(res, "BAD_REQUEST", "Security policy violation: SVG contains executable script content", 400);
+        }
+      }
     }
     const extMatch = cleanContentType.split("/")[1] || "jpg";
     const cleanExt = extMatch.replace(/[^a-zA-Z0-9]/g, "") || "jpg";
@@ -101281,7 +101290,8 @@ router8.post("/", authMiddleware, async (req, res) => {
     });
     if (error) {
       console.error("Backend Supabase storage upload error:", error);
-      return sendError(res, "UPLOAD_FAILED", error.message || "Storage upload failed", 500);
+      const isProd2 = ENV.NODE_ENV === "production";
+      return sendError(res, "UPLOAD_FAILED", isProd2 ? "File storage upload failed. Please try again." : error.message || "Storage upload failed", 500);
     }
     const { data: publicData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(data.path);
     return sendSuccess(res, {
@@ -101291,7 +101301,8 @@ router8.post("/", authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error("Backend upload handler error:", err);
-    return sendError(res, "INTERNAL_SERVER_ERROR", err.message || "Upload failed", 500);
+    const isProd2 = ENV.NODE_ENV === "production";
+    return sendError(res, "INTERNAL_SERVER_ERROR", isProd2 ? "An error occurred during file upload." : err.message || "Upload failed", 500);
   }
 });
 var upload_routes_default = router8;
@@ -103974,6 +103985,8 @@ var securityHeaders = (req, res, next) => {
   }
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), payment=()");
   res.removeHeader("X-Powered-By");
   next();
@@ -104031,6 +104044,12 @@ var authRateLimiter = createRateLimiter({
   keyPrefix: "auth",
   errorMessage: "Too many authentication attempts. Please wait a minute before trying again."
 });
+var uploadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1e3,
+  maxRequests: 30,
+  keyPrefix: "upload",
+  errorMessage: "Upload frequency limit reached. Please wait a moment before uploading more files."
+});
 var generalApiRateLimiter = createRateLimiter({
   windowMs: 60 * 1e3,
   maxRequests: 200,
@@ -104042,13 +104061,49 @@ var isAllowedOrigin = (origin) => {
   try {
     const url = new URL(origin);
     const host = url.hostname.toLowerCase();
+    if (process.env.ALLOWED_ORIGINS) {
+      const explicit = process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim().toLowerCase());
+      if (explicit.includes(origin.toLowerCase()) || explicit.includes(host)) return true;
+    }
     if (host === "rentu.site" || host === "www.rentu.site") return true;
-    if (host.endsWith(".vercel.app") || host.endsWith(".up.railway.app")) return true;
+    if (host === "rentu.vercel.app" || host.startsWith("rentu-") && host.endsWith(".vercel.app") || host.endsWith("sadiqua-parweens-projects.vercel.app")) {
+      return true;
+    }
     if (host === "localhost" || host === "127.0.0.1") return true;
     return false;
   } catch {
     return false;
   }
+};
+
+// src/middleware/sanitize.ts
+function sanitizeString(val) {
+  if (typeof val !== "string") return val;
+  return val.replace(/\0/g, "").replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "").replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "").replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, "").replace(/\bon[a-zA-Z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, "").replace(/javascript\s*:/gi, "blocked-scheme:").replace(/vbscript\s*:/gi, "blocked-scheme:").replace(/data\s*:\s*text\/html/gi, "blocked-scheme:");
+}
+function sanitizeData(data) {
+  if (data === null || data === void 0) return data;
+  if (typeof data === "string") return sanitizeString(data);
+  if (Array.isArray(data)) return data.map(sanitizeData);
+  if (typeof data === "object" && !(data instanceof Date) && !(data instanceof RegExp) && !Buffer.isBuffer(data)) {
+    const sanitized = {};
+    for (const key of Object.keys(data)) {
+      sanitized[key] = sanitizeData(data[key]);
+    }
+    return sanitized;
+  }
+  return data;
+}
+var inputSanitizer = (req, res, next) => {
+  if (req.body && typeof req.body === "object") {
+    if (!Buffer.isBuffer(req.body)) {
+      req.body = sanitizeData(req.body);
+    }
+  }
+  if (req.query && typeof req.query === "object") {
+    req.query = sanitizeData(req.query);
+  }
+  next();
 };
 
 // src/app.ts
@@ -104082,6 +104137,7 @@ var createApp = () => {
   );
   app2.use(import_express13.default.json({ limit: "10mb" }));
   app2.use(import_express13.default.urlencoded({ extended: true, limit: "10mb" }));
+  app2.use(inputSanitizer);
   app2.use(generalApiRateLimiter);
   if (!process.env.VERCEL && !migrationsPromise) {
     ensureMigrations().catch(() => {
@@ -104120,7 +104176,7 @@ var createApp = () => {
   app2.use(["/api/analytics", "/analytics"], analytics_routes_default);
   app2.use(["/api/users", "/users"], users_routes_default);
   app2.use(["/api/messages", "/messages"], messages_routes_default);
-  app2.use(["/api/upload", "/upload"], upload_routes_default);
+  app2.use(["/api/upload", "/upload"], uploadRateLimiter, upload_routes_default);
   app2.use(["/api/notifications", "/notifications"], notifications_routes_default);
   app2.use(["/api/support", "/support"], support_routes_default);
   app2.use(["/api/admin", "/admin"], admin_routes_default);

@@ -31,6 +31,9 @@ exports.pool.on('error', (err) => {
     console.error('Unexpected error on idle PostgreSQL client:', err);
 });
 const query = async (text, params) => {
+    if (!env_1.ENV.DATABASE_URL) {
+        throw new Error('Database connection not configured: DATABASE_URL environment variable is missing.');
+    }
     const start = Date.now();
     const res = await exports.pool.query(text, params);
     const duration = Date.now() - start;

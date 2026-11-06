@@ -55,6 +55,14 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       if (!isJpeg && !isPng && !isGif && !isWebp && !isSvg && !isBmp) {
         return sendError(res, 'BAD_REQUEST', 'Invalid file contents: Uploaded file does not contain genuine image bytes', 400);
       }
+
+      // XSS Prevention: Disallow scripts and executable event handlers inside SVG images
+      if (cleanContentType === 'image/svg+xml') {
+        const svgContent = buffer.toString('utf8');
+        if (/<script\b/i.test(svgContent) || /javascript\s*:/i.test(svgContent) || /\bon[a-zA-Z]+\s*=/i.test(svgContent)) {
+          return sendError(res, 'BAD_REQUEST', 'Security policy violation: SVG contains executable script content', 400);
+        }
+      }
     }
 
     const extMatch = cleanContentType.split('/')[1] || 'jpg';
@@ -75,7 +83,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
 
     if (error) {
       console.error('Backend Supabase storage upload error:', error);
-      return sendError(res, 'UPLOAD_FAILED', error.message || 'Storage upload failed', 500);
+      const isProd = ENV.NODE_ENV === 'production';
+      return sendError(res, 'UPLOAD_FAILED', isProd ? 'File storage upload failed. Please try again.' : (error.message || 'Storage upload failed'), 500);
     }
 
     const { data: publicData } = supabase.storage
@@ -89,7 +98,8 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
     });
   } catch (err: any) {
     console.error('Backend upload handler error:', err);
-    return sendError(res, 'INTERNAL_SERVER_ERROR', err.message || 'Upload failed', 500);
+    const isProd = ENV.NODE_ENV === 'production';
+    return sendError(res, 'INTERNAL_SERVER_ERROR', isProd ? 'An error occurred during file upload.' : (err.message || 'Upload failed'), 500);
   }
 });
 

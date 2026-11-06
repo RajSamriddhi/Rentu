@@ -16,7 +16,7 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
   // Modern XSS protection standard (disables flawed legacy auditor to prevent XS-Leaks)
   res.setHeader('X-XSS-Protection', '0');
 
-  // Strict Transport Security (HSTS): forces HTTPS for 1 year
+  // Strict Transport Security (HSTS): forces HTTPS for 1 year in production
   if (ENV.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
@@ -26,6 +26,12 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
 
   // Allow Firebase Google Auth popups while isolating window context
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+  // Allow cross-origin read for safe static assets & API responses
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  // Disable browser speculative DNS prefetching
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
 
   // Restrict sensitive browser APIs
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=()');
@@ -122,6 +128,14 @@ export const authRateLimiter = createRateLimiter({
   errorMessage: 'Too many authentication attempts. Please wait a minute before trying again.',
 });
 
+// Rate limiter for file uploads: max 30 uploads per minute per IP (prevents storage exhaustion)
+export const uploadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  keyPrefix: 'upload',
+  errorMessage: 'Upload frequency limit reached. Please wait a moment before uploading more files.',
+});
+
 // General API rate limiter: max 200 requests per minute per IP (prevents scraping and flooding)
 export const generalApiRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
@@ -132,21 +146,35 @@ export const generalApiRateLimiter = createRateLimiter({
 
 /**
  * 3. Strict CORS Whitelist Origin Validator
+ * Strictly verifies origins against authorized project domains to prevent unauthorized cross-origin access.
  */
 export const isAllowedOrigin = (origin: string | undefined): boolean => {
-  if (!origin) return true; // Allow mobile apps or same-origin requests
+  if (!origin) return true; // Allow mobile apps, native PWA standalone, or same-origin requests
 
   try {
     const url = new URL(origin);
     const host = url.hostname.toLowerCase();
 
-    // Allowed production domains
+    // 1. Explicitly configured origins from environment
+    if (process.env.ALLOWED_ORIGINS) {
+      const explicit = process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim().toLowerCase());
+      if (explicit.includes(origin.toLowerCase()) || explicit.includes(host)) return true;
+    }
+
+    // 2. Allowed production domains
     if (host === 'rentu.site' || host === 'www.rentu.site') return true;
 
-    // Allowed preview deployments (Vercel / Railway)
-    if (host.endsWith('.vercel.app') || host.endsWith('.up.railway.app')) return true;
+    // 3. Allowed official Rentu Vercel project deployments
+    // Matches: rentu-git-*.vercel.app, rentu-*.vercel.app, and rentu-*-sadiqua-parweens-projects.vercel.app
+    if (
+      host === 'rentu.vercel.app' ||
+      (host.startsWith('rentu-') && host.endsWith('.vercel.app')) ||
+      host.endsWith('sadiqua-parweens-projects.vercel.app')
+    ) {
+      return true;
+    }
 
-    // Allowed local development
+    // 4. Allowed local development
     if (host === 'localhost' || host === '127.0.0.1') return true;
 
     return false;

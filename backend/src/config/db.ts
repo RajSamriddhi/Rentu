@@ -35,6 +35,9 @@ export const query = async <T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> => {
+  if (!ENV.DATABASE_URL) {
+    throw new Error('Database connection not configured: DATABASE_URL environment variable is missing.');
+  }
   const start = Date.now();
   const res = await pool.query<T>(text, params);
   const duration = Date.now() - start;

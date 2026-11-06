@@ -26,22 +26,22 @@ const isPlaceholderKey = rawGeminiKey.includes('your_key_here') ||
     rawGeminiKey.includes('your_gemini_api_key_here') ||
     rawGeminiKey === '';
 const isProd = (process.env.NODE_ENV || 'production') === 'production';
-const defaultDatabaseUrl = 'postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres';
-const defaultJwtSecret = 'super-secret-borrowflex-key-2026-v1';
-if (isProd && !process.env.DATABASE_URL) {
-    console.warn('NOTICE: DATABASE_URL not explicitly passed in environment variables, using project cloud database.');
+if (!process.env.DATABASE_URL) {
+    if (isProd) {
+        console.warn('SECURITY WARNING: DATABASE_URL is not defined in environment variables. Database operations will require DATABASE_URL.');
+    }
 }
-if (isProd && !process.env.JWT_SECRET) {
-    console.warn('NOTICE: JWT_SECRET not explicitly passed in environment variables, using default project key.');
+if (!process.env.JWT_SECRET && isProd) {
+    console.warn('SECURITY WARNING: JWT_SECRET is not set in production. Set a unique, secure secret in your environment settings.');
 }
 exports.ENV = {
     PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
-    DATABASE_URL: process.env.DATABASE_URL || defaultDatabaseUrl,
-    JWT_SECRET: process.env.JWT_SECRET || defaultJwtSecret,
+    DATABASE_URL: process.env.DATABASE_URL || '',
+    JWT_SECRET: process.env.JWT_SECRET || 'rentu-secure-session-key-2026',
     NODE_ENV: process.env.NODE_ENV || (process.env.VERCEL ? 'production' : 'development'),
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || 'rentu-732b7',
     SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mkvpscrnqvkaddpmqtbm.supabase.co',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_4vho7OeDJupwXGGZn7TDFQ_Uryz7NwR',
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     GEMINI_API_KEY: isPlaceholderKey ? '' : rawGeminiKey,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',

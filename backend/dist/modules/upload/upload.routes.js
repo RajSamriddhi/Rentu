@@ -47,6 +47,13 @@ router.post('/', auth_1.authMiddleware, async (req, res) => {
             if (!isJpeg && !isPng && !isGif && !isWebp && !isSvg && !isBmp) {
                 return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Invalid file contents: Uploaded file does not contain genuine image bytes', 400);
             }
+            // XSS Prevention: Disallow scripts and executable event handlers inside SVG images
+            if (cleanContentType === 'image/svg+xml') {
+                const svgContent = buffer.toString('utf8');
+                if (/<script\b/i.test(svgContent) || /javascript\s*:/i.test(svgContent) || /\bon[a-zA-Z]+\s*=/i.test(svgContent)) {
+                    return (0, response_1.sendError)(res, 'BAD_REQUEST', 'Security policy violation: SVG contains executable script content', 400);
+                }
+            }
         }
         const extMatch = cleanContentType.split('/')[1] || 'jpg';
         const cleanExt = extMatch.replace(/[^a-zA-Z0-9]/g, '') || 'jpg';
@@ -63,7 +70,8 @@ router.post('/', auth_1.authMiddleware, async (req, res) => {
         });
         if (error) {
             console.error('Backend Supabase storage upload error:', error);
-            return (0, response_1.sendError)(res, 'UPLOAD_FAILED', error.message || 'Storage upload failed', 500);
+            const isProd = env_1.ENV.NODE_ENV === 'production';
+            return (0, response_1.sendError)(res, 'UPLOAD_FAILED', isProd ? 'File storage upload failed. Please try again.' : (error.message || 'Storage upload failed'), 500);
         }
         const { data: publicData } = supabase.storage
             .from(BUCKET_NAME)
@@ -76,7 +84,8 @@ router.post('/', auth_1.authMiddleware, async (req, res) => {
     }
     catch (err) {
         console.error('Backend upload handler error:', err);
-        return (0, response_1.sendError)(res, 'INTERNAL_SERVER_ERROR', err.message || 'Upload failed', 500);
+        const isProd = env_1.ENV.NODE_ENV === 'production';
+        return (0, response_1.sendError)(res, 'INTERNAL_SERVER_ERROR', isProd ? 'An error occurred during file upload.' : (err.message || 'Upload failed'), 500);
     }
 });
 exports.default = router;

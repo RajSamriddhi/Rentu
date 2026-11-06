@@ -24,6 +24,7 @@ const auth_1 = require("./middleware/auth");
 const db_1 = require("./config/db");
 const migrate_1 = require("./db/migrate");
 const security_1 = require("./middleware/security");
+const sanitize_1 = require("./middleware/sanitize");
 let migrationsPromise = null;
 const ensureMigrations = async () => {
     if (!migrationsPromise) {
@@ -57,6 +58,8 @@ const createApp = () => {
     // 3. Request body parsers with safe limits (supports image uploads up to 5MB + base64 overhead)
     app.use(express_1.default.json({ limit: '10mb' }));
     app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
+    // 3.1 Automatic XSS & malicious input sanitization
+    app.use(sanitize_1.inputSanitizer);
     // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
     app.use(security_1.generalApiRateLimiter);
     // Run schema migration verification once asynchronously on worker startup (skip in serverless cold starts)
@@ -101,7 +104,7 @@ const createApp = () => {
     app.use(['/api/analytics', '/analytics'], analytics_routes_1.default);
     app.use(['/api/users', '/users'], users_routes_1.default);
     app.use(['/api/messages', '/messages'], messages_routes_1.default);
-    app.use(['/api/upload', '/upload'], upload_routes_1.default);
+    app.use(['/api/upload', '/upload'], security_1.uploadRateLimiter, upload_routes_1.default);
     app.use(['/api/notifications', '/notifications'], notifications_routes_1.default);
     app.use(['/api/support', '/support'], support_routes_1.default);
     app.use(['/api/admin', '/admin'], admin_routes_1.default);

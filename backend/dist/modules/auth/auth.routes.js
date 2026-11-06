@@ -15,7 +15,7 @@ const auth_2 = require("../../middleware/auth");
 const router = (0, express_1.Router)();
 const registerSchema = zod_1.z.object({
     email: zod_1.z.string().email('Invalid email address format'),
-    password: zod_1.z.string().min(6, 'Password must be at least 6 characters'),
+    password: zod_1.z.string().min(8, 'Password must be at least 8 characters'),
     name: zod_1.z.string().optional(),
     username: zod_1.z.string().regex(/^[a-z0-9_]{3,30}$/, 'Username must be 3-30 characters of lowercase letters, numbers, and underscores').optional(),
     phone: zod_1.z.string().optional(),
@@ -72,7 +72,7 @@ router.post('/register', async (req, res, next) => {
         else {
             cleanUsername = await generateUniqueUsername(email, displayName);
         }
-        const passwordHash = await bcryptjs_1.default.hash(validated.password, 10);
+        const passwordHash = await bcryptjs_1.default.hash(validated.password, 12);
         const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
         const result = await (0, db_1.query)(`INSERT INTO users (email, password_hash, name, username, phone, locality, avatar_url, bio, trust_score, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, 'USER')
@@ -192,7 +192,7 @@ const handleSyncUser = async (req, res, next) => {
             decodedToken = await (0, auth_1.getAuth)().verifyIdToken(bearerToken);
         }
         catch (err) {
-            return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Invalid or expired Firebase ID token: ' + (err?.message || 'Verification failed'), 401);
+            return (0, response_1.sendError)(res, 'UNAUTHORIZED', 'Invalid or expired authentication token', 401);
         }
         // Rely strictly on verified identity claims from Google
         const uid = decodedToken.uid;

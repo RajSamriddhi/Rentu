@@ -1,8 +1,10 @@
 const functions = require('firebase-functions');
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.SUPABASE_DATABASE_URL || 
-  'postgresql://postgres.mkvpscrnqvkaddpmqtbm:dimty9-botgeF-gisfej@aws-0-ap-south-1.pooler.supabase.com:6543/postgres';
+const DATABASE_URL = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.warn('WARNING: SUPABASE_DATABASE_URL / DATABASE_URL not set in Cloud Functions environment.');
+}
 
 const pool = new Pool({
   connectionString: DATABASE_URL,

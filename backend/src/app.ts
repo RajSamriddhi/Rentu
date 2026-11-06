@@ -21,9 +21,11 @@ import { runMigrations } from './db/migrate';
 import {
   securityHeaders,
   authRateLimiter,
+  uploadRateLimiter,
   generalApiRateLimiter,
   isAllowedOrigin
 } from './middleware/security';
+import { inputSanitizer } from './middleware/sanitize';
 
 let migrationsPromise: Promise<void> | null = null;
 const ensureMigrations = async () => {
@@ -64,6 +66,9 @@ export const createApp = () => {
   // 3. Request body parsers with safe limits (supports image uploads up to 5MB + base64 overhead)
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // 3.1 Automatic XSS & malicious input sanitization
+  app.use(inputSanitizer);
 
   // 4. Global API Rate Limiter (protects against scraping, flooding, and DoS)
   app.use(generalApiRateLimiter);
@@ -112,7 +117,7 @@ export const createApp = () => {
   app.use(['/api/analytics', '/analytics'], analyticsRoutes);
   app.use(['/api/users', '/users'], usersRoutes);
   app.use(['/api/messages', '/messages'], messagesRoutes);
-  app.use(['/api/upload', '/upload'], uploadRoutes);
+  app.use(['/api/upload', '/upload'], uploadRateLimiter, uploadRoutes);
   app.use(['/api/notifications', '/notifications'], notificationsRoutes);
   app.use(['/api/support', '/support'], supportRoutes);
   app.use(['/api/admin', '/admin'], adminRoutes);

@@ -12,7 +12,7 @@ const router = Router();
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address format'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().optional(),
   username: z.string().regex(/^[a-z0-9_]{3,30}$/, 'Username must be 3-30 characters of lowercase letters, numbers, and underscores').optional(),
   phone: z.string().optional(),
@@ -78,7 +78,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
       cleanUsername = await generateUniqueUsername(email, displayName);
     }
 
-    const passwordHash = await bcrypt.hash(validated.password, 10);
+    const passwordHash = await bcrypt.hash(validated.password, 12);
     const defaultAvatar = validated.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
 
     const result = await query(
@@ -221,7 +221,7 @@ const handleSyncUser = async (req: Request, res: Response, next: any) => {
     try {
       decodedToken = await getAuth().verifyIdToken(bearerToken);
     } catch (err: any) {
-      return sendError(res, 'UNAUTHORIZED', 'Invalid or expired Firebase ID token: ' + (err?.message || 'Verification failed'), 401);
+      return sendError(res, 'UNAUTHORIZED', 'Invalid or expired authentication token', 401);
     }
 
     // Rely strictly on verified identity claims from Google
