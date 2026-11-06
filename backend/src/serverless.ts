@@ -1,5 +1,13 @@
 import { createApp } from './app';
 
+process.on('unhandledRejection', (reason) => {
+  console.warn('[SERVERLESS UNHANDLED REJECTION]:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[SERVERLESS UNCAUGHT EXCEPTION]:', err);
+});
+
 const app = createApp();
 
 const handler = (req: any, res: any) => {

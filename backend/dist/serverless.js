@@ -1,6 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = require("./app");
+process.on('unhandledRejection', (reason) => {
+    console.warn('[SERVERLESS UNHANDLED REJECTION]:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[SERVERLESS UNCAUGHT EXCEPTION]:', err);
+});
 const app = (0, app_1.createApp)();
 const handler = (req, res) => {
     try {

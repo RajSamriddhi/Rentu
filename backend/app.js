@@ -104197,6 +104197,12 @@ var createApp = () => {
 };
 
 // src/serverless.ts
+process.on("unhandledRejection", (reason) => {
+  console.warn("[SERVERLESS UNHANDLED REJECTION]:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[SERVERLESS UNCAUGHT EXCEPTION]:", err);
+});
 var app = createApp();
 var handler = (req, res) => {
   try {
