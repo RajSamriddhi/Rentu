@@ -5,7 +5,6 @@ import {
   MapPin,
   Lock,
   FileText,
-  Github,
   Heart,
   ExternalLink,
   HelpCircle,
@@ -324,18 +323,6 @@ export const Footer: React.FC<FooterProps> = ({
                     <span>Help Center & Support</span>
                   </button>
                 </li>
-                <li>
-                  <a
-                    href="https://github.com/Sadiqua-Parween/Rentu"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-ink-secondary hover:text-brand transition-colors inline-flex items-center gap-1"
-                  >
-                    <Github className="w-3.5 h-3.5" />
-                    <span>GitHub Repository</span>
-                    <ExternalLink className="w-2.5 h-2.5 text-ink-muted" />
-                  </a>
-                </li>
               </ul>
             </div>
           </div>
@@ -374,15 +361,6 @@ export const Footer: React.FC<FooterProps> = ({
               >
                 Privacy
               </button>
-              <a
-                href="https://github.com/Sadiqua-Parween/Rentu"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Rentu on GitHub"
-                className="p-1.5 rounded-full hover:bg-canvas text-ink-muted hover:text-ink transition-colors"
-              >
-                <Github className="w-4 h-4" />
-              </a>
             </div>
           </div>
         </div>
@@ -468,25 +446,6 @@ export const Footer: React.FC<FooterProps> = ({
                     <p>
                       Photos, item descriptions, and gear listings posted by community members remain the intellectual property of the respective user. Rentu does not claim ownership over neighbor photos or creative assets.
                     </p>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-brand/5 border border-brand/20 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <Github className="w-5 h-5 text-ink shrink-0" />
-                      <div>
-                        <div className="font-bold text-ink text-xs">Open Source on GitHub</div>
-                        <div className="text-[11px] text-ink-secondary">View the repository, report bugs, or contribute code.</div>
-                      </div>
-                    </div>
-                    <a
-                      href="https://github.com/Sadiqua-Parween/Rentu"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-primary text-xs px-3 py-1.5 font-bold inline-flex items-center gap-1 shadow-pink shrink-0"
-                    >
-                      <span>Repository</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
                   </div>
                 </div>
               )}
