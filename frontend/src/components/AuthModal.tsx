@@ -168,10 +168,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         handlePostAuthSuccess();
       } catch (err: any) {
         console.error('Log in error:', err);
-        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-          setErrorMsg('Invalid email or password. Please try again.');
-        } else if (err.code === 'auth/user-not-found') {
-          setErrorMsg('No account found with this email. Please sign up.');
+        if (err.code === 'INVALID_PASSWORD' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          setErrorMsg('Invalid password. Please check your password and try again.');
+        } else if (err.code === 'USER_NOT_FOUND' || err.code === 'auth/user-not-found') {
+          setErrorMsg('No account found with this email. Please click Sign Up.');
+        } else if (err.code === 'GOOGLE_AUTH_REQUIRED') {
+          setErrorMsg('This account was registered with Google. Please click "Continue with Google" above.');
         } else {
           setErrorMsg(err.message || 'Login failed. Please check your credentials.');
         }

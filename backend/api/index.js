@@ -87363,15 +87363,15 @@ router.post("/login", async (req, res, next) => {
       [validated.email.toLowerCase()]
     );
     if (result.rows.length === 0) {
-      return sendError(res, "INVALID_CREDENTIALS", "Invalid email or password", 401);
+      return sendError(res, "USER_NOT_FOUND", "No account found with this email", 404);
     }
     const user = result.rows[0];
     if (!user.password_hash) {
-      return sendError(res, "INVALID_CREDENTIALS", "This account was registered with Google. Please use Google Sign-In.", 401);
+      return sendError(res, "GOOGLE_AUTH_REQUIRED", "This account was registered with Google. Please use Google Sign-In.", 401);
     }
     const isMatch = await import_bcryptjs.default.compare(validated.password, user.password_hash);
     if (!isMatch) {
-      return sendError(res, "INVALID_CREDENTIALS", "Invalid email or password", 401);
+      return sendError(res, "INVALID_PASSWORD", "Invalid password. Please try again.", 401);
     }
     if (!user.username) {
       const generated = await generateUniqueUsername(user.email, user.name);

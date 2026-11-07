@@ -21,10 +21,6 @@
   ],
   "rewrites": [
     {
-      "source": "/__/auth/(.*)",
-      "destination": "https://rentu-732b7.firebaseapp.com/__/auth/$1"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api"
     },
@@ -33,7 +29,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api/|__/auth/).*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

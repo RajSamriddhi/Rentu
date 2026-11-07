@@ -114,15 +114,15 @@ router.post('/login', async (req, res, next) => {
         const result = await (0, db_1.query)(`SELECT id, email, password_hash, name, username, phone, locality, address_text, pincode, avatar_url, bio, trust_score, role, COALESCE(is_verified, FALSE) AS is_verified, COALESCE(saved_locations, '[]'::jsonb) AS saved_locations, created_at
        FROM users WHERE email = $1`, [validated.email.toLowerCase()]);
         if (result.rows.length === 0) {
-            return (0, response_1.sendError)(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
+            return (0, response_1.sendError)(res, 'USER_NOT_FOUND', 'No account found with this email', 404);
         }
         const user = result.rows[0];
         if (!user.password_hash) {
-            return (0, response_1.sendError)(res, 'INVALID_CREDENTIALS', 'This account was registered with Google. Please use Google Sign-In.', 401);
+            return (0, response_1.sendError)(res, 'GOOGLE_AUTH_REQUIRED', 'This account was registered with Google. Please use Google Sign-In.', 401);
         }
         const isMatch = await bcryptjs_1.default.compare(validated.password, user.password_hash);
         if (!isMatch) {
-            return (0, response_1.sendError)(res, 'INVALID_CREDENTIALS', 'Invalid email or password', 401);
+            return (0, response_1.sendError)(res, 'INVALID_PASSWORD', 'Invalid password. Please try again.', 401);
         }
         // Ensure user always has a unique username set
         if (!user.username) {
