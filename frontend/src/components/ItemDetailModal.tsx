@@ -10,6 +10,8 @@ import {
   Lock, 
   Check, 
   ChevronRight,
+  ChevronLeft,
+  Maximize2,
   Sparkles,
   Navigation,
   Loader2,
@@ -57,6 +59,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   const { user, isAuthenticated } = useAuth();
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const isFreeListing = Boolean(
     item && (
       Number(item.price_per_day) <= 0 ||
@@ -466,32 +469,66 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             {/* Left 7 Columns: Gallery + Item Details */}
             <div className="lg:col-span-7 space-y-6">
               
-              {/* Gallery Layout */}
+              {/* Gallery Layout with Full Uncropped Picture and Lightbox */}
               <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
                 {/* Thumbnails only if multiple real photos exist */}
                 {images.length > 1 && (
-                  <div className="flex sm:flex-col gap-2 overflow-x-auto sm:overflow-visible shrink-0 pb-1 sm:pb-0 scrollbar-none">
+                  <div className="flex sm:flex-col gap-2.5 overflow-x-auto sm:overflow-visible shrink-0 pb-1 sm:pb-0 scrollbar-none">
                     {images.map((img, idx) => (
                       <button
                         key={idx}
+                        type="button"
                         onClick={() => setActiveImageIndex(idx)}
-                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
-                          activeImageIndex === idx ? 'border-brand ring-2 ring-brand/30' : 'border-divider hover:border-brand/40'
+                        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer bg-zinc-950 flex items-center justify-center ${
+                          activeImageIndex === idx ? 'border-brand ring-2 ring-brand/30 scale-105' : 'border-divider hover:border-brand/40 opacity-70 hover:opacity-100'
                         }`}
+                        title={`View photo ${idx + 1}`}
                       >
-                        <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                        <img src={img} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-xs opacity-40 pointer-events-none" />
+                        <img src={img} alt={`Thumbnail ${idx + 1}`} className="relative z-10 w-full h-full object-contain" />
                       </button>
                     ))}
                   </div>
                 )}
 
-                {/* Large Main Photo */}
-                <div className="flex-1 aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-900 border border-divider relative">
+                {/* Large Main Photo: Shows FULL uncropped picture with elegant ambient backdrop */}
+                <div 
+                  onClick={() => setIsLightboxOpen(true)}
+                  className="flex-1 min-h-[300px] sm:min-h-[420px] max-h-[500px] aspect-[4/3] sm:aspect-[16/10] rounded-2xl overflow-hidden bg-zinc-950 dark:bg-black border border-divider relative flex items-center justify-center group cursor-zoom-in shadow-inner"
+                  title="Click to view full picture"
+                >
+                  {/* Ambient blurred backdrop so any aspect ratio fills elegantly without awkward bars */}
+                  <img
+                    src={images[activeImageIndex] || images[0]}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110 pointer-events-none"
+                  />
+                  {/* Full Uncropped High-Resolution Image */}
                   <img
                     src={images[activeImageIndex] || images[0]}
                     alt={item.title}
-                    className="w-full h-full object-cover"
+                    className="relative z-10 max-w-full max-h-[480px] w-auto h-auto object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.01]"
                   />
+                  {/* View Fullscreen button badge */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsLightboxOpen(true);
+                    }}
+                    className="absolute top-3 right-3 z-20 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-black/65 hover:bg-black/90 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 opacity-90 hover:opacity-100 transition-all shadow-md cursor-pointer"
+                    title="View full picture"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">View Full</span>
+                  </button>
+                  {/* Photo counter if multiple */}
+                  {images.length > 1 && (
+                    <div className="absolute bottom-3 right-3 z-20 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-black tracking-wider shadow-sm pointer-events-none">
+                      {activeImageIndex + 1} / {images.length}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1193,6 +1230,71 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             }
           }}
         />
+      )}
+
+      {/* Fullscreen Photo Lightbox Modal */}
+      {isLightboxOpen && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150"
+          onClick={() => setIsLightboxOpen(false)}
+        >
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={() => setIsLightboxOpen(false)}
+            className="absolute top-4 right-4 z-50 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            title="Close full view"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* Photo Navigation - Previous */}
+          {images.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+              }}
+              className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-50 p-2.5 sm:p-3 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
+              title="Previous photo"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Full Image */}
+          <div 
+            className="relative max-w-full max-h-full flex flex-col items-center justify-center p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={images[activeImageIndex] || images[0]}
+              alt={item.title}
+              className="max-h-[85vh] max-w-[90vw] object-contain rounded-xl shadow-2xl"
+            />
+            {images.length > 1 && (
+              <div className="mt-3 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-bold shadow-md">
+                {activeImageIndex + 1} / {images.length}
+              </div>
+            )}
+          </div>
+
+          {/* Photo Navigation - Next */}
+          {images.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+              }}
+              className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-50 p-2.5 sm:p-3 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
+              title="Next photo"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -48,8 +48,8 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   const [maxDurationDays, setMaxDurationDays] = useState(365);
   const [condition, setCondition] = useState('Like new');
   const [locality, setLocality] = useState(user?.locality || '');
-  const [imageUrl, setImageUrl] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const imageUrl = imageUrls[0] || '';
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | ''>(0);
   const [offersPickup, setOffersPickup] = useState(false);
@@ -111,24 +111,51 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
   }, [user]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
+
+    const remainingSlots = 5 - imageUrls.length;
+    if (remainingSlots <= 0) {
+      setErrorMsg('You can upload a maximum of 5 pictures.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    const filesToUpload = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      setErrorMsg(`Only ${remainingSlots} more photo(s) could be added (max 5 photos total).`);
+    } else {
+      setErrorMsg('');
+    }
 
     setIsUploading(true);
-    setErrorMsg('');
 
     try {
-      const publicUrl = await uploadItemPhoto(file, 'gear');
-      setImageUrl(publicUrl);
-      setImageUrls((prev) => [...prev, publicUrl]);
+      const uploadPromises = filesToUpload.map((f) => uploadItemPhoto(f, 'gear'));
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setImageUrls((prev) => [...prev, ...uploadedUrls].slice(0, 5));
     } catch (err: any) {
       console.error('Upload failed:', err);
-      setErrorMsg(err.message || 'Failed to upload photo. Please try again.');
+      setErrorMsg(err.message || 'Failed to upload photo(s). Please try again.');
     } finally {
       setIsUploading(false);
       // Reset input value so same photo can be re-selected if desired
       if (e.target) e.target.value = '';
     }
+  };
+
+  const handleRemovePhoto = (indexToRemove: number) => {
+    setImageUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    setErrorMsg('');
+  };
+
+  const handleSetCoverPhoto = (indexToCover: number) => {
+    setImageUrls((prev) => {
+      if (indexToCover <= 0 || indexToCover >= prev.length) return prev;
+      const copy = [...prev];
+      const [chosen] = copy.splice(indexToCover, 1);
+      return [chosen, ...copy];
+    });
   };
 
   const startCamera = async () => {
@@ -165,6 +192,11 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
 
   const capturePhotoFromCamera = async () => {
     if (!videoRef.current) return;
+    if (imageUrls.length >= 5) {
+      setErrorMsg('You have already added the maximum of 5 photos.');
+      stopCamera();
+      return;
+    }
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
@@ -185,8 +217,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       try {
         const file = new File([blob], `gear-${Date.now()}.jpg`, { type: 'image/jpeg' });
         const publicUrl = await uploadItemPhoto(file, 'gear');
-        setImageUrl(publicUrl);
-        setImageUrls((prev) => [...prev, publicUrl]);
+        setImageUrls((prev) => [...prev, publicUrl].slice(0, 5));
       } catch (err: any) {
         console.error('Upload error:', err);
         setErrorMsg(err.message || 'Failed to upload captured photo. Please try again.');
@@ -217,8 +248,13 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
       return;
     }
 
-    if (!imageUrl) {
-      setErrorMsg('Please upload a picture of your item or take a photo with your camera.');
+    if (imageUrls.length === 0) {
+      setErrorMsg('Please upload at least 1 photo of your item (up to 5 allowed).');
+      return;
+    }
+
+    if (imageUrls.length > 5) {
+      setErrorMsg('You can upload a maximum of 5 photos.');
       return;
     }
 
@@ -402,16 +438,28 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 2: Photo Upload (From Computer/Phone OR Camera) */}
+          {/* SECTION 2: Photo Upload (Up to 5 Photos) */}
           <div className="space-y-3 pt-2 border-t border-divider">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-ink-secondary">
-              2. Gear Photo <span className="text-brand">*</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-ink-secondary">
+                2. Gear Photos <span className="text-brand">*</span>
+              </h3>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                imageUrls.length >= 5 
+                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                  : imageUrls.length > 0
+                  ? 'bg-brand/10 text-brand'
+                  : 'text-ink-secondary'
+              }`}>
+                {imageUrls.length}/5 photos
+              </span>
+            </div>
 
-            {/* Hidden file & camera inputs */}
+            {/* Hidden file & camera inputs with multiple file support */}
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept="image/*"
               onChange={handleFileChange}
               className="hidden"
@@ -460,64 +508,120 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
               </div>
             )}
 
-            {/* Photo Preview or Selection Area */}
+            {/* Multi-Photo Gallery & Selection Area */}
             {!isCameraActive && (
-              <div>
-                {imageUrl ? (
-                  <div className="flex items-center gap-4 p-3.5 bg-canvas rounded-2xl border border-divider">
-                    <div className="w-20 h-20 rounded-xl overflow-hidden border border-divider shrink-0 relative group">
-                      <img
-                        src={imageUrl}
-                        alt="Item preview"
-                        className="w-full h-full object-cover"
-                      />
-                      {isUploading && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
-                          <Loader2 className="w-5 h-5 animate-spin" />
+              <div className="space-y-3">
+                {imageUrls.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                      {imageUrls.map((url, idx) => (
+                        <div 
+                          key={idx} 
+                          className="relative aspect-square rounded-2xl overflow-hidden border border-divider bg-zinc-950 group shadow-xs flex items-center justify-center"
+                        >
+                          {/* Ambient blur behind image */}
+                          <img
+                            src={url}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-md opacity-35 scale-110 pointer-events-none"
+                          />
+                          {/* Full uncropped image fit */}
+                          <img
+                            src={url}
+                            alt={`Photo ${idx + 1}`}
+                            className="relative z-10 max-w-full max-h-full object-contain"
+                          />
+
+                          {/* Cover badge / Set Cover button */}
+                          {idx === 0 ? (
+                            <span className="absolute top-1.5 left-1.5 z-20 px-2 py-0.5 rounded-full bg-brand text-white text-[9px] font-extrabold shadow-sm">
+                              Cover
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetCoverPhoto(idx)}
+                              className="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-full bg-black/70 hover:bg-brand text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
+                              title="Set as primary cover photo"
+                            >
+                              Set Cover
+                            </button>
+                          )}
+
+                          {/* Remove button */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(idx)}
+                            className="absolute top-1.5 right-1.5 z-20 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-all hover:scale-110 shadow-sm cursor-pointer"
+                            title="Remove this photo"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Add more tile if under 5 photos */}
+                      {imageUrls.length < 5 && (
+                        <div className="aspect-square rounded-2xl border-2 border-dashed border-divider hover:border-brand/60 bg-canvas/60 hover:bg-brand/5 flex flex-col items-center justify-center p-2 text-center transition-colors">
+                          {isUploading ? (
+                            <div className="flex flex-col items-center justify-center gap-1.5">
+                              <Loader2 className="w-5 h-5 text-brand animate-spin" />
+                              <span className="text-[10px] font-bold text-ink">Uploading...</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-1.5 w-full h-full">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="p-1.5 rounded-xl bg-surface border border-divider hover:border-brand text-ink hover:text-brand transition-colors cursor-pointer"
+                                  title="Upload from device"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={startCamera}
+                                  className="p-1.5 rounded-xl bg-surface border border-divider hover:border-brand text-ink hover:text-brand transition-colors cursor-pointer"
+                                  title="Take photo with camera"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <span className="text-[10px] font-bold text-ink-secondary">
+                                + Add ({imageUrls.length}/5)
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <Check className="w-4 h-4 stroke-[3]" />
-                        <span>Photo attached successfully</span>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center justify-between text-[11px] text-ink-secondary pt-1 px-1">
+                      <span>Tip: First photo will be the main cover. You can upload up to 5 photos.</span>
+                      {imageUrls.length < 5 && (
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isUploading}
-                          className="px-3 py-1 rounded-full border border-divider hover:bg-surface text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1 transition-colors"
+                          className="text-brand font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
                         >
-                          <Upload className="w-3 h-3 text-brand" />
-                          <span>Change Photo</span>
+                          <Plus className="w-3 h-3" />
+                          <span>Add more pictures</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={startCamera}
-                          disabled={isUploading}
-                          className="px-3 py-1 rounded-full border border-divider hover:bg-surface text-xs font-bold text-ink cursor-pointer inline-flex items-center gap-1 transition-colors"
-                        >
-                          <Camera className="w-3 h-3 text-brand" />
-                          <span>Click New Photo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setImageUrl('')}
-                          className="px-2.5 py-1 rounded-full hover:bg-rose-500/10 text-rose-500 text-xs font-bold transition-colors cursor-pointer"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                      )}
                     </div>
                   </div>
-                ) : (
+                )}
+
+                {/* Empty State / Initial Upload Prompt */}
+                {imageUrls.length === 0 && (
                   <div className="p-5 border-2 border-dashed border-divider rounded-2xl bg-canvas/40 text-center space-y-3">
                     {isUploading ? (
                       <div className="py-6 flex flex-col items-center justify-center gap-2">
                         <Loader2 className="w-8 h-8 text-brand animate-spin" />
-                        <span className="text-xs font-bold text-ink">Uploading photo...</span>
+                        <span className="text-xs font-bold text-ink">Uploading photos...</span>
                       </div>
                     ) : (
                       <>
@@ -526,10 +630,10 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                         </div>
                         <div className="space-y-0.5">
                           <p className="text-xs font-bold text-ink">
-                            Add a picture of your item
+                            Add pictures of your item (up to 5 photos)
                           </p>
                           <p className="text-[11px] text-ink-secondary max-w-sm mx-auto">
-                            Upload from your device storage or snap a picture right now with your camera.
+                            Upload multiple photos at once or snap pictures using your camera. First photo will be your cover.
                           </p>
                         </div>
                         <div className="flex items-center justify-center gap-2.5 pt-1 flex-wrap">
@@ -539,7 +643,7 @@ export const DropGearModal: React.FC<DropGearModalProps> = ({
                             className="btn-secondary text-xs px-4 py-2 font-bold cursor-pointer inline-flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
                           >
                             <Upload className="w-3.5 h-3.5 text-brand" />
-                            <span>Upload from Computer / Phone</span>
+                            <span>Upload Photos (Select Multiple)</span>
                           </button>
                           <button
                             type="button"

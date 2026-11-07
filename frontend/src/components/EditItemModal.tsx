@@ -84,21 +84,44 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
+
+    const remainingSlots = 5 - imageUrls.length;
+    if (remainingSlots <= 0) {
+      setErrorMsg('You can upload a maximum of 5 pictures.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const filesToUpload = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      setErrorMsg(`Only ${remainingSlots} more photo(s) could be added (maximum 5 photos allowed).`);
+    } else {
+      setErrorMsg('');
+    }
 
     setIsUploading(true);
-    setErrorMsg('');
     try {
-      const publicUrl = await uploadItemPhoto(file, 'gear');
-      setImageUrls((prev) => [...prev, publicUrl]);
+      const uploadPromises = filesToUpload.map((f) => uploadItemPhoto(f, 'gear'));
+      const newUrls = await Promise.all(uploadPromises);
+      setImageUrls((prev) => [...prev, ...newUrls].slice(0, 5));
     } catch (err: any) {
       console.error('Photo upload error:', err);
-      setErrorMsg('Failed to upload image. Please try again.');
+      setErrorMsg('Failed to upload image(s). Please try again.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleSetCoverPhoto = (indexToCover: number) => {
+    setImageUrls((prev) => {
+      if (indexToCover <= 0 || indexToCover >= prev.length) return prev;
+      const copy = [...prev];
+      const [chosen] = copy.splice(indexToCover, 1);
+      return [chosen, ...copy];
+    });
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -117,7 +140,11 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
       return;
     }
     if (imageUrls.length === 0) {
-      setErrorMsg('Please provide at least one photo of your gear.');
+      setErrorMsg('Please provide at least one photo of your gear (up to 5 allowed).');
+      return;
+    }
+    if (imageUrls.length > 5) {
+      setErrorMsg('You can upload a maximum of 5 photos.');
       return;
     }
 
@@ -226,52 +253,84 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           )}
 
           {/* Photos Gallery */}
-          <div>
-            <label className="block text-xs font-bold text-ink mb-2">Item Photos ({imageUrls.length}) *</label>
-            <div className="flex items-center gap-3 overflow-x-auto pb-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-ink">Item Photos ({imageUrls.length}/5) *</label>
+              <span className="text-[11px] text-ink-secondary">Max 5 photos • First is cover</span>
+            </div>
+            
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5 pt-1">
               {imageUrls.map((url, idx) => (
-                <div key={idx} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-divider bg-canvas shrink-0 group shadow-xs">
-                  <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-divider bg-zinc-950 group shadow-xs flex items-center justify-center">
+                  {/* Ambient blur behind image */}
+                  <img
+                    src={url}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-md opacity-35 scale-110 pointer-events-none"
+                  />
+                  {/* Full uncropped image */}
+                  <img
+                    src={url}
+                    alt={`Photo ${idx + 1}`}
+                    className="relative z-10 max-w-full max-h-full object-contain"
+                  />
+
+                  {/* Cover badge / Set Cover button */}
+                  {idx === 0 ? (
+                    <span className="absolute top-1 left-1 z-20 px-1.5 py-0.5 rounded-md bg-brand text-white text-[9px] font-black shadow-xs">
+                      Cover
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleSetCoverPhoto(idx)}
+                      className="absolute top-1 left-1 z-20 px-1.5 py-0.5 rounded-md bg-black/70 hover:bg-brand text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                      title="Set as cover photo"
+                    >
+                      Cover
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(idx)}
-                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                    className="absolute top-1 right-1 z-20 w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-transform hover:scale-110 cursor-pointer shadow-xs"
                     title="Remove photo"
                   >
                     <X className="w-3 h-3" />
                   </button>
-                  {idx === 0 && (
-                    <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] font-bold text-center py-0.5">
-                      Cover
-                    </span>
-                  )}
                 </div>
               ))}
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="w-20 h-20 rounded-2xl border border-dashed border-divider hover:border-brand/60 bg-canvas hover:bg-brand-soft/20 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors shrink-0 text-ink-secondary hover:text-brand"
-              >
-                {isUploading ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-brand" />
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    <span className="text-[10px] font-bold">Add Photo</span>
-                  </>
-                )}
-              </button>
+              {imageUrls.length < 5 && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="aspect-square rounded-2xl border-2 border-dashed border-divider hover:border-brand/60 bg-canvas hover:bg-brand-soft/20 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors text-ink-secondary hover:text-brand"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-brand" />
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span className="text-[10px] font-bold">+ Add ({imageUrls.length}/5)</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
+
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept="image/*"
               onChange={handlePhotoUpload}
               className="hidden"
             />
-            <p className="text-[11px] text-ink-secondary mt-1">Add clear photos of your gear to attract borrowers.</p>
+            <p className="text-[11px] text-ink-secondary">Add clear photos of your gear from different angles (up to 5 photos).</p>
           </div>
 
           {/* Listing Type Toggle: Rent vs Free Borrow */}
