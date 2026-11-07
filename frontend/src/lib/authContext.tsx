@@ -55,8 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         err?.code === 'UNAUTHORIZED' || 
         err?.code === 'HTTP_401' || 
         err?.status === 401 ||
-        err?.message?.toLowerCase().includes('sign in') ||
-        err?.message?.toLowerCase().includes('unauthorized');
+        err?.code === 'INVALID_TOKEN';
       if (isAuthError) {
         console.warn('Clearing invalid or expired local session.');
         localStorage.removeItem('borrowflex_token');
@@ -124,18 +123,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Listen to Firebase Auth state changes & catch redirect sign-in results
   useEffect(() => {
+    // Check local session immediately on mount
+    const localToken = localStorage.getItem('borrowflex_token');
+    if (localToken) {
+      fetchProfile();
+    }
+
     if (!auth) {
-      const localToken = localStorage.getItem('borrowflex_token');
-      if (localToken && !localToken.startsWith('fb_')) {
-        fetchProfile();
-      } else {
+      if (!localToken) {
         setUser(null);
         setIsLoading(false);
       }
       return;
     }
 
-    // Process redirect result if coming back from Google redirect on mobile/PWA
+    // Process redirect result if coming back from Google redirect fallback
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
@@ -152,9 +154,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (fbUser) {
           await syncFirebaseUser(fbUser);
         } else {
-          // If not logged into Firebase, check if local demo token is active
-          const localToken = localStorage.getItem('borrowflex_token');
-          if (localToken && !localToken.startsWith('fb_')) {
+          // If not logged into Firebase, check if local backend token is active
+          const currentToken = localStorage.getItem('borrowflex_token');
+          if (currentToken) {
             fetchProfile();
           } else {
             setUser(null);
@@ -173,37 +175,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Google Sign-In with popup or redirect (Optimized for Android, iOS, PWA and Desktop)
+  // Google Sign-In with popup first (Optimized for Android Chrome, iOS, PWA, and Desktop)
   const loginWithGoogle = async () => {
     if (!auth) {
       throw new Error('Authentication is currently not initialized. Please refresh the page.');
     }
     setIsLoading(true);
 
-    const isMobileOrPwa =
-      /android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    if (isMobileOrPwa) {
-      // In mobile browsers and installed standalone PWAs, popups are blocked or fail silently.
-      // Use standard redirect flow which redirects to Google and returns smoothly.
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      } catch (redirectErr) {
-        console.warn('signInWithRedirect failed, attempting popup fallback:', redirectErr);
-      }
-    }
-
     try {
+      // signInWithPopup works natively across Desktop, Android Chrome, and Android PWA (Custom Tabs)
       const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
+      if (result && result.user) {
         await syncFirebaseUser(result.user);
       }
     } catch (err: any) {
-      // If popup was blocked by browser or environment does not support window popups, fallback to redirect
+      console.warn('signInWithPopup notice:', err?.code, err?.message);
+      // If popup was explicitly blocked by the browser or environment does not support window popups, fallback to redirect
       if (
         err.code === 'auth/popup-blocked' ||
         err.code === 'auth/operation-not-supported-in-this-environment'
@@ -223,8 +210,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     const cleanEmail = email.trim();
     const cleanUsername = username?.trim().toLowerCase();
+
+    // If Firebase auth is not initialized, directly log in through backend API
+    if (!auth) {
+      try {
+        const res = await api.login(cleanEmail, password);
+        if (res && res.token && res.user) {
+          localStorage.setItem('borrowflex_token', res.token);
+          setToken(res.token);
+          setUser(res.user);
+          return;
+        }
+      } catch (err) {
+        setIsLoading(false);
+        throw err;
+      }
+    }
+
     try {
-      // 1. First attempt to sign in
+      // 1. First attempt to sign in via Firebase
       const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
       if (result.user) {
         await syncFirebaseUser(result.user);
@@ -235,12 +239,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
     } catch (signInErr: any) {
+      // Fallback: Check if user exists in database directly
+      try {
+        const res = await api.login(cleanEmail, password);
+        if (res && res.token && res.user) {
+          localStorage.setItem('borrowflex_token', res.token);
+          setToken(res.token);
+          setUser(res.user);
+          return;
+        }
+      } catch {
+        // Backend login failed, proceed with registration or error check
+      }
+
       const isNotFound = 
         signInErr.code === 'auth/user-not-found' || 
         signInErr.code === 'auth/invalid-credential';
 
       if (isNotFound) {
-        // 2. User doesn't exist yet, automatically create their account
+        // 2. User doesn't exist yet in Firebase, automatically create their account
         try {
           const createResult = await createUserWithEmailAndPassword(auth, cleanEmail, password);
           if (createResult.user) {
@@ -262,18 +279,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw createErr;
         }
       } else {
-        // Fallback: try direct backend login
-        try {
-          const res = await api.login(cleanEmail, password);
-          if (res && res.token && res.user) {
-            localStorage.setItem('borrowflex_token', res.token);
-            setToken(res.token);
-            setUser(res.user);
-            return;
-          }
-        } catch {
-          // Keep original error
-        }
         setIsLoading(false);
         throw signInErr;
       }

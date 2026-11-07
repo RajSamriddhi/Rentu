@@ -94,7 +94,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     try {
       await loginWithGoogle();
-      handlePostAuthSuccess(false);
+      if (localStorage.getItem('borrowflex_token')) {
+        handlePostAuthSuccess(false);
+      }
     } catch (err: any) {
       console.error('Google sign-in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
