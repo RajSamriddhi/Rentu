@@ -169,7 +169,7 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
       {/* Card Header without Select Time button */}
       <div className="flex items-center justify-between">
         <label className="text-[10px] font-extrabold uppercase tracking-wider text-ink-secondary flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5 text-brand" />
+          <Clock className="w-3.5 h-3.5 text-[#E91E78]" />
           <span>{label}</span>
         </label>
       </div>
@@ -177,18 +177,18 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
       {/* Main Trigger Box with Select Time / Close replacing Change */}
       <div
         onClick={onToggleOpen}
-        className={`w-full bg-surface border rounded-xl px-3 py-2.5 flex items-center justify-between cursor-pointer transition-all shadow-2xs hover:border-brand select-none group ${
-          isError ? 'border-rose-500 text-rose-500' : 'border-divider text-ink'
+        className={`w-full bg-surface dark:bg-[#1A1A24] border rounded-xl px-3 py-2.5 flex items-center justify-between cursor-pointer transition-all shadow-2xs hover:border-[#E91E78] select-none group ${
+          isError ? 'border-rose-500 text-rose-500' : 'border-divider dark:border-[#2A2A38] text-ink'
         }`}
       >
         <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-brand shrink-0" />
+          <Clock className="w-4 h-4 text-[#E91E78] shrink-0" />
           <span className="text-xs font-black">{formatTime12(time)}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-brand group-hover:text-brand-dark transition-colors">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#E91E78] group-hover:text-[#C2185B] transition-colors">
           <span>{isOpen ? 'Close' : 'Select Time'}</span>
           <ChevronDown
-            className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180 text-brand' : 'text-brand'}`}
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#E91E78]' : 'text-[#E91E78]'}`}
           />
         </div>
       </div>
@@ -217,8 +217,8 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
                 }}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-brand text-white border-brand shadow-xs'
-                    : 'bg-surface border-divider text-ink-secondary hover:text-ink hover:border-brand/40'
+                    ? 'bg-[#E91E78] text-white border-[#E91E78] shadow-xs'
+                    : 'bg-surface dark:bg-[#1C1C26] border-divider dark:border-[#2C2C3A] text-ink-secondary dark:text-zinc-300 hover:text-ink dark:hover:text-white hover:border-[#E91E78]/40'
                 }`}
               >
                 {pLabel}
@@ -228,17 +228,17 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
         </div>
       )}
 
-      {/* Custom Floating Dropdown Popover - Redesigned Pure White & Rentu Pink */}
+      {/* Custom Floating Dropdown Popover - Theme Aware (Light: Pure White, Dark: #17171F) */}
       {isOpen && (
         <div
           className={`absolute ${
             placement === 'top' ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]'
-          } left-0 right-0 z-50 bg-white border border-zinc-200/90 rounded-[16px] p-3 shadow-xl shadow-black/8 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-150 ease-out`}
+          } left-0 right-0 z-50 bg-white dark:bg-[#17171F] border border-zinc-200/90 dark:border-[#2A2A38] rounded-[16px] p-3 shadow-xl shadow-black/8 dark:shadow-2xl dark:shadow-black/60 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-150 ease-out`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-100 text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-zinc-800">
-              <Clock className="w-3.5 h-3.5 text-[#E91678]" />
+          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-100 dark:border-[#262734] text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-white">
+              <Clock className="w-3.5 h-3.5 text-[#E91E78]" />
               <span>Select {label} Time</span>
             </div>
             <button
@@ -247,7 +247,7 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
                 e.stopPropagation();
                 onClose();
               }}
-              className="w-6 h-6 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 flex items-center justify-center cursor-pointer transition-colors"
+              className="w-6 h-6 rounded-full hover:bg-zinc-100 dark:hover:bg-[#22222C] text-zinc-400 hover:text-zinc-700 dark:hover:text-white flex items-center justify-center cursor-pointer transition-colors"
               aria-label="Close"
             >
               <X className="w-3.5 h-3.5" />
@@ -255,7 +255,7 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
           </div>
 
           {availableSlots.length === 0 ? (
-            <div className="py-5 px-3 text-center text-xs text-zinc-500 font-medium">
+            <div className="py-5 px-3 text-center text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               {emptyMessage || 'No available slots for this date.'}
             </div>
           ) : (
@@ -273,8 +273,8 @@ const TimePickerCard: React.FC<TimePickerCardProps> = ({
                     }}
                     className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition-all cursor-pointer border ${
                       isSelected
-                        ? 'bg-[#E91678] text-white border-[#E91678] shadow-sm font-black scale-[1.02]'
-                        : 'bg-zinc-50 text-zinc-700 border-zinc-200/80 hover:border-[#E91678]/50 hover:text-[#E91678] hover:bg-pink-50/60'
+                        ? 'bg-[#E91E78] text-white border-[#E91E78] shadow-sm font-black scale-[1.02]'
+                        : 'bg-zinc-50 dark:bg-[#22222C] text-zinc-700 dark:text-zinc-200 border-zinc-200/80 dark:border-[#2E2E3C] hover:bg-pink-50/70 hover:border-[#E91E78]/50 hover:text-[#E91E78] dark:hover:bg-[#2C2C38] dark:hover:border-zinc-600 dark:hover:text-white'
                     }`}
                   >
                     {formatTime12(slot)}
