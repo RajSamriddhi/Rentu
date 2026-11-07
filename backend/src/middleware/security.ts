@@ -10,8 +10,8 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
   // Prevent browser MIME-type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  // Prevent clickjacking / framing
-  res.setHeader('X-Frame-Options', 'DENY');
+  // Prevent clickjacking / framing while permitting same-origin iframes for auth
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
 
   // Modern XSS protection standard (disables flawed legacy auditor to prevent XS-Leaks)
   res.setHeader('X-XSS-Protection', '0');
@@ -32,9 +32,6 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
 
   // Disable browser speculative DNS prefetching
   res.setHeader('X-DNS-Prefetch-Control', 'off');
-
-  // Restrict sensitive browser APIs
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=()');
 
   // Hide Express signature
   res.removeHeader('X-Powered-By');

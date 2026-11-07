@@ -104042,7 +104042,7 @@ if (require.main === module) {
 // src/middleware/security.ts
 var securityHeaders = (req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("X-XSS-Protection", "0");
   if (ENV.NODE_ENV === "production" || req.secure || req.headers["x-forwarded-proto"] === "https") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
@@ -104051,7 +104051,6 @@ var securityHeaders = (req, res, next) => {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   res.setHeader("X-DNS-Prefetch-Control", "off");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), payment=()");
   res.removeHeader("X-Powered-By");
   next();
 };

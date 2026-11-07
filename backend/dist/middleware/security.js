@@ -10,8 +10,8 @@ const env_1 = require("../config/env");
 const securityHeaders = (req, res, next) => {
     // Prevent browser MIME-type sniffing
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Prevent clickjacking / framing
-    res.setHeader('X-Frame-Options', 'DENY');
+    // Prevent clickjacking / framing while permitting same-origin iframes for auth
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     // Modern XSS protection standard (disables flawed legacy auditor to prevent XS-Leaks)
     res.setHeader('X-XSS-Protection', '0');
     // Strict Transport Security (HSTS): forces HTTPS for 1 year in production
@@ -26,8 +26,6 @@ const securityHeaders = (req, res, next) => {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     // Disable browser speculative DNS prefetching
     res.setHeader('X-DNS-Prefetch-Control', 'off');
-    // Restrict sensitive browser APIs
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=()');
     // Hide Express signature
     res.removeHeader('X-Powered-By');
     next();

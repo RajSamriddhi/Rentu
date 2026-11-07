@@ -34,11 +34,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const isMobileOrPWA = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobileUA = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+  const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth <= 768;
+  return isMobileUA || isStandalone || isTouchDevice;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<(User & { stats?: any }) | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('borrowflex_token'));
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const syncingUserRef = React.useRef<string | null>(null);
 
   const fetchProfile = async () => {
     if (!localStorage.getItem('borrowflex_token')) {
@@ -69,6 +79,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync Firebase authenticated user with the Rentu⁺ database
   const syncFirebaseUser = async (fbUser: FirebaseUser) => {
+    if (syncingUserRef.current === fbUser.uid) {
+      return;
+    }
+    syncingUserRef.current = fbUser.uid;
     setIsLoading(true);
     const email = fbUser.email || `${fbUser.uid}@firebase.rentu.internal`;
     const name = fbUser.displayName || email.split('@')[0] || 'Rentu Member';
@@ -118,6 +132,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Backend sync failed, continuing with Firebase verified profile:', err);
     } finally {
       setIsLoading(false);
+      setTimeout(() => {
+        if (syncingUserRef.current === fbUser.uid) {
+          syncingUserRef.current = null;
+        }
+      }, 3000);
     }
   };
 
@@ -175,13 +194,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Google Sign-In (Optimized for Android Chrome, iOS, PWA, and Desktop)
+  // Google Sign-In (Direct Redirect for Android / iOS / PWA; Pop-up with redirect fallback for Desktop)
   const loginWithGoogle = async () => {
     if (!auth) {
       throw new Error('Authentication is currently not initialized. Please refresh the page.');
     }
-    setIsLoading(true);
 
+    // On mobile devices (Android / iOS) and PWAs, pop-ups freeze background tabs and cause postMessage drops.
+    // Calling signInWithRedirect directly provides instant, seamless authentication.
+    if (isMobileOrPWA()) {
+      setIsLoading(true);
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result && result.user) {
