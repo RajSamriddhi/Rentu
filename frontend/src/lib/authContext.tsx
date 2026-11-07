@@ -175,27 +175,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Google Sign-In with popup first (Optimized for Android Chrome, iOS, PWA, and Desktop)
+  // Google Sign-In (Optimized for Android Chrome, iOS, PWA, and Desktop)
   const loginWithGoogle = async () => {
     if (!auth) {
       throw new Error('Authentication is currently not initialized. Please refresh the page.');
     }
     setIsLoading(true);
 
+    const isMobile =
+      /android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
+
+    if (isMobile) {
+      // In mobile browsers and installed standalone PWAs, redirect flow with same-origin auth proxy is the recommended, reliable standard
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      } catch (redirectErr) {
+        console.warn('signInWithRedirect notice:', redirectErr);
+      }
+    }
+
     try {
-      // signInWithPopup works natively across Desktop, Android Chrome, and Android PWA (Custom Tabs)
       const result = await signInWithPopup(auth, googleProvider);
       if (result && result.user) {
         await syncFirebaseUser(result.user);
       }
     } catch (err: any) {
       console.warn('signInWithPopup notice:', err?.code, err?.message);
-      // If popup was explicitly blocked by the browser or environment does not support window popups, fallback to redirect
+      // If popup failed for ANY reason (blocked, closed by mobile tab sleep, cancelled, etc.), fall back to redirect
       if (
         err.code === 'auth/popup-blocked' ||
+        err.code === 'auth/popup-closed-by-user' ||
+        err.code === 'auth/cancelled-popup-request' ||
         err.code === 'auth/operation-not-supported-in-this-environment'
       ) {
-        console.log('Popup blocked or unsupported, falling back to redirect flow...');
+        console.log('Popup blocked or closed, falling back to redirect flow...');
         await signInWithRedirect(auth, googleProvider);
         return;
       }

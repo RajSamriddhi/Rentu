@@ -14,9 +14,20 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 
+const getAuthDomain = () => {
+  if (typeof window !== 'undefined') {
+    const host = window.location.host;
+    // When hosted on rentu.site or vercel domain, use current host so auth handler is same-origin
+    if (host.includes('rentu.site') || host.includes('vercel.app')) {
+      return host;
+    }
+  }
+  return import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "rentu-732b7.firebaseapp.com";
+};
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB6ah1Pz0RdCilzVhUvra-6Yl0TIeDmFtY",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "rentu-732b7.firebaseapp.com",
+  authDomain: getAuthDomain(),
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "rentu-732b7",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "rentu-732b7.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1009683861079",

@@ -87174,6 +87174,25 @@ async function resolveUserFromToken(token) {
         const u = userRes.rows[0];
         return { id: u.id, email: u.email, role: u.role, name: u.name };
       }
+      try {
+        const displayName = decodedToken.name || email.split("@")[0] || "Rentu Member";
+        const rawUsername = email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "");
+        const autoUsername = `${rawUsername.slice(0, 18)}_${Date.now().toString().slice(-4)}`;
+        const defaultAvatar = decodedToken.picture || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(displayName)}`;
+        const created = await query(
+          `INSERT INTO users (id, firebase_uid, email, name, username, locality, avatar_url, bio, role)
+           VALUES ($1, $2, $3, $4, $5, '', $6, 'Member of the Rentu gear sharing community', 'USER')
+           ON CONFLICT (email) DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid
+           RETURNING id, email, role, name`,
+          [firebaseUid, firebaseUid, email, displayName, autoUsername, defaultAvatar]
+        );
+        if (created.rows.length > 0) {
+          const u = created.rows[0];
+          return { id: u.id, email: u.email, role: u.role, name: u.name };
+        }
+      } catch (provisionErr) {
+        console.warn("Auto-provisioning user in auth middleware notice:", provisionErr);
+      }
       return null;
     }
   } catch {
