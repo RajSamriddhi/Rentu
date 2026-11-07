@@ -156,15 +156,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Process redirect result if coming back from Google redirect fallback
+    // Process redirect result if coming back from Google redirect flow
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
           await syncFirebaseUser(result.user);
         }
       })
-      .catch((err) => {
-        console.warn('Firebase getRedirectResult notification:', err);
+      .catch((err: any) => {
+        console.error('Firebase getRedirectResult notification:', err);
+        // Do not alert on user-initiated cancellations
+        const ignoreCodes = ['auth/redirect-cancelled-by-user', 'auth/popup-closed-by-user'];
+        if (err?.code && !ignoreCodes.includes(err.code)) {
+          let message = 'Google sign-in could not be completed. Please try again.';
+          if (err.code === 'auth/unauthorized-domain') {
+            message = `Domain "${window.location.hostname}" is not authorized. Please add it to Firebase Console & Google Cloud OAuth URIs.`;
+          } else if (err.code === 'auth/network-request-failed') {
+            message = 'Network error during Google sign-in. Please check your internet connection.';
+          } else if (err.message) {
+            message = err.message;
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('rentu:toast', {
+              detail: {
+                type: 'error',
+                title: 'Google Sign-In Failed',
+                message,
+                duration: 9000
+              }
+            }));
+          }
+        }
       });
 
     try {
