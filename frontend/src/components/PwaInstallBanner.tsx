@@ -69,7 +69,6 @@ export const PwaInstallBanner: React.FC = () => {
 
     // 4. Listen for browser install prompt (Chrome/Android/Edge/Desktop)
     const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
       (window as any).__pwaInstallPrompt = e;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
