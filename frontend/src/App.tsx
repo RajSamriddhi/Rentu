@@ -104,6 +104,23 @@ const getTabFromUrl = (): TabType => {
   return 'home';
 };
 
+const getItemIdFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const itemParam = params.get('item') || params.get('itemId');
+  if (itemParam) return itemParam;
+
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  const pathMatch = path.match(/^item\/([^/?#]+)/i);
+  if (pathMatch) return decodeURIComponent(pathMatch[1]);
+
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const hashMatch = hash.match(/^item[=/]([^/?#]+)/i);
+  if (hashMatch) return decodeURIComponent(hashMatch[1]);
+
+  return null;
+};
+
 export const App: React.FC = () => {
   const { user, firebaseUser, isAuthenticated } = useAuth();
   const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
@@ -285,6 +302,27 @@ export const App: React.FC = () => {
 
   // Modals
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+
+  // Deep linking: Automatically open product details when shared link is visited
+  useEffect(() => {
+    const targetItemId = getItemIdFromUrl();
+    if (!targetItemId) return;
+
+    let isMounted = true;
+    api.getItem(targetItemId)
+      .then((item) => {
+        if (isMounted && item) {
+          setSelectedItem(item);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load shared product from URL:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isDropGearOpen, setIsDropGearOpen] = useState(false);
   const [isDropWishOpen, setIsDropWishOpen] = useState(false);
@@ -689,7 +727,15 @@ export const App: React.FC = () => {
       {selectedItem && (
         <ItemDetailModal
           item={selectedItem}
-          onClose={() => setSelectedItem(null)}
+          onClose={() => {
+            setSelectedItem(null);
+            if (typeof window !== 'undefined' && window.location.search.includes('item')) {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('item');
+              url.searchParams.delete('itemId');
+              window.history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
+            }
+          }}
           onBookingSuccess={() => loadFeed()}
           onOpenAuth={() => setIsAuthOpen(true)}
           onOpenChatWithBooking={handleOpenChatWithBooking}

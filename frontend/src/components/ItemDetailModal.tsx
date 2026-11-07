@@ -81,6 +81,72 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     }
   });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isShareCopied, setIsShareCopied] = useState(false);
+
+  const handleShareItem = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!item?.id) return;
+
+    const shareUrl = `${window.location.origin}/?item=${encodeURIComponent(item.id)}`;
+    const cleanTitle = formatCleanTitle(item.title);
+    const shareTitle = `${cleanTitle} on Rentu`;
+    const shareText = isFreeListing
+      ? `Borrow "${cleanTitle}" for free on Rentu!`
+      : `Rent "${cleanTitle}" for ₹${item.price_per_day}/day on Rentu!`;
+
+    const shareData = {
+      title: shareTitle,
+      text: shareText,
+      url: shareUrl,
+    };
+
+    // 1. Try native Web Share API (mobile Chrome Android, iOS Safari, PWA)
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share(shareData);
+        setIsShareCopied(true);
+        setTimeout(() => setIsShareCopied(false), 2500);
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return; // User cancelled / dismissed the native share sheet
+        }
+        console.warn('Native share failed, falling back to clipboard copy:', err);
+      }
+    }
+
+    // 2. Clipboard API copy fallback
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = shareUrl;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setIsShareCopied(true);
+      setTimeout(() => setIsShareCopied(false), 2500);
+
+      window.dispatchEvent(
+        new CustomEvent('rentu:toast', {
+          detail: {
+            type: 'success',
+            title: 'Link Copied!',
+            message: 'Product link copied to clipboard. Share it anywhere!',
+            duration: 3000,
+          },
+        })
+      );
+    } catch (err) {
+      console.error('Failed to copy share link:', err);
+    }
+  };
 
   React.useEffect(() => {
     if (isFreeListing) {
@@ -585,13 +651,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => navigator.clipboard?.writeText(window.location.href)}
-                    className="w-9 h-9 rounded-full border border-divider hover:bg-canvas flex items-center justify-center text-ink transition-colors cursor-pointer"
-                    title="Share item"
-                  >
-                    <Share2 className="w-4 h-4" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={handleShareItem}
+                      className={`w-9 h-9 rounded-full border transition-all flex items-center justify-center cursor-pointer ${
+                        isShareCopied
+                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400'
+                          : 'border-divider hover:bg-canvas text-ink hover:text-brand hover:border-brand/40'
+                      }`}
+                      title={isShareCopied ? 'Link Copied to Clipboard!' : 'Share item'}
+                    >
+                      {isShareCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+                    </button>
+                    {isShareCopied && (
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-surface-elevated text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-500/30 whitespace-nowrap shadow-lg pointer-events-none animate-fade-in z-20">
+                        Link Copied!
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     onClick={toggleFavorite}
