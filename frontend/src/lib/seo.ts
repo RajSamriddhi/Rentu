@@ -66,3 +66,4 @@ export const updateSeo = (config: SeoConfig) => {
   }
   canonicalEl.setAttribute('href', url.split('?')[0]); // Clean canonical apex URL
 };
+
