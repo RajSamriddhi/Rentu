@@ -1,10 +1,24 @@
 User-agent: *
 Allow: /
+Allow: /explore
+Allow: /requests
+Allow: /community
+Allow: /user/
+Allow: /u/
 Allow: /favicon.ico
 Allow: /favicon.svg
-Allow: /favicon-48x48.png
-Allow: /icon-192.png
-Allow: /icon-512.png
+Allow: /favicon-*.png
+Allow: /icon-*.png
 Allow: /og-image.png
+Allow: /site.webmanifest
+
+# Disallow private user-specific and API routes from indexing
+Disallow: /api/
+Disallow: /__/auth/
+Disallow: /admin
+Disallow: /messages
+Disallow: /bookings
+Disallow: /hustle
 
 Sitemap: https://www.rentu.site/sitemap.xml
+Sitemap: https://rentu.site/sitemap.xml

@@ -25,6 +25,7 @@ import { Footer } from './components/Footer';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
+import { updateSeo } from './lib/seo';
 import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
 import confetti from 'canvas-confetti';
 import { CheckCircle2, AlertCircle, X, ArrowRight } from 'lucide-react';
@@ -377,6 +378,89 @@ export const App: React.FC = () => {
       window.removeEventListener('rentu:toast', handleGlobalToast);
     };
   }, [showToast]);
+
+  // Reactive SEO & Open Graph dynamic metadata updater
+  useEffect(() => {
+    if (selectedItem) {
+      updateSeo({
+        title: `${selectedItem.title} — Rent for ₹${selectedItem.price_per_day}/day`,
+        description: selectedItem.description?.slice(0, 160) || `Rent ${selectedItem.title} in ${selectedItem.locality || 'your area'}. Verified gear rental with secure handovers on Rentu.`,
+        image: selectedItem.image_urls?.[0],
+        type: 'product',
+        canonicalUrl: `https://www.rentu.site/?item=${selectedItem.id}`
+      });
+      return;
+    }
+
+    if (viewingUserId) {
+      updateSeo({
+        title: `Member Profile (@${viewingUserId})`,
+        description: `View gear listings and community rental activity for @${viewingUserId} on Rentu.`,
+        canonicalUrl: `https://www.rentu.site/@${viewingUserId}`
+      });
+      return;
+    }
+
+    if (selectedCategory) {
+      updateSeo({
+        title: `${selectedCategory} for Rent`,
+        description: `Explore and rent verified ${selectedCategory.toLowerCase()} from locals in your area. Secure handovers, zero buying costs.`,
+        canonicalUrl: `https://www.rentu.site/?category=${encodeURIComponent(selectedCategory)}`
+      });
+      return;
+    }
+
+    switch (activeTab) {
+      case 'explore':
+        updateSeo({
+          title: 'Explore Gear & Equipment for Rent',
+          description: 'Browse thousands of verified cameras, tech, audio gear, camping equipment, and tools available for rent nearby.',
+          canonicalUrl: 'https://www.rentu.site/explore'
+        });
+        break;
+      case 'requests':
+        updateSeo({
+          title: 'Community Gear Requests & Wishlist',
+          description: 'See what equipment people in your community are looking to borrow or rent, or post a request for gear you need.',
+          canonicalUrl: 'https://www.rentu.site/requests'
+        });
+        break;
+      case 'community':
+        updateSeo({
+          title: 'Community Pulse & Activity',
+          description: 'Explore community gear sharing activity, top categories, and local equipment trends on Rentu.',
+          canonicalUrl: 'https://www.rentu.site/community'
+        });
+        break;
+      case 'bookings':
+        updateSeo({
+          title: 'My Bookings & Rentals',
+          description: 'Manage your active rentals, handovers, and return dates on Rentu.'
+        });
+        break;
+      case 'messages':
+        updateSeo({
+          title: 'Direct Messages & Coordination',
+          description: 'Coordinate gear handovers and chat with lenders and borrowers on Rentu.'
+        });
+        break;
+      case 'profile':
+        updateSeo({
+          title: 'My Account & Gear Locker',
+          description: 'Manage your listed items, reviews, trust score, and earnings on Rentu.'
+        });
+        break;
+      case 'hustle':
+        updateSeo({
+          title: 'Lender Dashboard & Analytics',
+          description: 'Track your gear rental performance, earnings, and neighborhood reach on Rentu.'
+        });
+        break;
+      default:
+        updateSeo({});
+        break;
+    }
+  }, [activeTab, selectedItem, viewingUserId, selectedCategory]);
 
   const handleOpenAuth = (mode: 'login' | 'signup' = 'login') => {
     setAuthMode(mode);

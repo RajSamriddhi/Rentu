@@ -21,17 +21,20 @@
     <meta name="format-detection" content="telephone=no" />
 
     <!-- Google Search SEO Snippet -->
-    <title>Rentu</title>
-    <meta name="description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own." />
-    <meta name="keywords" content="rent, lend, borrow, rentu, rent gear, rent cameras, rent electronics, peer to peer rental, local rental" />
+    <title>Rentu — Peer-to-Peer Rental Marketplace | Rent &amp; Lend Gear</title>
+    <meta name="description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, electronics, tools, and creative gear, or earn cash by lending what you own." />
+    <meta name="keywords" content="rent, lend, borrow, rentu, rent gear, rent cameras, rent electronics, peer to peer rental, local rental, gear sharing, camera rental nearby, electronics rental" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="author" content="Rentu" />
+    <meta name="rating" content="general" />
     <link rel="canonical" href="https://www.rentu.site/" />
 
     <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
     <meta property="og:site_name" content="Rentu" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.rentu.site/" />
-    <meta property="og:title" content="Rentu" />
-    <meta property="og:description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own." />
+    <meta property="og:title" content="Rentu — Peer-to-Peer Rental Marketplace | Rent &amp; Lend Gear" />
+    <meta property="og:description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, electronics, tools, and creative gear, or earn cash by lending what you own." />
     <meta property="og:image" content="https://www.rentu.site/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -41,11 +44,12 @@
     <!-- Twitter / X Cards -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@rentu" />
-    <meta name="twitter:title" content="Rentu" />
-    <meta name="twitter:description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own." />
+    <meta name="twitter:creator" content="@rentu" />
+    <meta name="twitter:title" content="Rentu — Peer-to-Peer Rental Marketplace | Rent &amp; Lend Gear" />
+    <meta name="twitter:description" content="Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, electronics, tools, and creative gear, or earn cash by lending what you own." />
     <meta name="twitter:image" content="https://www.rentu.site/og-image.png" />
 
-    <!-- Google Schema.org Structured Data (Organization Logo & WebSite) -->
+    <!-- Google Schema.org Structured Data (WebSite + SearchAction + Organization + FAQPage) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -55,9 +59,17 @@
           "@id": "https://www.rentu.site/#website",
           "url": "https://www.rentu.site/",
           "name": "Rentu",
-          "alternateName": ["Rentu.site"],
-          "description": "Rentu is the community platform to rent, lend, and borrow anything. Save money by renting cameras, tech, tools, and fits, or earn cash by lending what you own.",
-          "inLanguage": "en-US"
+          "alternateName": ["Rentu.site", "Rentu Marketplace"],
+          "description": "Rentu is the community peer-to-peer platform to rent, lend, and borrow anything locally.",
+          "inLanguage": "en-US",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://www.rentu.site/?search={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
         },
         {
           "@type": "Organization",
@@ -70,7 +82,41 @@
             "width": 512,
             "height": 512
           },
-          "image": "https://www.rentu.site/og-image.png"
+          "image": "https://www.rentu.site/og-image.png",
+          "sameAs": [
+            "https://twitter.com/rentu",
+            "https://www.instagram.com/rentu"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://www.rentu.site/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How does Rentu work?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Rentu lets you browse and rent gear like cameras, electronics, and tools from verified locals in your neighborhood. You can also list items you own to earn passive income."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How is item handover verified?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Every rental requires a secure 6-digit verification code exchanged in person between the borrower and owner to confirm item condition and protect both parties."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is it free to list items on Rentu?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes! Listing items on Rentu is 100% free with no upfront fees. You set your daily rental price, security deposit, and pickup rules."
+              }
+            }
+          ]
         }
       ]
     }
