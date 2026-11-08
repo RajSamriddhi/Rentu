@@ -1,5 +1,5 @@
 // Service Worker for Rentu PWA & Web Push Notifications
-const CACHE_NAME = 'rentu-pwa-v1';
+const CACHE_NAME = 'rentu-pwa-v2';
 
 // Assets to precache on install
 const PRECACHE_ASSETS = [
@@ -46,8 +46,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass API requests to ensure real-time freshness
-  if (request.url.includes('/api/') || request.url.includes('/supabase') || request.url.includes('/auth/')) {
+  // Bypass API requests and auth handlers to ensure real-time freshness
+  if (
+    request.url.includes('/api/') || 
+    request.url.includes('/supabase') || 
+    request.url.includes('/auth/') || 
+    request.url.includes('/__/auth')
+  ) {
     return;
   }
 
