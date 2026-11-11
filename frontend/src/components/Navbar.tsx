@@ -26,7 +26,11 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  Package
+  Package,
+  Home as HomeIcon,
+  Briefcase,
+  ClipboardList,
+  LogIn
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -1377,7 +1381,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
 
-        {/* Modern Slide-in Hamburger Drawer (Side Sheet) */}
+        {/* Modern Slide-in Hamburger Drawer (Left Side Sheet matching Mockup) */}
         {showMobileMenu && (
           <div className="fixed inset-0 z-50 md:hidden">
             {/* Dark Backdrop to dim underlying page and close on tap */}
@@ -1387,25 +1391,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               aria-hidden="true"
             />
 
-            {/* Slide-out Hamburger Sidebar Panel */}
+            {/* Slide-out Hamburger Sidebar Panel (Anchored to Left with Rounded Right Edge) */}
             <div 
-              className="fixed inset-y-0 right-0 w-[300px] sm:w-[340px] max-w-[85vw] bg-surface text-ink border-l border-divider shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-right duration-250 ease-out"
+              className="fixed inset-y-0 left-0 w-[270px] sm:w-[290px] max-w-[80vw] bg-surface text-ink shadow-2xl rounded-r-3xl flex flex-col justify-between z-10 border-r border-divider animate-in slide-in-from-left duration-250 ease-out"
               style={{
                 paddingTop: 'max(1rem, env(safe-area-inset-top, 1rem))',
                 paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))',
               }}
             >
-              {/* Top Drawer Header with Brand & Close Button */}
-              <div className="px-5 pb-3 border-b border-divider flex items-center justify-between">
+              {/* Drawer Top Header: Brand Logo & Close Button */}
+              <div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-divider/60">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-xl tracking-tight text-ink font-display">
-                    Rentu<sup className="text-brand font-black text-sm">⁺</sup>
+                  <span className="font-extrabold text-2xl tracking-tight text-ink font-display">
+                    Rentu<sup className="text-brand font-black text-base">⁺</sup>
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowMobileMenu(false)}
-                  className="p-1.5 rounded-full hover:bg-canvas text-ink-secondary hover:text-ink transition-colors cursor-pointer"
+                  className="p-1 rounded-full text-ink-muted hover:text-ink hover:bg-canvas transition-colors cursor-pointer"
                   title="Close Menu"
                   aria-label="Close navigation menu"
                 >
@@ -1413,246 +1417,225 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
 
-              {/* Scrollable Drawer Content */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-                {/* User Profile Card (if Authenticated) */}
-                {isAuthenticated ? (
-                  <div className="p-3 rounded-2xl bg-canvas border border-divider flex items-center gap-3">
+              {/* Scrollable Navigation List */}
+              <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+                {/* 1. Home */}
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('home'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'home'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  <HomeIcon className={`w-5 h-5 ${activeTab === 'home' ? 'text-brand' : 'text-ink-secondary'}`} />
+                  <span>Home</span>
+                </button>
+
+                {/* 2. Market / Marketplace */}
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'explore'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  <Compass className={`w-5 h-5 ${activeTab === 'explore' ? 'text-brand' : 'text-ink-secondary'}`} />
+                  <span>Market</span>
+                </button>
+
+                {/* 3. Bookings */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('bookings');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'bookings'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  <Calendar className={`w-5 h-5 ${activeTab === 'bookings' ? 'text-brand' : 'text-ink-secondary'}`} />
+                  <span>Bookings</span>
+                </button>
+
+                {/* 4. Community */}
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'community'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  <Users className={`w-5 h-5 ${activeTab === 'community' ? 'text-brand' : 'text-ink-secondary'}`} />
+                  <span>Community</span>
+                </button>
+
+                {/* 5. Chat (Messages) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('messages');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'messages'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
+                    <span>Chat</span>
+                  </div>
+                  {unreadMessagesCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-xs">
+                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 6. Profile */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('profile');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'profile'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-ink hover:bg-canvas font-medium'
+                  }`}
+                >
+                  {user?.avatar_url ? (
                     <img
-                      src={
-                        user?.avatar_url ||
-                        (user?.name
-                          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
-                          : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
-                      }
-                      alt={user?.name || 'User'}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-brand/30 shrink-0"
+                      src={user.avatar_url}
+                      alt={user.name || 'User'}
+                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-divider"
                     />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-extrabold text-sm text-ink truncate">{user?.name}</div>
-                      <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-[#EA580C] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                      {(user?.name || 'S').charAt(0).toUpperCase()}
                     </div>
-                  </div>
-                ) : (
-                  /* Guest Header with Login / Signup Buttons */
-                  <div className="p-4 rounded-2xl bg-canvas border border-divider space-y-3">
-                    <div>
-                      <div className="font-black text-sm text-ink">Welcome to Rentu⁺</div>
-                      <div className="text-xs text-ink-secondary mt-0.5">Rent, lend, and borrow verified gear.</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <button
-                        type="button"
-                        id="mobile-login-btn"
-                        onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
-                        className="btn-secondary w-full py-2 text-xs text-center font-bold cursor-pointer"
-                      >
-                        Log In
-                      </button>
-                      <button
-                        type="button"
-                        id="mobile-signup-btn"
-                        onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
-                        className="btn-primary w-full py-2 text-xs text-center font-bold shadow-pink cursor-pointer"
-                      >
-                        Sign Up
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  )}
+                  <span>Profile</span>
+                </button>
 
-                {/* Primary Navigation Links */}
-                <div className="space-y-1">
-                  <div className="px-3 py-1 text-[10px] font-black uppercase text-ink-muted tracking-wider">
-                    Menu
-                  </div>
+                {/* Divider */}
+                <div className="border-t border-divider my-2 mx-1" />
 
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                      activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
-                    }`}
-                  >
-                    <Compass className="w-4 h-4" />
-                    <span>Marketplace</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isAuthenticated && onOpenAuth) {
-                        onOpenAuth();
-                      } else {
-                        setActiveTab('bookings');
-                      }
-                      setShowMobileMenu(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                      activeTab === 'bookings' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4" />
-                    <span>Bookings</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                      activeTab === 'community' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
-                    }`}
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Community</span>
-                  </button>
-                </div>
-
-                {/* Account & App Links */}
-                {isAuthenticated && (
-                  <div className="space-y-1 pt-2 border-t border-divider">
-                    <div className="px-3 py-1 text-[10px] font-black uppercase text-ink-muted tracking-wider">
-                      Account & Activity
-                    </div>
-
+                {/* Authenticated User Items */}
+                {isAuthenticated ? (
+                  <>
+                    {/* My Gears */}
                     <button
                       type="button"
                       onClick={() => { setActiveTab('profile'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
                     >
-                      <UserIcon className="w-4 h-4 text-ink-secondary" />
-                      <span>My Profile & Listings</span>
+                      <Briefcase className="w-5 h-5 text-ink-secondary" />
+                      <span>My Gears</span>
+                    </button>
+
+                    {/* My Requests */}
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('requests'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
+                    >
+                      <ClipboardList className="w-5 h-5 text-ink-secondary" />
+                      <span>My Requests</span>
+                    </button>
+
+                    {/* Settings */}
+                    <button
+                      type="button"
+                      onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
+                    >
+                      <Settings className="w-5 h-5 text-ink-secondary" />
+                      <span>Settings</span>
+                    </button>
+
+                    {/* Help & Support */}
+                    <button
+                      type="button"
+                      onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
+                    >
+                      <HelpCircle className="w-5 h-5 text-ink-secondary" />
+                      <span>Help & Support</span>
+                    </button>
+                  </>
+                ) : (
+                  /* Guest Items */
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
+                    >
+                      <HelpCircle className="w-5 h-5 text-ink-secondary" />
+                      <span>Help & Support</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
-                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                        activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
-                      }`}
+                      id="mobile-login-btn"
+                      onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center gap-3">
-                        <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
-                        <span>Messages</span>
-                      </div>
-                      {unreadMessagesCount > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                          {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
-                        </span>
-                      )}
+                      <LogIn className="w-5 h-5 text-ink-secondary" />
+                      <span>Log In</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => { setShowNotifications(true); setShowMobileMenu(false); }}
-                      className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                      id="mobile-signup-btn"
+                      onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center gap-3">
-                        <Bell className="w-4 h-4 text-brand" />
-                        <span>Notifications</span>
-                      </div>
-                      {unreadCount > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                          {unreadCount}
-                        </span>
-                      )}
+                      <UserIcon className="w-5 h-5 text-brand" />
+                      <span>Sign Up</span>
                     </button>
-
-                    {isUserAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => { setActiveTab('hustle'); setShowMobileMenu(false); }}
-                        className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                      >
-                        <BarChart3 className="w-4 h-4 text-ink-secondary" />
-                        <span>Admin Dashboard</span>
-                      </button>
-                    )}
-                  </div>
+                  </>
                 )}
 
-                {/* Quick Post Gear / Request Buttons */}
-                <div className="pt-2 border-t border-divider space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      if (isAuthenticated) {
-                        onOpenDropGear();
-                      } else {
-                        onOpenAuth('login');
-                      }
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-brand text-white text-xs font-bold shadow-pink cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>List Your Gear</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      if (isAuthenticated) {
-                        onOpenDropWish();
-                      } else {
-                        onOpenAuth('login');
-                      }
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-canvas border border-divider hover:border-brand/40 text-ink text-xs font-bold cursor-pointer transition-colors"
-                  >
-                    <Target className="w-4 h-4 text-brand" />
-                    <span>Post a Request</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Drawer Footer with Theme Toggle, Settings, Help & Sign Out */}
-              <div className="p-4 border-t border-divider space-y-1.5 bg-canvas/60">
-                {/* Theme Toggle in Drawer */}
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    {isDark ? (
-                      <Sun className="w-4 h-4 text-amber-400" />
-                    ) : (
-                      <Moon className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
-                    )}
-                    <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
-                  </div>
-                  <span className="text-[10px] text-ink-muted uppercase font-bold">{isDark ? 'Dark' : 'Light'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <Settings className="w-4 h-4 text-ink-secondary" />
-                  <span>Settings</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <HelpCircle className="w-4 h-4 text-brand" />
-                  <span>Help & Support</span>
-                </button>
-
+                {/* Divider before Sign Out */}
                 {isAuthenticated && (
-                  <button
-                    type="button"
-                    onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer pt-2 border-t border-divider/60 mt-1"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sign Out</span>
-                  </button>
+                  <>
+                    <div className="border-t border-divider my-2 mx-1" />
+
+                    {/* Sign Out (Styled in Rentu Pink matching Mockup) */}
+                    <button
+                      type="button"
+                      onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-5 h-5 text-brand" />
+                      <span>Sign Out</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>
