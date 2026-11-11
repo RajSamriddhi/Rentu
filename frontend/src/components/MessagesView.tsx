@@ -2530,7 +2530,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                     {/* WhatsApp Attachment Popup Menu */}
                     {isAttachmentMenuOpen && (
-                      <div className="absolute bottom-12 sm:bottom-14 left-0 z-50 bg-surface/98 backdrop-blur-md border border-divider rounded-2xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 w-56 space-y-1">
+                      <div className="absolute bottom-12 sm:bottom-14 left-0 z-50 bg-surface backdrop-blur-md border border-divider rounded-2xl p-2 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 w-56 space-y-1">
                         {/* Photos & Videos */}
                         <button
                           type="button"
@@ -2619,7 +2619,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                       {/* WhatsApp Quick Emoji Picker Popover */}
                       {isEmojiPickerOpen && (
-                        <div className="absolute bottom-12 left-0 z-50 bg-surface/98 backdrop-blur-md border border-divider rounded-2xl p-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 flex items-center gap-1.5 flex-wrap w-60">
+                        <div className="absolute bottom-12 left-0 z-50 bg-surface backdrop-blur-md border border-divider rounded-2xl p-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-150 flex items-center gap-1.5 flex-wrap w-60">
                           {['😀', '😂', '👍', '🤝', '🙌', '🎉', '📍', '✨', '🙏', '🔥', '👏', '✅'].map((emoji) => (
                             <button
                               key={emoji}

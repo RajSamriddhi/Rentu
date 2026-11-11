@@ -62,17 +62,17 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
 
           {/* Trust Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs font-semibold text-ink-secondary">
+          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-6 text-[11px] sm:text-xs font-semibold text-ink-secondary">
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>100% Peer Verified</span>
             </div>
-            <span className="text-divider">•</span>
+            <span className="hidden sm:inline text-divider">•</span>
             <div className="flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>6-Digit Handover Verification</span>
             </div>
-            <span className="text-divider">•</span>
+            <span className="hidden sm:inline text-divider">•</span>
             <div className="flex items-center gap-1.5">
               <MessageSquare className="w-3.5 h-3.5 text-brand shrink-0" />
               <span>Direct Chat Coordination</span>
@@ -81,34 +81,34 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         </div>
 
         {/* Minimalist Stats Strip */}
-        <div className="mt-7 sm:mt-8 border-t border-divider pt-5 sm:pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
-          <div className="p-3">
+        <div className="mt-6 sm:mt-8 border-t border-divider pt-4 sm:pt-6 grid grid-cols-4 gap-1.5 sm:gap-4 max-w-3xl mx-auto text-center sm:text-left">
+          <div className="p-1 sm:p-3">
             {isLoading ? (
-              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+              <div className="h-6 sm:h-7 w-10 sm:w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
             ) : (
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
+              <div className="text-base sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
             )}
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Gear Available</div>
+            <div className="text-[9px] sm:text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5 leading-tight">Gear Available</div>
           </div>
-          <div className="p-3">
+          <div className="p-1 sm:p-3">
             {isLoading ? (
-              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+              <div className="h-6 sm:h-7 w-10 sm:w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
             ) : (
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
+              <div className="text-base sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
             )}
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
+            <div className="text-[9px] sm:text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5 leading-tight">Active Requests</div>
           </div>
-          <div className="p-3">
+          <div className="p-1 sm:p-3">
             {isLoading ? (
-              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+              <div className="h-6 sm:h-7 w-10 sm:w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
             ) : (
-              <div className="text-xl sm:text-2xl font-black text-ink font-display">{activeUsersCount}</div>
+              <div className="text-base sm:text-2xl font-black text-ink font-display">{activeUsersCount}</div>
             )}
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Users</div>
+            <div className="text-[9px] sm:text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5 leading-tight">Active Users</div>
           </div>
-          <div className="p-3">
-            <div className="text-xl sm:text-2xl font-black text-brand font-display">100%</div>
-            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Peer Verified</div>
+          <div className="p-1 sm:p-3">
+            <div className="text-base sm:text-2xl font-black text-brand font-display">100%</div>
+            <div className="text-[9px] sm:text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5 leading-tight">Peer Verified</div>
           </div>
         </div>
 

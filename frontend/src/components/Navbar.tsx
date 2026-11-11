@@ -860,7 +860,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile Search Toggle Button */}
             <button
-              onClick={() => setShowMobileSearch(!showMobileSearch)}
+              onClick={() => {
+                const next = !showMobileSearch;
+                setShowMobileSearch(next);
+                if (next) {
+                  setShowMobileMenu(false);
+                  setShowUserMenu(false);
+                  setShowNotifications(false);
+                }
+              }}
               className="lg:hidden p-1.5 sm:p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
               title="Search"
               aria-label="Toggle search"
@@ -878,6 +886,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                       const next = !showNotifications;
                       setShowNotifications(next);
                       if (next) {
+                        setShowMobileMenu(false);
+                        setShowMobileSearch(false);
+                        setShowUserMenu(false);
                         setVisibleLimit(10);
                         fetchNotifications();
                       }
@@ -1114,7 +1125,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="relative" ref={userMenuRef}>
                   <button
                     id="user-menu-btn"
-                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    onClick={() => {
+                      const next = !showUserMenu;
+                      setShowUserMenu(next);
+                      if (next) {
+                        setShowMobileMenu(false);
+                        setShowMobileSearch(false);
+                        setShowNotifications(false);
+                      }
+                    }}
                     className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-2.5 sm:py-1 rounded-full transition-all duration-200 cursor-pointer border select-none ${
                       showUserMenu
                         ? 'bg-surface border-brand ring-2 ring-brand/15 shadow-xs'
@@ -1240,7 +1259,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile Hamburger Menu Toggle Button (Visible on md and below) */}
             <button
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              onClick={() => {
+                const next = !showMobileMenu;
+                setShowMobileMenu(next);
+                if (next) {
+                  setShowMobileSearch(false);
+                  setShowUserMenu(false);
+                  setShowNotifications(false);
+                }
+              }}
               className="md:hidden p-1.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer"
               title="Toggle Menu"
               aria-label="Open mobile navigation menu"
@@ -1352,146 +1379,175 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Responsive Mobile Navigation Drawer / Dropdown */}
         {showMobileMenu && (
-          <div 
-            className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-white/98 dark:bg-[#111218]/98 backdrop-blur-xl px-4 py-5 space-y-4 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl"
-            style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
-          >
+          <>
+            {/* Full-screen Dark Backdrop to dim underlying page and catch outside taps */}
+            <div 
+              className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+              onClick={() => setShowMobileMenu(false)}
+              aria-hidden="true"
+            />
 
-            {/* Navigation Links */}
-            <div className="space-y-1">
-              <button
-                onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                  activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Compass className="w-4 h-4" />
-                <span>Marketplace (Items & Requests)</span>
-              </button>
+            {/* Mobile Navigation Drawer with 100% Opaque Solid Background */}
+            <div 
+              className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-[#171821] text-ink border-t border-divider px-4 py-4 space-y-3 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl"
+              style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
+            >
+              {/* Signed-in User Info Header in Mobile Drawer */}
+              {isAuthenticated && (
+                <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-divider flex items-center gap-3">
+                  <img
+                    src={
+                      user?.avatar_url ||
+                      (user?.name
+                        ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
+                        : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                    }
+                    alt={user?.name || 'User'}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-brand/30 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-extrabold text-sm text-ink truncate">{user?.name}</div>
+                    <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                  </div>
+                </div>
+              )}
 
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onOpenAuth) {
-                    onOpenAuth();
-                  } else {
-                    setActiveTab('bookings');
-                  }
-                  setShowMobileMenu(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                  activeTab === 'bookings' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Bookings</span>
-              </button>
-
-              <button
-                onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
-                  activeTab === 'community' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>Community & Leaderboard</span>
-              </button>
-            </div>
-
-            {/* Authenticated or Unauthenticated actions in Mobile Menu */}
-            {isAuthenticated ? (
-              <div className="pt-2 border-t border-divider space-y-1">
+              {/* Navigation Links */}
+              <div className="space-y-1">
                 <button
-                  onClick={() => { setActiveTab('profile'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <UserIcon className="w-4 h-4 text-ink-secondary" />
-                  <span>My Profile & Listings</span>
-                </button>
-
-                <button
-                  onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                    activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
+                  onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                    activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
-                    <span>Messages & Coordination</span>
-                  </div>
-                  {unreadMessagesCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount} new
-                    </span>
-                  )}
+                  <Compass className="w-4 h-4" />
+                  <span>Marketplace (Items & Requests)</span>
                 </button>
 
                 <button
-                  onClick={() => { setShowNotifications(true); setShowMobileMenu(false); }}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('bookings');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                    activeTab === 'bookings' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Bell className="w-4 h-4 text-brand" />
-                    <span>Notifications & Alerts</span>
-                  </div>
-                  {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                      {unreadCount} new
-                    </span>
-                  )}
+                  <Calendar className="w-4 h-4" />
+                  <span>Bookings</span>
                 </button>
 
                 <button
-                  onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                    activeTab === 'community' ? 'bg-brand text-white shadow-pink' : 'text-ink hover:bg-canvas'
+                  }`}
                 >
-                  <Settings className="w-4 h-4 text-ink-secondary" />
-                  <span>Settings</span>
-                </button>
-
-                <button
-                  onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <HelpCircle className="w-4 h-4 text-brand" />
-                  <span>Help & Raise Concern</span>
-                </button>
-
-                <button
-                  onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-brand hover:bg-pink-50 transition-colors cursor-pointer mt-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
+                  <Users className="w-4 h-4" />
+                  <span>Community & Leaderboard</span>
                 </button>
               </div>
-            ) : (
-              <div className="pt-2 border-t border-divider space-y-2">
-                <button
-                  onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <HelpCircle className="w-4 h-4 text-brand" />
-                  <span>Help & Community Support</span>
-                </button>
-                <div className="grid grid-cols-2 gap-2">
+
+              {/* Authenticated or Unauthenticated actions in Mobile Menu */}
+              {isAuthenticated ? (
+                <div className="pt-2 border-t border-divider space-y-1">
                   <button
-                    id="mobile-login-btn"
-                    onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
-                    className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                    onClick={() => { setActiveTab('profile'); setShowMobileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
                   >
-                    Log In
+                    <UserIcon className="w-4 h-4 text-ink-secondary" />
+                    <span>My Profile & Listings</span>
                   </button>
+
                   <button
-                    id="mobile-signup-btn"
-                    onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
-                    className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
+                    onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                      activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
+                    }`}
                   >
-                    Sign Up
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
+                      <span>Messages & Coordination</span>
+                    </div>
+                    {unreadMessagesCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
+                        {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount} new
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => { setShowNotifications(true); setShowMobileMenu(false); }}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Bell className="w-4 h-4 text-brand" />
+                      <span>Notifications & Alerts</span>
+                    </div>
+                    {unreadCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  >
+                    <Settings className="w-4 h-4 text-ink-secondary" />
+                    <span>Settings</span>
+                  </button>
+
+                  <button
+                    onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-brand" />
+                    <span>Help & Raise Concern</span>
+                  </button>
+
+                  <button
+                    onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer mt-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="pt-2 border-t border-divider space-y-2">
+                  <button
+                    onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-brand" />
+                    <span>Help & Community Support</span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      id="mobile-login-btn"
+                      onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
+                      className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                    >
+                      Log In
+                    </button>
+                    <button
+                      id="mobile-signup-btn"
+                      onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
+                      className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
+                    >
+                      Sign Up
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
