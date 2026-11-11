@@ -699,16 +699,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <button
                 onClick={() => setActiveTab('community')}
-                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`transition-colors cursor-pointer ${
                   activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
                 }`}
               >
-                <span>Community</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-colors ${
-                  activeTab === 'community' ? 'bg-brand text-white' : 'bg-brand-soft text-brand'
-                }`}>
-                  Top 10
-                </span>
+                Community
               </button>
             </nav>
           </div>
@@ -1393,19 +1388,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <button
                 onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
                   activeTab === 'community' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Users className="w-4 h-4" />
-                  <span>Community & Leaderboard</span>
-                </div>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                  activeTab === 'community' ? 'bg-white/20 text-white' : 'bg-brand-soft text-brand'
-                }`}>
-                  Top 10
-                </span>
+                <Users className="w-4 h-4" />
+                <span>Community & Leaderboard</span>
               </button>
             </div>
 
