@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   MapPin, 
@@ -291,6 +292,24 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  // Prevent background scrolling and handle Escape key while mobile menu drawer is open
+  useEffect(() => {
+    if (showMobileMenu) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setShowMobileMenu(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [showMobileMenu]);
 
   const unreadCount = serverUnreadCount !== null ? serverUnreadCount : notifications.filter((n) => !n.is_read && !n.read_at).length;
 
@@ -1385,8 +1404,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* Modern Slide-in Hamburger Drawer (Left Side Sheet matching Mockup) */}
-        {showMobileMenu && (
-          <div className="fixed inset-0 z-50 md:hidden">
+        {showMobileMenu && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[9999] md:hidden">
             {/* Dark Backdrop to dim underlying page and close on tap */}
             <div 
               className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
@@ -1394,25 +1413,26 @@ export const Navbar: React.FC<NavbarProps> = ({
               aria-hidden="true"
             />
 
-            {/* Slide-out Hamburger Sidebar Panel (Anchored to Left with Rounded Right Edge) */}
-            <div 
-              className="fixed inset-y-0 left-0 w-[275px] sm:w-[295px] max-w-[80vw] bg-surface text-ink shadow-2xl rounded-r-3xl flex flex-col justify-between z-10 border-r border-divider animate-in slide-in-from-left duration-250 ease-out"
+            {/* Slide-out Hamburger Sidebar Panel (72vw, Anchored to Left with Rounded Right Edge) */}
+            <aside 
+              aria-label="Mobile Navigation Drawer"
+              className="fixed inset-y-0 left-0 w-[72vw] max-w-[310px] min-w-[260px] h-full h-[100dvh] max-h-[100dvh] bg-white dark:bg-[#171821] text-ink shadow-2xl rounded-r-3xl flex flex-col justify-between z-10 border-r border-divider/60 animate-in slide-in-from-left duration-300 ease-out"
               style={{
                 paddingTop: 'max(1rem, env(safe-area-inset-top, 1rem))',
                 paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))',
               }}
             >
               {/* Drawer Top Header: Brand Logo & Close Button */}
-              <div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-divider/60">
+              <div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-black text-2xl tracking-tight text-ink font-display">
+                  <span className="font-extrabold text-2xl tracking-tight text-[#111827] dark:text-white font-display">
                     Rentu<sup className="text-brand font-black text-base">⁺</sup>
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowMobileMenu(false)}
-                  className="p-1 rounded-full text-ink-muted hover:text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  className="p-1 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                   title="Close Menu"
                   aria-label="Close navigation menu"
                 >
@@ -1421,7 +1441,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               {/* Scrollable Navigation List */}
-              <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-1">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-3.5 py-3 space-y-1">
                 {/* 1. Home */}
                 <button
                   type="button"
@@ -1429,10 +1449,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
                     activeTab === 'home'
                       ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-ink hover:bg-canvas font-medium'
+                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
                   }`}
                 >
-                  <HomeIcon className={`w-5 h-5 ${activeTab === 'home' ? 'text-brand' : 'text-ink'}`} />
+                  <HomeIcon className={`w-5 h-5 ${activeTab === 'home' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
                   <span>Home</span>
                 </button>
 
@@ -1443,10 +1463,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
                     activeTab === 'explore'
                       ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-ink hover:bg-canvas font-medium'
+                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
                   }`}
                 >
-                  <Compass className={`w-5 h-5 ${activeTab === 'explore' ? 'text-brand' : 'text-ink'}`} />
+                  <Compass className={`w-5 h-5 ${activeTab === 'explore' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
                   <span>Market</span>
                 </button>
 
@@ -1464,11 +1484,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
                     activeTab === 'messages'
                       ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-ink hover:bg-canvas font-medium'
+                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? 'text-brand' : 'text-ink'}`} />
+                    <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
                     <span>Chat</span>
                   </div>
                   {unreadMessagesCount > 0 && (
@@ -1478,7 +1498,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </button>
 
-                {/* 4. Profile (with circular avatar matching screenshot) */}
+                {/* 4. Profile */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1492,14 +1512,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
                     activeTab === 'profile'
                       ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-ink hover:bg-canvas font-medium'
+                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
                   }`}
                 >
                   {user?.avatar_url ? (
                     <img
                       src={user.avatar_url}
                       alt={user.name || 'User'}
-                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-divider"
+                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-zinc-200"
                     />
                   ) : (
                     <div className="w-5 h-5 rounded-full bg-[#EA580C] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
@@ -1509,90 +1529,97 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Profile</span>
                 </button>
 
-                {/* Divider Line */}
-                <div className="border-t border-divider my-2 mx-1" />
+                {/* Secondary Navigation Divider */}
+                <div className="border-t border-zinc-200 dark:border-zinc-800 my-2 mx-1" />
 
-                {/* Authenticated Middle Group */}
+                {/* 5. My Gears */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('profile');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <Briefcase className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>My Gears</span>
+                </button>
+
+                {/* 6. My Requests */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('requests');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <ClipboardList className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>My Requests</span>
+                </button>
+
+                {/* 7. Support */}
+                <button
+                  type="button"
+                  onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <Headphones className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>Support</span>
+                </button>
+
+                {/* 8. Settings */}
+                <button
+                  type="button"
+                  onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <Settings className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>Settings</span>
+                </button>
+
+                {/* 9. Help & Support */}
+                <button
+                  type="button"
+                  onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <HelpCircle className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>Help & Support</span>
+                </button>
+
+                {/* Divider Line before Account Actions */}
+                <div className="border-t border-zinc-200 dark:border-zinc-800 my-2 mx-1" />
+
+                {/* Account Actions */}
                 {isAuthenticated ? (
-                  <>
-                    {/* 5. My Gears */}
-                    <button
-                      type="button"
-                      onClick={() => { setActiveTab('profile'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <Briefcase className="w-5 h-5 text-ink" />
-                      <span>My Gears</span>
-                    </button>
-
-                    {/* 6. My Requests */}
-                    <button
-                      type="button"
-                      onClick={() => { setActiveTab('requests'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <ClipboardList className="w-5 h-5 text-ink" />
-                      <span>My Requests</span>
-                    </button>
-
-                    {/* 7. Support */}
-                    <button
-                      type="button"
-                      onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <Headphones className="w-5 h-5 text-ink" />
-                      <span>Support</span>
-                    </button>
-
-                    {/* 8. Settings */}
-                    <button
-                      type="button"
-                      onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <Settings className="w-5 h-5 text-ink" />
-                      <span>Settings</span>
-                    </button>
-
-                    {/* 9. Help & Support */}
-                    <button
-                      type="button"
-                      onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <HelpCircle className="w-5 h-5 text-ink" />
-                      <span>Help & Support</span>
-                    </button>
-                  </>
+                  /* Sign Out */
+                  <button
+                    type="button"
+                    onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
+                    className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-5 h-5 text-brand" />
+                    <span>Sign Out</span>
+                  </button>
                 ) : (
-                  /* Guest Middle Group */
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <Headphones className="w-5 h-5 text-ink" />
-                      <span>Support</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
-                    >
-                      <HelpCircle className="w-5 h-5 text-ink" />
-                      <span>Help & Support</span>
-                    </button>
-
+                  /* Guest Actions: Log In / Sign Up */
+                  <div className="space-y-1">
                     <button
                       type="button"
                       id="mobile-login-btn"
                       onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-ink hover:bg-canvas transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                     >
-                      <LogIn className="w-5 h-5 text-ink" />
+                      <LogIn className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
                       <span>Log In</span>
                     </button>
 
@@ -1605,27 +1632,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <UserIcon className="w-5 h-5 text-brand" />
                       <span>Sign Up</span>
                     </button>
-                  </>
+                  </div>
                 )}
 
-                {/* Divider Line before Sign Out */}
-                {isAuthenticated && (
-                  <>
-                    <div className="border-t border-divider my-2 mx-1" />
-
-                    {/* 10. Sign Out */}
-                    <button
-                      type="button"
-                      onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
-                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
-                    >
-                      <LogOut className="w-5 h-5 text-brand" />
-                      <span>Sign Out</span>
-                    </button>
-                  </>
-                )}
-
-                {/* 11. Upgrade to Premium Card (matching Mockup at bottom of list) */}
+                {/* Premium Section Upgrade Card */}
                 <div 
                   onClick={() => {
                     onOpenHelpSupport?.('NEW');
@@ -1643,8 +1653,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ChevronRight className="w-4 h-4 text-ink-secondary shrink-0 ml-1.5" />
                 </div>
               </div>
-            </div>
-          </div>
+            </aside>
+          </div>,
+          document.body
         )}
       </div>
 
