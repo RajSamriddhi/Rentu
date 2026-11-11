@@ -24,23 +24,22 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   isLoading = false,
 }) => {
   return (
-    <section className="relative overflow-hidden min-h-[calc(100vh-4rem)] min-h-[calc(100dvh-4rem)] flex flex-col justify-between pt-8 sm:pt-10 lg:pt-12 pb-6 sm:pb-8 bg-canvas transition-colors">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center w-full flex-1 flex flex-col justify-between">
+    <section className="relative overflow-hidden pt-8 sm:pt-10 pb-8 sm:pb-10 bg-canvas transition-colors">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
 
-        {/* Top: Main Headline & Value Proposition */}
-        <div>
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight font-display leading-[1.1] max-w-3xl mx-auto">
-            Rent. Lend. Borrow.{' '}
-            <span className="text-brand">Everything.</span>
-          </h1>
+        {/* Main Headline */}
+        <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight font-display leading-[1.1] max-w-3xl mx-auto">
+          Rent. Lend. Borrow.{' '}
+          <span className="text-brand">Everything.</span>
+        </h1>
 
-          <p className="mt-5 sm:mt-6 text-xs sm:text-sm font-medium text-ink-secondary max-w-lg mx-auto leading-relaxed">
-            Why buy gear you only need for a few days? Rent cameras, tools, camping equipment, and tech from verified neighbors nearby.
-          </p>
-        </div>
+        {/* Value Proposition */}
+        <p className="mt-4 sm:mt-5 text-xs sm:text-sm font-medium text-ink-secondary max-w-lg mx-auto leading-relaxed">
+          Why buy gear you only need for a few days? Rent cameras, tools, camping equipment, and tech from verified neighbors nearby.
+        </p>
 
-        {/* Middle: Action Buttons & Trust Badges centered between subtitle and stats */}
-        <div className="my-auto py-6 sm:py-8 space-y-5 sm:space-y-6">
+        {/* Action Buttons & Trust Badges centered cleanly between subtitle and stats */}
+        <div className="mt-6 sm:mt-7 space-y-4 sm:space-y-5">
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
             <button
@@ -81,37 +80,35 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
         </div>
 
-        {/* Bottom: Minimalist Stats Strip pinned to bottom of first view */}
-        <div className="w-full border-t border-divider pt-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
-            <div className="p-3">
-              {isLoading ? (
-                <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
-              ) : (
-                <div className="text-xl sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
-              )}
-              <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Gear Available</div>
-            </div>
-            <div className="p-3">
-              {isLoading ? (
-                <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
-              ) : (
-                <div className="text-xl sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
-              )}
-              <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
-            </div>
-            <div className="p-3">
-              {isLoading ? (
-                <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
-              ) : (
-                <div className="text-xl sm:text-2xl font-black text-ink font-display">{activeUsersCount}</div>
-              )}
-              <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Users</div>
-            </div>
-            <div className="p-3">
-              <div className="text-xl sm:text-2xl font-black text-brand font-display">100%</div>
-              <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Peer Verified</div>
-            </div>
+        {/* Minimalist Stats Strip */}
+        <div className="mt-7 sm:mt-8 border-t border-divider pt-5 sm:pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
+          <div className="p-3">
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{itemsCount}</div>
+            )}
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Gear Available</div>
+          </div>
+          <div className="p-3">
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{requestsCount}</div>
+            )}
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Requests</div>
+          </div>
+          <div className="p-3">
+            {isLoading ? (
+              <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
+            ) : (
+              <div className="text-xl sm:text-2xl font-black text-ink font-display">{activeUsersCount}</div>
+            )}
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Active Users</div>
+          </div>
+          <div className="p-3">
+            <div className="text-xl sm:text-2xl font-black text-brand font-display">100%</div>
+            <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Peer Verified</div>
           </div>
         </div>
 
