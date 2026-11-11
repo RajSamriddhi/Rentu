@@ -660,8 +660,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
-            {/* Nav links: Marketplace, Community, Bookings */}
-            <nav className="hidden md:flex items-center gap-5 text-xs font-bold">
+            {/* Nav links: Marketplace, Bookings, Community */}
+            <nav className="hidden md:flex items-center gap-5 lg:gap-6 text-sm font-bold">
               <button
                 onClick={() => setActiveTab('explore')}
                 className={`transition-colors cursor-pointer ${
@@ -669,20 +669,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 Marketplace
-              </button>
-
-              <button
-                onClick={() => setActiveTab('community')}
-                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                <span>Community</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-colors ${
-                  activeTab === 'community' ? 'bg-brand text-white' : 'bg-brand-soft text-brand'
-                }`}>
-                  Top 10
-                </span>
               </button>
 
               <button
@@ -698,8 +684,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
                 title="View your gear rental bookings and handoffs"
               >
-                <Calendar className="w-3.5 h-3.5" />
+                <Calendar className="w-4 h-4" />
                 <span>Bookings</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('community')}
+                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                <span>Community</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-colors ${
+                  activeTab === 'community' ? 'bg-brand text-white' : 'bg-brand-soft text-brand'
+                }`}>
+                  Top 10
+                </span>
               </button>
             </nav>
           </div>
@@ -1330,7 +1330,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="space-y-1">
               <button
                 onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
                   activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
                 }`}
               >
@@ -1339,8 +1339,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               <button
+                onClick={() => {
+                  if (!isAuthenticated && onOpenAuth) {
+                    onOpenAuth();
+                  } else {
+                    setActiveTab('bookings');
+                  }
+                  setShowMobileMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
+                  activeTab === 'bookings' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Bookings</span>
+              </button>
+
+              <button
                 onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${
                   activeTab === 'community' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
                 }`}
               >
@@ -1353,23 +1370,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}>
                   Top 10
                 </span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onOpenAuth) {
-                    onOpenAuth();
-                  } else {
-                    setActiveTab('bookings');
-                  }
-                  setShowMobileMenu(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'bookings' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Bookings</span>
               </button>
             </div>
 
