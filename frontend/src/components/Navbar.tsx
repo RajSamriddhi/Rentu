@@ -59,6 +59,15 @@ interface NavbarProps {
   unreadMessagesCount?: number;
 }
 
+const getFirstName = (fullName?: string) => {
+  if (!fullName) return 'Account';
+  const first = fullName.trim().split(' ')[0];
+  if (first.length > 1 && first === first.toUpperCase()) {
+    return first.charAt(0) + first.slice(1).toLowerCase();
+  }
+  return first;
+};
+
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
@@ -1111,29 +1120,56 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     id="user-menu-btn"
                     onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center gap-1.5 p-1 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-divider rounded-full transition-all cursor-pointer"
+                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-2.5 sm:py-1 rounded-full transition-all duration-200 cursor-pointer border select-none ${
+                      showUserMenu
+                        ? 'bg-surface border-brand ring-2 ring-brand/15 shadow-xs'
+                        : 'bg-surface hover:bg-canvas border-divider hover:border-brand/40 shadow-xs hover:shadow-sm'
+                    }`}
+                    aria-expanded={showUserMenu}
+                    aria-label="User account menu"
                   >
                     <img
-                      src={user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                      src={
+                        user?.avatar_url ||
+                        (user?.name
+                          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
+                          : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                      }
                       alt={user?.name || 'User'}
-                      className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700"
+                      className="w-7 h-7 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15 shrink-0"
                     />
-                    <span className="text-xs font-bold text-ink max-w-[80px] truncate hidden md:inline">
-                      {user?.name?.split(' ')[0]}
+                    <span className="text-xs font-bold text-ink max-w-[100px] truncate hidden sm:inline leading-none">
+                      {getFirstName(user?.name)}
                     </span>
-                    <ChevronDown className="w-3 h-3 text-ink-secondary mr-1 hidden sm:inline" />
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-ink-secondary transition-transform duration-200 hidden sm:inline shrink-0 ${
+                        showUserMenu ? 'rotate-180 text-brand' : ''
+                      }`}
+                    />
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
-                      <div className="px-3 py-2 border-b border-divider mb-1">
-                        <div className="font-extrabold text-sm text-ink">{user?.name}</div>
-                        <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                    <div className="absolute right-0 mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
+                      <div className="px-3 py-2.5 border-b border-divider mb-1.5 flex items-center gap-3">
+                        <img
+                          src={
+                            user?.avatar_url ||
+                            (user?.name
+                              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
+                              : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                          }
+                          alt={user?.name || 'User'}
+                          className="w-9 h-9 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-extrabold text-sm text-ink truncate">{user?.name}</div>
+                          <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                        </div>
                       </div>
 
                       <button
                         onClick={() => { setActiveTab('profile'); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <UserIcon className="w-4 h-4 text-ink-secondary" />
                         <span>My Profile & Listings</span>
@@ -1142,7 +1178,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {isUserAdmin && (
                         <button
                           onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
-                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                         >
                           <BarChart3 className="w-4 h-4 text-ink-secondary" />
                           <span>Admin Dashboard</span>
@@ -1151,7 +1187,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                       <button
                         onClick={() => { onOpenSettings?.(); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <Settings className="w-4 h-4 text-ink-secondary" />
                         <span>Settings</span>
@@ -1159,20 +1195,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                       <button
                         onClick={() => { onOpenHelpSupport?.(); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <HelpCircle className="w-4 h-4 text-brand" />
-                        <span>Help & Raise Concern</span>
+                        <span>Help & Support</span>
                       </button>
 
                       {/* Sign Out */}
-                      <div className="pt-1.5 border-t border-divider">
+                      <div className="pt-1.5 mt-1 border-t border-divider">
                         <button
                           onClick={() => { logout(); setShowUserMenu(false); setActiveTab('explore'); }}
-                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-pink-50 text-brand flex items-center gap-2 font-bold cursor-pointer"
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 font-bold cursor-pointer transition-colors"
                         >
-                          <LogOut className="w-3.5 h-3.5" />
-                          Sign Out
+                          <LogOut className="w-4 h-4" />
+                          <span>Sign Out</span>
                         </button>
                       </div>
                     </div>
