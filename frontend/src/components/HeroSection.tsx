@@ -24,8 +24,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   isLoading = false,
 }) => {
   return (
-    <section className="relative overflow-hidden min-h-[calc(100vh-4rem)] min-h-[calc(100dvh-4rem)] flex flex-col justify-center py-12 sm:py-16 lg:py-20 bg-canvas transition-colors">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center my-auto w-full">
+    <section className="relative overflow-hidden min-h-[calc(100vh-4rem)] min-h-[calc(100dvh-4rem)] flex flex-col justify-between pt-8 sm:pt-10 lg:pt-12 pb-6 sm:pb-8 bg-canvas transition-colors">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center w-full">
 
         {/* Main Headline */}
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight font-display leading-[1.1] max-w-3xl mx-auto">
@@ -33,8 +33,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <span className="text-brand">Everything.</span>
         </h1>
 
-        {/* Value Proposition */}
-        <p className="mt-4 sm:mt-5 text-sm sm:text-base lg:text-lg font-medium text-ink-secondary max-w-xl mx-auto leading-relaxed">
+        {/* Value Proposition with increased spacing and reduced refined font size */}
+        <p className="mt-6 sm:mt-7 text-xs sm:text-sm font-medium text-ink-secondary max-w-lg mx-auto leading-relaxed">
           Why buy gear you only need for a few days? Rent cameras, tools, camping equipment, and tech from verified neighbors nearby.
         </p>
 
@@ -60,7 +60,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         </div>
 
         {/* Trust Badges */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs font-semibold text-ink-secondary">
+        <div className="mt-6 sm:mt-7 flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs font-semibold text-ink-secondary">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>100% Peer Verified</span>
@@ -77,8 +77,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
         </div>
 
-        {/* Minimalist Stats Strip */}
-        <div className="mt-10 border-t border-divider pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
+      </div>
+
+      {/* Minimalist Stats Strip pinned nicely towards bottom of first view */}
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="border-t border-divider pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-center sm:text-left">
           <div className="p-3">
             {isLoading ? (
               <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-md animate-pulse my-0.5 mx-auto sm:mx-0" />
@@ -108,7 +111,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="text-[11px] font-bold text-ink-secondary uppercase tracking-wider mt-0.5">Peer Verified</div>
           </div>
         </div>
-
       </div>
     </section>
   );
