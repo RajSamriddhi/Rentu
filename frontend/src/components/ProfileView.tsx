@@ -382,8 +382,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             )}
 
-            {/* Clean Minimalist Meta Line (Location, Joined date, Rating) */}
-            <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1.5 text-xs text-ink-secondary pt-1.5">
+            {/* Clean Minimalist Meta Line 1: Location, Joined date, Rating */}
+            <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-xs text-ink-secondary pt-1">
               {formatFullAddress(user) ? (
                 <button
                   type="button"
@@ -422,9 +422,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </span>
                 </>
               )}
+            </div>
 
-              <span className="text-divider">•</span>
-
+            {/* Meta Line 2: Followers & Following in sequence */}
+            <div className="flex items-center justify-start gap-3 text-xs text-ink-secondary pt-0.5">
               <button
                 type="button"
                 onClick={() => setFollowModalState({ isOpen: true, type: 'followers' })}
