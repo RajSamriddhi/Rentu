@@ -29,10 +29,7 @@ import {
   Home as HomeIcon,
   Briefcase,
   ClipboardList,
-  LogIn,
-  Headphones,
-  Crown,
-  ChevronRight
+  LogIn
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -1332,17 +1329,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>My Requests</span>
                 </button>
 
-                {/* 7. Support */}
-                <button
-                  type="button"
-                  onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                >
-                  <Headphones className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
-                  <span>Support</span>
-                </button>
-
-                {/* 8. Settings */}
+                {/* 7. Settings */}
                 <button
                   type="button"
                   onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
@@ -1352,7 +1339,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Settings</span>
                 </button>
 
-                {/* 9. Help & Support */}
+                {/* 8. Help & Support */}
                 <button
                   type="button"
                   onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
@@ -1400,24 +1387,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
                   </div>
                 )}
-
-                {/* Premium Section Upgrade Card */}
-                <div 
-                  onClick={() => {
-                    onOpenHelpSupport?.('NEW');
-                    setShowMobileMenu(false);
-                  }}
-                  className="mt-3 p-3.5 rounded-2xl bg-[#FFF0F5] dark:bg-pink-950/40 border border-pink-100 dark:border-pink-900/40 flex items-center justify-between cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Crown className="w-5 h-5 text-brand shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-xs font-black text-ink">Upgrade to Premium</div>
-                      <div className="text-[10px] text-ink-secondary mt-0.5 truncate font-medium">Get more gear, more perks!</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-ink-secondary shrink-0 ml-1.5" />
-                </div>
               </div>
             </aside>
           </div>,
