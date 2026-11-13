@@ -15,7 +15,6 @@ import {
   Moon,
   Menu,
   X,
-  Compass,
   Target,
   Users,
   ShieldCheck,
@@ -1294,79 +1293,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <HomeIcon className={`w-5 h-5 ${activeTab === 'home' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
                   <span>Home</span>
-                </button>
-
-                {/* 2. Market */}
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
-                    activeTab === 'explore'
-                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
-                  }`}
-                >
-                  <Compass className={`w-5 h-5 ${activeTab === 'explore' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
-                  <span>Market</span>
-                </button>
-
-                {/* 3. Chat */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAuthenticated && onOpenAuth) {
-                      onOpenAuth();
-                    } else {
-                      setActiveTab('messages');
-                    }
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
-                    activeTab === 'messages'
-                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <MessageSquare className={`w-5 h-5 ${activeTab === 'messages' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
-                    <span>Chat</span>
-                  </div>
-                  {unreadMessagesCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-xs">
-                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* 4. Profile */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAuthenticated && onOpenAuth) {
-                      onOpenAuth();
-                    } else {
-                      setActiveTab('profile');
-                    }
-                    setShowMobileMenu(false);
-                  }}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
-                    activeTab === 'profile'
-                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
-                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
-                  }`}
-                >
-                  {user?.avatar_url ? (
-                    <img
-                      src={user.avatar_url}
-                      alt={user.name || 'User'}
-                      className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-zinc-200"
-                    />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full bg-[#EA580C] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                      {(user?.name || 'S').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <span>Profile</span>
                 </button>
 
                 {/* Secondary Navigation Divider */}
