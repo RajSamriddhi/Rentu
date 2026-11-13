@@ -1,5 +1,5 @@
 // Service Worker for Rentu PWA & Web Push Notifications
-const CACHE_NAME = 'rentu-pwa-v2';
+const CACHE_NAME = 'rentu-pwa-v3';
 
 // Assets to precache on install
 const PRECACHE_ASSETS = [
