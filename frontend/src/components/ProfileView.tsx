@@ -260,56 +260,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
 
-          {/* Top Right: Edit Profile & Share Buttons */}
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-2">
-            {/* Edit Profile */}
-            <button
-              id="edit-profile-btn"
-              onClick={() => setIsEditModalOpen(true)}
-              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
-              title="Edit Profile"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-brand" />
-              <span>Edit Profile</span>
-            </button>
-
-            {/* Share Profile */}
-            <button
-              type="button"
-              onClick={handleShareProfile}
-              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
-              title="Share Profile Link"
-            >
-              {copiedProfileLink ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 font-bold">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Bottom Right of Cover: Change Cover Button */}
-          <div className="absolute bottom-1.5 right-2 sm:bottom-3 sm:right-4 z-10">
+          {/* Bottom Right of Cover: Circular Change Cover Camera Button */}
+          <div className="absolute bottom-3 right-4 sm:bottom-4 sm:right-6 z-10">
             <button
               type="button"
               onClick={() => bannerFileInputRef.current?.click()}
               disabled={isUploadingBanner}
-              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center shadow-lg hover:scale-105 active:scale-95"
+              className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/20 flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer"
               title="Change Background Picture"
             >
               {isUploadingBanner ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-brand mr-1.5" />
-                  <span>Uploading...</span>
-                </>
+                <Loader2 className="w-4 h-4 animate-spin text-brand" />
               ) : (
-                <span>Change Cover</span>
+                <Camera className="w-4 h-4 text-white" />
               )}
             </button>
             <input
@@ -325,10 +288,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* User Identity Block */}
         <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-0 relative">
 
-          {/* Top Bar: Overlapping Avatar */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between">
+          {/* Top Bar: Overlapping Avatar on Left, Action Buttons on Right */}
+          <div className="flex items-end justify-between gap-3">
 
-            {/* Avatar (ONLY the avatar has negative margin to overlap cover) */}
+            {/* Avatar on the Left (overlapping cover) */}
             <div className="relative group shrink-0 -mt-14 sm:-mt-20">
               <img
                 src={avatarSrc}
@@ -356,12 +319,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               />
             </div>
 
+            {/* Action Buttons on Right: Pink Edit Profile Pill + Circular White Share Button */}
+            <div className="flex items-center gap-2 pb-1 sm:pb-2 shrink-0">
+              {/* Hot Pink Edit Profile Pill */}
+              <button
+                id="edit-profile-btn"
+                onClick={() => setIsEditModalOpen(true)}
+                className="bg-brand hover:bg-brand-hover text-white px-4 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold shadow-pink inline-flex items-center gap-2 transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Edit Profile</span>
+              </button>
+
+              {/* Circular White Share Button */}
+              <button
+                type="button"
+                onClick={handleShareProfile}
+                className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-surface hover:bg-zinc-50 dark:hover:bg-zinc-800 text-ink border border-divider shadow-xs flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                title="Share Profile Link"
+              >
+                {copiedProfileLink ? (
+                  <Check className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <Share2 className="w-4 h-4 text-ink" />
+                )}
+              </button>
+            </div>
+
           </div>
 
-          {/* User Name, Verified Badge, Bio & Meta */}
-          <div className="mt-3 sm:mt-4 space-y-2 text-center sm:text-left">
+          {/* User Name, Verified Badge, Bio & Meta (Left Aligned) */}
+          <div className="mt-3 sm:mt-4 space-y-2 text-left">
 
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+            <div className="flex flex-wrap items-center justify-start gap-2.5">
               <h1 className="text-2xl sm:text-3xl font-black text-ink tracking-tight font-display select-text">
                 {user?.name || user?.email?.split('@')[0] || 'Rentu Member'}
               </h1>
@@ -375,7 +365,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Username */}
-            <div className="flex items-center justify-center sm:justify-start gap-1.5">
+            <div className="flex items-center justify-start gap-1.5">
               <button
                 type="button"
                 onClick={() => setIsEditModalOpen(true)}
@@ -397,7 +387,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )}
 
             {/* Clean Minimalist Meta Line (Location, Joined date, Rating) */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1.5 text-xs text-ink-secondary pt-1.5">
+            <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1.5 text-xs text-ink-secondary pt-1.5">
               {formatFullAddress(user) ? (
                 <button
                   type="button"
