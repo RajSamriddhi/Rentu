@@ -22,6 +22,7 @@ import { SetLocationModal } from './components/SetLocationModal';
 import { ItemCard } from './components/ItemCard';
 import { PublicProfileView } from './components/PublicProfileView';
 import { Footer } from './components/Footer';
+import { NotificationsView } from './components/NotificationsView';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { useAuth } from './lib/authContext';
 import { api } from './lib/api';
@@ -30,7 +31,7 @@ import { Item, CommunityRequest, isAuthorizedAdmin } from './lib/types';
 import confetti from 'canvas-confetti';
 import { CheckCircle2, AlertCircle, X, ArrowRight } from 'lucide-react';
 
-export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile';
+export type TabType = 'home' | 'explore' | 'requests' | 'bookings' | 'messages' | 'community' | 'hustle' | 'profile' | 'notifications';
 
 const RESERVED_ROUTES = new Set([
   'admin',
@@ -52,6 +53,8 @@ const RESERVED_ROUTES = new Set([
   'privacy',
   'settings',
   'hustle',
+  'notifications',
+  'alerts',
 ]);
 
 const getUserIdFromUrl = (): string | null => {
@@ -102,6 +105,7 @@ const getTabFromUrl = (): TabType => {
   if (path === 'community' || hash === 'community') return 'community';
   if (path === 'profile' || hash === 'profile') return 'profile';
   if (path === 'explore' || hash === 'explore' || path === 'marketplace' || hash === 'marketplace') return 'explore';
+  if (path === 'notifications' || hash === 'notifications' || path === 'alerts' || hash === 'alerts') return 'notifications';
   return 'home';
 };
 
@@ -137,18 +141,26 @@ export const App: React.FC = () => {
   // Public User Profile Viewing State
   const [viewingUserId, setViewingUserId] = useState<string | null>(getUserIdFromUrl);
 
-  // Unread Messages Badge Count (Instagram-style)
+  // Unread Messages & Notifications Badge Count (Instagram-style)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
 
-  const fetchUnreadMessagesCount = useCallback(async () => {
+  const fetchUnreadCounts = useCallback(async () => {
     if (!isAuthenticated) {
       setUnreadMessagesCount(0);
+      setUnreadNotificationsCount(0);
       return;
     }
     try {
-      const res = await api.getUnreadMessagesCount();
-      if (res && typeof res.unread_count === 'number') {
-        setUnreadMessagesCount(res.unread_count);
+      const [msgRes, notifRes] = await Promise.all([
+        api.getUnreadMessagesCount().catch(() => null),
+        api.getNotifications({ limit: 1 }).catch(() => null),
+      ]);
+      if (msgRes && typeof msgRes.unread_count === 'number') {
+        setUnreadMessagesCount(msgRes.unread_count);
+      }
+      if (notifRes && typeof notifRes.unread_count === 'number') {
+        setUnreadNotificationsCount(notifRes.unread_count);
       }
     } catch {
       // ignore
@@ -158,11 +170,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setUnreadMessagesCount(0);
+      setUnreadNotificationsCount(0);
       return;
     }
-    fetchUnreadMessagesCount();
-    const interval = setInterval(fetchUnreadMessagesCount, 10000);
-    const handleUpdate = () => fetchUnreadMessagesCount();
+    fetchUnreadCounts();
+    const interval = setInterval(fetchUnreadCounts, 10000);
+    const handleUpdate = () => fetchUnreadCounts();
     window.addEventListener('rentu:messages-updated', handleUpdate);
     window.addEventListener('rentu:notifications-updated', handleUpdate);
     return () => {
@@ -170,7 +183,7 @@ export const App: React.FC = () => {
       window.removeEventListener('rentu:messages-updated', handleUpdate);
       window.removeEventListener('rentu:notifications-updated', handleUpdate);
     };
-  }, [isAuthenticated, fetchUnreadMessagesCount]);
+  }, [isAuthenticated, fetchUnreadCounts]);
 
   const setActiveTab = (tab: TabType) => {
     // Non-admin users cannot access 'hustle' (admin dashboard)
@@ -784,12 +797,26 @@ export const App: React.FC = () => {
                 onOpenUserProfile={handleOpenUserProfile}
               />
             )}
+
+            {/* VIEW 12: NOTIFICATIONS & ALERTS VIEW */}
+            {activeTab === 'notifications' && (
+              <NotificationsView
+                onNavigateNotification={handleNavigateNotification}
+                onOpenChatWithUser={handleOpenChatWithUser}
+                onOpenUserProfile={handleOpenUserProfile}
+                onNavigateTab={(tab) => {
+                  setSearchQuery('');
+                  setActiveTab(tab);
+                }}
+                onOpenAuth={handleOpenAuth}
+              />
+            )}
           </>
         )}
       </main>
 
       {/* Website Footer with Licensing & Navigation Links */}
-      {activeTab !== 'messages' && (
+      {activeTab !== 'messages' && activeTab !== 'notifications' && (
         <Footer
           onNavigate={(tab) => {
             setSearchQuery('');
@@ -900,6 +927,7 @@ export const App: React.FC = () => {
         onOpenChat={() => setActiveTab('messages')}
         onOpenAuth={() => setIsAuthOpen(true)}
         unreadMessagesCount={unreadMessagesCount}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
 
       {/* Help & Community Support Modal */}

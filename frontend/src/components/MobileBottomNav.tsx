@@ -6,6 +6,7 @@ import {
   Plus, 
   Calendar, 
   MessageSquare, 
+  Bell,
   Sparkles, 
   X, 
   LogIn,
@@ -14,14 +15,15 @@ import {
 import { useAuth } from '../lib/authContext';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
+  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community' | 'notifications';
+  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community' | 'notifications') => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
   onOpenAuth: () => void;
   onOpenHowItWorks?: () => void;
   unreadMessagesCount?: number;
+  unreadNotificationsCount?: number;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -33,6 +35,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenAuth,
   onOpenHowItWorks,
   unreadMessagesCount,
+  unreadNotificationsCount,
 }) => {
   const { isAuthenticated } = useAuth();
   const [showPostSheet, setShowPostSheet] = useState(false);
@@ -152,6 +155,25 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 )}
               </div>
               <span>Chat</span>
+            </button>
+
+            {/* Tab 5: Notifications */}
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`flex flex-col items-center gap-1 py-1 px-1.5 text-[9.5px] font-bold transition-all cursor-pointer relative ${
+                activeTab === 'notifications' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              }`}
+              title="Notifications"
+            >
+              <div className="relative">
+                <Bell className="w-5 h-5" />
+                {Boolean(unreadNotificationsCount && unreadNotificationsCount > 0) && (
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-3.5 px-1 rounded-full bg-brand text-[9px] font-black text-white flex items-center justify-center leading-none shadow-sm animate-in zoom-in-75 duration-200">
+                    {(unreadNotificationsCount ?? 0) > 9 ? '9+' : unreadNotificationsCount}
+                  </span>
+                )}
+              </div>
+              <span className="tracking-tight">Notifications</span>
             </button>
           </>
         ) : (

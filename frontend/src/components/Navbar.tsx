@@ -909,6 +909,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="relative" ref={notifRef}>
                   <button
                     onClick={() => {
+                      if (typeof window !== 'undefined' && window.innerWidth < 640) {
+                        setActiveTab('notifications');
+                        setShowNotifications(false);
+                        return;
+                      }
                       const next = !showNotifications;
                       setShowNotifications(next);
                       if (next) {
