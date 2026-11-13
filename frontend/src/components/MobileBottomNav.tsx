@@ -5,7 +5,6 @@ import {
   Target, 
   Plus, 
   Calendar, 
-  User, 
   MessageSquare, 
   Sparkles, 
   X, 
@@ -35,7 +34,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenHowItWorks,
   unreadMessagesCount,
 }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [showPostSheet, setShowPostSheet] = useState(false);
 
   return (
@@ -124,7 +123,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span>Market</span>
         </button>
 
-        {/* LOGGED IN: Show Center Post Button + Messages + Profile */}
+        {/* LOGGED IN: Show Center Post Button + Messages */}
         {isAuthenticated ? (
           <>
             {/* Center Action: Floating + Post button (ONLY VISIBLE AFTER LOGIN) */}
@@ -153,27 +152,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 )}
               </div>
               <span>Chat</span>
-            </button>
-
-            {/* Tab 5: Profile */}
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-                activeTab === 'profile' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
-              }`}
-            >
-              {user?.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt={user.name}
-                  className={`w-5 h-5 rounded-full object-cover border ${
-                    activeTab === 'profile' ? 'border-brand ring-1 ring-brand' : 'border-divider'
-                  }`}
-                />
-              ) : (
-                <User className="w-5 h-5" />
-              )}
-              <span>Profile</span>
             </button>
           </>
         ) : (

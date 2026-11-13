@@ -1147,26 +1147,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </div>
 
-                {/* User Profile Avatar Dropdown */}
-                <div className="relative" ref={userMenuRef}>
+                {/* User Profile Avatar (Direct link to profile page) */}
+                <div className="relative flex items-center" ref={userMenuRef}>
                   <button
-                    id="user-menu-btn"
+                    id="user-profile-btn"
                     onClick={() => {
-                      const next = !showUserMenu;
-                      setShowUserMenu(next);
-                      if (next) {
-                        setShowMobileMenu(false);
-                        setShowMobileSearch(false);
-                        setShowNotifications(false);
-                      }
+                      setActiveTab('profile');
+                      setShowUserMenu(false);
+                      setShowMobileMenu(false);
+                      setShowMobileSearch(false);
+                      setShowNotifications(false);
                     }}
-                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-2.5 sm:py-1 rounded-full transition-all duration-200 cursor-pointer border select-none ${
-                      showUserMenu
+                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-2 sm:py-1 rounded-full transition-all duration-200 cursor-pointer border select-none ${
+                      activeTab === 'profile'
                         ? 'bg-surface border-brand ring-2 ring-brand/15 shadow-xs'
                         : 'bg-surface hover:bg-canvas border-divider hover:border-brand/40 shadow-xs hover:shadow-sm'
                     }`}
-                    aria-expanded={showUserMenu}
-                    aria-label="User account menu"
+                    title="View Profile"
+                    aria-label="View Profile"
                   >
                     <img
                       src={
@@ -1181,15 +1179,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="text-xs font-bold text-ink max-w-[100px] truncate hidden sm:inline leading-none">
                       {getFirstName(user?.name)}
                     </span>
+                  </button>
+
+                  {/* Dropdown Menu Toggle (Desktop only for Settings / Sign Out) */}
+                  <button
+                    id="user-menu-btn"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = !showUserMenu;
+                      setShowUserMenu(next);
+                      if (next) {
+                        setShowMobileMenu(false);
+                        setShowMobileSearch(false);
+                        setShowNotifications(false);
+                      }
+                    }}
+                    className={`hidden sm:flex items-center justify-center p-1 -ml-1 rounded-full text-ink-secondary hover:text-ink hover:bg-canvas transition-colors cursor-pointer select-none ${
+                      showUserMenu ? 'text-brand' : ''
+                    }`}
+                    aria-expanded={showUserMenu}
+                    aria-label="User account menu"
+                    title="Account options"
+                  >
                     <ChevronDown
-                      className={`w-3.5 h-3.5 text-ink-secondary transition-transform duration-200 hidden sm:inline shrink-0 ${
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
                         showUserMenu ? 'rotate-180 text-brand' : ''
                       }`}
                     />
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
                       <div className="px-3 py-2.5 border-b border-divider mb-1.5 flex items-center gap-3">
                         <img
                           src={
