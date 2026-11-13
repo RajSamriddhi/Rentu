@@ -550,7 +550,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       />
 
       {/* Modern Segmented Navigation Tabs */}
-      <div className="flex items-center gap-2 pt-8 pb-4 overflow-x-auto scrollbar-none whitespace-nowrap">
+      <div className="flex flex-wrap items-center gap-2 pt-8 pb-4">
         {[
           { key: 'listings', label: 'My Listings', count: myItems.length, icon: Package },
           { key: 'requests', label: 'My Requests', count: myRequests.length, icon: Sparkles },
@@ -562,7 +562,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2 shadow-xs ${isActive
+              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-2 shadow-xs whitespace-nowrap ${isActive
                 ? 'bg-ink text-canvas shadow-sm scale-[1.02]'
                 : 'bg-surface border border-divider text-ink-secondary hover:text-ink hover:border-zinc-400'
                 }`}
@@ -902,7 +902,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
 
                 {/* Filter Tabs by Review Type */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {[
                     { key: 'ALL', label: 'All Reviews', count: receivedReviews.length },
                     { key: 'OWNER_RENTAL', label: 'As Gear Owner', count: receivedReviews.filter(r => r.review_type === 'OWNER_RENTAL').length },
