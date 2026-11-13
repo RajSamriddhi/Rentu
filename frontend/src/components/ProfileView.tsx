@@ -376,13 +376,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </button>
             </div>
 
-            {user?.bio ? (
+            {user?.bio && (
               <p className="text-xs sm:text-sm text-ink-secondary font-medium max-w-2xl leading-relaxed pt-0.5">
                 {user.bio}
-              </p>
-            ) : (
-              <p className="text-xs text-ink-secondary/70 italic max-w-2xl pt-0.5">
-                No bio added yet. Click <button onClick={() => setIsEditModalOpen(true)} className="font-semibold text-brand hover:underline not-italic cursor-pointer">Edit Profile</button> to introduce yourself to neighbors.
               </p>
             )}
 
