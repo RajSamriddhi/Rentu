@@ -295,24 +295,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {/* Bottom Right of Cover: Change Cover Button */}
-          <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-10">
+          <div className="absolute bottom-1.5 right-2 sm:bottom-3 sm:right-4 z-10">
             <button
               type="button"
               onClick={() => bannerFileInputRef.current?.click()}
               disabled={isUploadingBanner}
-              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center shadow-lg hover:scale-105 active:scale-95"
               title="Change Background Picture"
             >
               {isUploadingBanner ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-brand" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-brand mr-1.5" />
                   <span>Uploading...</span>
                 </>
               ) : (
-                <>
-                  <Camera className="w-3.5 h-3.5 text-brand" />
-                  <span>Change Cover</span>
-                </>
+                <span>Change Cover</span>
               )}
             </button>
             <input
