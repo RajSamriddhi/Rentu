@@ -260,12 +260,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none" />
 
-          {/* Top Right: Change Cover Button */}
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+          {/* Top Right: Action Buttons (Edit Profile, Share, Change Cover) */}
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-2 max-w-[calc(100%-24px)] flex-wrap justify-end">
+            {/* Edit Profile */}
+            <button
+              id="edit-profile-btn"
+              onClick={() => setIsEditModalOpen(true)}
+              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+              title="Edit Profile"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-brand" />
+              <span>Edit Profile</span>
+            </button>
+
+            {/* Share Profile */}
+            <button
+              type="button"
+              onClick={handleShareProfile}
+              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+              title="Share Profile Link"
+            >
+              {copiedProfileLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-400 font-bold">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
+
+            {/* Change Cover */}
             <button
               onClick={() => bannerFileInputRef.current?.click()}
               disabled={isUploadingBanner}
-              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+              className="backdrop-blur-md bg-black/60 hover:bg-black/85 text-white border border-white/20 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
               title="Change Background Picture"
             >
               {isUploadingBanner ? (
@@ -276,7 +308,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ) : (
                 <>
                   <Camera className="w-3.5 h-3.5 text-brand" />
-                  <span>Change Cover</span>
+                  <span className="hidden sm:inline">Change </span>
+                  <span>Cover</span>
                 </>
               )}
             </button>
@@ -293,8 +326,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* User Identity Block */}
         <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-0 relative">
 
-          {/* Top Bar: Overlapping Avatar on Left, Action Buttons on Right */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-4">
+          {/* Top Bar: Overlapping Avatar */}
+          <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between">
 
             {/* Avatar (ONLY the avatar has negative margin to overlap cover) */}
             <div className="relative group shrink-0 -mt-14 sm:-mt-20">
@@ -322,45 +355,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 onChange={handleDirectAvatarUpload}
                 className="hidden"
               />
-            </div>
-
-            {/* Action Buttons (Clean, minimal, professional) */}
-            <div className="flex items-center gap-2 pt-2 sm:pt-4 shrink-0 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
-              <button
-                id="edit-profile-btn"
-                onClick={() => setIsEditModalOpen(true)}
-                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Profile</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleShareProfile}
-                className="btn-secondary text-xs px-3.5 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-xs font-bold hover:border-brand hover:text-brand transition-all flex-1 sm:flex-initial"
-                title="Share Profile Link"
-              >
-                {copiedProfileLink ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="text-emerald-500 font-bold">Link Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Share</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={onOpenDropGear}
-                className="btn-primary text-xs px-4 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-pink font-bold flex-1 sm:flex-initial"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>List Gear</span>
-              </button>
             </div>
 
           </div>
