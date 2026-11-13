@@ -130,7 +130,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       await navigator.clipboard.writeText(url);
       setCopiedProfileLink(true);
       setTimeout(() => setCopiedProfileLink(false), 2000);
-    } catch {}
+    } catch { }
   };
 
   const loadData = async () => {
@@ -158,12 +158,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (typeof user.followers_count === 'number') {
         setFollowersCount(user.followers_count);
       } else {
-        api.getFollowers(user.id).then((f) => setFollowersCount(Array.isArray(f) ? f.length : 0)).catch(() => {});
+        api.getFollowers(user.id).then((f) => setFollowersCount(Array.isArray(f) ? f.length : 0)).catch(() => { });
       }
       if (typeof user.following_count === 'number') {
         setFollowingCount(user.following_count);
       } else {
-        api.getFollowing(user.id).then((f) => setFollowingCount(Array.isArray(f) ? f.length : 0)).catch(() => {});
+        api.getFollowing(user.id).then((f) => setFollowingCount(Array.isArray(f) ? f.length : 0)).catch(() => { });
       }
     } catch (err) {
       console.error('Failed to load profile data:', err);

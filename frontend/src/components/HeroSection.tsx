@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, ShieldCheck, ArrowRight, Lock, MessageSquare } from 'lucide-react';
+import { Plus, ArrowRight } from 'lucide-react';
 
 interface HeroSectionProps {
   onOpenDropGear: () => void;
@@ -38,9 +38,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           Why buy gear you only need for a few days? Rent cameras, tools, camping equipment, and tech from verified neighbors nearby.
         </p>
 
-        {/* Action Buttons & Trust Badges centered cleanly between subtitle and stats */}
-        <div className="mt-6 sm:mt-7 space-y-4 sm:space-y-5">
-          {/* Action Buttons */}
+        {/* Action Buttons */}
+        <div className="mt-6 sm:mt-7">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
             <button
               type="button"
@@ -59,24 +58,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <Plus className="w-4 h-4" />
               <span>List Your Gear</span>
             </button>
-          </div>
-
-          {/* Trust Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-6 text-[11px] sm:text-xs font-semibold text-ink-secondary">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>100% Peer Verified</span>
-            </div>
-            <span className="hidden sm:inline text-divider">•</span>
-            <div className="flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>6-Digit Handover Verification</span>
-            </div>
-            <span className="hidden sm:inline text-divider">•</span>
-            <div className="flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5 text-brand shrink-0" />
-              <span>Direct Chat Coordination</span>
-            </div>
           </div>
         </div>
 
