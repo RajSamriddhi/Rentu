@@ -42,10 +42,11 @@ import { api } from '../lib/api';
 import { initWebPush } from '../lib/push';
 import { UserSearchResult, isAuthorizedAdmin, AppNotification } from '../lib/types';
 import { getReachDistance } from '../lib/distance';
+import type { TabType } from '../App';
 
 interface NavbarProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onSearch: () => void;
@@ -58,7 +59,7 @@ interface NavbarProps {
   onOpenHelpSupport?: (tab?: 'NEW' | 'HISTORY') => void;
   onOpenSettings?: () => void;
   onNavigateNotification?: (target: {
-    tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+    tab: TabType;
     bookingSubTab?: 'ongoing' | 'requests' | 'finished';
     bookingId?: string;
     userId?: string;

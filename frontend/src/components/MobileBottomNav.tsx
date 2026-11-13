@@ -13,10 +13,11 @@ import {
   Users
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
+import type { TabType } from '../App';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community' | 'notifications';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community' | 'notifications') => void;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
