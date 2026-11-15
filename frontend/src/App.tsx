@@ -123,7 +123,7 @@ const getItemIdFromUrl = (): string | null => {
 };
 
 export const App: React.FC = () => {
-  const { user, firebaseUser, isAuthenticated } = useAuth();
+  const { user, firebaseUser, isAuthenticated, refreshUser } = useAuth();
   const currentUserEmail = (user?.email || firebaseUser?.email || '').trim().toLowerCase();
   const isUserAdmin = isAuthorizedAdmin(user || currentUserEmail);
 
@@ -471,8 +471,8 @@ export const App: React.FC = () => {
     loadFeed();
   }, [selectedCategory]);
 
-  const loadFeed = async () => {
-    setIsLoading(true);
+  const loadFeed = async (isBackground = false) => {
+    if (!isBackground) setIsLoading(true);
     try {
       const [itemsRes, requestsRes, analyticsRes] = await Promise.allSettled([
         api.getItems({
@@ -490,14 +490,14 @@ export const App: React.FC = () => {
         setItems(itemsRes.value);
       } else if (itemsRes.status === 'rejected') {
         console.error('Failed to load items:', itemsRes.reason);
-        setItems([]);
+        if (!isBackground) setItems([]);
       }
 
       if (requestsRes.status === 'fulfilled' && Array.isArray(requestsRes.value)) {
         setRequests(requestsRes.value);
       } else if (requestsRes.status === 'rejected') {
         console.error('Failed to load requests:', requestsRes.reason);
-        setRequests([]);
+        if (!isBackground) setRequests([]);
       }
 
       if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.pulse) {
@@ -506,9 +506,65 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to load feed data:', err);
     } finally {
-      setIsLoading(false);
+      if (!isBackground) setIsLoading(false);
     }
   };
+
+  // Auto-refresh site feed, user profile, and PWA updates every 10 minutes
+  useEffect(() => {
+    const TEN_MINUTES_MS = 10 * 60 * 1000;
+    let lastRefreshTime = Date.now();
+
+    const triggerAutoRefresh = (isBackground = true) => {
+      // Avoid interrupting the user if they are currently filling out an item or wish form
+      if (isDropGearOpen || isDropWishOpen || editingItem !== null) {
+        return;
+      }
+
+      // 1. Refresh marketplace feed data in background (no flickering)
+      loadFeed(isBackground);
+
+      // 2. Refresh active user profile & session
+      if (isAuthenticated && refreshUser) {
+        refreshUser().catch(() => {});
+      }
+
+      // 3. Check for Service Worker / PWA updates in background
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => {
+          reg?.update().catch(() => {});
+        }).catch(() => {});
+      }
+
+      lastRefreshTime = Date.now();
+    };
+
+    // 10-minute recurring interval
+    const intervalId = setInterval(() => {
+      triggerAutoRefresh(true);
+    }, TEN_MINUTES_MS);
+
+    // Auto-refresh when user switches back to the tab if 10+ minutes have passed
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastRefreshTime >= TEN_MINUTES_MS) {
+        triggerAutoRefresh(true);
+      }
+    };
+
+    // Auto-refresh when internet connectivity is re-established
+    const handleOnline = () => {
+      triggerAutoRefresh(true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [selectedCategory, searchQuery, isAuthenticated, refreshUser, isDropGearOpen, isDropWishOpen, editingItem]);
 
   const handleSearch = () => {
     loadFeed();
