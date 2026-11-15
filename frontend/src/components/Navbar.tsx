@@ -962,7 +962,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </div>
 
-                {/* User Profile Avatar with Pink Chevron (Toggles Account Menu matching mockup) */}
+                {/* User Profile Avatar (Clicking opens account menu) */}
                 <div className="relative flex items-center" ref={userMenuRef}>
                   <button
                     id="user-menu-btn"
@@ -977,7 +977,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                         setShowNotifications(false);
                       }
                     }}
-                    className="flex items-center gap-1.5 p-1 rounded-full hover:bg-canvas transition-colors cursor-pointer select-none"
+                    className={`p-0.5 rounded-full transition-all duration-200 cursor-pointer select-none ${
+                      showUserMenu
+                        ? 'ring-2 ring-brand ring-offset-2 ring-offset-surface scale-105'
+                        : 'hover:opacity-90 hover:scale-105 active:scale-95'
+                    }`}
                     aria-expanded={showUserMenu}
                     aria-label="User account menu"
                     title="Account options"
@@ -991,11 +995,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }
                       alt={user?.name || 'User'}
                       className="w-8 h-8 rounded-full object-cover ring-2 ring-brand/20 shrink-0"
-                    />
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 text-brand stroke-[2.5] transition-transform duration-200 ${
-                        showUserMenu ? 'rotate-180' : ''
-                      }`}
                     />
                   </button>
 
