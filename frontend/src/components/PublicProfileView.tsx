@@ -881,7 +881,7 @@ export const PublicProfileView: React.FC<PublicProfileViewProps> = ({
             </div>
 
             {/* Filter Tabs by Review Type */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <div className="flex flex-wrap items-center gap-2">
               {[
                 { key: 'ALL', label: 'All Reviews', count: profile.reviews.length },
                 { key: 'OWNER_RENTAL', label: 'As Gear Owner', count: profile.reviews.filter(r => r.review_type === 'OWNER_RENTAL').length },

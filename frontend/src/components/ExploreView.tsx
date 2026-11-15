@@ -258,8 +258,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         </div>
       </div>
 
-      {/* Horizontal Category Filter Pills (Shared across both Items and Requests) */}
-      <div className="flex items-center gap-2 overflow-x-auto py-4 scrollbar-none">
+      {/* Category Filter Pills (Wrapped onto multiple lines, no horizontal overflow) */}
+      <div className="flex flex-wrap items-center gap-2 py-3">
         {categories.map((cat) => {
           const isSelected = selectedCategory === cat || (cat === 'All' && selectedCategory === 'All');
           return (

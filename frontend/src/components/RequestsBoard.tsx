@@ -121,8 +121,8 @@ export const RequestsBoard: React.FC<RequestsBoardProps> = ({
         ))}
       </div>
 
-      {/* Category Pills matching Screen 6 */}
-      <div className="flex items-center gap-2 overflow-x-auto py-4 scrollbar-none">
+      {/* Category Pills (Wrapped onto multiple lines, no horizontal overflow) */}
+      <div className="flex flex-wrap items-center gap-2 py-3">
         {categories.map((cat) => {
           const isSelected = selectedCategory === cat || (cat === 'All' && selectedCategory === 'All');
           return (

@@ -59,7 +59,7 @@ export const Footer: React.FC<FooterProps> = ({
 
   return (
     <>
-      <footer className="mt-20 border-t border-divider bg-surface/80 dark:bg-zinc-950/80 backdrop-blur-md text-ink transition-colors pb-24 md:pb-12">
+      <footer className="hidden md:block mt-20 border-t border-divider bg-surface/80 dark:bg-zinc-950/80 backdrop-blur-md text-ink transition-colors pb-12">
         {/* Top Banner: Value Props */}
         <div className="border-b border-divider/60 bg-brand/5 dark:bg-brand/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">

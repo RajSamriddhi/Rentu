@@ -5,24 +5,26 @@ import {
   Target, 
   Plus, 
   Calendar, 
-  User, 
   MessageSquare, 
+  Bell,
   Sparkles, 
   X, 
   LogIn,
   Users
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
+import type { TabType } from '../App';
 
 interface MobileBottomNavProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   onOpenDropGear: () => void;
   onOpenDropWish: () => void;
   onOpenChat: () => void;
   onOpenAuth: () => void;
   onOpenHowItWorks?: () => void;
   unreadMessagesCount?: number;
+  unreadNotificationsCount?: number;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -34,8 +36,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenAuth,
   onOpenHowItWorks,
   unreadMessagesCount,
+  unreadNotificationsCount,
 }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [showPostSheet, setShowPostSheet] = useState(false);
 
   return (
@@ -124,7 +127,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span>Market</span>
         </button>
 
-        {/* LOGGED IN: Show Center Post Button + Messages + Profile */}
+        {/* LOGGED IN: Show Center Post Button + Messages */}
         {isAuthenticated ? (
           <>
             {/* Center Action: Floating + Post button (ONLY VISIBLE AFTER LOGIN) */}
@@ -155,25 +158,23 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               <span>Chat</span>
             </button>
 
-            {/* Tab 5: Profile */}
+            {/* Tab 5: Notifications */}
             <button
-              onClick={() => setActiveTab('profile')}
-              className={`flex flex-col items-center gap-1 py-1 px-2 text-[10px] font-bold transition-all cursor-pointer ${
-                activeTab === 'profile' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
+              onClick={() => setActiveTab('notifications')}
+              className={`flex flex-col items-center gap-1 py-1 px-1.5 text-[9.5px] font-bold transition-all cursor-pointer relative ${
+                activeTab === 'notifications' ? 'text-brand scale-105' : 'text-ink-secondary hover:text-ink'
               }`}
+              title="Notifications"
             >
-              {user?.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt={user.name}
-                  className={`w-5 h-5 rounded-full object-cover border ${
-                    activeTab === 'profile' ? 'border-brand ring-1 ring-brand' : 'border-divider'
-                  }`}
-                />
-              ) : (
-                <User className="w-5 h-5" />
-              )}
-              <span>Profile</span>
+              <div className="relative">
+                <Bell className="w-5 h-5" />
+                {Boolean(unreadNotificationsCount && unreadNotificationsCount > 0) && (
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-3.5 px-1 rounded-full bg-brand text-[9px] font-black text-white flex items-center justify-center leading-none shadow-sm animate-in zoom-in-75 duration-200">
+                    {(unreadNotificationsCount ?? 0) > 9 ? '9+' : unreadNotificationsCount}
+                  </span>
+                )}
+              </div>
+              <span className="tracking-tight">Notifications</span>
             </button>
           </>
         ) : (

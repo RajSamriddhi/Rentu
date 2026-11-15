@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   MapPin, 
@@ -7,7 +8,6 @@ import {
   LogOut, 
   MessageSquare, 
   BarChart3, 
-  Bell, 
   Search,
   Calendar,
   Sparkles,
@@ -15,7 +15,6 @@ import {
   Moon,
   Menu,
   X,
-  Compass,
   Target,
   Users,
   ShieldCheck,
@@ -26,7 +25,11 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  Package
+  Package,
+  Home as HomeIcon,
+  Briefcase,
+  ClipboardList,
+  LogIn
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/themeContext';
@@ -34,10 +37,11 @@ import { api } from '../lib/api';
 import { initWebPush } from '../lib/push';
 import { UserSearchResult, isAuthorizedAdmin, AppNotification } from '../lib/types';
 import { getReachDistance } from '../lib/distance';
+import type { TabType } from '../App';
 
 interface NavbarProps {
-  activeTab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
-  setActiveTab: (tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community') => void;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onSearch: () => void;
@@ -50,7 +54,7 @@ interface NavbarProps {
   onOpenHelpSupport?: (tab?: 'NEW' | 'HISTORY') => void;
   onOpenSettings?: () => void;
   onNavigateNotification?: (target: {
-    tab: 'home' | 'explore' | 'requests' | 'bookings' | 'hustle' | 'profile' | 'messages' | 'community';
+    tab: TabType;
     bookingSubTab?: 'ongoing' | 'requests' | 'finished';
     bookingId?: string;
     userId?: string;
@@ -58,6 +62,15 @@ interface NavbarProps {
   onOpenChatWithUser?: (partnerId: string, partnerName?: string, partnerAvatar?: string) => void;
   unreadMessagesCount?: number;
 }
+
+const getFirstName = (fullName?: string) => {
+  if (!fullName) return 'Account';
+  const first = fullName.trim().split(' ')[0];
+  if (first.length > 1 && first === first.toUpperCase()) {
+    return first.charAt(0) + first.slice(1).toLowerCase();
+  }
+  return first;
+};
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
@@ -275,6 +288,24 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  // Prevent background scrolling and handle Escape key while mobile menu drawer is open
+  useEffect(() => {
+    if (showMobileMenu) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setShowMobileMenu(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [showMobileMenu]);
 
   const unreadCount = serverUnreadCount !== null ? serverUnreadCount : notifications.filter((n) => !n.is_read && !n.read_at).length;
 
@@ -660,8 +691,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
 
-            {/* Nav links: Marketplace, Community, Bookings */}
-            <nav className="hidden md:flex items-center gap-5 text-xs font-bold">
+            {/* Nav links: Marketplace, Bookings, Community */}
+            <nav className="hidden md:flex items-center gap-5 lg:gap-6 text-sm font-bold">
               <button
                 onClick={() => setActiveTab('explore')}
                 className={`transition-colors cursor-pointer ${
@@ -669,20 +700,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 Marketplace
-              </button>
-
-              <button
-                onClick={() => setActiveTab('community')}
-                className={`transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
-                }`}
-              >
-                <span>Community</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-colors ${
-                  activeTab === 'community' ? 'bg-brand text-white' : 'bg-brand-soft text-brand'
-                }`}>
-                  Top 10
-                </span>
               </button>
 
               <button
@@ -698,8 +715,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
                 title="View your gear rental bookings and handoffs"
               >
-                <Calendar className="w-3.5 h-3.5" />
+                <Calendar className="w-4 h-4" />
                 <span>Bookings</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('community')}
+                className={`transition-colors cursor-pointer ${
+                  activeTab === 'community' ? 'text-brand' : 'text-ink-secondary hover:text-ink'
+                }`}
+              >
+                Community
               </button>
             </nav>
           </div>
@@ -856,7 +882,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile Search Toggle Button */}
             <button
-              onClick={() => setShowMobileSearch(!showMobileSearch)}
+              onClick={() => {
+                const next = !showMobileSearch;
+                setShowMobileSearch(next);
+                if (next) {
+                  setShowMobileMenu(false);
+                  setShowUserMenu(false);
+                  setShowNotifications(false);
+                }
+              }}
               className="lg:hidden p-1.5 sm:p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink transition-colors cursor-pointer"
               title="Search"
               aria-label="Toggle search"
@@ -864,187 +898,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Search className="w-4 h-4" />
             </button>
 
-            {/* AUTHENTICATED: Notifications, Chat, Post CTA, User Profile */}
+            {/* AUTHENTICATED: Chat, Post CTA, User Profile */}
             {isAuthenticated ? (
               <>
-                {/* Notification Bell Dropdown */}
-                <div className="relative" ref={notifRef}>
-                  <button
-                    onClick={() => {
-                      const next = !showNotifications;
-                      setShowNotifications(next);
-                      if (next) {
-                        setVisibleLimit(10);
-                        fetchNotifications();
-                      }
-                    }}
-                    className={`relative p-2 rounded-full transition-colors cursor-pointer flex ${
-                      showNotifications
-                        ? 'bg-brand/10 text-brand'
-                        : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-ink-secondary hover:text-ink'
-                    }`}
-                    title="Announcements & Alerts"
-                  >
-                    <Bell className="w-4 h-4" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-brand text-[10px] font-black text-white flex items-center justify-center leading-none shadow-sm">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-                  </button>
-
-                  {showNotifications && (
-                    <div className="fixed sm:absolute right-2 sm:right-0 top-16 sm:top-full mt-2 w-[calc(100vw-1rem)] sm:w-96 max-w-sm sm:max-w-md bg-surface border border-divider rounded-2xl shadow-2xl overflow-hidden z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
-                      <div className="px-4 py-3 border-b border-divider flex items-center justify-between bg-canvas/40">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-ink text-sm">Notifications</span>
-                          {notifications.length > 0 && (
-                            <span className="text-[10px] font-black text-brand bg-brand-soft px-2 py-0.5 rounded-full border border-brand/20">
-                              {notifications.length}
-                            </span>
-                          )}
-                        </div>
-                        {unreadCount > 0 && (
-                          <button
-                            onClick={handleMarkAllRead}
-                            className="text-xs text-brand hover:underline font-semibold cursor-pointer"
-                          >
-                            Mark all as read
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="max-h-[28rem] overflow-y-auto">
-                        {isLoadingNotifications && notifications.length === 0 ? (
-                          <div className="py-8 text-center text-ink-secondary text-xs">
-                            Loading notifications...
-                          </div>
-                        ) : notifications.length === 0 ? (
-                          <div className="py-10 text-center text-ink-secondary text-xs px-6">
-                            <div className="w-12 h-12 rounded-full bg-brand-soft/50 text-brand flex items-center justify-center mx-auto mb-2.5">
-                              <Bell className="w-5 h-5" />
-                            </div>
-                            <p className="font-semibold text-ink text-sm mb-1">No notifications yet</p>
-                            <p className="text-ink-secondary text-xs leading-relaxed">
-                              When neighbors request, accept, or update rentals with you, you'll see them here.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {dayGroups.map((group) => (
-                              <div key={group.key} className="space-y-0.5">
-                                {/* Group Day Header: Displays date & count of notifications for that day */}
-                                <div className="sticky top-0 z-10 px-4 py-2 bg-surface/95 backdrop-blur-md border-y border-divider/60 flex items-center justify-between text-[11px] font-black tracking-wide text-ink font-display shadow-2xs">
-                                  <div className="flex items-center gap-1.5">
-                                    <Calendar className="w-3.5 h-3.5 text-brand" />
-                                    <span>{group.label}</span>
-                                  </div>
-                                  <span className="text-[10px] font-extrabold text-ink-secondary bg-canvas px-2.5 py-0.5 rounded-full border border-divider/60">
-                                    {group.totalCount} {group.totalCount === 1 ? 'notification' : 'notifications'}
-                                  </span>
-                                </div>
-
-                                {/* Notifications in this day group */}
-                                <div className="divide-y divide-divider/30">
-                                  {group.items.map((n) => {
-                                    const isUnread = !n.is_read && !n.read_at;
-                                    const micro = getInstaMicroBadge(n.type);
-                                    const sender = n.sender_name || 'Neighbor';
-                                    const initial = sender.charAt(0).toUpperCase();
-
-                                    return (
-                                      <div
-                                        key={n.id}
-                                        onClick={() => handleNotificationClick(n)}
-                                        className={`px-4 py-3 hover:bg-canvas/70 transition-colors cursor-pointer flex items-center gap-3 relative ${
-                                          isUnread ? 'bg-brand/[0.04]' : ''
-                                        }`}
-                                      >
-                                        {/* Circular Avatar with micro-badge */}
-                                        <div className="relative shrink-0">
-                                          {n.sender_avatar ? (
-                                            <img
-                                              src={n.sender_avatar}
-                                              alt={sender}
-                                              className="w-10 h-10 rounded-full object-cover ring-1 ring-divider"
-                                            />
-                                          ) : (
-                                            <div className="w-10 h-10 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-sm">
-                                              {initial}
-                                            </div>
-                                          )}
-                                          <span
-                                            className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center font-bold ring-2 ring-surface ${micro.bg}`}
-                                          >
-                                            <micro.Icon className="w-2.5 h-2.5 stroke-[2.5]" />
-                                          </span>
-                                        </div>
-
-                                        {/* Fluid sentence */}
-                                        <div className="flex-1 min-w-0 pr-1">
-                                          <p className="text-xs text-ink leading-snug">
-                                            {renderInstaContent(n)}
-                                            <span className="text-ink-muted text-[11px] ml-1.5 font-normal">
-                                              {formatInstaTime(n.created_at)}
-                                            </span>
-                                          </p>
-                                        </div>
-
-                                        {/* Right: Gear image thumbnail or unread dot */}
-                                        {n.item_image ? (
-                                          <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-divider bg-canvas flex items-center justify-center">
-                                            <img
-                                              src={n.item_image}
-                                              alt="gear"
-                                              className="w-full h-full object-cover"
-                                            />
-                                          </div>
-                                        ) : isUnread ? (
-                                          <div className="shrink-0 w-2 h-2 rounded-full bg-brand" />
-                                        ) : null}
-
-                                        {n.item_image && isUnread && (
-                                          <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-
-                            {/* Show More Notifications Button (displayed when local notifications > visibleLimit or server has more) */}
-                            {(notifications.length > visibleLimit || hasMoreServer) && (
-                              <div className="p-3 text-center bg-canvas/40 border-t border-divider">
-                                <button
-                                  type="button"
-                                  onClick={handleShowMore}
-                                  disabled={isLoadingMore}
-                                  className="btn-secondary w-full py-2.5 text-xs font-bold rounded-xl text-ink hover:text-brand hover:border-brand/40 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                                >
-                                  {isLoadingMore ? (
-                                    <span>Loading older notifications...</span>
-                                  ) : (
-                                    <>
-                                      <span>Show More Notifications</span>
-                                      {totalNotificationsCount > visibleLimit && (
-                                        <span className="text-[10px] text-ink-secondary">
-                                          ({Math.max(0, totalNotificationsCount - visibleLimit)} remaining)
-                                        </span>
-                                      )}
-                                      <ChevronDown className="w-3.5 h-3.5" />
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 {/* Messages Icon (Hidden on small screens, accessible via hamburger) */}
                 <button
                   onClick={onOpenChat}
@@ -1106,34 +962,90 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </div>
 
-                {/* User Profile Avatar Dropdown */}
-                <div className="relative" ref={userMenuRef}>
+                {/* User Profile Avatar (Direct link to profile page) */}
+                <div className="relative flex items-center" ref={userMenuRef}>
                   <button
-                    id="user-menu-btn"
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center gap-1.5 p-1 bg-canvas hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-divider rounded-full transition-all cursor-pointer"
+                    id="user-profile-btn"
+                    onClick={() => {
+                      setActiveTab('profile');
+                      setShowUserMenu(false);
+                      setShowMobileMenu(false);
+                      setShowMobileSearch(false);
+                      setShowNotifications(false);
+                    }}
+                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-2 sm:py-1 rounded-full transition-all duration-200 cursor-pointer border select-none ${
+                      activeTab === 'profile'
+                        ? 'bg-surface border-brand ring-2 ring-brand/15 shadow-xs'
+                        : 'bg-surface hover:bg-canvas border-divider hover:border-brand/40 shadow-xs hover:shadow-sm'
+                    }`}
+                    title="View Profile"
+                    aria-label="View Profile"
                   >
                     <img
-                      src={user?.avatar_url || (user?.name ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&bold=true` : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')}
+                      src={
+                        user?.avatar_url ||
+                        (user?.name
+                          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
+                          : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                      }
                       alt={user?.name || 'User'}
-                      className="w-7 h-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-700"
+                      className="w-7 h-7 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15 shrink-0"
                     />
-                    <span className="text-xs font-bold text-ink max-w-[80px] truncate hidden md:inline">
-                      {user?.name?.split(' ')[0]}
+                    <span className="text-xs font-bold text-ink max-w-[100px] truncate hidden sm:inline leading-none">
+                      {getFirstName(user?.name)}
                     </span>
-                    <ChevronDown className="w-3 h-3 text-ink-secondary mr-1 hidden sm:inline" />
+                  </button>
+
+                  {/* Dropdown Menu Toggle (Desktop only for Settings / Sign Out) */}
+                  <button
+                    id="user-menu-btn"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = !showUserMenu;
+                      setShowUserMenu(next);
+                      if (next) {
+                        setShowMobileMenu(false);
+                        setShowMobileSearch(false);
+                        setShowNotifications(false);
+                      }
+                    }}
+                    className={`hidden sm:flex items-center justify-center p-1 -ml-1 rounded-full text-ink-secondary hover:text-ink hover:bg-canvas transition-colors cursor-pointer select-none ${
+                      showUserMenu ? 'text-brand' : ''
+                    }`}
+                    aria-expanded={showUserMenu}
+                    aria-label="User account menu"
+                    title="Account options"
+                  >
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        showUserMenu ? 'rotate-180 text-brand' : ''
+                      }`}
+                    />
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
-                      <div className="px-3 py-2 border-b border-divider mb-1">
-                        <div className="font-extrabold text-sm text-ink">{user?.name}</div>
-                        <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-divider rounded-2xl shadow-xl p-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-100 text-ink">
+                      <div className="px-3 py-2.5 border-b border-divider mb-1.5 flex items-center gap-3">
+                        <img
+                          src={
+                            user?.avatar_url ||
+                            (user?.name
+                              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E11D74&color=fff&bold=true`
+                              : 'https://api.dicebear.com/7.x/shapes/svg?seed=rentu')
+                          }
+                          alt={user?.name || 'User'}
+                          className="w-9 h-9 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-extrabold text-sm text-ink truncate">{user?.name}</div>
+                          <div className="text-[11px] text-ink-secondary truncate">{user?.email}</div>
+                        </div>
                       </div>
 
                       <button
                         onClick={() => { setActiveTab('profile'); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <UserIcon className="w-4 h-4 text-ink-secondary" />
                         <span>My Profile & Listings</span>
@@ -1142,7 +1054,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {isUserAdmin && (
                         <button
                           onClick={() => { setActiveTab('hustle'); setShowUserMenu(false); }}
-                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                         >
                           <BarChart3 className="w-4 h-4 text-ink-secondary" />
                           <span>Admin Dashboard</span>
@@ -1151,7 +1063,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                       <button
                         onClick={() => { onOpenSettings?.(); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <Settings className="w-4 h-4 text-ink-secondary" />
                         <span>Settings</span>
@@ -1159,20 +1071,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                       <button
                         onClick={() => { onOpenHelpSupport?.(); setShowUserMenu(false); }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-canvas flex items-center gap-2.5 font-bold text-ink cursor-pointer transition-colors"
                       >
                         <HelpCircle className="w-4 h-4 text-brand" />
-                        <span>Help & Raise Concern</span>
+                        <span>Help & Support</span>
                       </button>
 
                       {/* Sign Out */}
-                      <div className="pt-1.5 border-t border-divider">
+                      <div className="pt-1.5 mt-1 border-t border-divider">
                         <button
                           onClick={() => { logout(); setShowUserMenu(false); setActiveTab('explore'); }}
-                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-pink-50 text-brand flex items-center gap-2 font-bold cursor-pointer"
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 font-bold cursor-pointer transition-colors"
                         >
-                          <LogOut className="w-3.5 h-3.5" />
-                          Sign Out
+                          <LogOut className="w-4 h-4" />
+                          <span>Sign Out</span>
                         </button>
                       </div>
                     </div>
@@ -1209,7 +1121,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Mobile Hamburger Menu Toggle Button (Visible on md and below) */}
             <button
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              onClick={() => {
+                const next = !showMobileMenu;
+                setShowMobileMenu(next);
+                if (next) {
+                  setShowMobileSearch(false);
+                  setShowUserMenu(false);
+                  setShowNotifications(false);
+                }
+              }}
               className="md:hidden p-1.5 rounded-xl hover:bg-canvas text-ink transition-colors cursor-pointer"
               title="Toggle Menu"
               aria-label="Open mobile navigation menu"
@@ -1319,155 +1239,158 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
 
-        {/* Responsive Mobile Navigation Drawer / Dropdown */}
-        {showMobileMenu && (
-          <div 
-            className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-white/98 dark:bg-[#111218]/98 backdrop-blur-xl px-4 py-5 space-y-4 overflow-y-auto pb-32 animate-in slide-in-from-top-2 duration-150 shadow-2xl"
-            style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
-          >
+        {/* Modern Slide-in Hamburger Drawer (Left Side Sheet matching Mockup) */}
+        {showMobileMenu && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[9999] md:hidden">
+            {/* Dark Backdrop to dim underlying page and close on tap */}
+            <div 
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+              onClick={() => setShowMobileMenu(false)}
+              aria-hidden="true"
+            />
 
-            {/* Navigation Links */}
-            <div className="space-y-1">
-              <button
-                onClick={() => { setActiveTab('explore'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'explore' || activeTab === 'requests' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Compass className="w-4 h-4" />
-                <span>Marketplace (Items & Requests)</span>
-              </button>
-
-              <button
-                onClick={() => { setActiveTab('community'); setShowMobileMenu(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'community' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Users className="w-4 h-4" />
-                  <span>Community & Leaderboard</span>
+            {/* Slide-out Hamburger Sidebar Panel (72vw, Anchored to Left with Rounded Right Edge) */}
+            <aside 
+              aria-label="Mobile Navigation Drawer"
+              className="fixed inset-y-0 left-0 w-[72vw] max-w-[310px] min-w-[260px] h-full h-[100dvh] max-h-[100dvh] bg-white dark:bg-[#171821] text-ink shadow-2xl rounded-r-3xl flex flex-col justify-between z-10 border-r border-divider/60 animate-in slide-in-from-left duration-300 ease-out"
+              style={{
+                paddingTop: 'max(1rem, env(safe-area-inset-top, 1rem))',
+                paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))',
+              }}
+            >
+              {/* Drawer Top Header: Brand Logo & Close Button */}
+              <div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-2xl tracking-tight text-[#111827] dark:text-white font-display">
+                    Rentu<sup className="text-brand font-black text-base">⁺</sup>
+                  </span>
                 </div>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                  activeTab === 'community' ? 'bg-white/20 text-white' : 'bg-brand-soft text-brand'
-                }`}>
-                  Top 10
-                </span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (!isAuthenticated && onOpenAuth) {
-                    onOpenAuth();
-                  } else {
-                    setActiveTab('bookings');
-                  }
-                  setShowMobileMenu(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  activeTab === 'bookings' ? 'bg-brand text-white' : 'text-ink hover:bg-canvas'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Bookings</span>
-              </button>
-            </div>
-
-            {/* Authenticated or Unauthenticated actions in Mobile Menu */}
-            {isAuthenticated ? (
-              <div className="pt-2 border-t border-divider space-y-1">
                 <button
-                  onClick={() => { setActiveTab('profile'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="p-1 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Close Menu"
+                  aria-label="Close navigation menu"
                 >
-                  <UserIcon className="w-4 h-4 text-ink-secondary" />
-                  <span>My Profile & Listings</span>
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
 
+              {/* Scrollable Navigation List */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-3.5 py-3 space-y-1">
+                {/* 1. Home */}
                 <button
-                  onClick={() => { setActiveTab('messages'); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                    activeTab === 'messages' ? 'bg-brand/10 text-brand' : 'text-ink hover:bg-canvas'
+                  type="button"
+                  onClick={() => { setActiveTab('home'); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm transition-colors cursor-pointer ${
+                    activeTab === 'home'
+                      ? 'bg-[#FFF0F5] dark:bg-pink-950/40 text-brand font-bold'
+                      : 'text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 font-medium'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <MessageSquare className={`w-4 h-4 ${activeTab === 'messages' ? 'text-brand' : 'text-ink-secondary'}`} />
-                    <span>Messages & Coordination</span>
-                  </div>
-                  {unreadMessagesCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount} new
-                    </span>
-                  )}
+                  <HomeIcon className={`w-5 h-5 ${activeTab === 'home' ? 'text-brand' : 'text-[#0F172A] dark:text-[#E2E8F0]'}`} />
+                  <span>Home</span>
                 </button>
 
+                {/* Secondary Navigation Divider */}
+                <div className="border-t border-zinc-200 dark:border-zinc-800 my-2 mx-1" />
+
+                {/* 5. My Gears */}
                 <button
-                  onClick={() => { setShowNotifications(true); setShowMobileMenu(false); }}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('profile');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center gap-3">
-                    <Bell className="w-4 h-4 text-brand" />
-                    <span>Notifications & Alerts</span>
-                  </div>
-                  {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-brand text-white shadow-sm">
-                      {unreadCount} new
-                    </span>
-                  )}
+                  <Briefcase className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>My Gears</span>
                 </button>
 
+                {/* 6. My Requests */}
                 <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAuthenticated && onOpenAuth) {
+                      onOpenAuth();
+                    } else {
+                      setActiveTab('requests');
+                    }
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
+                  <ClipboardList className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>My Requests</span>
+                </button>
+
+                {/* 7. Settings */}
+                <button
+                  type="button"
                   onClick={() => { onOpenSettings?.(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
-                  <Settings className="w-4 h-4 text-ink-secondary" />
+                  <Settings className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
                   <span>Settings</span>
                 </button>
 
+                {/* 8. Help & Support */}
                 <button
-                  onClick={() => { onOpenHelpSupport?.(); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => { onOpenHelpSupport?.(isAuthenticated ? undefined : 'NEW'); setShowMobileMenu(false); }}
+                  className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
-                  <HelpCircle className="w-4 h-4 text-brand" />
-                  <span>Help & Raise Concern</span>
+                  <HelpCircle className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                  <span>Help & Support</span>
                 </button>
 
-                <button
-                  onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-brand hover:bg-pink-50 transition-colors cursor-pointer mt-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            ) : (
-              <div className="pt-2 border-t border-divider space-y-2">
-                <button
-                  onClick={() => { onOpenHelpSupport?.('NEW'); setShowMobileMenu(false); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-ink hover:bg-canvas transition-colors cursor-pointer"
-                >
-                  <HelpCircle className="w-4 h-4 text-brand" />
-                  <span>Help & Community Support</span>
-                </button>
-                <div className="grid grid-cols-2 gap-2">
+                {/* Divider Line before Account Actions */}
+                <div className="border-t border-zinc-200 dark:border-zinc-800 my-2 mx-1" />
+
+                {/* Account Actions */}
+                {isAuthenticated ? (
+                  /* Sign Out */
                   <button
-                    id="mobile-login-btn"
-                    onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
-                    className="btn-secondary w-full py-2.5 text-xs text-center font-bold cursor-pointer"
+                    type="button"
+                    onClick={() => { logout(); setShowMobileMenu(false); setActiveTab('explore'); }}
+                    className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
                   >
-                    Log In
+                    <LogOut className="w-5 h-5 text-brand" />
+                    <span>Sign Out</span>
                   </button>
-                  <button
-                    id="mobile-signup-btn"
-                    onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
-                    className="btn-primary w-full py-2.5 text-xs text-center font-bold shadow-pink cursor-pointer"
-                  >
-                    Sign Up
-                  </button>
-                </div>
+                ) : (
+                  /* Guest Actions: Log In / Sign Up */
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      id="mobile-login-btn"
+                      onClick={() => { onOpenAuth('login'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-[#0F172A] dark:text-[#E2E8F0] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                    >
+                      <LogIn className="w-5 h-5 text-[#0F172A] dark:text-[#E2E8F0]" />
+                      <span>Log In</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="mobile-signup-btn"
+                      onClick={() => { onOpenAuth('signup'); setShowMobileMenu(false); }}
+                      className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-sm font-bold text-brand hover:bg-pink-50 dark:hover:bg-pink-950/30 transition-colors cursor-pointer"
+                    >
+                      <UserIcon className="w-5 h-5 text-brand" />
+                      <span>Sign Up</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </aside>
+          </div>,
+          document.body
         )}
       </div>
 
